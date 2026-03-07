@@ -16,8 +16,11 @@ interface BlurRevealProps {
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
-const initial = { opacity: 0, filter: "blur(10px)", scale: 0.99 };
-const revealed = { opacity: 1, filter: "blur(0px)", scale: 1 };
+// No blur filter — filter animations are not GPU-composited on mobile Safari
+// and cause full repaint cycles, leading to jank and crashes on low-end devices.
+// opacity + y is sufficient and runs entirely on the compositor thread.
+const initial = { opacity: 0, y: 16 };
+const revealed = { opacity: 1, y: 0 };
 
 export function BlurReveal({
   children,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
 interface FeedItem {
@@ -38,26 +38,29 @@ export function AmbientFeed() {
   const [items, setItems] = useState<FeedItem[]>([
     { ...FEED_SEQUENCE[0], id: 0 },
   ]);
-  const [index, setIndex] = useState(1);
-  const [uid, setUid] = useState(1);
+  // Use refs for counter values so the interval closure never goes stale
+  // and we never need to recreate the interval on every tick.
+  const indexRef = useRef(1);
+  const uidRef = useRef(1);
 
   useEffect(() => {
     const interval = setInterval(() => {
+      const nextIndex = indexRef.current;
+      const nextUid = uidRef.current;
+      indexRef.current += 1;
+      uidRef.current += 1;
+
       setItems((prev) => {
         const next: FeedItem = {
-          ...FEED_SEQUENCE[index % FEED_SEQUENCE.length],
-          id: uid,
+          ...FEED_SEQUENCE[nextIndex % FEED_SEQUENCE.length],
+          id: nextUid,
         };
-        // Keep only the latest 3 entries
-        const updated = [next, ...prev].slice(0, 3);
-        return updated;
+        return [next, ...prev].slice(0, 3);
       });
-      setIndex((i) => i + 1);
-      setUid((u) => u + 1);
     }, 2800);
 
     return () => clearInterval(interval);
-  }, [index, uid]);
+  }, []); // stable — refs never need to be in the dep array
 
   return (
     <div className="space-y-1.5 overflow-hidden" aria-live="polite" aria-label="Larry activity feed">

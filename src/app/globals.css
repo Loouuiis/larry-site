@@ -245,9 +245,9 @@ h3, h4 {
 }
 
 /* ─── Reduced motion — accessibility & low-power devices ─────────── */
-/* Framer Motion respects this automatically for whileInView and animate,
-   but CSS animations (heroGlow, livePulse, marquee) need manual override.
-   All transforms collapse to identity; opacity pulses are removed. */
+/* Framer Motion respects prefers-reduced-motion automatically via its
+   built-in useReducedMotion hook — no CSS override needed for JS animations.
+   We only need to stop the CSS keyframe animations that run outside Framer. */
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
@@ -257,12 +257,5 @@ h3, h4 {
   .live-pulse {
     animation: none;
     will-change: auto;
-  }
-
-  /* Framer Motion integration: tell the library to skip animations */
-  * {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
   }
 }
