@@ -42,7 +42,7 @@ const CAPABILITIES = [
 
 export function FeaturesSection() {
   return (
-    <section id="solution" className="border-t border-neutral-100 py-24">
+    <section id="solution" className="border-t border-neutral-100 py-16 sm:py-24">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <FadeUp className="mb-16 max-w-2xl">
           <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-neutral-400">
@@ -89,7 +89,7 @@ export function FeaturesSection() {
 
         {/* Capability list — in a contained panel */}
         <FadeUp>
-          <div className="rounded-2xl border border-neutral-200 bg-neutral-50 px-8 py-8">
+          <div className="rounded-2xl border border-neutral-200 bg-neutral-50 px-5 py-6 sm:px-8 sm:py-8">
             <p className="mb-5 text-xs font-semibold uppercase tracking-widest text-neutral-400">
               In practice, Larry:
             </p>

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { AnimatePresence, motion } from "framer-motion";
 import { Button } from "@/components/ui/Button";
 import { useOverlayTrigger } from "@/components/ui/LiquidOverlay";
 
@@ -21,12 +22,36 @@ const NAV_LINKS: NavLink[] = [
   { label: "Blog",          href: "/blog"                                        },
 ];
 
+const EASE = [0.22, 1, 0.36, 1] as const;
 
 export function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
   const [activeSection, setActiveSection] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const headerRef = useRef<HTMLElement>(null);
   const openWaitlist = useOverlayTrigger("waitlist");
+
+  // Close mobile menu on ESC
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Close mobile menu on click outside the header
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (headerRef.current && !headerRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [menuOpen]);
 
   useEffect(() => {
     // ── Scroll progress ────────────────────────────────────────────────────
@@ -65,7 +90,7 @@ export function Navbar() {
   }, []);
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 px-4 pt-3 sm:px-6">
+    <header ref={headerRef} className="fixed top-0 left-0 right-0 z-50 px-4 pt-3 sm:px-6">
       {/*
        * Scroll progress bar — full-width, sits behind the navbar pill (z:49).
        * scaleX runs on the compositor thread; no layout, no paint.
@@ -105,6 +130,7 @@ export function Navbar() {
         <Link
           href="/"
           className="flex items-center gap-2 text-sm font-semibold text-neutral-900"
+          onClick={() => setMenuOpen(false)}
         >
           <span className="flex h-6 w-6 items-center justify-center rounded bg-[#2e7d4f] text-white text-xs font-bold select-none">
             L
@@ -129,21 +155,12 @@ export function Navbar() {
                   aria-current={isActive ? "page" : undefined}
                 >
                   {label}
-                  {/*
-                   * Hover underline — accent gradient, slides in from left via
-                   * scaleX. origin-left ensures it grows in the reading direction.
-                   * Only shown when the link is not already active.
-                   */}
                   {!isActive && (
                     <span
                       aria-hidden="true"
                       className="absolute bottom-1 left-3 right-3 h-px rounded-full bg-gradient-to-r from-[#A88DFF] to-[#4FA3FF] scale-x-0 group-hover:scale-x-100 transition-transform duration-200 ease-out origin-left"
                     />
                   )}
-                  {/*
-                   * Active underline — brand green, always visible when the section
-                   * is in the reading viewport.
-                   */}
                   {isActive && (
                     <span
                       aria-hidden="true"
@@ -156,8 +173,9 @@ export function Navbar() {
           })}
         </ul>
 
-        {/* Auth actions */}
+        {/* Right-side actions */}
         <div className="flex items-center gap-1">
+          {/* Log in — hidden on small mobile, visible from sm */}
           <Link
             href="/login"
             className="group relative hidden rounded-lg px-3 py-1.5 text-sm text-neutral-500 transition-colors duration-150 hover:text-neutral-900 sm:block"
@@ -168,9 +186,102 @@ export function Navbar() {
               className="absolute bottom-1 left-3 right-3 h-px rounded-full bg-gradient-to-r from-[#A88DFF] to-[#4FA3FF] scale-x-0 group-hover:scale-x-100 transition-transform duration-200 ease-out origin-left"
             />
           </Link>
+
+          {/* Primary CTA — always visible */}
           <Button size="sm" onClick={openWaitlist}>Join the Waitlist</Button>
+
+          {/* Hamburger — only on mobile (below md) */}
+          <button
+            type="button"
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-label={menuOpen ? "Close navigation menu" : "Open navigation menu"}
+            aria-expanded={menuOpen}
+            aria-controls="mobile-nav-menu"
+            className={[
+              "ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg md:hidden",
+              "text-neutral-600 transition-colors duration-150 hover:bg-neutral-100 hover:text-neutral-900",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-1",
+            ].join(" ")}
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              aria-hidden="true"
+            >
+              {menuOpen ? (
+                <>
+                  <path d="M3 3L13 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  <path d="M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </>
+              ) : (
+                <>
+                  <path d="M2 4.5h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  <path d="M2 8h12"   stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  <path d="M2 11.5h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </>
+              )}
+            </svg>
+          </button>
         </div>
       </nav>
+
+      {/* ── Mobile menu dropdown ─────────────────────────────────────────── */}
+      <AnimatePresence>
+        {menuOpen && (
+          <motion.div
+            id="mobile-nav-menu"
+            role="dialog"
+            aria-label="Navigation menu"
+            initial={{ opacity: 0, y: -6, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -6, scale: 0.98 }}
+            transition={{ duration: 0.2, ease: EASE }}
+            className={[
+              "mx-auto mt-2 max-w-6xl overflow-hidden rounded-2xl md:hidden",
+              "border border-neutral-200 bg-[#F7F7F4]/96 backdrop-blur-md",
+              "shadow-[0_8px_32px_rgba(0,0,0,0.08)]",
+            ].join(" ")}
+          >
+            {/* Nav links */}
+            <ul className="px-2 pt-2" role="list">
+              {NAV_LINKS.map(({ label, href }) => (
+                <li key={label}>
+                  <Link
+                    href={href}
+                    onClick={() => setMenuOpen(false)}
+                    className="flex min-h-[44px] items-center rounded-xl px-4 py-2.5 text-sm text-neutral-700 transition-colors duration-150 hover:bg-neutral-100 hover:text-neutral-900"
+                  >
+                    {label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+
+            {/* Bottom actions */}
+            <div className="flex flex-col gap-2 border-t border-neutral-100 px-4 py-4">
+              <Link
+                href="/login"
+                onClick={() => setMenuOpen(false)}
+                className="flex min-h-[44px] items-center rounded-xl px-4 py-2.5 text-sm font-medium text-neutral-600 transition-colors duration-150 hover:bg-neutral-100 hover:text-neutral-900"
+              >
+                Log in
+              </Link>
+              <Button
+                size="lg"
+                className="w-full"
+                onClick={(e) => {
+                  openWaitlist(e);
+                  setMenuOpen(false);
+                }}
+              >
+                Join the Waitlist
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </header>
   );
 }

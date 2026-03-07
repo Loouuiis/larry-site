@@ -79,7 +79,7 @@ function Cell({ value }: { value: CellValue }) {
 
 export function VibeSection() {
   return (
-    <section id="differentiator" className="border-t border-neutral-100 bg-[#F2F2EF]/60 py-24">
+    <section id="differentiator" className="border-t border-neutral-100 bg-[#F2F2EF]/60 py-16 sm:py-24">
       <div className="mx-auto max-w-5xl px-4 sm:px-6">
         <FadeUp className="mb-14 max-w-2xl">
           <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-neutral-400">
@@ -91,8 +91,37 @@ export function VibeSection() {
         </FadeUp>
 
         <FadeUp>
+          {/* Mobile: simple Larry checklist — avoids the 4-col table overflowing */}
           <div
-            className="overflow-hidden rounded-2xl border border-neutral-200 bg-white"
+            className="md:hidden rounded-2xl border border-neutral-200 bg-white px-5 py-6"
+            style={{ boxShadow: "var(--shadow-card)" }}
+          >
+            <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-[#7C6BFF]">
+              What Larry does
+            </p>
+            <ul className="space-y-3" role="list">
+              {CAPABILITIES.map(({ label }) => (
+                <li key={label} className="flex items-start gap-3">
+                  <span
+                    aria-hidden="true"
+                    className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[#2e7d4f]/10 text-[#2e7d4f]"
+                  >
+                    <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
+                      <path d="M2 5.5L4 7.5L8 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </span>
+                  <span className="text-sm text-neutral-700">{label}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-5 text-xs text-neutral-400">
+              PM Tools and AI Copilots cover only a fraction of the above — Larry does all of it.
+            </p>
+          </div>
+
+          {/* Desktop: full comparison table */}
+          <div
+            className="hidden md:block overflow-hidden rounded-2xl border border-neutral-200 bg-white"
             style={{ boxShadow: "var(--shadow-card)" }}
           >
             {/* Column headers */}

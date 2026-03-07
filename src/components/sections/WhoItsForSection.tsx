@@ -49,7 +49,7 @@ const SECONDARY_ROLES = [
 
 export function WhoItsForSection() {
   return (
-    <section id="audience" className="border-t border-neutral-100 py-24">
+    <section id="audience" className="border-t border-neutral-100 py-16 sm:py-24">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <FadeUp className="mb-14 max-w-2xl">
           <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-neutral-400">
@@ -70,7 +70,7 @@ export function WhoItsForSection() {
           {PRIMARY_ROLES.map(({ id, title, description }) => (
             <div
               key={id}
-              className="rounded-2xl border border-neutral-200 bg-white p-8"
+              className="rounded-2xl border border-neutral-200 bg-white p-5 sm:p-8"
               style={{ boxShadow: "var(--shadow-card)" }}
             >
               <h3 className="mb-3 text-base font-semibold text-neutral-900">

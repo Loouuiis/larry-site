@@ -8,6 +8,12 @@ const geistSans = Geist({
   subsets: ["latin"],
 });
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+};
+
 export const metadata: Metadata = {
   title: "Larry — The AI Project Manager That Actually Runs Execution",
   description:

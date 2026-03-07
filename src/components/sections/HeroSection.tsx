@@ -39,7 +39,7 @@ export function HeroSection() {
   const openFounders = useOverlayTrigger("founders");
 
   return (
-    <section className="relative overflow-hidden pt-32 pb-0">
+    <section className="relative overflow-hidden pt-24 pb-0 sm:pt-32">
       {/* Ambient radial brand wash — barely perceptible, adds warmth */}
       <div
         aria-hidden="true"
@@ -61,7 +61,7 @@ export function HeroSection() {
       {/* ── Headline + CTAs ────────────────────────────────────────── */}
       <div className="mx-auto max-w-3xl px-4 text-center sm:px-6">
         <BlurReveal delay={0}>
-          <h1 className="text-5xl font-bold text-neutral-900 sm:text-6xl md:text-[4.5rem]">
+          <h1 className="text-[2.25rem] font-bold text-neutral-900 sm:text-5xl md:text-6xl lg:text-[4.5rem]">
             The AI Project Manager That Actually <em>Runs</em> Execution
           </h1>
         </BlurReveal>
@@ -99,7 +99,7 @@ export function HeroSection() {
         initial={{ opacity: 0, y: 36, scale: 0.984 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.92, delay: 0.4, ease: EASE }}
-        className="relative mx-auto mt-16 max-w-5xl px-4 sm:px-6"
+        className="relative mx-auto mt-10 max-w-5xl px-4 sm:mt-16 sm:px-6"
       >
         <div
           className="overflow-hidden rounded-t-2xl border border-b-0 border-neutral-200 bg-white"

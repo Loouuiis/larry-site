@@ -96,7 +96,7 @@ function Overlay({ type, origin, onClose }: LiquidOverlayProps) {
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.3, delay: 0.3, ease: "easeOut" }}
-        className="flex min-h-full w-full items-center justify-center px-4 py-12"
+        className="flex min-h-full w-full items-center justify-center px-3 py-8 sm:px-4 sm:py-12"
         ref={scrollRef}
       >
         {/* Floating glass panel — click inside does not close */}
@@ -112,9 +112,9 @@ function Overlay({ type, origin, onClose }: LiquidOverlayProps) {
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="p-8">
+          <div className="p-5 sm:p-8">
             {/* Header row */}
-            <div className="mb-8 flex items-center justify-between">
+            <div className="mb-6 flex items-center justify-between sm:mb-8">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-widest text-neutral-400">
                   {isWaitlist ? "Early access" : "Get in touch"}

@@ -12,7 +12,7 @@ export function CTASection() {
   const openFounders = useOverlayTrigger("founders");
 
   return (
-    <section id="pricing" className="relative overflow-hidden border-t border-neutral-900 bg-neutral-950 py-28">
+    <section id="pricing" className="relative overflow-hidden border-t border-neutral-900 bg-neutral-950 py-20 sm:py-28">
       {/* Brand radial — restrained, just enough warmth */}
       <div
         aria-hidden="true"
@@ -30,7 +30,7 @@ export function CTASection() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-60px" }}
           transition={{ duration: 0.72, ease: EASE }}
-          className="mb-5 text-4xl font-bold text-white sm:text-5xl md:text-[3.5rem]"
+          className="mb-5 text-3xl font-bold text-white sm:text-4xl md:text-5xl lg:text-[3.5rem]"
         >
           Stop <em>Managing</em> Work.
           <br />

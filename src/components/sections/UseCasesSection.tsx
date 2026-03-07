@@ -47,7 +47,7 @@ const WarningIcon = () => (
 
 export function UseCasesSection() {
   return (
-    <section className="border-t border-neutral-100 bg-[#F2F2EF] py-24">
+    <section className="border-t border-neutral-100 bg-[#F2F2EF] py-16 sm:py-24">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <FadeUp className="mb-14 max-w-2xl">
           <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-neutral-400">
@@ -62,7 +62,7 @@ export function UseCasesSection() {
           {/* Pain points */}
           <FadeUp>
             <div
-              className="h-full rounded-2xl border border-neutral-200 bg-white p-8"
+              className="h-full rounded-2xl border border-neutral-200 bg-white p-5 sm:p-8"
               style={{ boxShadow: "var(--shadow-card)" }}
             >
               <p className="mb-5 text-sm text-neutral-500">
@@ -108,7 +108,7 @@ export function UseCasesSection() {
           {/* Consequences */}
           <FadeUp delay={0.08}>
             <div
-              className="h-full rounded-2xl border border-red-100 bg-red-50/40 p-8"
+              className="h-full rounded-2xl border border-red-100 bg-red-50/40 p-5 sm:p-8"
               style={{ boxShadow: "var(--shadow-card)" }}
             >
               <p className="mb-5 text-sm text-neutral-500">The result:</p>
@@ -141,7 +141,7 @@ export function UseCasesSection() {
 
         <FadeUp delay={0.1} className="mt-8">
           <div
-            className="rounded-2xl border border-neutral-200 bg-white px-8 py-8 text-center"
+            className="rounded-2xl border border-neutral-200 bg-white px-5 py-6 text-center sm:px-8 sm:py-8"
             style={{ boxShadow: "var(--shadow-card)" }}
           >
             <p className="text-lg font-medium text-neutral-500">

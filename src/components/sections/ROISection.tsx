@@ -37,7 +37,7 @@ const STATS = [
 
 export function ROISection() {
   return (
-    <section className="border-t border-neutral-100 py-24">
+    <section className="border-t border-neutral-100 py-16 sm:py-24">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <FadeUp className="mb-16 max-w-xl">
           <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-neutral-400">

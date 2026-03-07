@@ -97,7 +97,7 @@ export function ROICalculator() {
 
   return (
     <div
-      className="rounded-2xl border border-neutral-200 bg-white p-8 lg:p-10"
+      className="rounded-2xl border border-neutral-200 bg-white p-5 sm:p-8 lg:p-10"
       style={{ boxShadow: "var(--shadow-card)" }}
     >
       {/* Header ─────────────────────────────────────────────────────────── */}
