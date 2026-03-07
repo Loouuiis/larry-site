@@ -65,16 +65,11 @@ export function LiquidButton({
     document.dispatchEvent(new CustomEvent("liquid:leave"));
   };
 
-  // Detect if the consumer wants full-width (w-full class passed in className).
-  // When w-full is requested the wrapper must also stretch to fill its container,
-  // otherwise the inline-flex wrapper collapses and the button ignores w-full.
-  const wantFullWidth = className.includes("w-full");
-
   return (
     <motion.div
       onHoverStart={handleEnter}
       onHoverEnd={handleLeave}
-      style={{ display: wantFullWidth ? "flex" : "inline-flex", width: wantFullWidth ? "100%" : undefined }}
+      style={{ display: "inline-flex" }}
     >
       <Button
         ref={btnRef}
