@@ -98,6 +98,7 @@ function Overlay({ type, origin, onClose }: LiquidOverlayProps) {
         transition={{ duration: 0.3, delay: 0.3, ease: "easeOut" }}
         className="flex min-h-full w-full items-start justify-center px-3 py-6 sm:items-center sm:px-4 sm:py-12"
         ref={scrollRef}
+        style={{ overscrollBehavior: "contain" }}
       >
         {/* Floating glass panel — click inside does not close */}
         <div
@@ -109,6 +110,10 @@ function Overlay({ type, origin, onClose }: LiquidOverlayProps) {
             border: "1px solid rgba(255, 255, 255, 0.6)",
             boxShadow:
               "0 32px 80px rgba(0,0,0,0.14), 0 8px 24px rgba(0,0,0,0.07), inset 0 1px 0 rgba(255,255,255,0.9)",
+            // iOS Safari: enables momentum scrolling inside the panel
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            WebkitOverflowScrolling: "touch" as any,
+            overscrollBehavior: "contain",
           }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -128,7 +133,7 @@ function Overlay({ type, origin, onClose }: LiquidOverlayProps) {
                 ref={firstFocusRef}
                 onClick={onClose}
                 className={[
-                  "ml-4 flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
+                  "ml-4 flex h-11 w-11 shrink-0 items-center justify-center rounded-full",
                   "border border-neutral-200 bg-white/60 text-neutral-400",
                   "transition-colors duration-200 hover:border-neutral-400 hover:text-neutral-700",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2",

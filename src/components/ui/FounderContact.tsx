@@ -145,7 +145,7 @@ export function FounderContact() {
           autoComplete="email"
           placeholder="you@yourcompany.com"
           className={[
-            "w-full rounded-xl px-4 py-3 text-sm text-neutral-900 outline-none",
+            "w-full rounded-xl px-4 py-3 text-neutral-900 outline-none",
             "min-h-[44px]",
             "bg-white/30 backdrop-blur-sm",
             "border border-white/50",
@@ -155,6 +155,8 @@ export function FounderContact() {
               ? "border-red-300/60 focus:border-red-400/60 focus:ring-red-200/40"
               : "",
           ].join(" ")}
+          // Explicit 16px prevents iOS Safari auto-zoom on focus
+          style={{ fontSize: "1rem" }}
         />
         {emailError && (
           <p className="text-xs text-red-500">{emailError}</p>
@@ -202,14 +204,16 @@ export function FounderContact() {
               onChange={(e) => setBody(e.target.value)}
               rows={10}
               maxLength={4000}
-              className="w-full resize-none bg-transparent outline-none font-sans text-sm leading-relaxed text-neutral-700 placeholder:text-neutral-400"
+              className="w-full resize-none bg-transparent outline-none font-sans leading-relaxed text-neutral-700 placeholder:text-neutral-400"
+              // Explicit 16px prevents iOS Safari auto-zoom on focus
+              style={{ fontSize: "1rem" }}
             />
           )}
         </div>
       </div>
 
       {/* Actions — fade in after typing completes */}
-      <AnimatePresence>
+      <AnimatePresence mode="wait">
         {typingDone && (
           <motion.div
             key="actions"

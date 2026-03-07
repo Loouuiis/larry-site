@@ -91,6 +91,19 @@ body {
   overflow-x: hidden;
 }
 
+/* ─── iOS zoom prevention ─────────────────────────────────────────── */
+/* iOS Safari auto-zooms into any input with font-size < 16px on focus.
+   Setting font-size: 1rem (16px) globally on all interactive form elements
+   prevents the viewport from scaling, which causes jarring layout jumps
+   on mobile. Individual components may visually override with font-size
+   transforms or parent scaling, but the input's own font-size must remain
+   at or above 16px to suppress the zoom behaviour. */
+input,
+textarea,
+select {
+  font-size: 1rem;
+}
+
 ::selection {
   background: rgba(124, 107, 255, 0.15);
   color: inherit;
@@ -147,6 +160,15 @@ h3, h4 {
   to   { transform: translateX(-50%); }
 }
 
+/* ─── Scroll container containment ───────────────────────────────── */
+/* Prevent scroll chaining on iOS Safari — when a contained scroll panel
+   reaches its boundary it won't propagate to the document body, avoiding
+   the "overscroll bounces the whole page" issue that breaks modal UX. */
+.scroll-contain {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
 /* ─── ROI Calculator slider ──────────────────────────────────────── */
 /*
  * Custom range input — three rules cover the full cross-browser surface:
@@ -169,13 +191,18 @@ h3, h4 {
   border-radius: 9999px;
   outline: none;
   cursor: pointer;
+  /* Increase the tap/click target height on touch devices without
+     changing the visual track height — the invisible extra area
+     prevents mis-taps on narrow track heights on mobile. */
+  padding-block: 12px;
 }
 
 .roi-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 18px;
-  height: 18px;
+  /* 22px on mobile for a better touch target (visually still compact) */
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   background: #7C6BFF;
   border: 2.5px solid #fff;
@@ -185,13 +212,13 @@ h3, h4 {
 }
 
 .roi-slider::-webkit-slider-thumb:hover {
-  transform: scale(1.18);
+  transform: scale(1.14);
   box-shadow: 0 0 0 4px rgba(124, 107, 255, 0.15), 0 2px 8px rgba(0, 0, 0, 0.12);
 }
 
 .roi-slider::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   background: #7C6BFF;
   border: 2.5px solid #fff;
@@ -215,4 +242,27 @@ h3, h4 {
 
 .live-pulse {
   animation: livePulse 2.4s ease-in-out infinite;
+}
+
+/* ─── Reduced motion — accessibility & low-power devices ─────────── */
+/* Framer Motion respects this automatically for whileInView and animate,
+   but CSS animations (heroGlow, livePulse, marquee) need manual override.
+   All transforms collapse to identity; opacity pulses are removed. */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .hero-glow,
+  .live-pulse {
+    animation: none;
+    will-change: auto;
+  }
+
+  /* Framer Motion integration: tell the library to skip animations */
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

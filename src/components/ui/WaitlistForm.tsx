@@ -60,7 +60,7 @@ function Field({
         inputMode={inputMode}
         placeholder={placeholder}
         className={[
-          "w-full rounded-xl px-4 py-3 text-sm text-neutral-900 outline-none",
+          "w-full rounded-xl px-4 py-3 text-neutral-900 outline-none",
           "min-h-[44px]",
           "bg-white/30 backdrop-blur-sm",
           "border border-white/50",
@@ -71,6 +71,9 @@ function Field({
             ? "border-red-300/60 focus:border-red-400/60 focus:ring-red-200/40"
             : "",
         ].join(" ")}
+        // Explicit 16px prevents iOS Safari auto-zoom on focus;
+        // text-sm (14px) would trigger the zoom without this override.
+        style={{ fontSize: "1rem" }}
       />
       <AnimatePresence mode="popLayout">
         {error && (
@@ -170,8 +173,8 @@ export function WaitlistForm() {
 
   return (
     <form onSubmit={handleSubmit} noValidate className="space-y-5">
-      {/* Name row */}
-      <div className="grid grid-cols-2 gap-4">
+      {/* Name row — single column on xs to prevent cramped inputs on 320px screens */}
+      <div className="grid grid-cols-1 gap-4 xs:grid-cols-2 sm:grid-cols-2">
         <Field
           id={`${uid}-fn`}
           label="First name"

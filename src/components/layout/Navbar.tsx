@@ -201,7 +201,7 @@ export function Navbar() {
             aria-expanded={menuOpen}
             aria-controls="mobile-nav-menu"
             className={[
-              "ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg md:hidden",
+              "ml-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg md:hidden",
               "text-neutral-600 transition-colors duration-150 hover:bg-neutral-100 hover:text-neutral-900",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-1",
             ].join(" ")}

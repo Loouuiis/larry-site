@@ -15,6 +15,8 @@ const SOCIAL_LINKS = [
 ];
 
 export function Footer() {
+  // suppressHydrationWarning on the year span handles the edge case where
+  // the server and client disagree (e.g., rendering across a year boundary).
   const year = new Date().getFullYear();
 
   return (
@@ -48,7 +50,7 @@ export function Footer() {
                   <li key={link}>
                     <Link
                       href={`/${link.toLowerCase().replace(/[\s&]+/g, "-")}`}
-                      className="text-xs text-neutral-600 transition-colors duration-200 hover:text-neutral-200"
+                      className="inline-block min-h-[36px] py-1 text-xs text-neutral-600 transition-colors duration-200 hover:text-neutral-200"
                     >
                       {link}
                     </Link>
@@ -61,7 +63,7 @@ export function Footer() {
 
         {/* Bottom bar */}
         <div className="mt-10 flex flex-col items-center justify-between gap-4 border-t border-neutral-800 pt-6 sm:mt-14 sm:flex-row sm:pt-8">
-          <p className="text-xs text-neutral-600">
+          <p className="text-xs text-neutral-600" suppressHydrationWarning>
             &copy; {year} Larry. All rights reserved.
           </p>
           <ul className="flex items-center gap-5" role="list">

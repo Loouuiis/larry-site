@@ -99,7 +99,7 @@ export function HeroSection() {
         initial={{ opacity: 0, y: 36, scale: 0.984 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.92, delay: 0.4, ease: EASE }}
-        className="relative mx-auto mt-8 max-w-5xl px-4 sm:mt-16 sm:px-6"
+        className="relative mx-auto mt-8 max-w-5xl px-3 sm:mt-16 sm:px-6"
       >
         <div
           className="overflow-hidden rounded-t-2xl border border-b-0 border-neutral-200 bg-white"
@@ -116,8 +116,8 @@ export function HeroSection() {
             <div className="mx-auto h-4 w-32 rounded-full bg-neutral-200/70 sm:h-5 sm:w-56" />
           </div>
 
-          {/* App shell — min-height is shorter on mobile */}
-          <div className="flex min-h-[280px] sm:min-h-[380px]">
+          {/* App shell — min-height is shorter on mobile; no min-height on xs to let content dictate height */}
+          <div className="flex min-h-[220px] sm:min-h-[380px]">
             {/* Sidebar — hidden on all mobile, visible sm+ */}
             <aside className="hidden w-52 shrink-0 border-r border-neutral-100 bg-neutral-50/60 p-4 sm:block">
               <div className="mb-4 text-[10px] font-semibold uppercase tracking-widest text-neutral-400">
