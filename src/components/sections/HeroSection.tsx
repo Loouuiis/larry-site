@@ -84,10 +84,12 @@ export function HeroSection() {
 
         <motion.div
           {...heroItem(0.28)}
-          className="mt-6 flex flex-col items-stretch gap-3 px-2 sm:mt-8 sm:flex-row sm:items-center sm:justify-center sm:px-0"
+          className="mt-6 flex flex-col items-center gap-3 sm:mt-8 sm:flex-row sm:justify-center"
         >
-          <LiquidButton size="lg" onClick={openWaitlist} className="w-full sm:w-auto">Join the Waitlist</LiquidButton>
-          <Button size="lg" variant="secondary" onClick={openFounders} className="w-full sm:w-auto">
+          <LiquidButton size="lg" onClick={openWaitlist} className="w-full max-w-xs sm:w-auto sm:max-w-none">
+            Join the Waitlist
+          </LiquidButton>
+          <Button size="lg" variant="secondary" onClick={openFounders} className="w-full max-w-xs sm:w-auto sm:max-w-none">
             Speak to the Founders
           </Button>
         </motion.div>
