@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@libsql/client": "^0.17.0",
     "@prisma/client": "^6.19.2",
     "better-sqlite3": "^12.6.2",
     "framer-motion": "^12.35.0",

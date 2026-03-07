@@ -40,9 +40,10 @@ export async function POST(req: NextRequest) {
   }
 
   const db = getDb();
-  db.prepare(
-    "INSERT INTO FounderContactEntry (email, message, createdAt) VALUES (?, ?, ?)"
-  ).run(result.data.email, result.data.message ?? null, new Date().toISOString());
+  await db.execute({
+    sql: "INSERT INTO FounderContactEntry (email, message, createdAt) VALUES (?, ?, ?)",
+    args: [result.data.email, result.data.message ?? null, new Date().toISOString()],
+  });
 
   return NextResponse.json({ success: true }, { status: 201 });
 }

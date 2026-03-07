@@ -2,8 +2,6 @@ import { getDb } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-// Row shapes returned by better-sqlite3 — typed explicitly since we're
-// using raw SQL rather than a typed ORM.
 interface WaitlistRow {
   id: number;
   firstName: string;
@@ -28,16 +26,16 @@ function fmt(iso: string): string {
   });
 }
 
-export default function AdminPage() {
+export default async function AdminPage() {
   const db = getDb();
 
-  const waitlist = db
-    .prepare("SELECT * FROM WaitlistEntry ORDER BY createdAt DESC")
-    .all() as WaitlistRow[];
+  const [waitlistResult, foundersResult] = await Promise.all([
+    db.execute("SELECT * FROM WaitlistEntry ORDER BY createdAt DESC"),
+    db.execute("SELECT * FROM FounderContactEntry ORDER BY createdAt DESC"),
+  ]);
 
-  const founders = db
-    .prepare("SELECT * FROM FounderContactEntry ORDER BY createdAt DESC")
-    .all() as FounderContactRow[];
+  const waitlist = waitlistResult.rows as unknown as WaitlistRow[];
+  const founders = foundersResult.rows as unknown as FounderContactRow[];
 
   return (
     <div className="min-h-screen bg-neutral-50 px-6 py-12 font-sans">

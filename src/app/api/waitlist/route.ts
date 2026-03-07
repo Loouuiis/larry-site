@@ -43,19 +43,24 @@ export async function POST(req: NextRequest) {
   }
 
   const db = getDb();
-  const existing = db.prepare("SELECT id FROM WaitlistEntry WHERE email = ?").get(result.data.email);
-  if (existing) return NextResponse.json({ success: true });
 
-  db.prepare(
-    "INSERT INTO WaitlistEntry (firstName, lastName, company, email, phone, createdAt) VALUES (?, ?, ?, ?, ?, ?)"
-  ).run(
-    result.data.firstName,
-    result.data.lastName,
-    result.data.company,
-    result.data.email,
-    result.data.phone,
-    new Date().toISOString(),
-  );
+  const existing = await db.execute({
+    sql: "SELECT id FROM WaitlistEntry WHERE email = ?",
+    args: [result.data.email],
+  });
+  if (existing.rows.length > 0) return NextResponse.json({ success: true });
+
+  await db.execute({
+    sql: "INSERT INTO WaitlistEntry (firstName, lastName, company, email, phone, createdAt) VALUES (?, ?, ?, ?, ?, ?)",
+    args: [
+      result.data.firstName,
+      result.data.lastName,
+      result.data.company,
+      result.data.email,
+      result.data.phone,
+      new Date().toISOString(),
+    ],
+  });
 
   return NextResponse.json({ success: true }, { status: 201 });
 }

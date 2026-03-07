@@ -1,16 +1,12 @@
-import Database from "better-sqlite3";
-import path from "path";
+import { createClient } from "@libsql/client";
 
-// Single shared connection — better-sqlite3 is synchronous and handles
-// concurrent requests safely without a connection pool.
-const dbPath = path.join(process.cwd(), "prisma", "dev.db");
+// Turso / libSQL client — works in both local dev (file:) and production (https://)
+// TURSO_DATABASE_URL: "libsql://your-db.turso.io" in production, "file:./prisma/dev.db" locally
+// TURSO_AUTH_TOKEN:   required in production, omit for local file
 
-let _db: Database.Database | null = null;
+export function getDb() {
+  const url = process.env.TURSO_DATABASE_URL ?? "file:./prisma/dev.db";
+  const authToken = process.env.TURSO_AUTH_TOKEN;
 
-export function getDb(): Database.Database {
-  if (!_db) {
-    _db = new Database(dbPath);
-    _db.pragma("journal_mode = WAL"); // better concurrent read performance
-  }
-  return _db;
+  return createClient({ url, authToken });
 }
