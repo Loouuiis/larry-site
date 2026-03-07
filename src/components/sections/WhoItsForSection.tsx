@@ -49,16 +49,16 @@ const SECONDARY_ROLES = [
 
 export function WhoItsForSection() {
   return (
-    <section id="audience" className="border-t border-neutral-100 py-16 sm:py-24">
+    <section id="audience" className="border-t border-neutral-100 py-12 sm:py-24">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
-        <FadeUp className="mb-14 max-w-2xl">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-neutral-400">
+        <FadeUp className="mb-10 max-w-2xl sm:mb-14">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-neutral-400 sm:mb-3 sm:text-xs">
             Who this is for
           </p>
-          <h2 className="mb-4 text-4xl font-bold tracking-tight text-neutral-900 sm:text-5xl">
+          <h2 className="mb-3 text-2xl font-bold tracking-tight text-neutral-900 sm:mb-4 sm:text-4xl lg:text-5xl">
             Built for the people who own execution.
           </h2>
-          <p className="text-base leading-relaxed text-neutral-500">
+          <p className="text-sm leading-relaxed text-neutral-500 sm:text-base">
             Especially in organisations with 50–500+ employees where
             coordination intensity is high — multiple stakeholders,
             dependencies, and delivery pressure.

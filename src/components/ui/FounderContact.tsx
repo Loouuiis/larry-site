@@ -146,6 +146,7 @@ export function FounderContact() {
           placeholder="you@yourcompany.com"
           className={[
             "w-full rounded-xl px-4 py-3 text-sm text-neutral-900 outline-none",
+            "min-h-[44px]",
             "bg-white/30 backdrop-blur-sm",
             "border border-white/50",
             "placeholder:text-neutral-400 transition-all duration-200",
@@ -183,7 +184,7 @@ export function FounderContact() {
         {/* Body — animated pre during typing, editable textarea after */}
         <div className="px-5 py-4">
           {!typingDone ? (
-            <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-neutral-700 min-h-[180px]">
+            <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-neutral-700 min-h-[140px] sm:min-h-[180px]">
               {EMAIL_BODY.slice(0, visibleChars)}
               <span
                 aria-hidden="true"
@@ -227,6 +228,7 @@ export function FounderContact() {
                 disabled={status === "submitting"}
                 className={[
                   "flex-1 rounded-full border py-3 text-sm font-medium",
+                  "min-h-[44px]",
                   "border-neutral-900 bg-transparent text-neutral-900",
                   "hover:bg-neutral-900 hover:text-white",
                   "transition-colors duration-200",
@@ -253,6 +255,7 @@ export function FounderContact() {
                 rel="noopener noreferrer"
                 className={[
                   "flex-1 rounded-full border py-3 text-center text-sm font-medium",
+                  "min-h-[44px] flex items-center justify-center",
                   "border-white/50 bg-white/20 text-neutral-700",
                   "hover:bg-white/35 hover:border-white/60",
                   "transition-colors duration-200",

@@ -47,13 +47,13 @@ const WarningIcon = () => (
 
 export function UseCasesSection() {
   return (
-    <section className="border-t border-neutral-100 bg-[#F2F2EF] py-16 sm:py-24">
+    <section className="border-t border-neutral-100 bg-[#F2F2EF] py-12 sm:py-24">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
-        <FadeUp className="mb-14 max-w-2xl">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-neutral-400">
+        <FadeUp className="mb-10 max-w-2xl sm:mb-14">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-neutral-400 sm:mb-3 sm:text-xs">
             The problem
           </p>
-          <h2 className="text-4xl font-bold tracking-tight text-neutral-900 sm:text-5xl">
+          <h2 className="text-2xl font-bold tracking-tight text-neutral-900 sm:text-4xl lg:text-5xl">
             Where execution breaks down.
           </h2>
         </FadeUp>
@@ -139,7 +139,7 @@ export function UseCasesSection() {
           </FadeUp>
         </div>
 
-        <FadeUp delay={0.1} className="mt-8">
+        <FadeUp delay={0.1} className="mt-5 sm:mt-8">
           <div
             className="rounded-2xl border border-neutral-200 bg-white px-5 py-6 text-center sm:px-8 sm:py-8"
             style={{ boxShadow: "var(--shadow-card)" }}

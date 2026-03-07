@@ -13,7 +13,7 @@ const INDUSTRIES = [
 
 export function LogoBar() {
   return (
-    <section className="border-t border-neutral-100 py-12">
+    <section className="border-t border-neutral-100 py-8 sm:py-12">
       <FadeUp className="mx-auto max-w-5xl px-4 sm:px-6">
         <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="shrink-0 text-xs font-semibold uppercase tracking-widest text-neutral-400">

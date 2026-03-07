@@ -39,7 +39,7 @@ export function HeroSection() {
   const openFounders = useOverlayTrigger("founders");
 
   return (
-    <section className="relative overflow-hidden pt-24 pb-0 sm:pt-32">
+    <section className="relative overflow-hidden pt-20 pb-0 sm:pt-32">
       {/* Ambient radial brand wash — barely perceptible, adds warmth */}
       <div
         aria-hidden="true"
@@ -61,14 +61,14 @@ export function HeroSection() {
       {/* ── Headline + CTAs ────────────────────────────────────────── */}
       <div className="mx-auto max-w-3xl px-4 text-center sm:px-6">
         <BlurReveal delay={0}>
-          <h1 className="text-[2.25rem] font-bold text-neutral-900 sm:text-5xl md:text-6xl lg:text-[4.5rem]">
+          <h1 className="text-[1.75rem] font-bold text-neutral-900 sm:text-5xl md:text-6xl lg:text-[4.5rem]">
             The AI Project Manager That Actually <em>Runs</em> Execution
           </h1>
         </BlurReveal>
 
         <motion.p
           {...heroItem(0.1)}
-          className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-neutral-500 sm:text-lg"
+          className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-neutral-500 sm:mt-6 sm:text-lg"
         >
           Projects don&apos;t fail because of bad strategy.{" "}
           They fail because no one owns coordination.
@@ -76,7 +76,7 @@ export function HeroSection() {
 
         <motion.p
           {...heroItem(0.18)}
-          className="mx-auto mt-3 max-w-xl text-base leading-relaxed text-neutral-500 sm:text-lg"
+          className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-neutral-500 sm:mt-3 sm:text-lg"
         >
           Larry autonomously manages follow-ups, updates, dependencies, and
           alignment — so your team can focus on delivering outcomes.
@@ -84,10 +84,10 @@ export function HeroSection() {
 
         <motion.div
           {...heroItem(0.28)}
-          className="mt-8 flex flex-wrap items-center justify-center gap-3"
+          className="mt-6 flex flex-col items-stretch gap-3 px-2 sm:mt-8 sm:flex-row sm:items-center sm:justify-center sm:px-0"
         >
-          <LiquidButton size="lg" onClick={openWaitlist}>Join the Waitlist</LiquidButton>
-          <Button size="lg" variant="secondary" onClick={openFounders}>
+          <LiquidButton size="lg" onClick={openWaitlist} className="w-full sm:w-auto">Join the Waitlist</LiquidButton>
+          <Button size="lg" variant="secondary" onClick={openFounders} className="w-full sm:w-auto">
             Speak to the Founders
           </Button>
         </motion.div>
@@ -99,7 +99,7 @@ export function HeroSection() {
         initial={{ opacity: 0, y: 36, scale: 0.984 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.92, delay: 0.4, ease: EASE }}
-        className="relative mx-auto mt-10 max-w-5xl px-4 sm:mt-16 sm:px-6"
+        className="relative mx-auto mt-8 max-w-5xl px-4 sm:mt-16 sm:px-6"
       >
         <div
           className="overflow-hidden rounded-t-2xl border border-b-0 border-neutral-200 bg-white"
@@ -109,16 +109,16 @@ export function HeroSection() {
           }}
         >
           {/* Browser chrome */}
-          <div className="flex h-9 items-center gap-1.5 border-b border-neutral-100 bg-neutral-50/70 px-4">
-            <span className="h-2.5 w-2.5 rounded-full bg-neutral-200" />
-            <span className="h-2.5 w-2.5 rounded-full bg-neutral-200" />
-            <span className="h-2.5 w-2.5 rounded-full bg-neutral-200" />
-            <div className="mx-auto h-5 w-56 rounded-full bg-neutral-200/70" />
+          <div className="flex h-8 items-center gap-1.5 border-b border-neutral-100 bg-neutral-50/70 px-3 sm:h-9 sm:px-4">
+            <span className="h-2 w-2 rounded-full bg-neutral-200 sm:h-2.5 sm:w-2.5" />
+            <span className="h-2 w-2 rounded-full bg-neutral-200 sm:h-2.5 sm:w-2.5" />
+            <span className="h-2 w-2 rounded-full bg-neutral-200 sm:h-2.5 sm:w-2.5" />
+            <div className="mx-auto h-4 w-32 rounded-full bg-neutral-200/70 sm:h-5 sm:w-56" />
           </div>
 
-          {/* App shell */}
-          <div className="flex min-h-[380px]">
-            {/* Sidebar */}
+          {/* App shell — min-height is shorter on mobile */}
+          <div className="flex min-h-[280px] sm:min-h-[380px]">
+            {/* Sidebar — hidden on all mobile, visible sm+ */}
             <aside className="hidden w-52 shrink-0 border-r border-neutral-100 bg-neutral-50/60 p-4 sm:block">
               <div className="mb-4 text-[10px] font-semibold uppercase tracking-widest text-neutral-400">
                 Projects
@@ -148,47 +148,47 @@ export function HeroSection() {
             </aside>
 
             {/* Main panel */}
-            <div className="flex-1 p-5">
+            <div className="flex-1 overflow-hidden p-3 sm:p-5">
               {/* Panel header */}
-              <div className="mb-4 flex items-center justify-between">
+              <div className="mb-3 flex items-center justify-between sm:mb-4">
                 <div>
-                  <h2 className="text-sm font-semibold text-neutral-900">
+                  <h2 className="text-xs font-semibold text-neutral-900 sm:text-sm">
                     Alpha Launch
                   </h2>
-                  <p className="text-xs text-neutral-400">
+                  <p className="text-[10px] text-neutral-400 sm:text-xs">
                     12 open actions · 3 overdue
                   </p>
                 </div>
 
                 {/* Active indicator */}
-                <div className="flex items-center gap-1.5 rounded-full border border-[#2e7d4f]/20 bg-[#2e7d4f]/5 px-3 py-1">
+                <div className="flex items-center gap-1 rounded-full border border-[#2e7d4f]/20 bg-[#2e7d4f]/5 px-2 py-0.5 sm:gap-1.5 sm:px-3 sm:py-1">
                   <span
                     className="h-1.5 w-1.5 rounded-full bg-[#2e7d4f] live-pulse"
                     aria-hidden="true"
                   />
-                  <span className="text-[11px] font-medium text-[#2e7d4f]">
+                  <span className="text-[10px] font-medium text-[#2e7d4f] sm:text-[11px]">
                     Larry is active
                   </span>
                 </div>
               </div>
 
-              {/* Task rows */}
-              <div className="space-y-1.5">
-                {MOCK_TASKS.map(({ id, title, assignee, status }) => (
+              {/* Task rows — show fewer on mobile to keep mockup compact */}
+              <div className="space-y-1 sm:space-y-1.5">
+                {MOCK_TASKS.slice(0, 3).map(({ id, title, assignee, status }) => (
                   <div
                     key={id}
-                    className="flex items-center gap-3 rounded-xl border border-neutral-100 bg-white px-3 py-2.5 text-xs transition-colors hover:border-neutral-200"
+                    className="flex items-center gap-2 rounded-lg border border-neutral-100 bg-white px-2.5 py-2 text-xs transition-colors hover:border-neutral-200 sm:gap-3 sm:rounded-xl sm:px-3 sm:py-2.5"
                     style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.03)" }}
                   >
                     <span
-                      className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-medium ${STATUS_PILL[status]}`}
+                      className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-medium sm:px-2.5 sm:text-[10px] ${STATUS_PILL[status]}`}
                     >
                       {STATUS_LABEL[status]}
                     </span>
-                    <span className="flex-1 truncate text-neutral-700">
+                    <span className="flex-1 truncate text-[11px] text-neutral-700 sm:text-xs">
                       {title}
                     </span>
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-[9px] font-bold text-neutral-500">
+                    <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-[8px] font-bold text-neutral-500 sm:h-5 sm:w-5 sm:text-[9px]">
                       {assignee}
                     </span>
                   </div>
@@ -197,14 +197,14 @@ export function HeroSection() {
 
               {/* ── Ambient feed — Larry working in the background ─── */}
               <div
-                className="mt-4 rounded-xl border border-[#2e7d4f]/12 px-3.5 py-3"
+                className="mt-3 rounded-lg border border-[#2e7d4f]/12 px-3 py-2.5 sm:mt-4 sm:rounded-xl sm:px-3.5 sm:py-3"
                 style={{ background: "rgba(46,125,79,0.035)" }}
               >
-                <div className="mb-2.5 flex items-center gap-2">
-                  <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[#2e7d4f] text-[8px] font-bold text-white select-none">
+                <div className="mb-2 flex items-center gap-1.5 sm:mb-2.5 sm:gap-2">
+                  <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-[#2e7d4f] text-[7px] font-bold text-white select-none sm:h-4 sm:w-4 sm:text-[8px]">
                     L
                   </span>
-                  <span className="text-[10px] font-semibold uppercase tracking-widest text-[#2e7d4f]/60">
+                  <span className="text-[9px] font-semibold uppercase tracking-widest text-[#2e7d4f]/60 sm:text-[10px]">
                     Larry
                   </span>
                 </div>

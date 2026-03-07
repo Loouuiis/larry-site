@@ -187,8 +187,11 @@ export function Navbar() {
             />
           </Link>
 
-          {/* Primary CTA — always visible */}
-          <Button size="sm" onClick={openWaitlist}>Join the Waitlist</Button>
+          {/* Primary CTA — always visible; shorter label on xs to avoid crowding hamburger */}
+          <Button size="sm" onClick={openWaitlist}>
+            <span className="sm:hidden">Join Waitlist</span>
+            <span className="hidden sm:inline">Join the Waitlist</span>
+          </Button>
 
           {/* Hamburger — only on mobile (below md) */}
           <button

@@ -61,6 +61,7 @@ function Field({
         placeholder={placeholder}
         className={[
           "w-full rounded-xl px-4 py-3 text-sm text-neutral-900 outline-none",
+          "min-h-[44px]",
           "bg-white/30 backdrop-blur-sm",
           "border border-white/50",
           "placeholder:text-neutral-400",
@@ -242,6 +243,7 @@ export function WaitlistForm() {
         disabled={status === "submitting"}
         className={[
           "w-full rounded-full py-3.5 text-sm font-medium",
+          "min-h-[44px]",
           "transition-all duration-200",
           "disabled:opacity-60 disabled:cursor-not-allowed",
           "border border-neutral-900/70 bg-transparent text-neutral-900",

@@ -12,7 +12,7 @@ export function CTASection() {
   const openFounders = useOverlayTrigger("founders");
 
   return (
-    <section id="pricing" className="relative overflow-hidden border-t border-neutral-900 bg-neutral-950 py-20 sm:py-28">
+    <section id="pricing" className="relative overflow-hidden border-t border-neutral-900 bg-neutral-950 py-14 sm:py-28">
       {/* Brand radial — restrained, just enough warmth */}
       <div
         aria-hidden="true"
@@ -30,7 +30,7 @@ export function CTASection() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-60px" }}
           transition={{ duration: 0.72, ease: EASE }}
-          className="mb-5 text-3xl font-bold text-white sm:text-4xl md:text-5xl lg:text-[3.5rem]"
+          className="mb-4 text-2xl font-bold text-white sm:mb-5 sm:text-4xl md:text-5xl lg:text-[3.5rem]"
         >
           Stop <em>Managing</em> Work.
           <br />
@@ -42,30 +42,30 @@ export function CTASection() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-60px" }}
           transition={{ duration: 0.6, delay: 0.1, ease: EASE }}
-          className="mx-auto mb-10 max-w-md text-base leading-relaxed text-neutral-400"
+          className="mx-auto mb-8 max-w-md text-sm leading-relaxed text-neutral-400 sm:mb-10 sm:text-base"
         >
           Let AI handle coordination — so your team can focus on building,
           shipping, and delivering.
         </motion.p>
 
-        {/* CTAs */}
+        {/* CTAs — stacked full-width on mobile, row on sm+ */}
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: "-60px" }}
           transition={{ duration: 0.6, delay: 0.18, ease: EASE }}
-          className="flex flex-col items-center gap-6 sm:flex-row sm:justify-center"
+          className="flex flex-col items-stretch gap-5 sm:flex-row sm:items-center sm:justify-center"
         >
           <div className="text-center">
             {/* White-outlined primary on dark background */}
             <LiquidButton
               size="lg"
-              className="border-white text-white hover:bg-white hover:text-neutral-950"
+              className="w-full border-white text-white hover:bg-white hover:text-neutral-950 sm:w-auto"
               onClick={openWaitlist}
             >
               Join the Waitlist
             </LiquidButton>
-            <p className="mt-2.5 text-[11px] text-neutral-600">
+            <p className="mt-2 text-[11px] text-neutral-600">
               Early access · Priority onboarding · Direct input into roadmap
             </p>
           </div>
@@ -74,12 +74,12 @@ export function CTASection() {
             <Button
               size="lg"
               variant="ghost"
-              className="border border-neutral-700 text-neutral-400 hover:border-neutral-500 hover:text-neutral-200 transition-colors duration-200"
+              className="w-full border border-neutral-700 text-neutral-400 hover:border-neutral-500 hover:text-neutral-200 transition-colors duration-200 sm:w-auto"
               onClick={openFounders}
             >
               Speak to the Founders
             </Button>
-            <p className="mt-2.5 text-[11px] text-neutral-600">
+            <p className="mt-2 text-[11px] text-neutral-600">
               Explore a structured pilot for your team
             </p>
           </div>

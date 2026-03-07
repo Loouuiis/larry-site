@@ -96,12 +96,12 @@ function Overlay({ type, origin, onClose }: LiquidOverlayProps) {
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.3, delay: 0.3, ease: "easeOut" }}
-        className="flex min-h-full w-full items-center justify-center px-3 py-8 sm:px-4 sm:py-12"
+        className="flex min-h-full w-full items-start justify-center px-3 py-6 sm:items-center sm:px-4 sm:py-12"
         ref={scrollRef}
       >
         {/* Floating glass panel — click inside does not close */}
         <div
-          className="w-full max-w-lg rounded-3xl overflow-hidden max-h-[85vh] overflow-y-auto"
+          className="w-full max-w-lg rounded-3xl overflow-hidden max-h-[92vh] overflow-y-auto sm:max-h-[85vh]"
           style={{
             background: "rgba(247, 247, 244, 0.78)",
             backdropFilter: "blur(24px)",
@@ -119,7 +119,7 @@ function Overlay({ type, origin, onClose }: LiquidOverlayProps) {
                 <p className="text-xs font-semibold uppercase tracking-widest text-neutral-400">
                   {isWaitlist ? "Early access" : "Get in touch"}
                 </p>
-                <h2 className="mt-1 text-2xl font-bold text-neutral-900">
+                <h2 className="mt-1 text-xl font-bold text-neutral-900 sm:text-2xl">
                   {title}
                 </h2>
                 <p className="mt-1 text-sm text-neutral-500">{subtitle}</p>

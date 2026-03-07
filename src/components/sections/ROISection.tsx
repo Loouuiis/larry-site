@@ -37,13 +37,13 @@ const STATS = [
 
 export function ROISection() {
   return (
-    <section className="border-t border-neutral-100 py-16 sm:py-24">
+    <section className="border-t border-neutral-100 py-12 sm:py-24">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
-        <FadeUp className="mb-16 max-w-xl">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-neutral-400">
+        <FadeUp className="mb-10 max-w-xl sm:mb-16">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-neutral-400 sm:mb-3 sm:text-xs">
             Measurable ROI
           </p>
-          <h2 className="text-4xl font-bold tracking-tight text-neutral-900 sm:text-5xl">
+          <h2 className="text-2xl font-bold tracking-tight text-neutral-900 sm:text-4xl lg:text-5xl">
             Results from week one.
           </h2>
         </FadeUp>
@@ -55,7 +55,7 @@ export function ROISection() {
               <div
                 key={label}
                 className={[
-                  "py-8",
+                  "py-6 sm:py-8",
                   i > 0 && "lg:border-l lg:border-neutral-100 lg:pl-8",
                   i < STATS.length - 1 && "lg:pr-8",
                   i > 0 && i < 3 && "sm:border-l sm:border-neutral-100 sm:pl-8",
@@ -84,7 +84,7 @@ export function ROISection() {
           </div>
         </FadeUp>
 
-        <FadeUp delay={0.15} className="mt-12">
+        <FadeUp delay={0.15} className="mt-8 sm:mt-12">
           <ROICalculator />
         </FadeUp>
       </div>

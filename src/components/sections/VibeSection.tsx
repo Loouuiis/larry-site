@@ -79,13 +79,13 @@ function Cell({ value }: { value: CellValue }) {
 
 export function VibeSection() {
   return (
-    <section id="differentiator" className="border-t border-neutral-100 bg-[#F2F2EF]/60 py-16 sm:py-24">
+    <section id="differentiator" className="border-t border-neutral-100 bg-[#F2F2EF]/60 py-12 sm:py-24">
       <div className="mx-auto max-w-5xl px-4 sm:px-6">
-        <FadeUp className="mb-14 max-w-2xl">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-neutral-400">
+        <FadeUp className="mb-10 max-w-2xl sm:mb-14">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-neutral-400 sm:mb-3 sm:text-xs">
             Why this is different
           </p>
-          <h2 className="text-4xl font-bold tracking-tight text-neutral-900 sm:text-5xl">
+          <h2 className="text-2xl font-bold tracking-tight text-neutral-900 sm:text-4xl lg:text-5xl">
             The first tool that owns follow-through.
           </h2>
         </FadeUp>
@@ -175,7 +175,7 @@ export function VibeSection() {
           </div>
         </FadeUp>
 
-        <FadeUp delay={0.12} className="mt-10">
+        <FadeUp delay={0.12} className="mt-8 sm:mt-10">
           <p className="max-w-xl text-base text-neutral-500">
             PM tools give you visibility. AI copilots help you draft.{" "}
             <span className="font-semibold text-neutral-900">

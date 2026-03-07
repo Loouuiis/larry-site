@@ -97,26 +97,27 @@ export function ROICalculator() {
 
   return (
     <div
-      className="rounded-2xl border border-neutral-200 bg-white p-5 sm:p-8 lg:p-10"
+      className="rounded-2xl border border-neutral-200 bg-white p-4 sm:p-8 lg:p-10"
       style={{ boxShadow: "var(--shadow-card)" }}
     >
       {/* Header ─────────────────────────────────────────────────────────── */}
-      <div className="mb-8 max-w-lg">
-        <h3 className="text-xl font-semibold tracking-tight text-neutral-900">
+      <div className="mb-6 max-w-lg sm:mb-8">
+        <h3 className="text-base font-semibold tracking-tight text-neutral-900 sm:text-xl">
           See how much time you can reclaim
         </h3>
-        <p className="mt-2 text-sm leading-relaxed text-neutral-500">
+        <p className="mt-1.5 text-xs leading-relaxed text-neutral-500 sm:mt-2 sm:text-sm">
           If Larry automates 20% of coordination and admin work, how much time
           does that free up across your project?
         </p>
       </div>
 
       {/* Slider ──────────────────────────────────────────────────────────── */}
-      <div className="mb-8">
-        <div className="mb-4 flex items-center justify-between">
+      <div className="mb-6 sm:mb-8">
+        {/* Use flex-wrap to gracefully handle very narrow containers */}
+        <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 sm:mb-4">
           <label
             htmlFor="roi-hours"
-            className="text-xs font-semibold uppercase tracking-widest text-neutral-400"
+            className="shrink-0 text-xs font-semibold uppercase tracking-widest text-neutral-400"
           >
             Project hours
           </label>
@@ -150,8 +151,8 @@ export function ROICalculator() {
       </div>
 
       {/* Result ──────────────────────────────────────────────────────────── */}
-      <div className="border-t border-neutral-100 pt-8">
-        <p className="mb-3 text-sm text-neutral-400">Larry will save you</p>
+      <div className="border-t border-neutral-100 pt-6 sm:pt-8">
+        <p className="mb-2 text-xs text-neutral-400 sm:mb-3 sm:text-sm">Larry will save you</p>
 
         <div className="flex items-end gap-2 leading-none">
           {/*

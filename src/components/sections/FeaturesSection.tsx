@@ -42,29 +42,29 @@ const CAPABILITIES = [
 
 export function FeaturesSection() {
   return (
-    <section id="solution" className="border-t border-neutral-100 py-16 sm:py-24">
+    <section id="solution" className="border-t border-neutral-100 py-12 sm:py-24">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
-        <FadeUp className="mb-16 max-w-2xl">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-neutral-400">
+        <FadeUp className="mb-10 max-w-2xl sm:mb-16">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-neutral-400 sm:mb-3 sm:text-xs">
             How it works
           </p>
-          <h2 className="text-4xl font-bold tracking-tight text-neutral-900 sm:text-5xl">
+          <h2 className="text-2xl font-bold tracking-tight text-neutral-900 sm:text-4xl lg:text-5xl">
             Coordination that runs itself.
           </h2>
-          <p className="mt-4 text-base leading-relaxed text-neutral-500">
+          <p className="mt-3 text-sm leading-relaxed text-neutral-500 sm:mt-4 sm:text-base">
             Larry connects to your existing tools and runs the operational layer
             — no process change, no onboarding overhead.
           </p>
         </FadeUp>
 
         {/* 4-step flow — numbered, divided, scannable */}
-        <FadeUp className="mb-14">
+        <FadeUp className="mb-10 sm:mb-14">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
             {STEPS.map(({ n, title, detail }, i) => (
               <div
                 key={n}
                 className={[
-                  "py-8 pr-8",
+                  "py-6 pr-0 sm:py-8 sm:pr-8",
                   i > 0 && "lg:border-l lg:border-neutral-100 lg:pl-8 lg:pr-8",
                   i > 0 && i < 2 && "sm:border-l sm:border-neutral-100 sm:pl-8",
                   i < STEPS.length - 1 &&

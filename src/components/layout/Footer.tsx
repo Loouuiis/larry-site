@@ -19,8 +19,8 @@ export function Footer() {
 
   return (
     <footer className="border-t border-neutral-800 bg-neutral-950">
-      <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6">
-        <div className="grid grid-cols-2 gap-8 sm:grid-cols-4 lg:grid-cols-5">
+      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-16">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-4 sm:gap-8 lg:grid-cols-5">
           {/* Brand column */}
           <div className="col-span-2 sm:col-span-4 lg:col-span-1">
             <Link
@@ -40,7 +40,7 @@ export function Footer() {
           {/* Link columns */}
           {Object.entries(FOOTER_LINKS).map(([category, links]) => (
             <div key={category}>
-              <h3 className="mb-4 text-xs font-semibold uppercase tracking-widest text-neutral-500">
+              <h3 className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-neutral-500 sm:mb-4 sm:tracking-widest sm:text-xs">
                 {category}
               </h3>
               <ul className="space-y-2.5" role="list">
@@ -60,7 +60,7 @@ export function Footer() {
         </div>
 
         {/* Bottom bar */}
-        <div className="mt-14 flex flex-col items-center justify-between gap-4 border-t border-neutral-800 pt-8 sm:flex-row">
+        <div className="mt-10 flex flex-col items-center justify-between gap-4 border-t border-neutral-800 pt-6 sm:mt-14 sm:flex-row sm:pt-8">
           <p className="text-xs text-neutral-600">
             &copy; {year} Larry. All rights reserved.
           </p>
