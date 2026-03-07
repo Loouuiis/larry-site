@@ -9,7 +9,6 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@libsql/client": "^0.17.0",
     "@prisma/client": "^6.19.2",
     "framer-motion": "^12.35.0",
     "next": "16.1.6",

@@ -30,8 +30,8 @@ export default async function AdminPage() {
   const db = getDb();
 
   const [waitlistResult, foundersResult] = await Promise.all([
-    db.execute("SELECT * FROM WaitlistEntry ORDER BY createdAt DESC"),
-    db.execute("SELECT * FROM FounderContactEntry ORDER BY createdAt DESC"),
+    db.execute({ sql: "SELECT * FROM WaitlistEntry ORDER BY createdAt DESC", args: [] }),
+    db.execute({ sql: "SELECT * FROM FounderContactEntry ORDER BY createdAt DESC", args: [] }),
   ]);
 
   const waitlist = waitlistResult.rows as unknown as WaitlistRow[];

@@ -7,7 +7,7 @@ export async function GET() {
 
   try {
     const db = getDb();
-    await db.execute("SELECT 1");
+    await db.execute({ sql: "SELECT 1", args: [] });
     return NextResponse.json({ ok: true, url, hasToken });
   } catch (err) {
     return NextResponse.json(
