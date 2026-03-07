@@ -23,25 +23,17 @@ const CONSEQUENCES = [
 
 const SCATTERED_SOURCES = ["Slack", "Tickets", "Meetings", "Inboxes"] as const;
 
-const XIcon = () => (
-  <svg width="8" height="8" viewBox="0 0 10 10" fill="none" aria-hidden="true">
-    <path
-      d="M2 2L8 8M8 2L2 8"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-    />
+// Minus dash — signals wasted time without alarm-state red
+const MinusIcon = () => (
+  <svg width="8" height="2" viewBox="0 0 8 2" fill="none" aria-hidden="true">
+    <path d="M0 1h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
   </svg>
 );
 
-const WarningIcon = () => (
-  <svg width="8" height="8" viewBox="0 0 10 10" fill="none" aria-hidden="true">
-    <path
-      d="M5 2v3.5M5 7v.5"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-    />
+// Chevron right — consequence arrow, directional and serious
+const ChevronIcon = () => (
+  <svg width="7" height="10" viewBox="0 0 7 10" fill="none" aria-hidden="true">
+    <path d="M1 1l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
   </svg>
 );
 
@@ -73,9 +65,9 @@ export function UseCasesSection() {
                   <li key={point} className="flex items-center gap-3">
                     <span
                       aria-hidden="true"
-                      className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-red-50 text-red-400"
+                      className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-400"
                     >
-                      <XIcon />
+                      <MinusIcon />
                     </span>
                     <span className="text-sm text-neutral-700">{point}</span>
                   </li>
@@ -105,33 +97,33 @@ export function UseCasesSection() {
             </div>
           </FadeUp>
 
-          {/* Consequences */}
+          {/* Consequences — dark card signals gravity without alarm-state red */}
           <FadeUp delay={0.08}>
             <div
-              className="h-full rounded-2xl border border-red-100 bg-red-50/40 p-5 sm:p-8"
+              className="h-full rounded-2xl border border-neutral-800 bg-neutral-950 p-5 sm:p-8"
               style={{ boxShadow: "var(--shadow-card)" }}
             >
-              <p className="mb-5 text-sm text-neutral-500">The result:</p>
+              <p className="mb-5 text-sm text-neutral-400">The result:</p>
               <ul className="space-y-3" role="list">
                 {CONSEQUENCES.map((item) => (
                   <li key={item} className="flex items-center gap-3">
                     <span
                       aria-hidden="true"
-                      className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-500"
+                      className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-neutral-400"
                     >
-                      <WarningIcon />
+                      <ChevronIcon />
                     </span>
-                    <span className="text-sm font-medium text-neutral-800">
+                    <span className="text-sm font-medium text-neutral-200">
                       {item}
                     </span>
                   </li>
                 ))}
               </ul>
 
-              <div className="mt-8 rounded-xl bg-red-100/60 p-4">
-                <p className="text-xs leading-relaxed text-red-800">
+              <div className="mt-8 rounded-xl bg-neutral-900 p-4">
+                <p className="text-xs leading-relaxed text-neutral-400">
                   Globally, project inefficiencies cost{" "}
-                  <strong>trillions annually</strong> — and the majority of
+                  <strong className="text-neutral-100">trillions annually</strong> — and the majority of
                   projects miss deadlines or budgets.
                 </p>
               </div>
