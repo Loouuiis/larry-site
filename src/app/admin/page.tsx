@@ -1,5 +1,7 @@
 import { getDb } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 // Row shapes returned by better-sqlite3 — typed explicitly since we're
 // using raw SQL rather than a typed ORM.
 interface WaitlistRow {
