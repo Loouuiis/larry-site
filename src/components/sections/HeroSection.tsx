@@ -40,10 +40,13 @@ export function HeroSection() {
 
   return (
     <section className="relative overflow-hidden pt-20 pb-0 sm:pt-32">
-      {/* Ambient radial brand wash — barely perceptible, adds warmth */}
+      {/* Ambient radial brand wash — drifts slowly for a living, premium feel.
+          transform-only animation keeps this on the compositor thread (no repaints).
+          The gradient fades to transparent well before the div edges, so the
+          translate never exposes a hard boundary. */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 -z-20"
+        className="hero-gradient-drift pointer-events-none absolute inset-0 -z-20"
         style={{
           backgroundImage:
             "radial-gradient(ellipse 80% 40% at 50% -5%, rgba(46,125,79,0.055) 0%, transparent 70%)",

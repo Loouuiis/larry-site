@@ -154,6 +154,23 @@ h3, h4 {
   will-change: opacity, transform;
 }
 
+/* ─── Hero gradient drift ─────────────────────────────────────────── */
+/* Translates the gradient div on the compositor thread (transform only —
+   no repaints, no layout shifts). Values are small enough that the
+   gradient's transparent edges never become visible. Duration is long
+   (28s) so the motion reads as ambient breathing, not animation. */
+@keyframes gradientDrift {
+  0%,  100% { transform: translate(0%,  0%); }
+  25%        { transform: translate(4%, -2%); }
+  60%        { transform: translate(-3%, 3%); }
+  80%        { transform: translate(2%,  2%); }
+}
+
+.hero-gradient-drift {
+  animation: gradientDrift 28s ease-in-out infinite;
+  will-change: transform;
+}
+
 /* ─── Logo carousel marquee scroll ──────────────────────────────── */
 @keyframes marquee {
   from { transform: translateX(0); }
@@ -254,6 +271,7 @@ h3, h4 {
   }
 
   .hero-glow,
+  .hero-gradient-drift,
   .live-pulse {
     animation: none;
     will-change: auto;
