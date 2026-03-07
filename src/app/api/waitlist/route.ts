@@ -42,25 +42,30 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const db = getDb();
+  try {
+    const db = getDb();
 
-  const existing = await db.execute({
-    sql: "SELECT id FROM WaitlistEntry WHERE email = ?",
-    args: [result.data.email],
-  });
-  if (existing.rows.length > 0) return NextResponse.json({ success: true });
+    const existing = await db.execute({
+      sql: "SELECT id FROM WaitlistEntry WHERE email = ?",
+      args: [result.data.email],
+    });
+    if (existing.rows.length > 0) return NextResponse.json({ success: true });
 
-  await db.execute({
-    sql: "INSERT INTO WaitlistEntry (firstName, lastName, company, email, phone, createdAt) VALUES (?, ?, ?, ?, ?, ?)",
-    args: [
-      result.data.firstName,
-      result.data.lastName,
-      result.data.company,
-      result.data.email,
-      result.data.phone,
-      new Date().toISOString(),
-    ],
-  });
+    await db.execute({
+      sql: "INSERT INTO WaitlistEntry (firstName, lastName, company, email, phone, createdAt) VALUES (?, ?, ?, ?, ?, ?)",
+      args: [
+        result.data.firstName,
+        result.data.lastName,
+        result.data.company,
+        result.data.email,
+        result.data.phone,
+        new Date().toISOString(),
+      ],
+    });
 
-  return NextResponse.json({ success: true }, { status: 201 });
+    return NextResponse.json({ success: true }, { status: 201 });
+  } catch (err) {
+    console.error("[waitlist] DB error:", err);
+    return NextResponse.json({ error: "Failed to save submission. Please try again." }, { status: 500 });
+  }
 }

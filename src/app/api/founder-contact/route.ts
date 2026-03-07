@@ -39,11 +39,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const db = getDb();
-  await db.execute({
-    sql: "INSERT INTO FounderContactEntry (email, message, createdAt) VALUES (?, ?, ?)",
-    args: [result.data.email, result.data.message ?? null, new Date().toISOString()],
-  });
+  try {
+    const db = getDb();
+    await db.execute({
+      sql: "INSERT INTO FounderContactEntry (email, message, createdAt) VALUES (?, ?, ?)",
+      args: [result.data.email, result.data.message ?? null, new Date().toISOString()],
+    });
 
-  return NextResponse.json({ success: true }, { status: 201 });
+    return NextResponse.json({ success: true }, { status: 201 });
+  } catch (err) {
+    console.error("[founder-contact] DB error:", err);
+    return NextResponse.json({ error: "Failed to save submission. Please try again." }, { status: 500 });
+  }
 }
