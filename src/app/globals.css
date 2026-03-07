@@ -1,0 +1,216 @@
+@import "tailwindcss";
+
+/* ─── Design tokens ───────────────────────────────────────────────── */
+:root {
+  /* Warm off-white — project-a.vc's editorial base */
+  --background: #F7F7F4;
+  --foreground: #111110;
+
+  /* Brand */
+  --color-brand: #2e7d4f;
+  --color-brand-dark: #245f3c;
+
+  /* Accent gradient — lavender → indigo → azure */
+  --color-accent-purple: #A88DFF;
+  --color-accent-mid: #7C6BFF;
+  --color-accent-blue: #4FA3FF;
+
+  /* Surfaces — warm-toned for editorial depth */
+  --color-surface: #EFEFE9;
+  --color-border: #E0E0DA;
+  --color-muted: #6B6B63;
+
+  /* Shadow system — intentionally muted for enterprise feel */
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+  --shadow-card-hover: 0 8px 28px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04);
+  --shadow-card-xl: 0 24px 48px rgba(0, 0, 0, 0.09), 0 8px 16px rgba(0, 0, 0, 0.04);
+
+  /* Premium easing curve — feels physical, not mechanical */
+  --ease-premium: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out-soft: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-brand: var(--color-brand);
+  --color-brand-dark: var(--color-brand-dark);
+  --color-accent-purple: var(--color-accent-purple);
+  --color-accent-mid: var(--color-accent-mid);
+  --color-accent-blue: var(--color-accent-blue);
+  --color-surface: var(--color-surface);
+  --color-border: var(--color-border);
+  --color-muted: var(--color-muted);
+
+  /* Warm the Tailwind neutral palette — shifts every bg-neutral-* and
+     border-neutral-* toward the editorial warm off-white. Darker neutrals
+     (800+) stay unchanged so CTASection's dark treatment is unaffected. */
+  --color-neutral-50:  #F5F5F0;
+  --color-neutral-100: #EAEAE4;
+  --color-neutral-200: #D8D8D2;
+  --color-white: #FFFFFF;
+}
+
+/* ─── Glass system ────────────────────────────────────────────────── */
+:root {
+  --glass-bg: rgba(255, 255, 255, 0.75);
+  --glass-border: rgba(255, 255, 255, 0.6);
+  --glass-shadow: 0 4px 24px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --glass-blur: 16px;
+}
+
+/* ─── Base ────────────────────────────────────────────────────────── */
+/* Hide native cursor — CustomCursor component takes over on fine-pointer devices */
+@media (pointer: fine) {
+  * {
+    cursor: none !important;
+  }
+}
+
+html {
+  /* Native smooth scrolling — no JS, no layout cost, respects
+     prefers-reduced-motion (browser overrides this automatically). */
+  scroll-behavior: smooth;
+
+  /* Reserve space above anchor targets so the fixed navbar never
+     obscures a section heading. navbar (~48px) + top padding (12px)
+     + breathing room = 80px. */
+  scroll-padding-top: 80px;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: rgba(124, 107, 255, 0.15);
+  color: inherit;
+}
+
+/* ─── Editorial typography defaults ──────────────────────────────── */
+/* Tighter tracking on display headings — hallmark of premium editorial
+   design (project-a.vc, Linear, Vercel). Applied globally so every h1/h2
+   inherits; individual components can override if needed. */
+h1, h2 {
+  letter-spacing: -0.03em;
+  line-height: 1.06;
+}
+
+h3, h4 {
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+/* ─── Utilities ───────────────────────────────────────────────────── */
+@utility scrollbar-hide {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@utility shadow-card {
+  box-shadow: var(--shadow-card);
+}
+
+@utility shadow-card-hover {
+  box-shadow: var(--shadow-card-hover);
+}
+
+@utility shadow-card-xl {
+  box-shadow: var(--shadow-card-xl);
+}
+
+/* ─── Hero ambient glow — breathes at 8s, barely perceptible ─────── */
+@keyframes heroGlow {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50%       { opacity: 0.85; transform: scale(1.06); }
+}
+
+.hero-glow {
+  animation: heroGlow 8s ease-in-out infinite;
+  will-change: opacity, transform;
+}
+
+/* ─── Logo carousel marquee scroll ──────────────────────────────── */
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+/* ─── ROI Calculator slider ──────────────────────────────────────── */
+/*
+ * Custom range input — three rules cover the full cross-browser surface:
+ *   1. Reset native appearance, set track height + border-radius
+ *   2. Webkit thumb: clean disc, brand-green fill, white border halo
+ *   3. Firefox thumb: same visual, different pseudo-element
+ *
+ * The track fill (the accent "progress" left of the thumb) is handled by
+ * an inline linear-gradient in ROICalculator.tsx — no JS per frame,
+ * computed once per slider interaction. This avoids the ::-webkit-slider-
+ * runnable-track trick which is unreliable across browsers.
+ *
+ * Focus ring on the thumb (not the track) matches the WCAG 2.1 AA
+ * requirement without polluting the visual baseline state.
+ */
+.roi-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 3px;
+  border-radius: 9999px;
+  outline: none;
+  cursor: pointer;
+}
+
+.roi-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #7C6BFF;
+  border: 2.5px solid #fff;
+  box-shadow: 0 0 0 1.5px rgba(124, 107, 255, 0.22), 0 1px 4px rgba(0, 0, 0, 0.10);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.roi-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.18);
+  box-shadow: 0 0 0 4px rgba(124, 107, 255, 0.15), 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.roi-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #7C6BFF;
+  border: 2.5px solid #fff;
+  box-shadow: 0 0 0 1.5px rgba(124, 107, 255, 0.22), 0 1px 4px rgba(0, 0, 0, 0.10);
+  cursor: pointer;
+}
+
+.roi-slider:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px rgba(124, 107, 255, 0.30), 0 1px 4px rgba(0, 0, 0, 0.10);
+}
+
+.roi-slider:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 3px rgba(124, 107, 255, 0.30), 0 1px 4px rgba(0, 0, 0, 0.10);
+}
+
+/* ─── Ambient dot pulse for "live" indicators ────────────────────── */
+@keyframes livePulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+.live-pulse {
+  animation: livePulse 2.4s ease-in-out infinite;
+}

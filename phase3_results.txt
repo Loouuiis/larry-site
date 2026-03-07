@@ -1,0 +1,14 @@
+=== PHASE 3: DISABLE HIBERNATION ===
+Started: 03/07/2026 10:20:18
+C: free before: 17.28 GB
+hiberfil.sys not found (hibernation may already be disabled)
+
+Disabling hibernation...
+powercfg /hibernate off exit code: 1
+
+=== PHASE 3 COMPLETE ===
+C: free before: 17.28 GB
+C: free after:  17.28 GB
+Freed: 0 GB
+hiberfil.sys removed successfully.
+Done: 03/07/2026 10:20:21
