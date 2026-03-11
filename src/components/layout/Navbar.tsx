@@ -118,7 +118,7 @@ export function Navbar() {
       <nav
         className={[
           "relative mx-auto flex h-12 max-w-6xl items-center justify-between rounded-2xl px-4",
-          "bg-[#F7F7F4]/82 backdrop-blur-md",
+          "bg-[#F8F7FF]/82 backdrop-blur-md",
           "border transition-all duration-300",
           scrolled
             ? "border-neutral-200 shadow-[0_4px_20px_rgba(0,0,0,0.06)]"
@@ -132,7 +132,7 @@ export function Navbar() {
           className="flex items-center gap-2 text-sm font-semibold text-neutral-900"
           onClick={() => setMenuOpen(false)}
         >
-          <span className="flex h-6 w-6 items-center justify-center rounded bg-[#2e7d4f] text-white text-xs font-bold select-none">
+          <span className="flex h-6 w-6 items-center justify-center rounded bg-[#8b5cf6] text-white text-xs font-bold select-none">
             L
           </span>
           Larry
@@ -164,7 +164,7 @@ export function Navbar() {
                   {isActive && (
                     <span
                       aria-hidden="true"
-                      className="absolute bottom-1 left-3 right-3 h-px rounded-full bg-[#2e7d4f] opacity-70"
+                      className="absolute bottom-1 left-3 right-3 h-px rounded-full bg-[#8b5cf6] opacity-70"
                     />
                   )}
                 </Link>
@@ -243,7 +243,7 @@ export function Navbar() {
             transition={{ duration: 0.2, ease: EASE }}
             className={[
               "mx-auto mt-2 max-w-6xl overflow-hidden rounded-2xl md:hidden",
-              "border border-neutral-200 bg-[#F7F7F4]/96 backdrop-blur-md",
+              "border border-neutral-200 bg-[#F8F7FF]/96 backdrop-blur-md",
               "shadow-[0_8px_32px_rgba(0,0,0,0.08)]",
             ].join(" ")}
           >

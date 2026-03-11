@@ -156,9 +156,9 @@ export function WaitlistForm() {
         transition={{ duration: 0.5, ease: EASE }}
         className="flex flex-col items-center justify-center gap-6 py-8 text-center"
       >
-        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#2e7d4f]/10">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#8b5cf6]/10">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path d="M5 13L9 17L19 7" stroke="#2e7d4f" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M5 13L9 17L19 7" stroke="#8b5cf6" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </div>
         <div>

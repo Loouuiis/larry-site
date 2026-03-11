@@ -312,7 +312,7 @@ export function MagneticFieldBackground() {
           ctx!.beginPath();
           ctx!.moveTo(a.x, a.y);
           ctx!.lineTo(b.x, b.y);
-          ctx!.strokeStyle = `rgba(46,125,79,${alpha.toFixed(3)})`;
+          ctx!.strokeStyle = `rgba(139,92,246,${alpha.toFixed(3)})`;
           ctx!.stroke();
         }
       }
@@ -386,8 +386,8 @@ export function MagneticFieldBackground() {
           zIndex: -3,
           pointerEvents: "none",
           background: [
-            "radial-gradient(ellipse 110% 55% at 50% 0%, rgba(46,125,79,0.045) 0%, transparent 100%)",
-            "linear-gradient(180deg, rgba(46,125,79,0.02) 0%, transparent 52%)",
+            "radial-gradient(ellipse 110% 55% at 50% 0%, rgba(139,92,246,0.055) 0%, transparent 100%)",
+            "linear-gradient(180deg, rgba(139,92,246,0.025) 0%, transparent 52%)",
           ].join(", "),
         }}
       />

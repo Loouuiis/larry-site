@@ -111,9 +111,9 @@ export function FounderContact() {
         transition={{ duration: 0.5, ease: EASE }}
         className="flex flex-col items-center justify-center gap-6 py-8 text-center"
       >
-        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#2e7d4f]/10">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#8b5cf6]/10">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path d="M5 13L9 17L19 7" stroke="#2e7d4f" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M5 13L9 17L19 7" stroke="#8b5cf6" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </div>
         <div>
@@ -171,10 +171,10 @@ export function FounderContact() {
         {/* Email header — From line reflects typed email live */}
         <div className="border-b border-white/30 px-5 py-4 space-y-1.5">
           <div className="flex items-center gap-2 mb-2">
-            <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[#2e7d4f] text-[8px] font-bold text-white select-none">
+            <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[#8b5cf6] text-[8px] font-bold text-white select-none">
               L
             </span>
-            <span className="text-[11px] font-semibold uppercase tracking-widest text-[#2e7d4f]/70">
+            <span className="text-[11px] font-semibold uppercase tracking-widest text-[#8b5cf6]/70">
               Larry — Draft
             </span>
           </div>

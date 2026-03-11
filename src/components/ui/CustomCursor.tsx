@@ -296,7 +296,7 @@ export function CustomCursor() {
             scale,
             backgroundColor: isLiquidHover ? "rgba(0,0,0,0)" : "#ffffff",
             borderColor: isLiquidHover
-              ? "rgba(46,125,79,0.82)"
+              ? "rgba(139,92,246,0.82)"
               : "rgba(0,0,0,0)",
             opacity: isVisible ? 1 : 0,
           }}

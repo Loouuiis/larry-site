@@ -20,11 +20,11 @@ const FEED_SEQUENCE: Omit<FeedItem, "id">[] = [
 
 const TYPE_COLOR: Record<FeedItem["type"], string> = {
   capture:  "bg-neutral-400",
-  extract:  "bg-[#2e7d4f]",
-  assign:   "bg-blue-400",
+  extract:  "bg-[#8b5cf6]",
+  assign:   "bg-[#818cf8]",
   remind:   "bg-amber-400",
   escalate: "bg-red-400",
-  compile:  "bg-[#2e7d4f]",
+  compile:  "bg-[#c084fc]",
 };
 
 const PREMIUM_EASE = [0.22, 1, 0.36, 1] as const;

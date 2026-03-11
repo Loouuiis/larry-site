@@ -101,7 +101,7 @@ export function FeaturesSection() {
                 <li key={cap} className="flex items-start gap-2.5">
                   <span
                     aria-hidden="true"
-                    className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[#2e7d4f]/10 text-[#2e7d4f]"
+                    className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[#8b5cf6]/10 text-[#8b5cf6]"
                   >
                     <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
                       <path

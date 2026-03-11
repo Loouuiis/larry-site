@@ -58,7 +58,7 @@ function Cell({ value }: { value: CellValue }) {
       <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-label="Yes" role="img">
         <path
           d="M2.5 7.5L5.5 10.5L11.5 3.5"
-          stroke="#2e7d4f"
+          stroke="#8b5cf6"
           strokeWidth="1.75"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -104,7 +104,7 @@ export function VibeSection() {
                 <li key={label} className="flex items-start gap-3">
                   <span
                     aria-hidden="true"
-                    className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[#2e7d4f]/10 text-[#2e7d4f]"
+                    className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[#8b5cf6]/10 text-[#8b5cf6]"
                   >
                     <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
                       <path d="M2 5.5L4 7.5L8 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />

@@ -82,7 +82,7 @@ export default async function AdminPage() {
                       </td>
                       <td className="px-4 py-3 text-neutral-600">{row.company}</td>
                       <td className="px-4 py-3">
-                        <a href={`mailto:${row.email}`} className="text-[#2e7d4f] hover:underline">
+                        <a href={`mailto:${row.email}`} className="text-[#8b5cf6] hover:underline">
                           {row.email}
                         </a>
                       </td>
@@ -119,7 +119,7 @@ export default async function AdminPage() {
                   <div className="mb-3 flex items-center justify-between">
                     <a
                       href={`mailto:${row.email}`}
-                      className="text-sm font-medium text-[#2e7d4f] hover:underline"
+                      className="text-sm font-medium text-[#8b5cf6] hover:underline"
                     >
                       {row.email}
                     </a>

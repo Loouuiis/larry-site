@@ -68,7 +68,7 @@ export function WelcomeSplash() {
     >
       <span
         style={{
-          color: "#2e7d4f",
+          color: "#8b5cf6",
           fontSize: "clamp(1.75rem, 4vw, 3.5rem)",
           fontWeight: 300,
           letterSpacing: "0.45em",

@@ -2,18 +2,18 @@
 
 /* ─── Design tokens ───────────────────────────────────────────────── */
 :root {
-  /* Warm off-white — project-a.vc's editorial base */
-  --background: #F7F7F4;
+  /* Light with subtle purple tint — matches brand palette */
+  --background: #F8F7FF;
   --foreground: #111110;
 
   /* Brand */
-  --color-brand: #2e7d4f;
-  --color-brand-dark: #245f3c;
+  --color-brand: #8b5cf6;
+  --color-brand-dark: #7c3aed;
 
-  /* Accent gradient — lavender → indigo → azure */
-  --color-accent-purple: #A88DFF;
-  --color-accent-mid: #7C6BFF;
-  --color-accent-blue: #4FA3FF;
+  /* Accent gradient — lavender → violet → periwinkle */
+  --color-accent-purple: #c084fc;
+  --color-accent-mid: #a855f7;
+  --color-accent-blue: #818cf8;
 
   /* Surfaces — warm-toned for editorial depth */
   --color-surface: #EFEFE9;
@@ -44,12 +44,11 @@
   --color-border: var(--color-border);
   --color-muted: var(--color-muted);
 
-  /* Warm the Tailwind neutral palette — shifts every bg-neutral-* and
-     border-neutral-* toward the editorial warm off-white. Darker neutrals
-     (800+) stay unchanged so CTASection's dark treatment is unaffected. */
-  --color-neutral-50:  #F5F5F0;
-  --color-neutral-100: #EAEAE4;
-  --color-neutral-200: #D8D8D2;
+  /* Neutral palette with a very slight purple tint for brand cohesion.
+     Darker neutrals (800+) stay unchanged so CTASection's dark treatment is unaffected. */
+  --color-neutral-50:  #F5F4FF;
+  --color-neutral-100: #EDEAFF;
+  --color-neutral-200: #DAD7F0;
   --color-white: #FFFFFF;
 }
 
@@ -87,7 +86,6 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  /* Prevent horizontal overflow on mobile */
   overflow-x: hidden;
 }
 
@@ -221,7 +219,7 @@ h3, h4 {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: #7C6BFF;
+  background: #8b5cf6;
   border: 2.5px solid #fff;
   box-shadow: 0 0 0 1.5px rgba(124, 107, 255, 0.22), 0 1px 4px rgba(0, 0, 0, 0.10);
   cursor: pointer;
@@ -237,7 +235,7 @@ h3, h4 {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: #7C6BFF;
+  background: #8b5cf6;
   border: 2.5px solid #fff;
   box-shadow: 0 0 0 1.5px rgba(124, 107, 255, 0.22), 0 1px 4px rgba(0, 0, 0, 0.10);
   cursor: pointer;

@@ -29,7 +29,7 @@ export function Footer() {
               href="/"
               className="inline-flex items-center gap-2 text-sm font-semibold text-white mb-4"
             >
-              <span className="flex h-6 w-6 items-center justify-center rounded bg-[#2e7d4f] text-white text-xs font-bold select-none">
+              <span className="flex h-6 w-6 items-center justify-center rounded bg-[#8b5cf6] text-white text-xs font-bold select-none">
                 L
               </span>
               Larry
