@@ -2,7 +2,6 @@ import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { hashToken, issueAccessToken, issueRefreshToken, verifyPassword } from "../../lib/auth.js";
 import { writeAuditLog } from "../../lib/audit.js";
-import { futureIsoDate } from "../../utils/duration.js";
 
 const LoginSchema = z.object({
   email: z.string().email().transform((value) => value.trim().toLowerCase()),
@@ -64,12 +63,6 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       role: user.role,
       email: user.email,
     });
-
-    await fastify.db.query(
-      `INSERT INTO refresh_tokens (tenant_id, user_id, token_hash, expires_at)
-       VALUES ($1, $2, $3, $4)`,
-      [user.tenant_id, user.id, hashToken(refreshToken), futureIsoDate(fastify.config.REFRESH_TOKEN_TTL)]
-    );
 
     await writeAuditLog(fastify.db, {
       tenantId: user.tenant_id,
@@ -133,19 +126,17 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       email: tokenRow.email,
     });
 
-    const refreshToken = await issueRefreshToken(fastify, {
-      userId: tokenRow.user_id,
-      tenantId: tokenRow.tenant_id,
-      role: tokenRow.role,
-      email: tokenRow.email,
-    });
-
-    await fastify.db.tx(async (client) => {
+    const refreshToken = await fastify.db.tx(async (client) => {
       await client.query("UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1", [tokenRow.id]);
-      await client.query(
-        `INSERT INTO refresh_tokens (tenant_id, user_id, token_hash, expires_at)
-         VALUES ($1, $2, $3, $4)`,
-        [tokenRow.tenant_id, tokenRow.user_id, hashToken(refreshToken), futureIsoDate(fastify.config.REFRESH_TOKEN_TTL)]
+      return issueRefreshToken(
+        fastify,
+        {
+          userId: tokenRow.user_id,
+          tenantId: tokenRow.tenant_id,
+          role: tokenRow.role,
+          email: tokenRow.email,
+        },
+        client
       );
     });
 
