@@ -1,0 +1,375 @@
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+DO $$ BEGIN
+  CREATE TYPE role_type AS ENUM ('admin', 'pm', 'member', 'executive');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE task_status AS ENUM ('backlog', 'not_started', 'in_progress', 'waiting', 'completed', 'blocked');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE task_priority AS ENUM ('low', 'medium', 'high', 'critical');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE risk_level AS ENUM ('low', 'medium', 'high');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE action_state AS ENUM ('pending', 'approved', 'rejected', 'overridden', 'executed');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE agent_run_state AS ENUM (
+    'INGESTED',
+    'NORMALIZED',
+    'EXTRACTED',
+    'PROPOSED',
+    'APPROVAL_PENDING',
+    'EXECUTED',
+    'VERIFIED',
+    'FAILED'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
+
+CREATE TABLE IF NOT EXISTS tenants (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  slug TEXT UNIQUE NOT NULL,
+  region TEXT NOT NULL DEFAULT 'eu-west-1',
+  data_retention_days INT NOT NULL DEFAULT 365,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  display_name TEXT,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS memberships (
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role role_type NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (tenant_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  revoked_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_tenant
+  ON refresh_tokens (tenant_id, user_id, expires_at DESC);
+
+CREATE TABLE IF NOT EXISTS projects (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  description TEXT,
+  owner_user_id UUID REFERENCES users(id),
+  status TEXT NOT NULL DEFAULT 'active',
+  risk_score NUMERIC(5,2) NOT NULL DEFAULT 0,
+  risk_level risk_level NOT NULL DEFAULT 'low',
+  start_date DATE,
+  target_date DATE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_projects_tenant ON projects (tenant_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS tasks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT,
+  status task_status NOT NULL DEFAULT 'not_started',
+  priority task_priority NOT NULL DEFAULT 'medium',
+  assignee_user_id UUID REFERENCES users(id),
+  created_by_user_id UUID REFERENCES users(id),
+  progress_percent INT NOT NULL DEFAULT 0 CHECK (progress_percent >= 0 AND progress_percent <= 100),
+  risk_score NUMERIC(5,2) NOT NULL DEFAULT 0,
+  risk_level risk_level NOT NULL DEFAULT 'low',
+  start_date DATE,
+  due_date DATE,
+  started_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_tasks_tenant_project ON tasks (tenant_id, project_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks (tenant_id, assignee_user_id);
+
+CREATE TABLE IF NOT EXISTS task_dependencies (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  depends_on_task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  relation TEXT NOT NULL DEFAULT 'finish_to_start',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (tenant_id, task_id, depends_on_task_id)
+);
+
+CREATE TABLE IF NOT EXISTS task_comments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  author_user_id UUID NOT NULL REFERENCES users(id),
+  body TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS activity_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+  task_id UUID REFERENCES tasks(id) ON DELETE CASCADE,
+  actor_user_id UUID REFERENCES users(id),
+  activity_type TEXT NOT NULL,
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS raw_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  source TEXT NOT NULL,
+  source_event_id TEXT NOT NULL,
+  payload JSONB NOT NULL,
+  idempotency_key TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (tenant_id, idempotency_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_raw_events_tenant_source ON raw_events (tenant_id, source, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS canonical_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  raw_event_id UUID REFERENCES raw_events(id) ON DELETE SET NULL,
+  source TEXT NOT NULL,
+  source_event_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  actor TEXT NOT NULL,
+  confidence NUMERIC(4,3) NOT NULL,
+  occurred_at TIMESTAMPTZ NOT NULL,
+  payload JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_canonical_events_tenant_created
+  ON canonical_events (tenant_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS agent_runs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+  source TEXT NOT NULL,
+  source_ref_id TEXT,
+  state agent_run_state NOT NULL DEFAULT 'INGESTED',
+  status_message TEXT,
+  correlation_id TEXT NOT NULL,
+  created_by_user_id UUID REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_runs_tenant_created ON agent_runs (tenant_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS agent_run_transitions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  agent_run_id UUID NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
+  previous_state agent_run_state,
+  next_state agent_run_state NOT NULL,
+  reason TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS extracted_actions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  agent_run_id UUID REFERENCES agent_runs(id) ON DELETE SET NULL,
+  project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+  task_id UUID REFERENCES tasks(id) ON DELETE SET NULL,
+  action_type TEXT NOT NULL,
+  impact TEXT NOT NULL,
+  confidence NUMERIC(4,3) NOT NULL,
+  reason TEXT NOT NULL,
+  signals JSONB NOT NULL,
+  payload JSONB NOT NULL,
+  state action_state NOT NULL DEFAULT 'pending',
+  requires_approval BOOLEAN NOT NULL DEFAULT TRUE,
+  executed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_extracted_actions_tenant_state
+  ON extracted_actions (tenant_id, state, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS approval_decisions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  action_id UUID NOT NULL REFERENCES extracted_actions(id) ON DELETE CASCADE,
+  decision TEXT NOT NULL,
+  decided_by_user_id UUID NOT NULL REFERENCES users(id),
+  note TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES users(id),
+  channel TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  body TEXT NOT NULL,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  sent_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS risk_snapshots (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  task_id UUID REFERENCES tasks(id) ON DELETE CASCADE,
+  risk_score NUMERIC(5,2) NOT NULL,
+  risk_level risk_level NOT NULL,
+  signals JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS correction_feedback (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  action_id UUID REFERENCES extracted_actions(id) ON DELETE SET NULL,
+  corrected_by_user_id UUID NOT NULL REFERENCES users(id),
+  correction_type TEXT NOT NULL,
+  correction_payload JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS audit_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  actor_user_id UUID REFERENCES users(id),
+  action_type TEXT NOT NULL,
+  object_type TEXT NOT NULL,
+  object_id TEXT NOT NULL,
+  details JSONB NOT NULL DEFAULT '{}'::jsonb,
+  previous_hash TEXT,
+  entry_hash TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_tenant_created
+  ON audit_log (tenant_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS kpi_snapshots (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+  metric_key TEXT NOT NULL,
+  metric_value NUMERIC(12,2) NOT NULL,
+  period_start DATE NOT NULL,
+  period_end DATE NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Row level security toggles. Policies assume app sets SET app.tenant_id before query.
+ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE task_dependencies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE task_comments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE activity_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE canonical_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE raw_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE extracted_actions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE approval_decisions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE risk_snapshots ENABLE ROW LEVEL SECURITY;
+ALTER TABLE correction_feedback ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE kpi_snapshots ENABLE ROW LEVEL SECURITY;
+ALTER TABLE agent_runs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE agent_run_transitions ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_projects ON projects USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_tasks ON tasks USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_dependencies ON task_dependencies USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_comments ON task_comments USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_activity ON activity_log USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_canonical_events ON canonical_events USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_raw_events ON raw_events USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_actions ON extracted_actions USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_approval_decisions ON approval_decisions USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_notifications ON notifications USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_risk_snapshots ON risk_snapshots USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_feedback ON correction_feedback USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_audit ON audit_log USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_kpis ON kpi_snapshots USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_agent_runs ON agent_runs USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_agent_run_transitions ON agent_run_transitions USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;

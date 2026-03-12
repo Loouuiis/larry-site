@@ -1,0 +1,35 @@
+name: Backend CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  api-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Install dependencies
+        run: npm install
+        working-directory: backend
+      - name: Type check
+        run: npm run build
+        working-directory: backend
+      - name: Run tests
+        run: npm test
+        working-directory: backend
+
+  terraform-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - name: Terraform fmt check
+        run: terraform fmt -check -recursive
+        working-directory: backend/infra/terraform

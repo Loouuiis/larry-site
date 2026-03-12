@@ -1,0 +1,81 @@
+openapi: 3.1.0
+info:
+  title: Larry API
+  version: 0.1.0
+  description: Dedicated backend for multi-tenant project execution and AI agent workflows.
+servers:
+  - url: http://localhost:8080
+paths:
+  /health:
+    get:
+      summary: Liveness probe
+      responses:
+        "200":
+          description: API alive
+  /ready:
+    get:
+      summary: Readiness probe
+      responses:
+        "200":
+          description: Dependencies healthy
+  /v1/auth/login:
+    post:
+      summary: Log in with tenant context
+  /v1/auth/refresh:
+    post:
+      summary: Rotate refresh/access token pair
+  /v1/auth/me:
+    get:
+      summary: Return authenticated profile
+  /v1/projects:
+    get:
+      summary: List tenant projects
+    post:
+      summary: Create project
+  /v1/tasks:
+    get:
+      summary: List tasks
+    post:
+      summary: Create task
+  /v1/tasks/{id}/dependencies:
+    post:
+      summary: Add or update task dependency
+  /v1/tasks/{id}/status:
+    patch:
+      summary: Update task status and risk signals
+  /v1/ingest/slack:
+    post:
+      summary: Ingest Slack signal
+  /v1/ingest/email:
+    post:
+      summary: Ingest Email signal
+  /v1/ingest/calendar:
+    post:
+      summary: Ingest Calendar signal
+  /v1/ingest/transcript:
+    post:
+      summary: Ingest transcript and start agent run
+  /v1/agent/runs:
+    post:
+      summary: Start agent run
+  /v1/agent/runs/{id}:
+    get:
+      summary: Get run with transitions and actions
+  /v1/agent/actions:
+    get:
+      summary: List extracted actions by state
+  /v1/actions/{id}/approve:
+    post:
+      summary: Approve action
+  /v1/actions/{id}/reject:
+    post:
+      summary: Reject action
+  /v1/actions/{id}/override:
+    post:
+      summary: Override action payload
+  /v1/projects/{id}/health:
+    get:
+      summary: Get project health snapshot
+  /v1/projects/{id}/weekly-summary:
+    get:
+      summary: Get weekly project summary
