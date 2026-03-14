@@ -1,0 +1,198 @@
+import { FastifyPluginAsync } from "fastify";
+import { z } from "zod";
+import { classifyRiskLevel, computeRiskScore } from "@larry/ai";
+import { writeAuditLog } from "../../lib/audit.js";
+
+const CreateTaskSchema = z.object({
+  projectId: z.string().uuid(),
+  title: z.string().min(1).max(300),
+  description: z.string().max(4_000).optional(),
+  assigneeUserId: z.string().uuid().optional(),
+  priority: z.enum(["low", "medium", "high", "critical"]).default("medium"),
+  startDate: z.string().date().optional(),
+  dueDate: z.string().date().optional(),
+});
+
+const AddDependencySchema = z.object({
+  dependsOnTaskId: z.string().uuid(),
+  relation: z.string().default("finish_to_start"),
+});
+
+const UpdateStatusSchema = z.object({
+  status: z.enum(["backlog", "not_started", "in_progress", "waiting", "completed", "blocked"]),
+  progressPercent: z.number().int().min(0).max(100).optional(),
+});
+
+export const taskRoutes: FastifyPluginAsync = async (fastify) => {
+  fastify.get(
+    "/",
+    { preHandler: [fastify.authenticate] },
+    async (request) => {
+      const query = z.object({ projectId: z.string().uuid().optional() }).parse(request.query);
+      const tenantId = request.user.tenantId;
+
+      const values: unknown[] = [tenantId];
+      let sql = `SELECT id, project_id as "projectId", title, description, status, priority,
+                        assignee_user_id as "assigneeUserId", progress_percent as "progressPercent",
+                        risk_score as "riskScore", risk_level as "riskLevel",
+                        start_date as "startDate", due_date as "dueDate",
+                        created_at as "createdAt", updated_at as "updatedAt"
+                 FROM tasks
+                 WHERE tenant_id = $1`;
+
+      if (query.projectId) {
+        values.push(query.projectId);
+        sql += " AND project_id = $2";
+      }
+
+      sql += " ORDER BY created_at DESC";
+
+      const rows = await fastify.db.queryTenant(tenantId, sql, values);
+      return { items: rows };
+    }
+  );
+
+  fastify.post(
+    "/",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
+    async (request, reply) => {
+      const body = CreateTaskSchema.parse(request.body);
+      const tenantId = request.user.tenantId;
+
+      const dueDate = body.dueDate ? new Date(body.dueDate) : null;
+      const daysToDeadline = dueDate ? Math.ceil((dueDate.getTime() - Date.now()) / 86_400_000) : 30;
+      const riskScore = computeRiskScore({
+        daysToDeadline,
+        progressPercent: 0,
+        inactivityDays: 0,
+        dependencyBlockedCount: 0,
+      });
+      const riskLevel = classifyRiskLevel(riskScore);
+
+      const rows = await fastify.db.queryTenant<{ id: string }>(
+        tenantId,
+        `INSERT INTO tasks (
+          tenant_id, project_id, title, description, priority,
+          assignee_user_id, created_by_user_id, start_date, due_date, risk_score, risk_level
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        RETURNING id`,
+        [
+          tenantId,
+          body.projectId,
+          body.title,
+          body.description ?? null,
+          body.priority,
+          body.assigneeUserId ?? null,
+          request.user.userId,
+          body.startDate ?? null,
+          body.dueDate ?? null,
+          riskScore,
+          riskLevel,
+        ]
+      );
+
+      const taskId = rows[0].id;
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId: request.user.userId,
+        actionType: "task.create",
+        objectType: "task",
+        objectId: taskId,
+        details: { projectId: body.projectId, title: body.title },
+      });
+
+      return reply.code(201).send({ id: taskId, riskScore, riskLevel });
+    }
+  );
+
+  fastify.post(
+    "/:id/dependencies",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
+    async (request, reply) => {
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const body = AddDependencySchema.parse(request.body);
+      const tenantId = request.user.tenantId;
+
+      await fastify.db.queryTenant(
+        tenantId,
+        `INSERT INTO task_dependencies (tenant_id, task_id, depends_on_task_id, relation)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (tenant_id, task_id, depends_on_task_id)
+         DO UPDATE SET relation = EXCLUDED.relation`,
+        [tenantId, params.id, body.dependsOnTaskId, body.relation]
+      );
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId: request.user.userId,
+        actionType: "task.add_dependency",
+        objectType: "task_dependency",
+        objectId: `${params.id}:${body.dependsOnTaskId}`,
+        details: { relation: body.relation },
+      });
+
+      return reply.code(201).send({ success: true });
+    }
+  );
+
+  fastify.patch(
+    "/:id/status",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
+    async (request) => {
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const body = UpdateStatusSchema.parse(request.body);
+      const tenantId = request.user.tenantId;
+
+      const existing = await fastify.db.queryTenant<{
+        due_date: string | null;
+        progress_percent: number;
+      }>(
+        tenantId,
+        "SELECT due_date, progress_percent FROM tasks WHERE tenant_id = $1 AND id = $2 LIMIT 1",
+        [tenantId, params.id]
+      );
+
+      if (!existing[0]) {
+        throw fastify.httpErrors.notFound("Task not found.");
+      }
+
+      const dueDate = existing[0].due_date ? new Date(existing[0].due_date) : null;
+      const daysToDeadline = dueDate ? Math.ceil((dueDate.getTime() - Date.now()) / 86_400_000) : 30;
+      const progressPercent = body.progressPercent ?? existing[0].progress_percent;
+
+      const riskScore = computeRiskScore({
+        daysToDeadline,
+        progressPercent,
+        inactivityDays: body.status === "in_progress" ? 0 : 2,
+        dependencyBlockedCount: body.status === "blocked" ? 1 : 0,
+      });
+      const riskLevel = classifyRiskLevel(riskScore);
+
+      await fastify.db.queryTenant(
+        tenantId,
+        `UPDATE tasks
+         SET status = $3,
+             progress_percent = $4,
+             risk_score = $5,
+             risk_level = $6,
+             started_at = CASE WHEN $3 = 'in_progress' THEN COALESCE(started_at, NOW()) ELSE started_at END,
+             completed_at = CASE WHEN $3 = 'completed' THEN NOW() ELSE completed_at END,
+             updated_at = NOW()
+         WHERE tenant_id = $1 AND id = $2`,
+        [tenantId, params.id, body.status, progressPercent, riskScore, riskLevel]
+      );
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId: request.user.userId,
+        actionType: "task.update_status",
+        objectType: "task",
+        objectId: params.id,
+        details: { status: body.status, progressPercent, riskScore, riskLevel },
+      });
+
+      return { success: true, riskScore, riskLevel };
+    }
+  );
+};

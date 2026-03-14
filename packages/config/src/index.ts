@@ -1,0 +1,61 @@
+import { z } from "zod";
+
+const NodeEnv = z.enum(["development", "test", "production"]).default("development");
+const LogLevel = z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).default("info");
+
+const SharedSchema = z.object({
+  NODE_ENV: NodeEnv,
+  LOG_LEVEL: LogLevel,
+  DATABASE_URL: z.string().min(1),
+  REDIS_URL: z.string().min(1),
+  OPENAI_API_KEY: z.string().optional(),
+  OPENAI_MODEL: z.string().default("gpt-5-mini"),
+});
+
+const ApiSchema = SharedSchema.extend({
+  PORT: z.coerce.number().int().positive().default(8080),
+  JWT_ACCESS_SECRET: z.string().min(32),
+  JWT_REFRESH_SECRET: z.string().min(32),
+  ACCESS_TOKEN_TTL: z.string().default("15m"),
+  REFRESH_TOKEN_TTL: z.string().default("7d"),
+  CORS_ORIGINS: z.string().default("http://localhost:3000"),
+  REQUIRE_TENANT_HEADER: z
+    .string()
+    .optional()
+    .transform((value) => value === "true"),
+});
+
+const WorkerSchema = SharedSchema.extend({
+  WORKER_CONCURRENCY: z.coerce.number().int().positive().default(5),
+});
+
+export type ApiEnv = z.infer<typeof ApiSchema>;
+export type WorkerEnv = z.infer<typeof WorkerSchema>;
+
+let apiCache: ApiEnv | null = null;
+let workerCache: WorkerEnv | null = null;
+
+export function getApiEnv(): ApiEnv {
+  if (apiCache) return apiCache;
+  const parsed = ApiSchema.safeParse(process.env);
+  if (!parsed.success) {
+    throw new Error(`Invalid API environment configuration: ${parsed.error.message}`);
+  }
+  apiCache = parsed.data;
+  return parsed.data;
+}
+
+export function getWorkerEnv(): WorkerEnv {
+  if (workerCache) return workerCache;
+  const parsed = WorkerSchema.safeParse(process.env);
+  if (!parsed.success) {
+    throw new Error(`Invalid worker environment configuration: ${parsed.error.message}`);
+  }
+  workerCache = parsed.data;
+  return parsed.data;
+}
+
+export function resetConfigCacheForTests(): void {
+  apiCache = null;
+  workerCache = null;
+}

@@ -1,0 +1,25 @@
+{
+  "name": "@larry/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/worker.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/worker.js"
+  },
+  "dependencies": {
+    "@larry/ai": "file:../../packages/ai",
+    "@larry/config": "file:../../packages/config",
+    "@larry/db": "file:../../packages/db",
+    "@larry/shared": "file:../../packages/shared",
+    "bullmq": "^5.58.5",
+    "dotenv": "^17.2.3",
+    "ioredis": "^5.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.2"
+  }
+}

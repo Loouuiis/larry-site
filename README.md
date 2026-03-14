@@ -1,23 +1,53 @@
-# Larry Repository
+# Larry Monorepo (Stage 1)
 
-This repo is now organized as a clear two-surface layout:
+## Structure
 
-- `frontend/`: Next.js web app (current product UI + legacy lightweight routes)
-- `backend/`: Dedicated Fastify backend for enterprise AI-agent workflows
+- `apps/web` - Next.js frontend and current shell routes
+- `apps/api` - Fastify backend API
+- `apps/worker` - BullMQ worker service
+- `packages/db` - Postgres client + schema migration
+- `packages/shared` - shared domain/queue types
+- `packages/ai` - AI extraction + policy/risk logic
+- `packages/config` - shared env validation
+- `infrastructure/terraform` - minimal Stage 1 Terraform skeleton
+- `docs` - architecture and implementation notes
 
-## Root Commands
+## Stage 1 stack
 
-- `npm run frontend:dev`
-- `npm run frontend:build`
-- `npm run frontend:start`
-- `npm run frontend:lint`
-- `npm run backend:dev`
-- `npm run backend:build`
-- `npm run backend:test`
-- `npm run backend:migrate`
+- Database: Neon Postgres target (`DATABASE_URL`)
+- Queue: BullMQ + Redis (`REDIS_URL`)
+- Storage: S3 (to be integrated incrementally)
+- Local services: `docker compose` (Postgres + Redis)
 
-## Environment Files
+## Local quick start
 
-- Frontend envs: `frontend/.env.local` (and optionally `frontend/.env.production`)
-- Backend env: `backend/.env` (copy from `backend/.env.example`)
-- Do not put secrets in the root `.env`.
+```bash
+docker compose up -d
+npm install
+npm run db:migrate
+npm run api:dev
+npm run worker:dev
+npm run web:dev
+```
+
+## Commands (repo root)
+
+- `npm run web:dev`
+- `npm run web:build`
+- `npm run api:dev`
+- `npm run api:build`
+- `npm run api:test`
+- `npm run worker:dev`
+- `npm run worker:build`
+- `npm run db:migrate`
+
+## Environment files
+
+- Frontend: `apps/web/.env.local`
+- API: `apps/api/.env`
+- Worker: `apps/worker/.env`
+
+Templates:
+- `apps/web/.env.example`
+- `apps/api/.env.example`
+- `apps/worker/.env.example`

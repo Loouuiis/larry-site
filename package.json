@@ -2,14 +2,24 @@
   "name": "larry-monorepo",
   "private": true,
   "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "frontend:dev": "npm --prefix frontend run dev",
-    "frontend:build": "npm --prefix frontend run build",
-    "frontend:start": "npm --prefix frontend run start",
-    "frontend:lint": "npm --prefix frontend run lint",
-    "backend:dev": "npm --prefix backend run dev",
-    "backend:build": "npm --prefix backend run build",
-    "backend:test": "npm --prefix backend run test",
-    "backend:migrate": "npm --prefix backend run migrate"
+    "web:dev": "npm run dev -w @larry/web",
+    "web:build": "npm run build -w @larry/web",
+    "web:start": "npm run start -w @larry/web",
+    "web:lint": "npm run lint -w @larry/web",
+    "api:dev": "npm run dev -w @larry/api",
+    "api:build": "npm run build -w @larry/shared && npm run build -w @larry/config && npm run build -w @larry/db && npm run build -w @larry/ai && npm run build -w @larry/api",
+    "api:test": "npm run build -w @larry/shared && npm run build -w @larry/config && npm run build -w @larry/db && npm run build -w @larry/ai && npm run test -w @larry/api",
+    "worker:dev": "npm run dev -w @larry/worker",
+    "worker:build": "npm run build -w @larry/shared && npm run build -w @larry/config && npm run build -w @larry/db && npm run build -w @larry/ai && npm run build -w @larry/worker",
+    "worker:start": "npm run start -w @larry/worker",
+    "db:migrate": "npm run migrate -w @larry/db"
+  },
+  "dependencies": {
+    "pg": "^8.20.0"
   }
 }
