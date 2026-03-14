@@ -259,6 +259,24 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS slack_installations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  installed_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  slack_team_id TEXT NOT NULL UNIQUE,
+  slack_team_name TEXT,
+  slack_enterprise_id TEXT,
+  slack_bot_user_id TEXT,
+  slack_scope TEXT,
+  app_id TEXT,
+  bot_access_token TEXT NOT NULL,
+  installed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_slack_installations_tenant
+  ON slack_installations (tenant_id, updated_at DESC);
+
 CREATE TABLE IF NOT EXISTS risk_snapshots (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -324,6 +342,7 @@ ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE kpi_snapshots ENABLE ROW LEVEL SECURITY;
 ALTER TABLE agent_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE agent_run_transitions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE slack_installations ENABLE ROW LEVEL SECURITY;
 
 DO $$ BEGIN
   CREATE POLICY tenant_isolation_projects ON projects USING (tenant_id::text = current_setting('app.tenant_id', true));
@@ -372,4 +391,13 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 DO $$ BEGIN
   CREATE POLICY tenant_isolation_agent_run_transitions ON agent_run_transitions USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_slack_installations ON slack_installations USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY slack_installations_system_lookup
+    ON slack_installations
+    FOR SELECT
+    USING (current_setting('app.tenant_id', true) = '__system__');
 EXCEPTION WHEN duplicate_object THEN null; END $$;

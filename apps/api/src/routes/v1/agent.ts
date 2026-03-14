@@ -62,7 +62,7 @@ async function persistAction(
     `INSERT INTO extracted_actions
       (tenant_id, agent_run_id, project_id, action_type, impact, confidence, reason, signals, payload, state, requires_approval, executed_at)
      VALUES
-      ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10, $11, CASE WHEN $10 = 'executed' THEN NOW() ELSE NULL END)
+      ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10, $11, CASE WHEN $11 = false THEN NOW() ELSE NULL END)
      RETURNING id`,
     [
       tenantId,

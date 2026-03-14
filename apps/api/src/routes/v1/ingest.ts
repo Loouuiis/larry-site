@@ -1,6 +1,6 @@
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { normalizeRawEvent, computeIdempotencyKey } from "../../services/ingest/normalizer.js";
+import { ingestCanonicalEvent } from "../../services/ingest/pipeline.js";
 import { writeAuditLog } from "../../lib/audit.js";
 
 const BaseIngestSchema = z.object({
@@ -16,72 +16,19 @@ const TranscriptIngestSchema = BaseIngestSchema.extend({
   meetingTitle: z.string().optional(),
 });
 
-async function handleIngest(
-  fastify: Parameters<FastifyPluginAsync>[0],
-  tenantId: string,
-  source: "slack" | "email" | "calendar" | "transcript",
-  body: z.infer<typeof BaseIngestSchema>
-) {
-  const idempotencyKey = computeIdempotencyKey(tenantId, source, body.sourceEventId, body.payload);
-
-  const rawRows = await fastify.db.queryTenant<{ id: string }>(
-    tenantId,
-    `INSERT INTO raw_events (tenant_id, source, source_event_id, payload, idempotency_key)
-     VALUES ($1, $2, $3, $4::jsonb, $5)
-     ON CONFLICT (tenant_id, idempotency_key) DO UPDATE SET source_event_id = EXCLUDED.source_event_id
-     RETURNING id`,
-    [tenantId, source, body.sourceEventId, JSON.stringify(body.payload), idempotencyKey]
-  );
-
-  const canonical = normalizeRawEvent(tenantId, {
-    source,
-    sourceEventId: body.sourceEventId,
-    actor: body.actor,
-    occurredAt: body.occurredAt,
-    payload: body.payload,
-  });
-
-  await fastify.db.queryTenant(
-    tenantId,
-    `INSERT INTO canonical_events
-      (id, tenant_id, raw_event_id, source, source_event_id, event_type, actor, confidence, occurred_at, payload)
-     VALUES
-      ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)`,
-    [
-      canonical.id,
-      canonical.tenantId,
-      rawRows[0].id,
-      canonical.source,
-      canonical.sourceEventId,
-      canonical.eventType,
-      canonical.actor,
-      canonical.confidence,
-      canonical.occurredAt,
-      JSON.stringify(canonical.payload),
-    ]
-  );
-
-  await fastify.queue.publish({
-    type: "canonical_event.created",
-    tenantId,
-    dedupeKey: idempotencyKey,
-    payload: {
-      canonicalEventId: canonical.id,
-      source: canonical.source,
-      eventType: canonical.eventType,
-    },
-  });
-
-  return { canonicalEventId: canonical.id, idempotencyKey };
-}
-
 export const ingestRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     "/slack",
     { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
     async (request, reply) => {
       const body = BaseIngestSchema.parse(request.body);
-      const result = await handleIngest(fastify, request.user.tenantId, "slack", body);
+      const result = await ingestCanonicalEvent(fastify, request.user.tenantId, {
+        source: "slack",
+        sourceEventId: body.sourceEventId,
+        actor: body.actor,
+        occurredAt: body.occurredAt,
+        payload: body.payload,
+      });
       await writeAuditLog(fastify.db, {
         tenantId: request.user.tenantId,
         actorUserId: request.user.userId,
@@ -98,7 +45,13 @@ export const ingestRoutes: FastifyPluginAsync = async (fastify) => {
     { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
     async (request, reply) => {
       const body = BaseIngestSchema.parse(request.body);
-      const result = await handleIngest(fastify, request.user.tenantId, "email", body);
+      const result = await ingestCanonicalEvent(fastify, request.user.tenantId, {
+        source: "email",
+        sourceEventId: body.sourceEventId,
+        actor: body.actor,
+        occurredAt: body.occurredAt,
+        payload: body.payload,
+      });
       await writeAuditLog(fastify.db, {
         tenantId: request.user.tenantId,
         actorUserId: request.user.userId,
@@ -115,7 +68,13 @@ export const ingestRoutes: FastifyPluginAsync = async (fastify) => {
     { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
     async (request, reply) => {
       const body = BaseIngestSchema.parse(request.body);
-      const result = await handleIngest(fastify, request.user.tenantId, "calendar", body);
+      const result = await ingestCanonicalEvent(fastify, request.user.tenantId, {
+        source: "calendar",
+        sourceEventId: body.sourceEventId,
+        actor: body.actor,
+        occurredAt: body.occurredAt,
+        payload: body.payload,
+      });
       await writeAuditLog(fastify.db, {
         tenantId: request.user.tenantId,
         actorUserId: request.user.userId,
@@ -134,7 +93,8 @@ export const ingestRoutes: FastifyPluginAsync = async (fastify) => {
       const body = TranscriptIngestSchema.parse(request.body);
       const tenantId = request.user.tenantId;
 
-      const result = await handleIngest(fastify, tenantId, "transcript", {
+      const result = await ingestCanonicalEvent(fastify, tenantId, {
+        source: "transcript",
         sourceEventId: body.sourceEventId,
         actor: body.actor,
         occurredAt: body.occurredAt,

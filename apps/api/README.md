@@ -34,3 +34,10 @@ npm run api:test
 ## Env
 
 Copy `apps/api/.env.example` to `apps/api/.env`.
+
+## Slack connector (new)
+
+- `GET /v1/connectors/slack/install-url` (auth required: `admin` or `pm`)
+- `GET /v1/connectors/slack/callback` (Slack OAuth redirect URI)
+- `POST /v1/connectors/slack/events` (Slack Events API webhook, signed)
+- `GET /v1/connectors/slack/status` (auth required)

@@ -23,6 +23,14 @@ const ApiSchema = SharedSchema.extend({
     .string()
     .optional()
     .transform((value) => value === "true"),
+  SLACK_CLIENT_ID: z.string().optional(),
+  SLACK_CLIENT_SECRET: z.string().optional(),
+  SLACK_REDIRECT_URI: z.string().url().optional(),
+  SLACK_SIGNING_SECRET: z.string().optional(),
+  SLACK_BOT_SCOPES: z
+    .string()
+    .default("channels:read,channels:history,groups:history,im:history,mpim:history,chat:write"),
+  SLACK_SIGNATURE_TOLERANCE_SECONDS: z.coerce.number().int().positive().default(300),
 });
 
 const WorkerSchema = SharedSchema.extend({

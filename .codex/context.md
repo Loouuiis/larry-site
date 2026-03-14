@@ -1,6 +1,6 @@
 # Larry Backend Context (Read Before Work)
 
-Last updated: 2026-03-12
+Last updated: 2026-03-14
 
 ## Current Objective
 - Build an enterprise-grade backend, DB, server, and AI-agent workflow stack for Larry.
@@ -49,7 +49,7 @@ Last updated: 2026-03-12
 
 ## Immediate Next Priorities
 1. Wire more queue handlers in worker for transcript and canonical event flows.
-2. Implement first production connector auth flow (Slack/Google).
+2. Implement second production connector auth flow (Google Calendar).
 3. Add integration/E2E tests with Postgres + Redis local stack.
 4. Expand Terraform from skeleton to managed AWS services in Stage 2.
 
@@ -100,6 +100,13 @@ Last updated: 2026-03-12
   - `npm run api:test` (8 tests passed)
   - `npm run worker:build`
   - `npm run web:build`
+- Worker env loader updated:
+  - `apps/worker/src/worker.ts` now loads env from these candidates in order:
+    1. `.env` from current working directory
+    2. `apps/worker/.env`
+    3. `apps/api/.env` (fallback for local convenience)
+- Worker env file created for local runtime:
+  - `apps/worker/.env` copied from `apps/api/.env` so `DATABASE_URL` and `REDIS_URL` are explicitly available to worker startup.
 - Neon connectivity test:
   - Success (`SELECT 1`) using env in `apps/api/.env`
   - `apps/.env` did not exist when tested
@@ -125,22 +132,19 @@ Last updated: 2026-03-12
 
 ### What Is Not Done Yet (Critical Gaps)
 - Worker does not yet implement full agent lifecycle jobs (only baseline ingestion handler).
-- No Slack OAuth/webhook integration yet.
 - No Google Calendar OAuth/webhook integration yet.
 - No real connector credential vaulting/rotation flow yet.
 - No integration/E2E suite that validates API->queue->worker->DB loop yet.
 - No production deployment manifests for API/worker runtime yet (by design for Stage 1).
 
 ### Recommended Next Build Order
-1. Implement connector #1 (Slack):
-  - OAuth install flow, token storage, webhook verification, event mapping into `/v1/ingest/slack`
-2. Implement connector #2 (Google Calendar):
+1. Implement connector #2 (Google Calendar):
   - OAuth flow, push notifications/watch renewal, event mapping into `/v1/ingest/calendar`
-3. Expand worker handlers:
+2. Expand worker handlers:
   - process canonical event jobs
   - process transcript extraction jobs
   - persist transitions, retries, and failure reasons
-4. Add integration tests:
+3. Add integration tests:
   - API publishes queue message
   - worker consumes and updates DB state
   - approval routing and audit logging checks
@@ -150,3 +154,73 @@ Last updated: 2026-03-12
 - Use Neon + Redis now; defer RDS/ElastiCache/SQS to Stage 2.
 - Preserve approval-gated high-impact actions.
 - Prioritize developer velocity and local reproducibility over infrastructure completeness.
+
+## 2026-03-14 Session Update
+
+### User onboarding/auth context
+- The API currently has login/refresh/me/logout, but no signup route yet.
+- First-time login requires seeded records in `tenants`, `users`, and `memberships`.
+- The previous sample tenant ID (`11111111-1111-1111-1111-111111111111`) is rejected by API validation because it is not an RFC variant UUID accepted by `z.string().uuid()`.
+- Working dev tenant ID seeded for local testing:
+  - `11111111-1111-4111-8111-111111111111`
+- Working dev user seeded:
+  - email: `dev@larry.local`
+  - role: `admin`
+  - user id: `22222222-2222-2222-2222-222222222222`
+
+### Auth bug fixed
+- File: `apps/api/src/plugins/security.ts`
+- Change: removed JWT `namespace` option during `@fastify/jwt` registration.
+- Reason: auth code uses `app.jwt.sign(...)`; with namespace enabled, that method was not present and login returned `500` (`app.jwt.sign is not a function`).
+- Result: `/v1/auth/login` now returns tokens successfully with seeded credentials.
+
+### Verified state
+- Worker starts successfully with env loaded:
+  - `[worker] started queue=larry-events concurrency=5`
+- Login flow now verified against running local API:
+  - `POST /v1/auth/login` -> success (access token returned).
+- Agent run smoke test now verified:
+  - `POST /v1/agent/runs` with transcript succeeds and returns state `APPROVAL_PENDING`.
+  - `GET /v1/agent/runs/{id}` and `GET /v1/agent/actions?state=pending` are now usable after successful run creation.
+- Approval flow verified:
+  - `POST /v1/actions/{id}/approve` succeeds for pending actions and transitions state to `approved`.
+
+### Agent route SQL fix (2026-03-14)
+- File: `apps/api/src/routes/v1/agent.ts`
+- Issue seen in user smoke test:
+  - Postgres `42P08` "inconsistent types deduced for parameter $10" during action insert.
+- Root cause:
+  - Query reused `$10` (enum-like `state`) both as inserted state and text comparison in `CASE`.
+- Fix:
+  - `executed_at` now uses `CASE WHEN $11 = false THEN NOW() ELSE NULL END` (based on `requires_approval` boolean) to avoid mixed parameter typing.
+
+### Slack connector implemented (2026-03-14)
+- New route file:
+  - `apps/api/src/routes/v1/connectors-slack.ts`
+- New service file:
+  - `apps/api/src/services/connectors/slack.ts`
+- New reusable ingest pipeline service:
+  - `apps/api/src/services/ingest/pipeline.ts`
+- Ingest route refactor:
+  - `apps/api/src/routes/v1/ingest.ts` now delegates to shared ingest pipeline service.
+- DB schema additions:
+  - `slack_installations` table added in `packages/db/src/schema.sql`
+  - Tenant isolation policy + system lookup policy (`app.tenant_id='__system__'`) added for webhook workspace->tenant resolution.
+- New endpoints:
+  - `GET /v1/connectors/slack/install-url` (auth `admin|pm`)
+  - `GET /v1/connectors/slack/callback` (Slack OAuth redirect target)
+  - `POST /v1/connectors/slack/events` (signature-verified Slack Events webhook)
+  - `GET /v1/connectors/slack/status` (auth)
+- Env schema additions in `packages/config/src/index.ts`:
+  - `SLACK_CLIENT_ID`
+  - `SLACK_CLIENT_SECRET`
+  - `SLACK_REDIRECT_URI`
+  - `SLACK_SIGNING_SECRET`
+  - `SLACK_BOT_SCOPES`
+  - `SLACK_SIGNATURE_TOLERANCE_SECONDS`
+- Verified:
+  - `npm run api:test` now passes with 10 tests (new Slack signature test included).
+  - `npm run db:migrate` succeeded after schema updates.
+  - `GET /v1/connectors/slack/install-url` route reachable and returns expected configuration error (`424`) when Slack env vars are not yet set.
+- Not yet verified end-to-end:
+  - Live Slack OAuth callback and live Slack Events webhook delivery (requires real Slack app credentials + public HTTPS callback/events URL such as ngrok/Cloudflare tunnel).

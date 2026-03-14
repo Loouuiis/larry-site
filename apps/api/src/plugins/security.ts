@@ -17,7 +17,6 @@ export const securityPlugin = fp(async (fastify) => {
 
   await fastify.register(jwt, {
     secret: env.JWT_ACCESS_SECRET,
-    namespace: "jwt",
   });
 
   fastify.decorate("authenticate", async (request: FastifyRequest) => {

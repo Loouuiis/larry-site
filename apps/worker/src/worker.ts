@@ -1,20 +1,32 @@
 import { config as loadEnv } from "dotenv";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { Job, QueueEvents, Worker } from "bullmq";
 import { getWorkerEnv } from "@larry/config";
 import { Db } from "@larry/db";
 import { EVENT_QUEUE_NAME, QueueMessage } from "@larry/shared";
 
+const currentFile = fileURLToPath(import.meta.url);
+const currentDir = path.dirname(currentFile);
+
 const envCandidates = [
   path.resolve(process.cwd(), ".env"),
+  path.resolve(process.cwd(), "../api/.env"),
+  path.resolve(process.cwd(), "../../apps/api/.env"),
   path.resolve(process.cwd(), "apps/worker/.env"),
   path.resolve(process.cwd(), "apps/api/.env"),
+  path.resolve(currentDir, "../.env"),
+  path.resolve(currentDir, "../../api/.env"),
+  path.resolve(currentDir, "../../../apps/api/.env"),
 ];
 
 for (const candidate of envCandidates) {
   if (existsSync(candidate)) {
     loadEnv({ path: candidate, override: false });
+    if (process.env.DATABASE_URL && process.env.REDIS_URL) {
+      break;
+    }
   }
 }
 
