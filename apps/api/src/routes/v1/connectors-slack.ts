@@ -69,7 +69,7 @@ function requireSlackOauthConfig(
 export const slackConnectorRoutes: FastifyPluginAsync = async (fastify) => {
   // Slack signature verification requires exact raw request body bytes.
   fastify.addContentTypeParser(
-    "application/json",
+    /^application\/json(?:;.*)?$/i,
     { parseAs: "string" },
     (_request, body, done) => done(null, body)
   );
@@ -87,7 +87,7 @@ export const slackConnectorRoutes: FastifyPluginAsync = async (fastify) => {
           nonce: randomUUID(),
         },
         fastify.config.JWT_ACCESS_SECRET,
-        600
+        fastify.config.SLACK_OAUTH_STATE_TTL_SECONDS
       );
 
       const installUrl = buildSlackInstallUrl({
@@ -212,17 +212,29 @@ export const slackConnectorRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   fastify.post("/events", async (request, reply) => {
+    const timestampHeader = request.headers["x-slack-request-timestamp"];
+    const signatureHeader = request.headers["x-slack-signature"];
+    const rawBody =
+      typeof request.body === "string" ? request.body : JSON.stringify((request.body ?? {}) as object);
+
+    let envelope: z.infer<typeof SlackEventEnvelopeSchema>;
+    try {
+      envelope = SlackEventEnvelopeSchema.parse(JSON.parse(rawBody));
+    } catch {
+      throw fastify.httpErrors.badRequest("Invalid Slack events payload.");
+    }
+
+    // Slack URL verification should succeed during setup, even before strict signature checks.
+    if (envelope.type === "url_verification") {
+      return reply.send({ challenge: envelope.challenge ?? "" });
+    }
+
     const signingSecret = fastify.config.SLACK_SIGNING_SECRET;
     if (!signingSecret) {
       throw fastify.httpErrors.failedDependency(
         "Slack events webhook is not configured. Set SLACK_SIGNING_SECRET."
       );
     }
-
-    const timestampHeader = request.headers["x-slack-request-timestamp"];
-    const signatureHeader = request.headers["x-slack-signature"];
-    const rawBody =
-      typeof request.body === "string" ? request.body : JSON.stringify((request.body ?? {}) as object);
 
     const verified = verifySlackSignature({
       rawBody,
@@ -233,17 +245,6 @@ export const slackConnectorRoutes: FastifyPluginAsync = async (fastify) => {
     });
     if (!verified) {
       throw fastify.httpErrors.unauthorized("Invalid Slack request signature.");
-    }
-
-    let envelope: z.infer<typeof SlackEventEnvelopeSchema>;
-    try {
-      envelope = SlackEventEnvelopeSchema.parse(JSON.parse(rawBody));
-    } catch {
-      throw fastify.httpErrors.badRequest("Invalid Slack events payload.");
-    }
-
-    if (envelope.type === "url_verification") {
-      return reply.send({ challenge: envelope.challenge ?? "" });
     }
 
     if (envelope.type !== "event_callback") {

@@ -31,6 +31,7 @@ const ApiSchema = SharedSchema.extend({
     .string()
     .default("channels:read,channels:history,groups:history,im:history,mpim:history,chat:write"),
   SLACK_SIGNATURE_TOLERANCE_SECONDS: z.coerce.number().int().positive().default(300),
+  SLACK_OAUTH_STATE_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
 });
 
 const WorkerSchema = SharedSchema.extend({

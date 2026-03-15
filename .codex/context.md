@@ -224,3 +224,11 @@ Last updated: 2026-03-14
   - `GET /v1/connectors/slack/install-url` route reachable and returns expected configuration error (`424`) when Slack env vars are not yet set.
 - Not yet verified end-to-end:
   - Live Slack OAuth callback and live Slack Events webhook delivery (requires real Slack app credentials + public HTTPS callback/events URL such as ngrok/Cloudflare tunnel).
+- Local tooling note:
+  - `ngrok` portable binary installed at `C:\Users\oreil\tools\ngrok\ngrok.exe` to avoid admin/PATH issues.
+- Slack Events setup hardening:
+  - `apps/api/src/routes/v1/connectors-slack.ts` now responds to `url_verification` challenge before strict signature checks and accepts JSON content-type with charset via regex parser.
+  - This resolves common Slack Event Subscriptions validation failures during first-time setup.
+- Slack OAuth state TTL update:
+  - Added `SLACK_OAUTH_STATE_TTL_SECONDS` to API config (default `3600`).
+  - `install-url` state token now uses config-driven TTL to reduce first-time setup expiry errors.
