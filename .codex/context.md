@@ -232,3 +232,77 @@ Last updated: 2026-03-14
 - Slack OAuth state TTL update:
   - Added `SLACK_OAUTH_STATE_TTL_SECONDS` to API config (default `3600`).
   - `install-url` state token now uses config-driven TTL to reduce first-time setup expiry errors.
+- Slack OAuth callback root-cause fix:
+  - `apps/api/src/routes/v1/connectors-slack.ts` `SlackOauthStateSchema.userId` changed from strict UUID validation to `string().min(1)`.
+  - Reason: seeded dev user ID format is non-RFC variant; strict UUID parsing caused false "Invalid or expired Slack OAuth state" even for fresh state tokens.
+  - Verification: callback now passes state verification and proceeds to Slack OAuth code exchange.
+
+## 2026-03-16 Session Update
+
+### Worker lifecycle expansion
+- File updated: `apps/worker/src/worker.ts`
+- New behavior implemented:
+  - `canonical_event.created` jobs are now processed (instead of no-op).
+  - Worker creates/resumes `agent_runs` for canonical events (`source_ref_id=canonical_event.id`).
+  - Worker extracts actionable text from event payloads (Slack/email/calendar/transcript-aware parsing).
+  - Worker drives run state transitions:
+    - `INGESTED -> NORMALIZED -> EXTRACTED -> PROPOSED -> APPROVAL_PENDING|EXECUTED -> VERIFIED`
+  - Worker persists `extracted_actions` and applies policy gating using `evaluateActionPolicy`.
+  - Existing `agent_run.ingested` handler now runs full lifecycle processing (not just status update).
+  - Slack noise events are ignored by subtype:
+    - `bot_message`, `channel_join`, `channel_leave`, `message_changed`, `message_deleted`
+
+### Verification
+- `npm run worker:build` passed after worker changes.
+- Existing API build/tests still pass in this branch state.
+
+### Runtime note
+- Worker process must be restarted to load this new logic:
+  - `npm run worker:dev` (or `npm run worker:start`)
+
+### Approval loop completion implemented
+- File updated: `apps/api/src/routes/v1/actions.ts`
+- New behavior:
+  - When an action is approved/rejected/overridden, API now checks whether that run has any remaining `pending` actions.
+  - If none remain and run is `APPROVAL_PENDING`, run auto-transitions:
+    - `APPROVAL_PENDING -> EXECUTED -> VERIFIED`
+  - Corresponding `agent_run_transitions` rows are written.
+  - Audit entry added: `agent.run.auto-verify`.
+- Validation:
+  - API build/tests pass.
+  - Live check confirmed transition rows:
+    - `All pending actions reviewed`
+    - `Approval loop completed`
+
+### Google Calendar connector scaffold implemented
+- New route file:
+  - `apps/api/src/routes/v1/connectors-google-calendar.ts`
+- New service file:
+  - `apps/api/src/services/connectors/google-calendar.ts`
+- Route registration:
+  - `apps/api/src/routes/v1/index.ts` now registers `/v1/connectors/google-calendar/*`
+- DB schema additions:
+  - `google_calendar_installations` table in `packages/db/src/schema.sql`
+  - tenant isolation + system lookup RLS policies for webhook channel resolution
+- API env/config additions:
+  - `GOOGLE_CLIENT_ID`
+  - `GOOGLE_CLIENT_SECRET`
+  - `GOOGLE_REDIRECT_URI`
+  - `GOOGLE_CALENDAR_SCOPES`
+  - `GOOGLE_OAUTH_STATE_TTL_SECONDS`
+  - `GOOGLE_CALENDAR_WEBHOOK_URL`
+- New endpoints:
+  - `GET /v1/connectors/google-calendar/install-url`
+  - `GET /v1/connectors/google-calendar/callback`
+  - `GET /v1/connectors/google-calendar/status`
+  - `POST /v1/connectors/google-calendar/watch`
+  - `POST /v1/connectors/google-calendar/webhook`
+- Behavior:
+  - OAuth state token generation/verification
+  - Token exchange + installation upsert
+  - Optional token refresh for expired access tokens before watch setup
+  - Google push webhook mapping to canonical calendar events
+- Validation:
+  - `npm run db:migrate` passed with new table/policies
+  - `npm run api:build` and `npm run api:test` passed
+  - install-url route verified reachable (`424` expected until Google env vars are set)

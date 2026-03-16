@@ -15,7 +15,7 @@ import { writeAuditLog } from "../../lib/audit.js";
 const SlackOauthStateSchema = z.object({
   kind: z.literal("slack_oauth_state"),
   tenantId: z.string().uuid(),
-  userId: z.string().uuid(),
+  userId: z.string().min(1),
   nonce: z.string().uuid(),
 });
 
@@ -145,7 +145,11 @@ export const slackConnectorRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const decoded = verifySignedStateToken(query.state, fastify.config.JWT_ACCESS_SECRET);
       oauthState = SlackOauthStateSchema.parse(decoded);
-    } catch {
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "unknown";
+      if (fastify.config.NODE_ENV === "development") {
+        throw fastify.httpErrors.badRequest(`Invalid or expired Slack OAuth state (${reason}).`);
+      }
       throw fastify.httpErrors.badRequest("Invalid or expired Slack OAuth state.");
     }
 

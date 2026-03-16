@@ -277,6 +277,26 @@ CREATE TABLE IF NOT EXISTS slack_installations (
 CREATE INDEX IF NOT EXISTS idx_slack_installations_tenant
   ON slack_installations (tenant_id, updated_at DESC);
 
+CREATE TABLE IF NOT EXISTS google_calendar_installations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  installed_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  google_calendar_id TEXT NOT NULL DEFAULT 'primary',
+  google_access_token TEXT NOT NULL,
+  google_refresh_token TEXT,
+  google_scope TEXT,
+  token_expires_at TIMESTAMPTZ,
+  webhook_channel_id TEXT UNIQUE,
+  webhook_resource_id TEXT,
+  webhook_expiration TIMESTAMPTZ,
+  installed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (tenant_id, google_calendar_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_google_calendar_installations_tenant
+  ON google_calendar_installations (tenant_id, updated_at DESC);
+
 CREATE TABLE IF NOT EXISTS risk_snapshots (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -343,6 +363,7 @@ ALTER TABLE kpi_snapshots ENABLE ROW LEVEL SECURITY;
 ALTER TABLE agent_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE agent_run_transitions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE slack_installations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE google_calendar_installations ENABLE ROW LEVEL SECURITY;
 
 DO $$ BEGIN
   CREATE POLICY tenant_isolation_projects ON projects USING (tenant_id::text = current_setting('app.tenant_id', true));
@@ -398,6 +419,17 @@ EXCEPTION WHEN duplicate_object THEN null; END $$;
 DO $$ BEGIN
   CREATE POLICY slack_installations_system_lookup
     ON slack_installations
+    FOR SELECT
+    USING (current_setting('app.tenant_id', true) = '__system__');
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_google_calendar_installations
+    ON google_calendar_installations
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY google_calendar_installations_system_lookup
+    ON google_calendar_installations
     FOR SELECT
     USING (current_setting('app.tenant_id', true) = '__system__');
 EXCEPTION WHEN duplicate_object THEN null; END $$;

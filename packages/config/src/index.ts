@@ -32,6 +32,12 @@ const ApiSchema = SharedSchema.extend({
     .default("channels:read,channels:history,groups:history,im:history,mpim:history,chat:write"),
   SLACK_SIGNATURE_TOLERANCE_SECONDS: z.coerce.number().int().positive().default(300),
   SLACK_OAUTH_STATE_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_REDIRECT_URI: z.string().url().optional(),
+  GOOGLE_CALENDAR_SCOPES: z.string().default("https://www.googleapis.com/auth/calendar.readonly"),
+  GOOGLE_OAUTH_STATE_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
+  GOOGLE_CALENDAR_WEBHOOK_URL: z.string().url().optional(),
 });
 
 const WorkerSchema = SharedSchema.extend({

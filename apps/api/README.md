@@ -41,3 +41,11 @@ Copy `apps/api/.env.example` to `apps/api/.env`.
 - `GET /v1/connectors/slack/callback` (Slack OAuth redirect URI)
 - `POST /v1/connectors/slack/events` (Slack Events API webhook, signed)
 - `GET /v1/connectors/slack/status` (auth required)
+
+## Google Calendar connector (new)
+
+- `GET /v1/connectors/google-calendar/install-url` (auth required: `admin` or `pm`)
+- `GET /v1/connectors/google-calendar/callback` (Google OAuth redirect URI)
+- `GET /v1/connectors/google-calendar/status` (auth required)
+- `POST /v1/connectors/google-calendar/watch` (auth required: `admin` or `pm`)
+- `POST /v1/connectors/google-calendar/webhook` (Google Calendar push webhook)

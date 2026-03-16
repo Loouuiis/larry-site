@@ -3,9 +3,10 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Job, QueueEvents, Worker } from "bullmq";
+import { createLlmProvider, evaluateActionPolicy } from "@larry/ai";
 import { getWorkerEnv } from "@larry/config";
 import { Db } from "@larry/db";
-import { EVENT_QUEUE_NAME, QueueMessage } from "@larry/shared";
+import { AgentRunState, EVENT_QUEUE_NAME, ExtractedAction, QueueMessage } from "@larry/shared";
 
 const currentFile = fileURLToPath(import.meta.url);
 const currentDir = path.dirname(currentFile);
@@ -32,20 +33,437 @@ for (const candidate of envCandidates) {
 
 const env = getWorkerEnv();
 const db = new Db(env.DATABASE_URL);
+const llmProvider = createLlmProvider({
+  openAiApiKey: env.OPENAI_API_KEY,
+  openAiModel: env.OPENAI_MODEL,
+});
+
+type IngestSource = "slack" | "email" | "calendar" | "transcript";
+
+const RUN_TRANSITIONS: Record<AgentRunState, AgentRunState[]> = {
+  INGESTED: ["NORMALIZED", "FAILED"],
+  NORMALIZED: ["EXTRACTED", "FAILED"],
+  EXTRACTED: ["PROPOSED", "FAILED"],
+  PROPOSED: ["APPROVAL_PENDING", "EXECUTED", "FAILED"],
+  APPROVAL_PENDING: ["EXECUTED", "FAILED"],
+  EXECUTED: ["VERIFIED", "FAILED"],
+  VERIFIED: [],
+  FAILED: [],
+};
+
+const TERMINAL_RUN_STATES = new Set<AgentRunState>(["APPROVAL_PENDING", "VERIFIED", "FAILED"]);
+const IGNORED_SLACK_SUBTYPES = new Set([
+  "bot_message",
+  "channel_join",
+  "channel_leave",
+  "message_changed",
+  "message_deleted",
+]);
+
+interface AgentRunRow {
+  id: string;
+  state: AgentRunState;
+  source: IngestSource;
+  projectId: string | null;
+  sourceRefId: string | null;
+}
+
+interface CanonicalEventRow {
+  id: string;
+  source: IngestSource;
+  payload: Record<string, unknown>;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isAgentRunState(value: unknown): value is AgentRunState {
+  return typeof value === "string" && Object.prototype.hasOwnProperty.call(RUN_TRANSITIONS, value);
+}
+
+function isIngestSource(value: unknown): value is IngestSource {
+  return value === "slack" || value === "email" || value === "calendar" || value === "transcript";
+}
+
+function canTransition(from: AgentRunState, to: AgentRunState): boolean {
+  return RUN_TRANSITIONS[from].includes(to);
+}
+
+async function loadAgentRun(tenantId: string, runId: string): Promise<AgentRunRow | null> {
+  const rows = await db.queryTenant<{
+    id: string;
+    state: string;
+    source: string;
+    projectId: string | null;
+    sourceRefId: string | null;
+  }>(
+    tenantId,
+    `SELECT id, state, source, project_id as "projectId", source_ref_id as "sourceRefId"
+     FROM agent_runs
+     WHERE tenant_id = $1 AND id = $2
+     LIMIT 1`,
+    [tenantId, runId]
+  );
+
+  const row = rows[0];
+  if (!row) return null;
+  if (!isAgentRunState(row.state)) {
+    throw new Error(`Unknown agent run state: ${row.state}`);
+  }
+  if (!isIngestSource(row.source)) {
+    throw new Error(`Unknown agent run source: ${row.source}`);
+  }
+
+  return {
+    id: row.id,
+    state: row.state,
+    source: row.source,
+    projectId: row.projectId,
+    sourceRefId: row.sourceRefId,
+  };
+}
+
+async function loadCanonicalEvent(tenantId: string, canonicalEventId: string): Promise<CanonicalEventRow | null> {
+  const rows = await db.queryTenant<{
+    id: string;
+    source: string;
+    payload: unknown;
+  }>(
+    tenantId,
+    `SELECT id, source, payload
+     FROM canonical_events
+     WHERE tenant_id = $1 AND id = $2
+     LIMIT 1`,
+    [tenantId, canonicalEventId]
+  );
+
+  const row = rows[0];
+  if (!row) return null;
+  if (!isIngestSource(row.source)) return null;
+  if (!isRecord(row.payload)) return null;
+
+  return {
+    id: row.id,
+    source: row.source,
+    payload: row.payload,
+  };
+}
+
+function extractActionableText(source: IngestSource, payload: Record<string, unknown>): string | null {
+  if (source === "slack") {
+    const event = isRecord(payload.event) ? payload.event : null;
+    if (!event) return null;
+    const subtype = typeof event.subtype === "string" ? event.subtype : null;
+    if (subtype && IGNORED_SLACK_SUBTYPES.has(subtype)) return null;
+    const text = typeof event.text === "string" ? event.text.trim() : "";
+    return text.length > 0 ? text : null;
+  }
+
+  if (source === "transcript") {
+    const transcript = typeof payload.transcript === "string" ? payload.transcript.trim() : "";
+    return transcript.length > 0 ? transcript : null;
+  }
+
+  const candidateFields: unknown[] = [
+    payload.text,
+    payload.body,
+    payload.summary,
+    payload.description,
+    payload.title,
+    isRecord(payload.event) ? payload.event.text : undefined,
+  ];
+
+  for (const value of candidateFields) {
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+
+  return null;
+}
+
+async function ensureRunForCanonicalEvent(
+  tenantId: string,
+  source: IngestSource,
+  canonicalEventId: string
+): Promise<AgentRunRow> {
+  const existingRows = await db.queryTenant<{
+    id: string;
+    state: string;
+    source: string;
+    projectId: string | null;
+    sourceRefId: string | null;
+  }>(
+    tenantId,
+    `SELECT id, state, source, project_id as "projectId", source_ref_id as "sourceRefId"
+     FROM agent_runs
+     WHERE tenant_id = $1 AND source = $2 AND source_ref_id = $3
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [tenantId, source, canonicalEventId]
+  );
+
+  const existing = existingRows[0];
+  if (existing && isAgentRunState(existing.state) && isIngestSource(existing.source)) {
+    return {
+      id: existing.id,
+      state: existing.state,
+      source: existing.source,
+      projectId: existing.projectId,
+      sourceRefId: existing.sourceRefId,
+    };
+  }
+
+  const insertedRows = await db.queryTenant<{
+    id: string;
+    state: string;
+    source: string;
+    projectId: string | null;
+    sourceRefId: string | null;
+  }>(
+    tenantId,
+    `INSERT INTO agent_runs (tenant_id, project_id, source, source_ref_id, state, status_message, correlation_id)
+     VALUES ($1, NULL, $2, $3, 'INGESTED', $4, $5)
+     RETURNING id, state, source, project_id as "projectId", source_ref_id as "sourceRefId"`,
+    [
+      tenantId,
+      source,
+      canonicalEventId,
+      "Canonical event accepted for worker processing",
+      `${tenantId}:${canonicalEventId}`,
+    ]
+  );
+
+  const inserted = insertedRows[0];
+  if (!inserted || !isAgentRunState(inserted.state) || !isIngestSource(inserted.source)) {
+    throw new Error("Failed to create agent run for canonical event.");
+  }
+
+  await db.queryTenant(
+    tenantId,
+    `INSERT INTO agent_run_transitions
+      (tenant_id, agent_run_id, previous_state, next_state, reason, metadata)
+     VALUES ($1, $2, NULL, 'INGESTED', $3, $4::jsonb)`,
+    [tenantId, inserted.id, "Agent run created from canonical event", JSON.stringify({ canonicalEventId })]
+  );
+
+  return {
+    id: inserted.id,
+    state: inserted.state,
+    source: inserted.source,
+    projectId: inserted.projectId,
+    sourceRefId: inserted.sourceRefId,
+  };
+}
+
+async function transitionRun(
+  tenantId: string,
+  runId: string,
+  from: AgentRunState,
+  to: AgentRunState,
+  reason: string,
+  metadata: Record<string, unknown> = {}
+): Promise<AgentRunState> {
+  if (from === to) return from;
+  if (!canTransition(from, to)) {
+    throw new Error(`Invalid state transition from ${from} to ${to}`);
+  }
+
+  await db.queryTenant(
+    tenantId,
+    `UPDATE agent_runs
+     SET state = $3,
+         status_message = $4,
+         updated_at = NOW()
+     WHERE tenant_id = $1 AND id = $2`,
+    [tenantId, runId, to, reason]
+  );
+
+  await db.queryTenant(
+    tenantId,
+    `INSERT INTO agent_run_transitions
+      (tenant_id, agent_run_id, previous_state, next_state, reason, metadata)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
+    [tenantId, runId, from, to, reason, JSON.stringify(metadata)]
+  );
+
+  return to;
+}
+
+async function persistAction(
+  tenantId: string,
+  runId: string,
+  projectId: string | null,
+  action: ExtractedAction
+): Promise<{ id: string; requiresApproval: boolean }> {
+  const policy = evaluateActionPolicy(action);
+  const actionState = policy.requiresApproval ? "pending" : "executed";
+
+  const rows = await db.queryTenant<{ id: string }>(
+    tenantId,
+    `INSERT INTO extracted_actions
+      (tenant_id, agent_run_id, project_id, action_type, impact, confidence, reason, signals, payload, state, requires_approval, executed_at)
+     VALUES
+      ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10, $11, CASE WHEN $11 = false THEN NOW() ELSE NULL END)
+     RETURNING id`,
+    [
+      tenantId,
+      runId,
+      projectId,
+      "task_proposal",
+      action.impact,
+      action.confidence,
+      `${action.reason} | ${policy.reason}`,
+      JSON.stringify(action.signals),
+      JSON.stringify(action),
+      actionState,
+      policy.requiresApproval,
+    ]
+  );
+
+  return {
+    id: rows[0].id,
+    requiresApproval: policy.requiresApproval,
+  };
+}
+
+async function extractActions(transcript: string, projectId: string | null): Promise<ExtractedAction[]> {
+  const trimmed = transcript.trim();
+  if (trimmed.length === 0) return [];
+
+  return llmProvider.extractActionsFromTranscript({
+    transcript: trimmed,
+    projectName: projectId ?? undefined,
+  });
+}
+
+async function processAgentRunLifecycle(
+  tenantId: string,
+  runId: string,
+  transcript: string,
+  source: IngestSource
+): Promise<void> {
+  const run = await loadAgentRun(tenantId, runId);
+  if (!run) return;
+  if (TERMINAL_RUN_STATES.has(run.state)) return;
+
+  let currentState = run.state;
+  let extracted: ExtractedAction[] | null = null;
+
+  if (currentState === "INGESTED") {
+    currentState = await transitionRun(tenantId, runId, currentState, "NORMALIZED", "Signals normalized");
+  }
+
+  if (currentState === "NORMALIZED") {
+    extracted = await extractActions(transcript, run.projectId);
+    currentState = await transitionRun(
+      tenantId,
+      runId,
+      currentState,
+      "EXTRACTED",
+      "Action candidates extracted",
+      { extractedCount: extracted.length, source }
+    );
+  }
+
+  if (currentState === "EXTRACTED") {
+    currentState = await transitionRun(
+      tenantId,
+      runId,
+      currentState,
+      "PROPOSED",
+      "Task delta proposals generated"
+    );
+  }
+
+  if (currentState === "PROPOSED") {
+    if (!extracted) {
+      extracted = await extractActions(transcript, run.projectId);
+    }
+
+    await db.queryTenant(
+      tenantId,
+      `DELETE FROM extracted_actions
+       WHERE tenant_id = $1 AND agent_run_id = $2 AND state IN ('pending', 'executed')`,
+      [tenantId, runId]
+    );
+
+    const savedActions: Array<{ id: string; requiresApproval: boolean }> = [];
+    for (const action of extracted) {
+      const result = await persistAction(tenantId, runId, run.projectId, action);
+      savedActions.push(result);
+    }
+
+    const requiresApproval = savedActions.some((item) => item.requiresApproval);
+    const nextState: AgentRunState = requiresApproval ? "APPROVAL_PENDING" : "EXECUTED";
+    currentState = await transitionRun(
+      tenantId,
+      runId,
+      currentState,
+      nextState,
+      requiresApproval
+        ? "High-impact or low-confidence actions routed to Action Center"
+        : "All actions auto-executed by policy",
+      {
+        actionIds: savedActions.map((action) => action.id),
+        requiresApproval,
+      }
+    );
+  }
+
+  if (currentState === "EXECUTED") {
+    await transitionRun(
+      tenantId,
+      runId,
+      currentState,
+      "VERIFIED",
+      "Execution complete and verified",
+      {}
+    );
+  }
+}
 
 async function handleAgentRunIngested(job: Job<QueueMessage>): Promise<void> {
   const runId = job.data.payload.runId;
   const tenantId = job.data.tenantId;
   if (typeof runId !== "string") return;
 
-  await db.queryTenant(
-    tenantId,
-    `UPDATE agent_runs
-     SET status_message = $3,
-         updated_at = NOW()
-     WHERE tenant_id = $1 AND id = $2`,
-    [tenantId, runId, "Worker accepted ingestion job"]
-  );
+  let transcript = typeof job.data.payload.transcript === "string" ? job.data.payload.transcript : "";
+
+  if (transcript.trim().length === 0) {
+    const fallbackCanonicalEventId =
+      typeof job.data.payload.canonicalEventId === "string" ? job.data.payload.canonicalEventId : null;
+    if (fallbackCanonicalEventId) {
+      const canonical = await loadCanonicalEvent(tenantId, fallbackCanonicalEventId);
+      if (canonical) {
+        transcript = extractActionableText(canonical.source, canonical.payload) ?? "";
+      }
+    }
+  }
+
+  const run = await loadAgentRun(tenantId, runId);
+  if (!run) return;
+
+  await processAgentRunLifecycle(tenantId, runId, transcript, run.source);
+}
+
+async function handleCanonicalEventCreated(job: Job<QueueMessage>): Promise<void> {
+  const tenantId = job.data.tenantId;
+  const canonicalEventId = job.data.payload.canonicalEventId;
+  if (typeof canonicalEventId !== "string") return;
+
+  const canonical = await loadCanonicalEvent(tenantId, canonicalEventId);
+  if (!canonical) return;
+
+  // Transcript uploads have a dedicated ingest route and job flow.
+  if (canonical.source === "transcript") return;
+
+  const transcript = extractActionableText(canonical.source, canonical.payload);
+  if (!transcript) return;
+
+  const run = await ensureRunForCanonicalEvent(tenantId, canonical.source, canonical.id);
+  await processAgentRunLifecycle(tenantId, run.id, transcript, canonical.source);
 }
 
 async function processQueueJob(job: Job<QueueMessage>): Promise<void> {
@@ -54,6 +472,8 @@ async function processQueueJob(job: Job<QueueMessage>): Promise<void> {
       await handleAgentRunIngested(job);
       break;
     case "canonical_event.created":
+      await handleCanonicalEventCreated(job);
+      break;
     case "agent_run.processed":
     default:
       // Keep Stage 1 simple; additional handlers added iteratively.

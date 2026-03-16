@@ -13,11 +13,19 @@ async function loadActionOrThrow(
   actionId: string
 ): Promise<{
   id: string;
+  agentRunId: string | null;
   state: "pending" | "approved" | "rejected" | "overridden" | "executed";
 }> {
-  const rows = await fastify.db.queryTenant<{ id: string; state: "pending" | "approved" | "rejected" | "overridden" | "executed" }>(
+  const rows = await fastify.db.queryTenant<{
+    id: string;
+    agentRunId: string | null;
+    state: "pending" | "approved" | "rejected" | "overridden" | "executed";
+  }>(
     tenantId,
-    "SELECT id, state FROM extracted_actions WHERE tenant_id = $1 AND id = $2 LIMIT 1",
+    `SELECT id, agent_run_id as "agentRunId", state
+     FROM extracted_actions
+     WHERE tenant_id = $1 AND id = $2
+     LIMIT 1`,
     [tenantId, actionId]
   );
 
@@ -26,6 +34,96 @@ async function loadActionOrThrow(
   }
 
   return rows[0];
+}
+
+async function finalizeAgentRunIfResolved(
+  fastify: Parameters<FastifyPluginAsync>[0],
+  options: { tenantId: string; runId: string | null; actorUserId: string }
+): Promise<void> {
+  if (!options.runId) return;
+
+  const runRows = await fastify.db.queryTenant<{ state: "APPROVAL_PENDING" | "EXECUTED" | "VERIFIED" | "FAILED" }>(
+    options.tenantId,
+    `SELECT state
+     FROM agent_runs
+     WHERE tenant_id = $1 AND id = $2
+     LIMIT 1`,
+    [options.tenantId, options.runId]
+  );
+
+  const run = runRows[0];
+  if (!run || run.state !== "APPROVAL_PENDING") {
+    return;
+  }
+
+  const pendingRows = await fastify.db.queryTenant<{ count: number }>(
+    options.tenantId,
+    `SELECT COUNT(*)::int as count
+     FROM extracted_actions
+     WHERE tenant_id = $1
+       AND agent_run_id = $2
+       AND state = 'pending'`,
+    [options.tenantId, options.runId]
+  );
+
+  if ((pendingRows[0]?.count ?? 0) > 0) {
+    return;
+  }
+
+  await fastify.db.queryTenant(
+    options.tenantId,
+    `UPDATE agent_runs
+     SET state = 'EXECUTED',
+         status_message = $3,
+         updated_at = NOW()
+     WHERE tenant_id = $1 AND id = $2`,
+    [options.tenantId, options.runId, "All approval-required actions resolved"]
+  );
+
+  await fastify.db.queryTenant(
+    options.tenantId,
+    `INSERT INTO agent_run_transitions
+     (tenant_id, agent_run_id, previous_state, next_state, reason, metadata)
+     VALUES ($1, $2, 'APPROVAL_PENDING', 'EXECUTED', $3, $4::jsonb)`,
+    [
+      options.tenantId,
+      options.runId,
+      "All pending actions reviewed",
+      JSON.stringify({ resolution: "approvals_resolved" }),
+    ]
+  );
+
+  await fastify.db.queryTenant(
+    options.tenantId,
+    `UPDATE agent_runs
+     SET state = 'VERIFIED',
+         status_message = $3,
+         updated_at = NOW()
+     WHERE tenant_id = $1 AND id = $2`,
+    [options.tenantId, options.runId, "Run verified after approval decisions"]
+  );
+
+  await fastify.db.queryTenant(
+    options.tenantId,
+    `INSERT INTO agent_run_transitions
+     (tenant_id, agent_run_id, previous_state, next_state, reason, metadata)
+     VALUES ($1, $2, 'EXECUTED', 'VERIFIED', $3, $4::jsonb)`,
+    [
+      options.tenantId,
+      options.runId,
+      "Approval loop completed",
+      JSON.stringify({ resolution: "approvals_resolved" }),
+    ]
+  );
+
+  await writeAuditLog(fastify.db, {
+    tenantId: options.tenantId,
+    actorUserId: options.actorUserId,
+    actionType: "agent.run.auto-verify",
+    objectType: "agent_run",
+    objectId: options.runId,
+    details: { reason: "no_pending_actions_remaining" },
+  });
 }
 
 async function recordDecision(
@@ -83,6 +181,12 @@ export const actionRoutes: FastifyPluginAsync = async (fastify) => {
         details: { note: body.note ?? null },
       });
 
+      await finalizeAgentRunIfResolved(fastify, {
+        tenantId,
+        runId: action.agentRunId,
+        actorUserId: request.user.userId,
+      });
+
       return { success: true, state: "approved" };
     }
   );
@@ -121,6 +225,12 @@ export const actionRoutes: FastifyPluginAsync = async (fastify) => {
         objectType: "extracted_action",
         objectId: params.id,
         details: { note: body.note ?? null },
+      });
+
+      await finalizeAgentRunIfResolved(fastify, {
+        tenantId,
+        runId: action.agentRunId,
+        actorUserId: request.user.userId,
       });
 
       return { success: true, state: "rejected" };
@@ -179,6 +289,12 @@ export const actionRoutes: FastifyPluginAsync = async (fastify) => {
         objectType: "extracted_action",
         objectId: params.id,
         details: { overridePayload: body.overridePayload ?? null, note: body.note ?? null },
+      });
+
+      await finalizeAgentRunIfResolved(fastify, {
+        tenantId,
+        runId: action.agentRunId,
+        actorUserId: request.user.userId,
       });
 
       return { success: true, state: "overridden" };
