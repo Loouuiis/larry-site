@@ -21,10 +21,9 @@ const GoogleOauthStateSchema = z.object({
 });
 
 const GoogleChannelTokenSchema = z.object({
-  kind: z.literal("google_calendar_channel"),
-  tenantId: z.string().uuid(),
-  installationId: z.string().uuid(),
-  nonce: z.string().uuid(),
+  k: z.literal("gcalch"),
+  t: z.string().uuid(),
+  i: z.string().uuid(),
 });
 
 const GoogleCallbackQuerySchema = z.object({
@@ -325,13 +324,10 @@ export const googleCalendarConnectorRoutes: FastifyPluginAsync = async (fastify)
       const webhookUrl = resolveGoogleWebhookUrl(oauth.redirectUri, oauth.webhookUrl);
 
       const channelId = randomUUID();
+      // Google Calendar requires channel token length <= 256 chars.
+      // Keep payload compact while still signed + verifiable.
       const channelToken = createSignedStateToken(
-        {
-          kind: "google_calendar_channel",
-          tenantId: request.user.tenantId,
-          installationId: installation.id,
-          nonce: randomUUID(),
-        },
+        { k: "gcalch", t: request.user.tenantId, i: installation.id },
         fastify.config.JWT_ACCESS_SECRET,
         60 * 60 * 24 * 30
       );
@@ -412,7 +408,7 @@ export const googleCalendarConnectorRoutes: FastifyPluginAsync = async (fastify)
       try {
         const decoded = verifySignedStateToken(channelToken, fastify.config.JWT_ACCESS_SECRET);
         const parsed = GoogleChannelTokenSchema.parse(decoded);
-        if (parsed.installationId !== installation.id || parsed.tenantId !== installation.tenant_id) {
+        if (parsed.i !== installation.id || parsed.t !== installation.tenant_id) {
           throw new Error("channel_token_mismatch");
         }
       } catch {

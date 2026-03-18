@@ -1,5 +1,7 @@
 # Action Policy Matrix (MVP)
 
+This matrix applies to actions derived from Larry Workspace activity and connector-derived signals (Slack/Email/Calendar).
+
 ## Autonomous (no approval)
 
 - Reminder nudges for inactive tasks

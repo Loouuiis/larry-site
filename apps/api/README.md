@@ -4,11 +4,13 @@ Fastify API service for Stage 1 product backend development.
 
 ## Stage 1 scope
 
-- Multi-tenant API scaffold (`/v1` routes)
+- Standalone Larry Workspace backend (`/v1` routes) as source of truth
+- Multi-tenant domain + auth/RBAC/audit foundations
 - Postgres via `@larry/db`
 - Redis queue publishing via BullMQ
 - OpenAI-first extraction via `@larry/ai`
 - Approval-gated action flow
+- Connector channels (Slack/Email/Calendar) feeding canonical events into workspace workflows
 
 ## Run
 

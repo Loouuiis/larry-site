@@ -1,12 +1,17 @@
 # Larry Backend Context (Read Before Work)
 
-Last updated: 2026-03-14
+Last updated: 2026-03-16
 
 ## Current Objective
 - Build an enterprise-grade backend, DB, server, and AI-agent workflow stack for Larry.
 - Frontend is not the current focus.
 
 ## Product Direction (Locked)
+- Business-model pivot locked on 2026-03-16:
+  - Larry v1 is a standalone PM platform.
+  - Larry Workspace is the system of record.
+  - Slack, Email, Calendar are channel connectors around Larry Workspace.
+  - External PM tools (Jira/Asana/ClickUp) are explicitly post-v1 optional.
 - Monorepo structure with explicit apps/packages split:
   - `apps/web`
   - `apps/api`
@@ -34,6 +39,10 @@ Last updated: 2026-03-14
   - Unit tests for policy/risk/workflow/normalization
 - Worker scaffold in `apps/worker/` for async queue processing.
 - Minimal Terraform skeleton in `infrastructure/terraform`.
+- Live connector status:
+  - Slack OAuth and event ingestion verified.
+  - Google Calendar OAuth/watch/webhook scaffold implemented (live validation in progress).
+  - Email connector pending implementation.
 
 ## Non-Negotiables
 - Keep multi-tenant isolation strict (`tenant_id` + RLS path).
@@ -48,10 +57,13 @@ Last updated: 2026-03-14
 - If unsure, preserve approval-gated behavior.
 
 ## Immediate Next Priorities
-1. Wire more queue handlers in worker for transcript and canonical event flows.
-2. Implement second production connector auth flow (Google Calendar).
-3. Add integration/E2E tests with Postgres + Redis local stack.
-4. Expand Terraform from skeleton to managed AWS services in Stage 2.
+1. Finalize standalone Workspace core depth (project/task/dependency/risk/reporting hardening).
+2. Complete v1 channel connectors:
+   - Google Calendar live E2E validation
+   - Email connector implementation
+3. Expand integration/E2E tests:
+   - channel event -> canonical event -> agent run -> action -> approval/execute -> audit
+4. Keep Terraform minimal in Stage 1; defer full managed AWS expansion to Stage 2.
 
 ## Session Handoff (Extensive)
 
@@ -306,3 +318,95 @@ Last updated: 2026-03-14
   - `npm run db:migrate` passed with new table/policies
   - `npm run api:build` and `npm run api:test` passed
   - install-url route verified reachable (`424` expected until Google env vars are set)
+
+## 2026-03-16 Scope Re-Baseline (Business + Product)
+
+### Source conversation outcome
+- Founder alignment was completed with collaborator input.
+- Decision: Larry is not a "workflow layer only" product.
+- Larry v1 will be:
+  - Present in Slack, Email, Calendar, and Larry Workspace.
+  - Standalone-first, with Larry Workspace as the PM source of truth.
+
+### Implications for execution
+- Connector strategy changed from "PM-tool integrations first" to "channel integrations around internal PM core."
+- Jira/Asana/ClickUp integrations moved to post-v1 optional track.
+- Backlog should prioritize:
+  1. Workspace data model and mutation APIs.
+  2. Agent reliability over workspace state transitions.
+  3. Connector completeness for Slack/Email/Calendar only.
+
+### New canonical planning doc
+- `docs/backend/v1-standalone-rebaseline.md` is now the primary scope baseline for v1.
+- `docs/backend/v1-execution-plan.md` defines sprint-level execution for the standalone-first model.
+
+### Guidance for next agent
+- Preserve this scope unless user explicitly reopens strategy.
+- Do not prioritize external PM connectors before workspace-core readiness.
+- Continue shipping backend/worker reliability with approval-gated autonomy as default.
+
+## 2026-03-18 Google Calendar Watch Fix
+
+### Issue
+- `POST /v1/connectors/google-calendar/watch` failed with:
+  - `Google watch create failed: 400 ... reason: "clientTokenTooLong" (Max length is 256)`
+
+### Root cause
+- Channel token used for Google watch webhook was generated from a verbose signed payload.
+- Encoded token exceeded Google's 256-char token limit.
+
+### Fix applied
+- File updated: `apps/api/src/routes/v1/connectors-google-calendar.ts`
+- Channel token payload was compacted from verbose keys to short keys:
+  - from `{ kind, tenantId, installationId, nonce }`
+  - to `{ k: "gcalch", t: tenantId, i: installationId }`
+- Verification path updated accordingly in webhook handler.
+- Added in-code comment documenting Google token length constraint.
+
+### Validation
+- `npm run api:build` passes after change.
+- User must restart `npm run api:dev` and re-run `/watch` to validate live behavior.
+
+### Live verification outcome (2026-03-18)
+- `POST /v1/connectors/google-calendar/watch` now succeeds:
+  - `watchActive: true`
+  - valid `channelId` and `resourceId` returned from Google.
+- Creating/editing a real Google Calendar event produces a `canonical_events` row with:
+  - `source='calendar'`
+  - `actor='google-calendar'`
+- Current expected behavior: `agent_runs` may still be empty for calendar webhook events.
+  - Reason: Google push webhook payload is metadata-only in this scaffold path (no rich event text),
+    so worker `extractActionableText(...)` can return null and skip run creation.
+  - Next improvement: add calendar enrichment fetch (events detail pull) before agent extraction.
+
+## 2026-03-18 Workspace UI Step
+
+### Implemented
+- Replaced placeholder countdown dashboard with a live "Project Command Center" shell:
+  - Projects summary/list
+  - Tasks summary/list
+  - Pending action approvals list
+- New server-only workspace data bridge:
+  - File: `apps/web/src/lib/pm-api.ts`
+  - Logs into `apps/api` using `LARRY_API_*` env vars and fetches:
+    - `/v1/projects`
+    - `/v1/tasks`
+    - `/v1/agent/actions?state=pending`
+- Simplified dashboard top controls:
+  - `DashboardActions` now shows beta label + logout (referral CTA removed from this view).
+
+### Auth bridge update
+- Updated `apps/web/src/app/api/auth/login/route.ts`:
+  - If `LARRY_API_BASE_URL` and tenant id are configured, login validates against `apps/api` `/v1/auth/login`.
+  - Falls back to legacy Turso login path when API bridge env is not configured.
+- This enables dashboard access in Stage 1 without requiring Turso for PM-interface testing.
+
+### Env update
+- `apps/web/.env.example` now includes:
+  - `LARRY_API_BASE_URL`
+  - `LARRY_API_TENANT_ID`
+  - `LARRY_API_EMAIL`
+  - `LARRY_API_PASSWORD`
+
+### Validation
+- `npm run web:build` passes after the new workspace shell and login bridge changes.

@@ -8,13 +8,46 @@ import {
 } from "@/lib/auth";
 import { checkRateLimit, recordLoginAttempt } from "@/lib/rate-limit";
 
-// Generic error prevents user enumeration — never reveal whether the
-// email exists or the password is wrong.
 const GENERIC_ERROR = "Invalid email or password.";
 
+interface ApiLoginResponse {
+  accessToken: string;
+  user: {
+    id: string;
+    email: string;
+    tenantId: string;
+    role: string;
+  };
+}
+
+async function tryApiLogin(input: {
+  apiBaseUrl: string;
+  tenantId: string;
+  email: string;
+  password: string;
+}): Promise<{ userId: string } | null> {
+  const response = await fetch(`${input.apiBaseUrl.replace(/\/+$/, "")}/v1/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      tenantId: input.tenantId,
+      email: input.email,
+      password: input.password,
+    }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(12_000),
+  });
+
+  if (!response.ok) return null;
+
+  const payload = (await response.json()) as ApiLoginResponse;
+  if (!payload?.user?.id || !payload?.accessToken) return null;
+
+  return { userId: payload.user.id };
+}
+
 export async function POST(req: NextRequest) {
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
 
   try {
     const { limited } = await checkRateLimit(ip);
@@ -27,6 +60,10 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const { email: rawEmail, password } = body ?? {};
+    const tenantId =
+      typeof body?.tenantId === "string" && body.tenantId.length > 0
+        ? body.tenantId
+        : process.env.LARRY_API_TENANT_ID;
 
     if (!rawEmail || !password) {
       return NextResponse.json(
@@ -36,10 +73,26 @@ export async function POST(req: NextRequest) {
     }
 
     const email = normalizeEmail(String(rawEmail));
-
-    // Record the attempt before querying so rate-limit is enforced even on
-    // invalid input — prevents probing with arbitrary emails for free.
     await recordLoginAttempt(ip);
+
+    const apiBaseUrl = process.env.LARRY_API_BASE_URL;
+    if (apiBaseUrl && tenantId) {
+      const apiAuth = await tryApiLogin({
+        apiBaseUrl,
+        tenantId,
+        email,
+        password: String(password),
+      });
+
+      if (!apiAuth) {
+        return NextResponse.json({ error: GENERIC_ERROR }, { status: 401 });
+      }
+
+      const token = await createSessionToken(apiAuth.userId);
+      const res = NextResponse.json({ success: true });
+      res.cookies.set(sessionCookieOptions(token));
+      return res;
+    }
 
     const db = getDb();
     const result = await db.execute({
@@ -48,17 +101,15 @@ export async function POST(req: NextRequest) {
     });
 
     if (result.rows.length === 0) {
-      // bcrypt compare against a dummy hash equalises timing so response
-      // time cannot reveal whether the email exists.
-      await verifyPassword(String(password), "$2b$12$AAAAAAAAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+      await verifyPassword(
+        String(password),
+        "$2b$12$AAAAAAAAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      );
       return NextResponse.json({ error: GENERIC_ERROR }, { status: 401 });
     }
 
     const user = result.rows[0];
-    const valid = await verifyPassword(
-      String(password),
-      String(user.password_hash)
-    );
+    const valid = await verifyPassword(String(password), String(user.password_hash));
 
     if (!valid) {
       return NextResponse.json({ error: GENERIC_ERROR }, { status: 401 });

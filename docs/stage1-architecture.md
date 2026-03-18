@@ -1,5 +1,11 @@
 # Stage 1 Architecture
 
+## Scope baseline
+
+- Larry Workspace is the source of truth for projects/tasks/dependencies/risk.
+- Slack, Email, and Calendar are connector inputs/outputs around that workspace.
+- External PM tools are intentionally out of v1 scope.
+
 ## Monorepo layout
 
 - `apps/web`: Next.js application
@@ -15,6 +21,12 @@
 - Postgres (Neon target)
 - Redis + BullMQ
 - OpenAI (provider abstraction in `packages/ai`)
+
+## Domain model direction
+
+- Core entities live in Larry-managed tables: tenants, users, memberships, projects, tasks, dependencies, comments, approvals, audit entries.
+- Connector data is normalized into canonical events with provenance and linked back to agent runs.
+- Agent actions are gated by confidence and policy before mutating workspace records.
 
 ## Local dev
 
