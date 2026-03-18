@@ -12,6 +12,7 @@ const GENERIC_ERROR = "Invalid email or password.";
 
 interface ApiLoginResponse {
   accessToken: string;
+  refreshToken?: string;
   user: {
     id: string;
     email: string;
@@ -20,30 +21,52 @@ interface ApiLoginResponse {
   };
 }
 
+function hasTursoConfig(): boolean {
+  return Boolean(process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN);
+}
+
 async function tryApiLogin(input: {
   apiBaseUrl: string;
   tenantId: string;
   email: string;
   password: string;
-}): Promise<{ userId: string } | null> {
-  const response = await fetch(`${input.apiBaseUrl.replace(/\/+$/, "")}/v1/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      tenantId: input.tenantId,
-      email: input.email,
-      password: input.password,
-    }),
-    cache: "no-store",
-    signal: AbortSignal.timeout(12_000),
-  });
+}): Promise<{
+  userId: string;
+  email: string;
+  tenantId: string;
+  role: string;
+  accessToken: string;
+  refreshToken?: string;
+} | null> {
+  try {
+    const response = await fetch(`${input.apiBaseUrl.replace(/\/+$/, "")}/v1/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tenantId: input.tenantId,
+        email: input.email,
+        password: input.password,
+      }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(12_000),
+    });
 
-  if (!response.ok) return null;
+    if (!response.ok) return null;
 
-  const payload = (await response.json()) as ApiLoginResponse;
-  if (!payload?.user?.id || !payload?.accessToken) return null;
+    const payload = (await response.json()) as ApiLoginResponse;
+    if (!payload?.user?.id || !payload?.accessToken) return null;
 
-  return { userId: payload.user.id };
+    return {
+      userId: payload.user.id,
+      email: payload.user.email,
+      tenantId: payload.user.tenantId,
+      role: payload.user.role,
+      accessToken: payload.accessToken,
+      refreshToken: payload.refreshToken,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -76,7 +99,14 @@ export async function POST(req: NextRequest) {
     await recordLoginAttempt(ip);
 
     const apiBaseUrl = process.env.LARRY_API_BASE_URL;
-    if (apiBaseUrl && tenantId) {
+    if (apiBaseUrl) {
+      if (!tenantId) {
+        return NextResponse.json(
+          { error: "Missing tenant ID for API login. Set LARRY_API_TENANT_ID in web env." },
+          { status: 400 }
+        );
+      }
+
       const apiAuth = await tryApiLogin({
         apiBaseUrl,
         tenantId,
@@ -88,10 +118,28 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: GENERIC_ERROR }, { status: 401 });
       }
 
-      const token = await createSessionToken(apiAuth.userId);
+      const token = await createSessionToken({
+        userId: apiAuth.userId,
+        email: apiAuth.email,
+        tenantId: apiAuth.tenantId,
+        role: apiAuth.role,
+        apiAccessToken: apiAuth.accessToken,
+        apiRefreshToken: apiAuth.refreshToken,
+        authMode: "api",
+      });
       const res = NextResponse.json({ success: true });
       res.cookies.set(sessionCookieOptions(token));
       return res;
+    }
+
+    if (!hasTursoConfig()) {
+      return NextResponse.json(
+        {
+          error:
+            "Login is not configured. Set LARRY_API_BASE_URL/LARRY_API_TENANT_ID for API auth, or TURSO_DATABASE_URL/TURSO_AUTH_TOKEN for legacy auth.",
+        },
+        { status: 503 }
+      );
     }
 
     const db = getDb();
@@ -115,7 +163,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: GENERIC_ERROR }, { status: 401 });
     }
 
-    const token = await createSessionToken(String(user.id));
+    const token = await createSessionToken({
+      userId: String(user.id),
+      email,
+      authMode: "legacy",
+    });
     const res = NextResponse.json({ success: true });
     res.cookies.set(sessionCookieOptions(token));
     return res;

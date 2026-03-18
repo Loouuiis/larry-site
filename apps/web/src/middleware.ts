@@ -2,9 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 
 const SESSION_COOKIE = "larry_session";
+const DEV_SESSION_SECRET = "larry-dev-session-secret-change-me-before-production-32+";
 
 function getSecret(): Uint8Array {
-  return new TextEncoder().encode(process.env.SESSION_SECRET ?? "");
+  const secret = process.env.SESSION_SECRET;
+  if (secret && secret.length >= 32) {
+    return new TextEncoder().encode(secret);
+  }
+
+  if (process.env.NODE_ENV !== "production") {
+    return new TextEncoder().encode(DEV_SESSION_SECRET);
+  }
+
+  return new TextEncoder().encode("");
 }
 
 export async function middleware(req: NextRequest) {

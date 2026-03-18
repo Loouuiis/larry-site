@@ -9,6 +9,10 @@ import {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+function hasTursoConfig(): boolean {
+  return Boolean(process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN);
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -43,6 +47,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (!hasTursoConfig()) {
+      return NextResponse.json(
+        {
+          error:
+            "Signup is temporarily disabled in workspace mode. Use the existing dev login or the dev bypass button.",
+        },
+        { status: 503 }
+      );
+    }
+
     const db = getDb();
 
     const existing = await db.execute({
@@ -65,7 +79,11 @@ export async function POST(req: NextRequest) {
       args: [id, email, passwordHash, new Date().toISOString()],
     });
 
-    const token = await createSessionToken(id);
+    const token = await createSessionToken({
+      userId: id,
+      email,
+      authMode: "legacy",
+    });
     const res = NextResponse.json({ success: true }, { status: 201 });
     res.cookies.set(sessionCookieOptions(token));
     return res;

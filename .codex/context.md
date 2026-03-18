@@ -410,3 +410,76 @@ Last updated: 2026-03-16
 
 ### Validation
 - `npm run web:build` passes after the new workspace shell and login bridge changes.
+
+## 2026-03-18 Auth Stabilization + Dev Bypass
+
+### User-facing issue
+- `/api/auth/login` and `/api/auth/signup` were returning HTTP 500 in local web flow.
+- Root causes in Stage 1 workspace mode:
+  - `SESSION_SECRET` was unset in `apps/web/.env`, causing session token signing failures.
+  - Signup route still depended on legacy Turso config; with Turso unset it threw runtime errors.
+
+### Fixes applied
+- `apps/web/src/lib/auth.ts`:
+  - Added development-only fallback session secret when `SESSION_SECRET` is missing.
+  - Production still requires explicit `SESSION_SECRET` (32+ chars).
+- `apps/web/src/middleware.ts`:
+  - Added matching development-only fallback secret to keep JWT verify consistent with signer.
+- `apps/web/src/app/api/auth/login/route.ts`:
+  - Hardened config flow:
+    - Uses API bridge when `LARRY_API_BASE_URL` is set.
+    - Returns explicit config error when no tenant id is available for API mode.
+    - Uses Turso fallback only if Turso env is configured.
+    - Returns clear 503 config error instead of throwing when neither auth backend is configured.
+- `apps/web/src/app/api/auth/signup/route.ts`:
+  - Returns explicit 503 message in workspace mode when Turso signup backend is unavailable.
+- Added development bypass endpoint:
+  - `apps/web/src/app/api/auth/dev-login/route.ts`
+  - Enabled by default in non-production (or `ALLOW_DEV_AUTH_BYPASS=true`).
+  - Sets valid session cookie for immediate dashboard access.
+- Added "Enter Dashboard (Dev)" button in auth UIs:
+  - `apps/web/src/app/(auth)/login/page.tsx`
+  - `apps/web/src/app/(auth)/signup/page.tsx`
+- Updated `apps/web/.env.example` with:
+  - `ALLOW_DEV_AUTH_BYPASS`
+  - `DEV_BYPASS_USER_ID`
+
+### Validation
+- `npm run web:build` passes with new auth flow and dev bypass route.
+
+## 2026-03-18 Per-User Session + Interactive Dashboard
+
+### What changed
+- Web auth now stores API-session data per user in signed httpOnly cookie payload:
+  - `apiAccessToken`
+  - `apiRefreshToken`
+  - `tenantId`, `role`, `email`
+- Login route now persists API tokens returned by backend `/v1/auth/login`.
+- Added API-refresh-aware proxy layer for web route handlers:
+  - `apps/web/src/lib/workspace-proxy.ts`
+  - Uses session token first, refreshes on 401, and persists refreshed session cookie.
+  - Can bootstrap session from service creds when dev bypass session has no API token.
+
+### New workspace API routes in web
+- `GET /api/workspace/snapshot`
+- `POST /api/workspace/projects`
+- `POST /api/workspace/tasks`
+- `POST /api/workspace/actions/:id/approve`
+- `POST /api/workspace/actions/:id/reject`
+
+### Dashboard upgrade
+- Replaced static/placeholder dashboard with interactive client surface:
+  - New file: `apps/web/src/app/dashboard/WorkspaceDashboard.tsx`
+  - Supports:
+    - Create project
+    - Create task
+    - Approve/reject pending actions
+    - Auto-refresh snapshot after mutations
+- `apps/web/src/app/dashboard/page.tsx` now renders this interactive component.
+
+### Additional auth stability
+- `GET /api/auth/me` now supports API/dev mode without Turso dependency.
+- Login form includes optional tenant id input for explicit per-user API login.
+
+### Validation
+- `npm run web:build` passes after per-user session and interaction changes.
