@@ -63,7 +63,7 @@
 /* ─── Base ────────────────────────────────────────────────────────── */
 /* Hide native cursor — CustomCursor component takes over on fine-pointer devices */
 @media (pointer: fine) {
-  * {
+  .cursor-enabled * {
     cursor: none !important;
   }
 }
@@ -274,4 +274,70 @@ h3, h4 {
     animation: none;
     will-change: auto;
   }
+}
+
+/* Dashboard-specific system: dense PM tooling look, no glass treatment. */
+.dashboard-shell {
+  --pm-green: #00C875;
+  --pm-orange: #FDAB3D;
+  --pm-red: #E2445C;
+  --pm-blue: #0073EA;
+  --pm-gray: #C4C4C4;
+  --pm-bg: #f6f7fb;
+  --pm-panel: #ffffff;
+  --pm-border: #d8e0eb;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.dashboard-shell h1,
+.dashboard-shell h2,
+.dashboard-shell h3,
+.dashboard-shell h4 {
+  letter-spacing: -0.015em;
+}
+
+.dashboard-frame,
+.dashboard-sidebar {
+  background: var(--pm-panel);
+}
+
+.dashboard-nav-item {
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #334155;
+}
+
+.dashboard-nav-item:hover {
+  background: #f1f5f9;
+}
+
+.dashboard-project-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: #334155;
+}
+
+.dashboard-project-item:hover {
+  border-color: #dbe3ef;
+  background: #f8fafc;
+}
+
+.dashboard-project-item.active {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
 }

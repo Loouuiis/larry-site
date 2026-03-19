@@ -1,5 +1,10 @@
 import { z } from "zod";
-import type { ExtractedAction, RiskScoreSnapshot } from "@larry/shared";
+import type {
+  ActionReasoning,
+  ExtractedAction,
+  InterventionDecision,
+  RiskScoreSnapshot,
+} from "@larry/shared";
 
 export interface ExtractFromTranscriptInput {
   transcript: string;
@@ -15,6 +20,20 @@ const ExtractedActionSchema = z.object({
   owner: z.string().optional(),
   dueDate: z.string().optional(),
   description: z.string().optional(),
+  actionType: z
+    .enum([
+      "status_update",
+      "task_create",
+      "deadline_change",
+      "owner_change",
+      "scope_change",
+      "risk_escalation",
+      "email_draft",
+      "meeting_invite",
+      "follow_up",
+      "other",
+    ])
+    .optional(),
   confidence: z.number().min(0).max(1),
   impact: z.enum(["low", "medium", "high"]),
   reason: z.string().min(1),
@@ -114,25 +133,156 @@ export function createLlmProvider(options: {
 export type PolicyDecision = {
   requiresApproval: boolean;
   reason: string;
+  threshold: string;
+  decision: "auto_execute" | "approval_required";
 };
 
-export function evaluateActionPolicy(action: ExtractedAction): PolicyDecision {
-  if (action.impact === "high") {
-    return { requiresApproval: true, reason: "High-impact action requires human approval." };
+export interface PolicyThresholds {
+  lowImpactMinConfidence: number;
+  mediumImpactMinConfidence: number;
+}
+
+const DEFAULT_POLICY_THRESHOLDS: PolicyThresholds = {
+  lowImpactMinConfidence: 0.75,
+  mediumImpactMinConfidence: 0.9,
+};
+
+function clampThreshold(value: number, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  if (value < 0.5) return 0.5;
+  if (value > 0.99) return 0.99;
+  return Number(value.toFixed(3));
+}
+
+export function resolvePolicyThresholds(input?: Partial<PolicyThresholds>): PolicyThresholds {
+  return {
+    lowImpactMinConfidence: clampThreshold(
+      input?.lowImpactMinConfidence ?? DEFAULT_POLICY_THRESHOLDS.lowImpactMinConfidence,
+      DEFAULT_POLICY_THRESHOLDS.lowImpactMinConfidence
+    ),
+    mediumImpactMinConfidence: clampThreshold(
+      input?.mediumImpactMinConfidence ?? DEFAULT_POLICY_THRESHOLDS.mediumImpactMinConfidence,
+      DEFAULT_POLICY_THRESHOLDS.mediumImpactMinConfidence
+    ),
+  };
+}
+
+export function inferActionType(action: ExtractedAction): NonNullable<ExtractedAction["actionType"]> {
+  if (action.actionType) return action.actionType;
+
+  const text = `${action.title} ${action.reason}`.toLowerCase();
+  if (/(deadline|due date|reschedul)/.test(text)) return "deadline_change";
+  if (/(owner|assignee|accountab)/.test(text)) return "owner_change";
+  if (/(scope|add work|remove work|change request)/.test(text)) return "scope_change";
+  if (/(risk|escalat|blocked|critical)/.test(text)) return "risk_escalation";
+  if (/(email|follow-up draft|draft)/.test(text)) return "email_draft";
+  if (/(meeting|invite|calendar)/.test(text)) return "meeting_invite";
+  if (/(status|progress|update)/.test(text)) return "status_update";
+  if (/(create task|new task|action:)/.test(text)) return "task_create";
+  if (/(follow up|nudge|remind)/.test(text)) return "follow_up";
+  return "other";
+}
+
+function isStrategicActionType(actionType: NonNullable<ExtractedAction["actionType"]>): boolean {
+  return (
+    actionType === "deadline_change" ||
+    actionType === "owner_change" ||
+    actionType === "scope_change" ||
+    actionType === "risk_escalation"
+  );
+}
+
+export function evaluateActionPolicy(
+  action: ExtractedAction,
+  thresholdsInput?: Partial<PolicyThresholds>
+): PolicyDecision {
+  const thresholds = resolvePolicyThresholds(thresholdsInput);
+  const actionType = inferActionType(action);
+
+  if (isStrategicActionType(actionType)) {
+    return {
+      requiresApproval: true,
+      reason: "Strategic-impact action requires human approval.",
+      threshold: `strategic_action_type=${actionType}`,
+      decision: "approval_required",
+    };
   }
 
-  if (action.confidence < 0.75) {
-    return { requiresApproval: true, reason: "Low confidence extraction requires review." };
+  if (action.impact === "high") {
+    return {
+      requiresApproval: true,
+      reason: "High-impact action requires human approval.",
+      threshold: "impact=high",
+      decision: "approval_required",
+    };
+  }
+
+  if (action.impact === "medium" && action.confidence < thresholds.mediumImpactMinConfidence) {
+    return {
+      requiresApproval: true,
+      reason: "Medium-impact action below confidence threshold requires review.",
+      threshold: `impact=medium;confidence<${thresholds.mediumImpactMinConfidence}`,
+      decision: "approval_required",
+    };
+  }
+
+  if (action.confidence < thresholds.lowImpactMinConfidence) {
+    return {
+      requiresApproval: true,
+      reason: "Low confidence extraction requires review.",
+      threshold: `confidence<${thresholds.lowImpactMinConfidence}`,
+      decision: "approval_required",
+    };
   }
 
   if (/deadline|owner|scope|budget|external/i.test(action.reason + " " + action.title)) {
     return {
       requiresApproval: true,
       reason: "Action appears to modify critical accountability or commitment terms.",
+      threshold: "critical_keyword_match=true",
+      decision: "approval_required",
     };
   }
 
-  return { requiresApproval: false, reason: "Low-risk, high-confidence operational action." };
+  return {
+    requiresApproval: false,
+    reason: "Low-risk, high-confidence operational action.",
+    threshold: `confidence>=${thresholds.lowImpactMinConfidence}`,
+    decision: "auto_execute",
+  };
+}
+
+export function buildInterventionDecision(
+  action: ExtractedAction,
+  thresholdsInput?: Partial<PolicyThresholds>
+): InterventionDecision {
+  const policy = evaluateActionPolicy(action, thresholdsInput);
+  return {
+    actionType: inferActionType(action),
+    impact: action.impact,
+    confidence: action.confidence,
+    requiresApproval: policy.requiresApproval,
+    threshold: policy.threshold,
+    decision: policy.decision,
+    reason: policy.reason,
+    signals: action.signals,
+  };
+}
+
+export function buildActionReasoning(
+  action: ExtractedAction,
+  thresholdsInput?: Partial<PolicyThresholds>
+): ActionReasoning {
+  const intervention = buildInterventionDecision(action, thresholdsInput);
+  return {
+    what: action.title,
+    why: intervention.reason,
+    signals: intervention.signals,
+    threshold: intervention.threshold,
+    decision: intervention.decision,
+    override:
+      "Use Action Center to approve, reject, or correct. Corrections are captured for future threshold tuning.",
+  };
 }
 
 export interface RiskInputs {

@@ -38,6 +38,9 @@ const ApiSchema = SharedSchema.extend({
   GOOGLE_CALENDAR_SCOPES: z.string().default("https://www.googleapis.com/auth/calendar.readonly"),
   GOOGLE_OAUTH_STATE_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
   GOOGLE_CALENDAR_WEBHOOK_URL: z.string().url().optional(),
+  EMAIL_CONNECTOR_PROVIDER: z.string().default("mock"),
+  EMAIL_CONNECTOR_PUBLIC_BASE_URL: z.string().url().optional(),
+  EMAIL_CONNECTOR_OAUTH_STATE_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
 });
 
 const WorkerSchema = SharedSchema.extend({

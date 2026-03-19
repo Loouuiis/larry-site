@@ -237,6 +237,9 @@ CREATE TABLE IF NOT EXISTS extracted_actions (
 CREATE INDEX IF NOT EXISTS idx_extracted_actions_tenant_state
   ON extracted_actions (tenant_id, state, created_at DESC);
 
+ALTER TABLE extracted_actions
+  ADD COLUMN IF NOT EXISTS reasoning JSONB;
+
 CREATE TABLE IF NOT EXISTS approval_decisions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -296,6 +299,87 @@ CREATE TABLE IF NOT EXISTS google_calendar_installations (
 
 CREATE INDEX IF NOT EXISTS idx_google_calendar_installations_tenant
   ON google_calendar_installations (tenant_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS email_installations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  installed_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  provider TEXT NOT NULL DEFAULT 'generic',
+  account_email TEXT NOT NULL,
+  provider_account_id TEXT,
+  oauth_access_token TEXT,
+  oauth_refresh_token TEXT,
+  oauth_scope TEXT,
+  oauth_token_expires_at TIMESTAMPTZ,
+  webhook_secret TEXT NOT NULL DEFAULT gen_random_uuid()::text,
+  connected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (tenant_id, account_email)
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_installations_tenant
+  ON email_installations (tenant_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS email_outbound_drafts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+  action_id UUID REFERENCES extracted_actions(id) ON DELETE SET NULL,
+  created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  recipient TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  body TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'draft',
+  sent_at TIMESTAMPTZ,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_outbound_drafts_tenant_state
+  ON email_outbound_drafts (tenant_id, state, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS interventions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+  task_id UUID REFERENCES tasks(id) ON DELETE SET NULL,
+  agent_run_id UUID REFERENCES agent_runs(id) ON DELETE SET NULL,
+  action_id UUID REFERENCES extracted_actions(id) ON DELETE SET NULL,
+  intervention_type TEXT NOT NULL,
+  threshold TEXT NOT NULL,
+  decision TEXT NOT NULL,
+  requires_approval BOOLEAN NOT NULL,
+  status TEXT NOT NULL DEFAULT 'created',
+  reason TEXT NOT NULL,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_interventions_tenant_created
+  ON interventions (tenant_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS report_snapshots (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+  report_type TEXT NOT NULL,
+  summary JSONB NOT NULL,
+  created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_report_snapshots_tenant_created
+  ON report_snapshots (tenant_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS tenant_policy_settings (
+  tenant_id UUID PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+  low_impact_min_confidence NUMERIC(4,3) NOT NULL DEFAULT 0.750,
+  medium_impact_min_confidence NUMERIC(4,3) NOT NULL DEFAULT 0.900,
+  auto_execute_low_impact BOOLEAN NOT NULL DEFAULT TRUE,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 CREATE TABLE IF NOT EXISTS risk_snapshots (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -364,6 +448,11 @@ ALTER TABLE agent_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE agent_run_transitions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE slack_installations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE google_calendar_installations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE email_installations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE email_outbound_drafts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE interventions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE report_snapshots ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tenant_policy_settings ENABLE ROW LEVEL SECURITY;
 
 DO $$ BEGIN
   CREATE POLICY tenant_isolation_projects ON projects USING (tenant_id::text = current_setting('app.tenant_id', true));
@@ -432,4 +521,35 @@ DO $$ BEGIN
     ON google_calendar_installations
     FOR SELECT
     USING (current_setting('app.tenant_id', true) = '__system__');
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_email_installations
+    ON email_installations
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY email_installations_system_lookup
+    ON email_installations
+    FOR SELECT
+    USING (current_setting('app.tenant_id', true) = '__system__');
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_email_outbound_drafts
+    ON email_outbound_drafts
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_interventions
+    ON interventions
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_report_snapshots
+    ON report_snapshots
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_tenant_policy_settings
+    ON tenant_policy_settings
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
 EXCEPTION WHEN duplicate_object THEN null; END $$;

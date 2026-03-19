@@ -1,6 +1,6 @@
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { evaluateActionPolicy } from "@larry/ai";
+import { buildActionReasoning, buildInterventionDecision, PolicyThresholds } from "@larry/ai";
 import { ExtractedAction } from "@larry/shared";
 import { assertTransition } from "../../services/agent/workflow.js";
 import { writeAuditLog } from "../../lib/audit.js";
@@ -15,6 +15,19 @@ const CreateRunSchema = z.object({
 
 const ActionQuerySchema = z.object({
   state: z.enum(["pending", "approved", "rejected", "overridden", "executed"]).optional(),
+});
+
+const CorrectionBodySchema = z.object({
+  correctionType: z.enum([
+    "false_positive",
+    "false_negative",
+    "bad_reasoning",
+    "payload_edit",
+    "manual_override",
+  ]),
+  note: z.string().max(1_000).optional(),
+  correctionPayload: z.record(z.string(), z.unknown()).default({}),
+  tunePolicy: z.boolean().default(true),
 });
 
 async function transitionRun(
@@ -52,34 +65,85 @@ async function persistAction(
   tenantId: string,
   runId: string,
   projectId: string | undefined,
-  action: ExtractedAction
+  action: ExtractedAction,
+  thresholds?: Partial<PolicyThresholds>
 ): Promise<{ id: string; requiresApproval: boolean }> {
-  const policy = evaluateActionPolicy(action);
-  const state = policy.requiresApproval ? "pending" : "executed";
+  const intervention = buildInterventionDecision(action, thresholds);
+  const reasoning = buildActionReasoning(action, thresholds);
+  const state = intervention.requiresApproval ? "pending" : "executed";
 
   const rows = await fastify.db.queryTenant<{ id: string }>(
     tenantId,
     `INSERT INTO extracted_actions
-      (tenant_id, agent_run_id, project_id, action_type, impact, confidence, reason, signals, payload, state, requires_approval, executed_at)
+      (tenant_id, agent_run_id, project_id, action_type, impact, confidence, reason, signals, payload, reasoning, state, requires_approval, executed_at)
      VALUES
-      ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10, $11, CASE WHEN $11 = false THEN NOW() ELSE NULL END)
+      ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10::jsonb, $11, $12, CASE WHEN $12 = false THEN NOW() ELSE NULL END)
      RETURNING id`,
     [
       tenantId,
       runId,
       projectId ?? null,
-      "task_proposal",
-      action.impact,
+      intervention.actionType,
+      intervention.impact,
       action.confidence,
-      `${action.reason} | ${policy.reason}`,
+      `${action.reason} | ${intervention.reason}`,
       JSON.stringify(action.signals),
       JSON.stringify(action),
+      JSON.stringify(reasoning),
       state,
-      policy.requiresApproval,
+      intervention.requiresApproval,
     ]
   );
 
-  return { id: rows[0].id, requiresApproval: policy.requiresApproval };
+  const actionId = rows[0].id;
+
+  await fastify.db.queryTenant(
+    tenantId,
+    `INSERT INTO interventions
+      (tenant_id, project_id, agent_run_id, action_id, intervention_type, threshold, decision, requires_approval, status, reason, metadata)
+     VALUES
+      ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)`,
+    [
+      tenantId,
+      projectId ?? null,
+      runId,
+      actionId,
+      intervention.actionType,
+      intervention.threshold,
+      intervention.decision,
+      intervention.requiresApproval,
+      intervention.requiresApproval ? "approval_pending" : "executed",
+      intervention.reason,
+      JSON.stringify({
+        impact: intervention.impact,
+        confidence: intervention.confidence,
+        signals: intervention.signals,
+      }),
+    ]
+  );
+
+  return { id: actionId, requiresApproval: intervention.requiresApproval };
+}
+
+async function loadTenantPolicyThresholds(
+  fastify: Parameters<FastifyPluginAsync>[0],
+  tenantId: string
+): Promise<Partial<PolicyThresholds>> {
+  const rows = await fastify.db.queryTenant<{
+    lowImpactMinConfidence: number;
+    mediumImpactMinConfidence: number;
+  }>(
+    tenantId,
+    `SELECT low_impact_min_confidence as "lowImpactMinConfidence",
+            medium_impact_min_confidence as "mediumImpactMinConfidence"
+     FROM tenant_policy_settings
+     WHERE tenant_id = $1
+     LIMIT 1`,
+    [tenantId]
+  );
+
+  if (!rows[0]) return {};
+  return rows[0];
 }
 
 export const agentRoutes: FastifyPluginAsync = async (fastify) => {
@@ -108,6 +172,7 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
 
       const runId = runRows[0].id;
       let currentState = runRows[0].state;
+      const thresholds = await loadTenantPolicyThresholds(fastify, tenantId);
 
       await fastify.db.queryTenant(
         tenantId,
@@ -145,7 +210,7 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
 
       const savedActions: Array<{ id: string; requiresApproval: boolean }> = [];
       for (const action of extracted) {
-        const result = await persistAction(fastify, tenantId, runId, body.projectId, action);
+        const result = await persistAction(fastify, tenantId, runId, body.projectId, action, thresholds);
         savedActions.push(result);
       }
 
@@ -242,7 +307,7 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
       const actions = await fastify.db.queryTenant(
         tenantId,
         `SELECT id, state, requires_approval as "requiresApproval", confidence,
-                impact, reason, payload, created_at as "createdAt"
+                impact, reason, signals, payload, reasoning, created_at as "createdAt"
          FROM extracted_actions
          WHERE tenant_id = $1 AND agent_run_id = $2
          ORDER BY created_at ASC`,
@@ -266,7 +331,7 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
 
       const values: unknown[] = [tenantId];
       let sql = `SELECT id, agent_run_id as "agentRunId", project_id as "projectId", action_type as "actionType",
-                        impact, confidence, reason, payload, state,
+                        impact, confidence, reason, signals, payload, reasoning, state,
                         requires_approval as "requiresApproval", created_at as "createdAt"
                  FROM extracted_actions
                  WHERE tenant_id = $1`;
@@ -280,6 +345,106 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
 
       const rows = await fastify.db.queryTenant(tenantId, sql, values);
       return { items: rows };
+    }
+  );
+
+  fastify.post(
+    "/actions/:id/correct",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
+    async (request) => {
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const body = CorrectionBodySchema.parse(request.body);
+      const tenantId = request.user.tenantId;
+
+      const actionRows = await fastify.db.queryTenant<{ id: string; impact: "low" | "medium" | "high" }>(
+        tenantId,
+        `SELECT id, impact
+         FROM extracted_actions
+         WHERE tenant_id = $1 AND id = $2
+         LIMIT 1`,
+        [tenantId, params.id]
+      );
+
+      if (!actionRows[0]) {
+        throw fastify.httpErrors.notFound("Action not found.");
+      }
+
+      await fastify.db.queryTenant(
+        tenantId,
+        `INSERT INTO correction_feedback
+         (tenant_id, action_id, corrected_by_user_id, correction_type, correction_payload)
+         VALUES ($1, $2, $3, $4, $5::jsonb)`,
+        [
+          tenantId,
+          params.id,
+          request.user.userId,
+          body.correctionType,
+          JSON.stringify({ note: body.note ?? null, ...body.correctionPayload }),
+        ]
+      );
+
+      await fastify.db.queryTenant(
+        tenantId,
+        `UPDATE extracted_actions
+         SET state = CASE WHEN state = 'pending' THEN 'overridden' ELSE state END,
+             updated_at = NOW()
+         WHERE tenant_id = $1 AND id = $2`,
+        [tenantId, params.id]
+      );
+
+      let thresholdTuned = false;
+      if (body.tunePolicy) {
+        await fastify.db.queryTenant(
+          tenantId,
+          `INSERT INTO tenant_policy_settings (tenant_id)
+           VALUES ($1)
+           ON CONFLICT (tenant_id) DO NOTHING`,
+          [tenantId]
+        );
+
+        if (body.correctionType === "false_positive") {
+          await fastify.db.queryTenant(
+            tenantId,
+            `UPDATE tenant_policy_settings
+             SET low_impact_min_confidence = LEAST(0.99, low_impact_min_confidence + 0.02),
+                 medium_impact_min_confidence = LEAST(0.99, medium_impact_min_confidence + 0.02),
+                 updated_at = NOW()
+             WHERE tenant_id = $1`,
+            [tenantId]
+          );
+          thresholdTuned = true;
+        } else if (body.correctionType === "false_negative") {
+          await fastify.db.queryTenant(
+            tenantId,
+            `UPDATE tenant_policy_settings
+             SET low_impact_min_confidence = GREATEST(0.5, low_impact_min_confidence - 0.02),
+                 medium_impact_min_confidence = GREATEST(0.6, medium_impact_min_confidence - 0.02),
+                 updated_at = NOW()
+             WHERE tenant_id = $1`,
+            [tenantId]
+          );
+          thresholdTuned = true;
+        }
+      }
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId: request.user.userId,
+        actionType: "action.correct",
+        objectType: "extracted_action",
+        objectId: params.id,
+        details: {
+          correctionType: body.correctionType,
+          note: body.note ?? null,
+          thresholdTuned,
+        },
+      });
+
+      return {
+        success: true,
+        corrected: true,
+        thresholdTuned,
+      };
     }
   );
 };

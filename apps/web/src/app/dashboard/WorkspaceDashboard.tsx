@@ -1,375 +1,350 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Bot, ChevronDown, FileText, LayoutGrid, ListChecks, WandSparkles } from "lucide-react";
+import { BoardToolbar } from "./BoardToolbar";
+import { RightPanel } from "./RightPanel";
+import { Sidebar } from "./Sidebar";
+import { TaskTable } from "./TaskTable";
+import { useWorkspaceDashboard } from "./useWorkspaceDashboard";
+import { BoardView, WorkspaceTask } from "./types";
 
-interface WorkspaceProject {
-  id: string;
-  name: string;
-  status: string;
-  riskLevel: string | null;
-}
+const INTENT_OPTIONS = [
+  { value: "freeform", label: "Freeform", icon: WandSparkles },
+  { value: "create_plan", label: "Create Plan", icon: ListChecks },
+  { value: "update_scope", label: "Update Scope", icon: LayoutGrid },
+  { value: "draft_follow_up", label: "Follow-up", icon: Bot },
+  { value: "request_summary", label: "Summary", icon: FileText },
+] as const;
 
-interface WorkspaceTask {
-  id: string;
-  projectId: string;
-  title: string;
-  status: string;
-  priority: string;
-  dueDate: string | null;
-}
+const COMMAND_SUGGESTIONS = [
+  "Summarize this week's blockers and propose fixes.",
+  "Generate ownership follow-ups for overdue items.",
+  "Create a leadership update based on project risk.",
+  "Turn meeting actions into tasks with deadlines.",
+];
 
-interface WorkspaceAction {
-  id: string;
-  impact: string;
-  confidence: string | number;
-  reason: string;
-}
-
-interface WorkspaceSnapshot {
-  connected: boolean;
-  projects: WorkspaceProject[];
-  tasks: WorkspaceTask[];
-  pendingActions: WorkspaceAction[];
-  error?: string;
-}
-
-const EMPTY_SNAPSHOT: WorkspaceSnapshot = {
-  connected: false,
-  projects: [],
-  tasks: [],
-  pendingActions: [],
-};
-
-async function readJson<T>(response: Response): Promise<T> {
-  return (await response.json()) as T;
+function mapBoardViewLabel(view: BoardView): string {
+  if (view === "kanban") return "Kanban";
+  if (view === "gantt") return "Timeline";
+  return "Table";
 }
 
 export function WorkspaceDashboard() {
-  const [snapshot, setSnapshot] = useState<WorkspaceSnapshot>(EMPTY_SNAPSHOT);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string>("");
+  const {
+    loading,
+    error,
+    notice,
+    snapshot,
+    connectors,
+    selectedProjectId,
+    selectedProject,
+    boardTasks,
+    taskGroups,
+    groupedCounts,
+    actionCards,
+    boardView,
+    searchQuery,
+    collapsedGroups,
+    rightPanelOpen,
+    projectName,
+    projectBusy,
+    taskTitle,
+    taskBusy,
+    canCreateTask,
+    taskTriageBusyId,
+    taskMoveBusyId,
+    larryPrompt,
+    larryIntent,
+    larryBusy,
+    lastLarryResponse,
+    meetingTranscript,
+    meetingBusy,
+    actionBusyId,
+    correctionBusyId,
+    draftBusyId,
+    setProjectName,
+    setTaskTitle,
+    setBoardView,
+    setSearchQuery,
+    setLarryPrompt,
+    setLarryIntent,
+    setMeetingTranscript,
+    setRightPanelOpen,
+    toggleGroupCollapse,
+    selectProject,
+    handleCreateProject,
+    handleCreateTask,
+    handleTaskTriage,
+    handleMoveTask,
+    handleActionDecision,
+    handleActionCorrect,
+    handleLarryRun,
+    handleMeetingTranscriptSubmit,
+    openConnectorInstall,
+    sendEmailDraft,
+  } = useWorkspaceDashboard();
 
-  const [projectName, setProjectName] = useState("");
-  const [projectBusy, setProjectBusy] = useState(false);
-
-  const [taskTitle, setTaskTitle] = useState("");
-  const [selectedProjectId, setSelectedProjectId] = useState("");
-  const [taskBusy, setTaskBusy] = useState(false);
-
-  const [actionBusyId, setActionBusyId] = useState<string | null>(null);
-
-  const loadSnapshot = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const response = await fetch("/api/workspace/snapshot", {
-        method: "GET",
-        cache: "no-store",
-      });
-      const data = await readJson<WorkspaceSnapshot & { details?: unknown }>(response);
-      if (!response.ok) {
-        setSnapshot({
-          ...EMPTY_SNAPSHOT,
-          connected: false,
-          error: data.error ?? "Failed to load workspace snapshot.",
-        });
-        setError(data.error ?? "Failed to load workspace snapshot.");
-        return;
-      }
-      setSnapshot({
-        connected: Boolean(data.connected),
-        projects: Array.isArray(data.projects) ? data.projects : [],
-        tasks: Array.isArray(data.tasks) ? data.tasks : [],
-        pendingActions: Array.isArray(data.pendingActions) ? data.pendingActions : [],
-        error: data.error,
-      });
-    } catch {
-      setSnapshot({
-        ...EMPTY_SNAPSHOT,
-        connected: false,
-        error: "Workspace snapshot network error.",
-      });
-      setError("Workspace snapshot network error.");
-    } finally {
-      setLoading(false);
-    }
+  const [suggestionIndex, setSuggestionIndex] = useState(0);
+  const taskInputRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setSuggestionIndex((current) => (current + 1) % COMMAND_SUGGESTIONS.length);
+    }, 3500);
+    return () => window.clearInterval(id);
   }, []);
 
-  useEffect(() => {
-    void loadSnapshot();
-  }, [loadSnapshot]);
+  const connectorDots = [
+    { key: "slack" as const, label: "Slack", connected: Boolean(connectors?.slack?.connected) },
+    { key: "calendar" as const, label: "Calendar", connected: Boolean(connectors?.calendar?.connected) },
+    { key: "email" as const, label: "Email", connected: Boolean(connectors?.email?.connected) },
+  ];
 
-  useEffect(() => {
-    if (!selectedProjectId && snapshot.projects.length > 0) {
-      setSelectedProjectId(snapshot.projects[0].id);
-    }
-  }, [selectedProjectId, snapshot.projects]);
+  const onTaskTriageFromRow = (task: WorkspaceTask) => handleTaskTriage(task);
+  const selectedProjectName = selectedProject?.name ?? "Project board";
 
-  const projectCount = snapshot.projects.length;
-  const taskCount = snapshot.tasks.length;
-  const pendingActionCount = snapshot.pendingActions.length;
+  const completionRate = Number(snapshot.health?.completionRate ?? 0);
+  const avgRiskScore = Number(snapshot.health?.avgRiskScore ?? 0);
+  const blockedCount = snapshot.health?.blockedCount ?? 0;
 
-  const canCreateTask = useMemo(
-    () => Boolean(selectedProjectId && taskTitle.trim().length > 0),
-    [selectedProjectId, taskTitle]
-  );
-
-  async function handleCreateProject(e: React.FormEvent) {
-    e.preventDefault();
-    const name = projectName.trim();
-    if (!name) return;
-
-    setProjectBusy(true);
-    setError("");
-    try {
-      const response = await fetch("/api/workspace/projects", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
-      });
-      const body = await readJson<{ error?: string }>(response);
-      if (!response.ok) {
-        setError(body.error ?? "Failed to create project.");
-        return;
-      }
-      setProjectName("");
-      await loadSnapshot();
-    } catch {
-      setError("Create project network error.");
-    } finally {
-      setProjectBusy(false);
-    }
-  }
-
-  async function handleCreateTask(e: React.FormEvent) {
-    e.preventDefault();
-    const title = taskTitle.trim();
-    if (!title || !selectedProjectId) return;
-
-    setTaskBusy(true);
-    setError("");
-    try {
-      const response = await fetch("/api/workspace/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId: selectedProjectId,
-          title,
-          priority: "medium",
-        }),
-      });
-      const body = await readJson<{ error?: string }>(response);
-      if (!response.ok) {
-        setError(body.error ?? "Failed to create task.");
-        return;
-      }
-      setTaskTitle("");
-      await loadSnapshot();
-    } catch {
-      setError("Create task network error.");
-    } finally {
-      setTaskBusy(false);
-    }
-  }
-
-  async function handleActionDecision(actionId: string, decision: "approve" | "reject") {
-    setActionBusyId(actionId);
-    setError("");
-    try {
-      const response = await fetch(`/api/workspace/actions/${actionId}/${decision}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ note: `UI ${decision}` }),
-      });
-      const body = await readJson<{ error?: string }>(response);
-      if (!response.ok) {
-        setError(body.error ?? `Failed to ${decision} action.`);
-        return;
-      }
-      await loadSnapshot();
-    } catch {
-      setError(`Action ${decision} network error.`);
-    } finally {
-      setActionBusyId(null);
-    }
-  }
+  const activeIntent = INTENT_OPTIONS.find((option) => option.value === larryIntent);
 
   return (
-    <section className="mx-auto w-full max-w-6xl">
-      <header className="mb-6">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-500">
-          Larry Workspace
-        </p>
-        <h1 className="text-3xl font-semibold tracking-tight text-neutral-900 sm:text-4xl">
-          Project Command Center
-        </h1>
-        <p className="mt-2 text-sm text-neutral-600 sm:text-base">
-          Live per-user workspace data with project/task creation and action approvals.
-        </p>
-      </header>
-
+    <section className="dashboard-shell mx-auto w-full max-w-[1700px]">
       {(error || snapshot.error) && (
-        <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50/95 p-4 text-sm text-amber-900">
-          <p className="font-medium">Workspace notice</p>
-          <p className="mt-1">{error || snapshot.error}</p>
+        <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
+          {error || snapshot.error}
+        </div>
+      )}
+      {notice && (
+        <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-900">
+          {notice}
         </div>
       )}
 
-      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <article className="rounded-2xl border border-neutral-200 bg-white/85 p-4 backdrop-blur-sm">
-          <p className="text-xs uppercase tracking-wider text-neutral-500">Projects</p>
-          <p className="mt-2 text-3xl font-semibold text-neutral-900">{loading ? "-" : projectCount}</p>
-        </article>
-        <article className="rounded-2xl border border-neutral-200 bg-white/85 p-4 backdrop-blur-sm">
-          <p className="text-xs uppercase tracking-wider text-neutral-500">Tasks</p>
-          <p className="mt-2 text-3xl font-semibold text-neutral-900">{loading ? "-" : taskCount}</p>
-        </article>
-        <article className="rounded-2xl border border-neutral-200 bg-white/85 p-4 backdrop-blur-sm">
-          <p className="text-xs uppercase tracking-wider text-neutral-500">Pending Actions</p>
-          <p className="mt-2 text-3xl font-semibold text-neutral-900">{loading ? "-" : pendingActionCount}</p>
-        </article>
-      </div>
+      <div className="dashboard-frame grid min-h-[80vh] grid-cols-1 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm xl:grid-cols-[290px_minmax(0,1fr)]">
+        <Sidebar
+          workspaceName={snapshot.boardMeta?.workspaceName ?? "Larry Workspace"}
+          projects={snapshot.projects}
+          selectedProjectId={selectedProjectId}
+          onSelectProject={selectProject}
+          connectorDots={connectorDots}
+        />
 
-      <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <form onSubmit={handleCreateProject} className="rounded-2xl border border-neutral-200 bg-white/90 p-4 backdrop-blur-sm">
-          <h2 className="text-base font-semibold text-neutral-900">Create Project</h2>
-          <div className="mt-3 flex gap-2">
-            <input
-              value={projectName}
-              onChange={(e) => setProjectName(e.target.value)}
-              placeholder="Project name"
-              className="h-10 flex-1 rounded-xl border border-neutral-300 bg-white px-3 text-sm outline-none focus:border-neutral-500"
-            />
-            <button
-              type="submit"
-              disabled={projectBusy || projectName.trim().length === 0}
-              className="h-10 rounded-xl border border-neutral-900 px-4 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {projectBusy ? "Adding..." : "Add"}
-            </button>
-          </div>
-        </form>
+        <div className="min-w-0 bg-[#f6f7fb]">
+          <div className="grid grid-cols-1 gap-3 p-3 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <main className="min-w-0 space-y-3">
+              <BoardToolbar
+                projects={snapshot.projects}
+                selectedProjectId={selectedProjectId}
+                selectedProjectName={selectedProjectName}
+                searchQuery={searchQuery}
+                onSelectProject={selectProject}
+                onSearchChange={setSearchQuery}
+                onNewTaskClick={() => taskInputRef.current?.focus()}
+              />
 
-        <form onSubmit={handleCreateTask} className="rounded-2xl border border-neutral-200 bg-white/90 p-4 backdrop-blur-sm">
-          <h2 className="text-base font-semibold text-neutral-900">Create Task</h2>
-          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[1fr,1fr,auto]">
-            <input
-              value={taskTitle}
-              onChange={(e) => setTaskTitle(e.target.value)}
-              placeholder="Task title"
-              className="h-10 rounded-xl border border-neutral-300 bg-white px-3 text-sm outline-none focus:border-neutral-500"
-            />
-            <select
-              value={selectedProjectId}
-              onChange={(e) => setSelectedProjectId(e.target.value)}
-              className="h-10 rounded-xl border border-neutral-300 bg-white px-3 text-sm outline-none focus:border-neutral-500"
-            >
-              <option value="">Select project</option>
-              {snapshot.projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name}
-                </option>
-              ))}
-            </select>
-            <button
-              type="submit"
-              disabled={taskBusy || !canCreateTask}
-              className="h-10 rounded-xl border border-neutral-900 px-4 text-sm font-medium text-neutral-900 transition-colors hover:bg-neutral-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {taskBusy ? "Adding..." : "Add"}
-            </button>
-          </div>
-        </form>
-      </div>
+              <section className="rounded-lg border border-slate-200 bg-white p-3">
+                <div className="mb-2 flex flex-wrap items-center gap-2">
+                  {INTENT_OPTIONS.map((intent) => {
+                    const Icon = intent.icon;
+                    const active = larryIntent === intent.value;
+                    return (
+                      <button
+                        key={intent.value}
+                        type="button"
+                        onClick={() => setLarryIntent(intent.value)}
+                        className={`inline-flex h-8 items-center gap-1 rounded-full border px-3 text-xs font-medium transition ${
+                          active
+                            ? "border-[#0073EA] bg-[#0073EA] text-white"
+                            : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                        }`}
+                      >
+                        <Icon size={13} />
+                        {intent.label}
+                      </button>
+                    );
+                  })}
+                </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <section className="rounded-2xl border border-neutral-200 bg-white/90 p-4 backdrop-blur-sm">
-          <h2 className="text-base font-semibold text-neutral-900">Projects</h2>
-          <div className="mt-3 space-y-3">
-            {snapshot.projects.slice(0, 8).map((project) => (
-              <article key={project.id} className="rounded-xl border border-neutral-200/90 bg-white p-3">
-                <p className="text-sm font-medium text-neutral-900">{project.name}</p>
-                <p className="mt-1 text-xs text-neutral-600">
-                  Status: <span className="font-medium">{project.status}</span>
-                </p>
-                <p className="mt-1 text-xs text-neutral-600">
-                  Risk: <span className="font-medium">{project.riskLevel ?? "unknown"}</span>
-                </p>
-              </article>
-            ))}
-            {snapshot.projects.length === 0 && (
-              <p className="rounded-xl border border-dashed border-neutral-300 p-3 text-sm text-neutral-500">
-                No projects yet.
-              </p>
-            )}
-          </div>
-        </section>
-
-        <section className="rounded-2xl border border-neutral-200 bg-white/90 p-4 backdrop-blur-sm">
-          <h2 className="text-base font-semibold text-neutral-900">Tasks</h2>
-          <div className="mt-3 space-y-3">
-            {snapshot.tasks.slice(0, 10).map((task) => (
-              <article key={task.id} className="rounded-xl border border-neutral-200/90 bg-white p-3">
-                <p className="text-sm font-medium text-neutral-900">{task.title}</p>
-                <p className="mt-1 text-xs text-neutral-600">
-                  {task.status} · {task.priority}
-                </p>
-                <p className="mt-1 text-xs text-neutral-500">
-                  Due: {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : "n/a"}
-                </p>
-              </article>
-            ))}
-            {snapshot.tasks.length === 0 && (
-              <p className="rounded-xl border border-dashed border-neutral-300 p-3 text-sm text-neutral-500">
-                No tasks yet.
-              </p>
-            )}
-          </div>
-        </section>
-
-        <section className="rounded-2xl border border-neutral-200 bg-white/90 p-4 backdrop-blur-sm">
-          <h2 className="text-base font-semibold text-neutral-900">Action Center</h2>
-          <div className="mt-3 space-y-3">
-            {snapshot.pendingActions.slice(0, 10).map((action) => {
-              const busy = actionBusyId === action.id;
-              return (
-                <article key={action.id} className="rounded-xl border border-neutral-200/90 bg-white p-3">
-                  <p className="text-xs uppercase tracking-wider text-neutral-500">{action.impact}</p>
-                  <p className="mt-1 text-sm text-neutral-800">{action.reason}</p>
-                  <p className="mt-2 text-xs text-neutral-500">
-                    Confidence:{" "}
-                    {typeof action.confidence === "number"
-                      ? action.confidence.toFixed(2)
-                      : action.confidence}
-                  </p>
-                  <div className="mt-3 flex gap-2">
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void handleActionDecision(action.id, "approve")}
-                      className="rounded-lg border border-neutral-900 px-3 py-1.5 text-xs font-medium text-neutral-900 transition-colors hover:bg-neutral-900 hover:text-white disabled:opacity-50"
-                    >
-                      Approve
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void handleActionDecision(action.id, "reject")}
-                      className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-700 transition-colors hover:border-neutral-900 hover:text-neutral-900 disabled:opacity-50"
-                    >
-                      Reject
-                    </button>
+                <form onSubmit={handleLarryRun} className="grid gap-2 md:grid-cols-[1fr_auto]">
+                  <div className="relative">
+                    <input
+                      value={larryPrompt}
+                      onChange={(event) => setLarryPrompt(event.target.value)}
+                      placeholder={COMMAND_SUGGESTIONS[suggestionIndex]}
+                      className="h-11 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-[#0073EA]"
+                    />
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 rounded bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
+                      {activeIntent?.label}
+                    </span>
                   </div>
-                </article>
-              );
-            })}
-            {snapshot.pendingActions.length === 0 && (
-              <p className="rounded-xl border border-dashed border-neutral-300 p-3 text-sm text-neutral-500">
-                No pending approval actions.
-              </p>
-            )}
+                  <button
+                    type="submit"
+                    disabled={larryBusy || larryPrompt.trim().length < 3}
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-md bg-[#0073EA] px-4 text-sm font-semibold text-white hover:bg-[#0068d6] disabled:opacity-50"
+                  >
+                    <WandSparkles size={16} />
+                    {larryBusy ? "Running..." : "Ask Larry"}
+                  </button>
+                </form>
+                {lastLarryResponse && (
+                  <p className="mt-2 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
+                    {lastLarryResponse}
+                  </p>
+                )}
+              </section>
+
+              <section className="rounded-lg border border-slate-200 bg-white p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Meeting to Execution</p>
+                  <span className="text-[11px] text-slate-500">Transcript upload-first</span>
+                </div>
+                <textarea
+                  value={meetingTranscript}
+                  onChange={(event) => setMeetingTranscript(event.target.value)}
+                  rows={4}
+                  placeholder="Paste meeting transcript here. Larry will extract actions, owners, and deadlines."
+                  className="w-full resize-y rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[#0073EA]"
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleMeetingTranscriptSubmit()}
+                  disabled={meetingBusy || meetingTranscript.trim().length < 20}
+                  className="mt-2 inline-flex h-9 items-center gap-2 rounded-md bg-[#111827] px-3 text-sm font-medium text-white hover:bg-[#1f2937] disabled:opacity-50"
+                >
+                  <Bot size={14} />
+                  {meetingBusy ? "Processing..." : "Process transcript"}
+                </button>
+              </section>
+
+              <section className="rounded-lg border border-slate-200 bg-white p-3">
+                <form onSubmit={handleCreateTask} className="mb-3 grid gap-2 md:grid-cols-[1fr_220px_auto]">
+                  <input
+                    ref={taskInputRef}
+                    value={taskTitle}
+                    onChange={(event) => setTaskTitle(event.target.value)}
+                    placeholder="Task title"
+                    className="h-10 rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-[#0073EA]"
+                  />
+
+                  <div className="relative">
+                    <select
+                      value={selectedProjectId}
+                      onChange={(event) => selectProject(event.target.value)}
+                      className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 pr-7 text-sm outline-none focus:border-[#0073EA]"
+                    >
+                      <option value="">Select project</option>
+                      {snapshot.projects.map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500" />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={taskBusy || !canCreateTask}
+                    className="h-10 rounded-md bg-[#0073EA] px-4 text-sm font-semibold text-white hover:bg-[#0068d6] disabled:opacity-50"
+                  >
+                    {taskBusy ? "Adding..." : "Add task"}
+                  </button>
+                </form>
+
+                <div className="mb-3 grid grid-cols-3 gap-2 text-xs sm:grid-cols-6">
+                  <div className="rounded-md border border-slate-200 bg-slate-50 p-2 text-center">Backlog<br /><span className="text-base font-semibold">{groupedCounts.backlog}</span></div>
+                  <div className="rounded-md border border-slate-200 bg-slate-50 p-2 text-center">Not started<br /><span className="text-base font-semibold">{groupedCounts.not_started}</span></div>
+                  <div className="rounded-md border border-slate-200 bg-slate-50 p-2 text-center">In progress<br /><span className="text-base font-semibold">{groupedCounts.in_progress}</span></div>
+                  <div className="rounded-md border border-slate-200 bg-slate-50 p-2 text-center">Waiting<br /><span className="text-base font-semibold">{groupedCounts.waiting}</span></div>
+                  <div className="rounded-md border border-slate-200 bg-slate-50 p-2 text-center">Blocked<br /><span className="text-base font-semibold">{groupedCounts.blocked}</span></div>
+                  <div className="rounded-md border border-slate-200 bg-slate-50 p-2 text-center">Done<br /><span className="text-base font-semibold">{groupedCounts.completed}</span></div>
+                </div>
+
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <div className="inline-flex rounded-md border border-slate-200 bg-slate-50 p-1 text-xs">
+                    {(["table", "kanban", "gantt"] as BoardView[]).map((view) => (
+                      <button
+                        key={view}
+                        type="button"
+                        onClick={() => setBoardView(view)}
+                        className={`rounded px-2.5 py-1 font-medium ${
+                          boardView === view ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"
+                        }`}
+                      >
+                        {mapBoardViewLabel(view)}
+                      </button>
+                    ))}
+                  </div>
+                  <span className="text-xs text-slate-500">
+                    {loading ? "Refreshing board..." : `${boardTasks.length} tasks in view`}
+                  </span>
+                </div>
+
+                <TaskTable
+                  boardView={boardView}
+                  groups={taskGroups}
+                  collapsedGroups={collapsedGroups}
+                  moveBusyTaskId={taskMoveBusyId}
+                  triageBusyTaskId={taskTriageBusyId}
+                  onToggleGroup={toggleGroupCollapse}
+                  onMoveTask={handleMoveTask}
+                  onTaskTriage={onTaskTriageFromRow}
+                  onAddTaskClick={() => taskInputRef.current?.focus()}
+                />
+              </section>
+
+              <section className="rounded-lg border border-slate-200 bg-white p-3">
+                <form onSubmit={handleCreateProject} className="grid gap-2 md:grid-cols-[1fr_auto]">
+                  <input
+                    value={projectName}
+                    onChange={(event) => setProjectName(event.target.value)}
+                    placeholder="Create a new project board"
+                    className="h-10 rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-[#0073EA]"
+                  />
+                  <button
+                    type="submit"
+                    disabled={projectBusy || projectName.trim().length === 0}
+                    className="h-10 rounded-md bg-[#111827] px-4 text-sm font-semibold text-white hover:bg-[#1f2937] disabled:opacity-50"
+                  >
+                    {projectBusy ? "Creating..." : "Create project"}
+                  </button>
+                </form>
+              </section>
+            </main>
+
+            <div className="xl:hidden">
+              <button
+                type="button"
+                onClick={() => setRightPanelOpen(!rightPanelOpen)}
+                className="mb-2 inline-flex h-9 items-center gap-2 rounded-md border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700"
+              >
+                {rightPanelOpen ? "Hide" : "Show"} Action Center
+              </button>
+            </div>
+
+            <div className={`${rightPanelOpen ? "block" : "hidden"} xl:block`}>
+              <RightPanel
+                completionRate={completionRate}
+                avgRiskScore={avgRiskScore}
+                blockedCount={blockedCount}
+                outcomes={snapshot.outcomes}
+                actionCards={actionCards}
+                activityItems={snapshot.activity ?? []}
+                emailDrafts={snapshot.emailDrafts ?? []}
+                actionBusyId={actionBusyId}
+                correctionBusyId={correctionBusyId}
+                draftBusyId={draftBusyId}
+                connectors={connectors ?? {}}
+                onActionDecision={handleActionDecision}
+                onActionCorrect={handleActionCorrect}
+                onConnectorInstall={openConnectorInstall}
+                onSendDraft={sendEmailDraft}
+              />
+            </div>
           </div>
-        </section>
+        </div>
       </div>
     </section>
   );

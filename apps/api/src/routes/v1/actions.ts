@@ -144,6 +144,22 @@ async function recordDecision(
   );
 }
 
+async function updateInterventionStatus(
+  fastify: Parameters<FastifyPluginAsync>[0],
+  tenantId: string,
+  actionId: string,
+  status: string
+): Promise<void> {
+  await fastify.db.queryTenant(
+    tenantId,
+    `UPDATE interventions
+     SET status = $3,
+         updated_at = NOW()
+     WHERE tenant_id = $1 AND action_id = $2`,
+    [tenantId, actionId, status]
+  );
+}
+
 export const actionRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     "/:id/approve",
@@ -171,6 +187,7 @@ export const actionRoutes: FastifyPluginAsync = async (fastify) => {
         decision: "approved",
         note: body.note,
       });
+      await updateInterventionStatus(fastify, tenantId, params.id, "approved");
 
       await writeAuditLog(fastify.db, {
         tenantId,
@@ -217,6 +234,7 @@ export const actionRoutes: FastifyPluginAsync = async (fastify) => {
         decision: "rejected",
         note: body.note,
       });
+      await updateInterventionStatus(fastify, tenantId, params.id, "rejected");
 
       await writeAuditLog(fastify.db, {
         tenantId,
@@ -267,6 +285,7 @@ export const actionRoutes: FastifyPluginAsync = async (fastify) => {
         decision: "overridden",
         note: body.note,
       });
+      await updateInterventionStatus(fastify, tenantId, params.id, "overridden");
 
       await fastify.db.queryTenant(
         tenantId,

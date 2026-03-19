@@ -13,7 +13,7 @@ export function LogoutButton() {
   return (
     <button
       onClick={handleLogout}
-      className="inline-flex h-9 items-center rounded-full border border-neutral-200 bg-transparent px-5 text-sm font-medium text-neutral-600 transition-colors duration-200 hover:border-neutral-900 hover:text-neutral-900"
+      className="inline-flex h-9 items-center rounded-full border border-slate-300 bg-white px-5 text-sm font-medium text-slate-600 transition-colors duration-200 hover:border-slate-900 hover:text-slate-900"
     >
       Log out
     </button>

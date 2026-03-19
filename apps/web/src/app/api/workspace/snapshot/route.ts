@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { persistSession, proxyApiRequest } from "@/lib/workspace-proxy";
 
@@ -10,7 +10,14 @@ function extractItems<T>(value: unknown): T[] {
   return Array.isArray(maybe) ? maybe : [];
 }
 
-export async function GET() {
+function extractError(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  if ("error" in value && typeof value.error === "string") return value.error;
+  if ("message" in value && typeof value.message === "string") return value.message;
+  return null;
+}
+
+export async function GET(request: NextRequest) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ connected: false, error: "Unauthorized" }, { status: 401 });
@@ -35,20 +42,108 @@ export async function GET() {
   }
 
   const activeSession = projectsResult.session ?? session;
+  const projects = extractItems<{ id: string }>(projectsResult.body);
+  const queryProjectId = request.nextUrl.searchParams.get("projectId");
+  const selectedProjectId =
+    queryProjectId || (projects.length > 0 && typeof projects[0].id === "string" ? projects[0].id : null);
+
   const [tasksResult, actionsResult] = await Promise.all([
     proxyApiRequest(activeSession, "/v1/tasks"),
     proxyApiRequest(activeSession, "/v1/agent/actions?state=pending"),
   ]);
+  const [
+    timelineResult,
+    healthResult,
+    outcomesResult,
+    slackStatusResult,
+    calendarStatusResult,
+    emailStatusResult,
+    activityResult,
+    emailDraftsResult,
+  ] = await Promise.all(
+    selectedProjectId
+      ? [
+          proxyApiRequest(activeSession, `/v1/projects/${selectedProjectId}/timeline`),
+          proxyApiRequest(activeSession, `/v1/projects/${selectedProjectId}/health`),
+          proxyApiRequest(activeSession, `/v1/projects/${selectedProjectId}/outcomes`),
+          proxyApiRequest(activeSession, "/v1/connectors/slack/status"),
+          proxyApiRequest(activeSession, "/v1/connectors/google-calendar/status"),
+          proxyApiRequest(activeSession, "/v1/connectors/email/status"),
+          proxyApiRequest(activeSession, "/v1/activity?limit=20"),
+          proxyApiRequest(activeSession, "/v1/connectors/email/drafts?state=draft&limit=10"),
+        ]
+      : [
+          Promise.resolve({ status: 200, body: null, session: activeSession }),
+          Promise.resolve({ status: 200, body: null, session: activeSession }),
+          Promise.resolve({ status: 200, body: null, session: activeSession }),
+          proxyApiRequest(activeSession, "/v1/connectors/slack/status"),
+          proxyApiRequest(activeSession, "/v1/connectors/google-calendar/status"),
+          proxyApiRequest(activeSession, "/v1/connectors/email/status"),
+          proxyApiRequest(activeSession, "/v1/activity?limit=20"),
+          proxyApiRequest(activeSession, "/v1/connectors/email/drafts?state=draft&limit=10"),
+        ]
+  );
 
-  const updatedSession = tasksResult.session ?? actionsResult.session ?? activeSession;
+  const updatedSession =
+    tasksResult.session ??
+    actionsResult.session ??
+    timelineResult.session ??
+    healthResult.session ??
+    outcomesResult.session ??
+    slackStatusResult.session ??
+    calendarStatusResult.session ??
+    emailStatusResult.session ??
+    activityResult.session ??
+    emailDraftsResult.session ??
+    activeSession;
   if (updatedSession) {
     await persistSession(updatedSession);
   }
 
+  const error =
+    extractError(tasksResult.body) ||
+    extractError(actionsResult.body) ||
+    extractError(timelineResult.body) ||
+    extractError(healthResult.body) ||
+    extractError(outcomesResult.body) ||
+    extractError(slackStatusResult.body) ||
+    extractError(calendarStatusResult.body) ||
+    extractError(emailStatusResult.body) ||
+    extractError(activityResult.body) ||
+    extractError(emailDraftsResult.body) ||
+    undefined;
+
+  const connectors = {
+    slack:
+      slackStatusResult.body && typeof slackStatusResult.body === "object"
+        ? slackStatusResult.body
+        : { connected: false },
+    calendar:
+      calendarStatusResult.body && typeof calendarStatusResult.body === "object"
+        ? calendarStatusResult.body
+        : { connected: false },
+    email:
+      emailStatusResult.body && typeof emailStatusResult.body === "object"
+        ? emailStatusResult.body
+        : { connected: false },
+  };
+
   return NextResponse.json({
     connected: true,
-    projects: extractItems(projectsResult.body),
+    boardMeta: {
+      workspaceName: "Larry Workspace",
+      generatedAt: new Date().toISOString(),
+    },
+    selectedProjectId,
+    projects,
     tasks: extractItems(tasksResult.body),
     pendingActions: extractItems(actionsResult.body),
+    timeline: timelineResult.body,
+    health: healthResult.body,
+    outcomes: outcomesResult.body,
+    connectors,
+    activity: extractItems(activityResult.body),
+    emailDrafts: extractItems(emailDraftsResult.body),
+    error,
   });
 }

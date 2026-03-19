@@ -3,7 +3,12 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Job, QueueEvents, Worker } from "bullmq";
-import { createLlmProvider, evaluateActionPolicy } from "@larry/ai";
+import {
+  buildActionReasoning,
+  buildInterventionDecision,
+  createLlmProvider,
+  PolicyThresholds,
+} from "@larry/ai";
 import { getWorkerEnv } from "@larry/config";
 import { Db } from "@larry/db";
 import { AgentRunState, EVENT_QUEUE_NAME, ExtractedAction, QueueMessage } from "@larry/shared";
@@ -295,37 +300,85 @@ async function persistAction(
   tenantId: string,
   runId: string,
   projectId: string | null,
-  action: ExtractedAction
+  action: ExtractedAction,
+  thresholds?: Partial<PolicyThresholds>
 ): Promise<{ id: string; requiresApproval: boolean }> {
-  const policy = evaluateActionPolicy(action);
-  const actionState = policy.requiresApproval ? "pending" : "executed";
+  const intervention = buildInterventionDecision(action, thresholds);
+  const reasoning = buildActionReasoning(action, thresholds);
+  const actionState = intervention.requiresApproval ? "pending" : "executed";
 
   const rows = await db.queryTenant<{ id: string }>(
     tenantId,
     `INSERT INTO extracted_actions
-      (tenant_id, agent_run_id, project_id, action_type, impact, confidence, reason, signals, payload, state, requires_approval, executed_at)
+      (tenant_id, agent_run_id, project_id, action_type, impact, confidence, reason, signals, payload, reasoning, state, requires_approval, executed_at)
      VALUES
-      ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10, $11, CASE WHEN $11 = false THEN NOW() ELSE NULL END)
+      ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10::jsonb, $11, $12, CASE WHEN $12 = false THEN NOW() ELSE NULL END)
      RETURNING id`,
     [
       tenantId,
       runId,
       projectId,
-      "task_proposal",
-      action.impact,
+      intervention.actionType,
+      intervention.impact,
       action.confidence,
-      `${action.reason} | ${policy.reason}`,
+      `${action.reason} | ${intervention.reason}`,
       JSON.stringify(action.signals),
       JSON.stringify(action),
+      JSON.stringify(reasoning),
       actionState,
-      policy.requiresApproval,
+      intervention.requiresApproval,
+    ]
+  );
+
+  const actionId = rows[0].id;
+
+  await db.queryTenant(
+    tenantId,
+    `INSERT INTO interventions
+      (tenant_id, project_id, agent_run_id, action_id, intervention_type, threshold, decision, requires_approval, status, reason, metadata)
+     VALUES
+      ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)`,
+    [
+      tenantId,
+      projectId,
+      runId,
+      actionId,
+      intervention.actionType,
+      intervention.threshold,
+      intervention.decision,
+      intervention.requiresApproval,
+      intervention.requiresApproval ? "approval_pending" : "executed",
+      intervention.reason,
+      JSON.stringify({
+        impact: intervention.impact,
+        confidence: intervention.confidence,
+        signals: intervention.signals,
+      }),
     ]
   );
 
   return {
-    id: rows[0].id,
-    requiresApproval: policy.requiresApproval,
+    id: actionId,
+    requiresApproval: intervention.requiresApproval,
   };
+}
+
+async function loadTenantPolicyThresholds(tenantId: string): Promise<Partial<PolicyThresholds>> {
+  const rows = await db.queryTenant<{
+    lowImpactMinConfidence: number;
+    mediumImpactMinConfidence: number;
+  }>(
+    tenantId,
+    `SELECT low_impact_min_confidence as "lowImpactMinConfidence",
+            medium_impact_min_confidence as "mediumImpactMinConfidence"
+     FROM tenant_policy_settings
+     WHERE tenant_id = $1
+     LIMIT 1`,
+    [tenantId]
+  );
+
+  if (!rows[0]) return {};
+  return rows[0];
 }
 
 async function extractActions(transcript: string, projectId: string | null): Promise<ExtractedAction[]> {
@@ -378,6 +431,8 @@ async function processAgentRunLifecycle(
   }
 
   if (currentState === "PROPOSED") {
+    const thresholds = await loadTenantPolicyThresholds(tenantId);
+
     if (!extracted) {
       extracted = await extractActions(transcript, run.projectId);
     }
@@ -391,7 +446,7 @@ async function processAgentRunLifecycle(
 
     const savedActions: Array<{ id: string; requiresApproval: boolean }> = [];
     for (const action of extracted) {
-      const result = await persistAction(tenantId, runId, run.projectId, action);
+      const result = await persistAction(tenantId, runId, run.projectId, action, thresholds);
       savedActions.push(result);
     }
 

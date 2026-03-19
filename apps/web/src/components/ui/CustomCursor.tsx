@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
+import { usePathname } from "next/navigation";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -48,7 +49,8 @@ const EASE = [0.22, 1, 0.36, 1] as const;
  *   - Disabled entirely on coarse-pointer (touch) devices
  */
 export function CustomCursor() {
-  const [mounted, setMounted] = useState(false);
+  const pathname = usePathname();
+  const isDashboardRoute = pathname?.startsWith("/dashboard") ?? false;
   const [isVisible, setIsVisible] = useState(false);
   const [isGenericHover, setIsGenericHover] = useState(false);
   const [hoverTarget, setHoverTarget] = useState<HoverTarget | null>(null);
@@ -68,9 +70,18 @@ export function CustomCursor() {
   const rafRef = useRef<number>(0);
 
   useEffect(() => {
+    if (isDashboardRoute) {
+      document.body.classList.remove("cursor-enabled");
+      return;
+    }
+
     // Respect touch devices — native cursor is appropriate there
-    if (window.matchMedia("(pointer: coarse)").matches) return;
-    setMounted(true);
+    if (window.matchMedia("(pointer: coarse)").matches) {
+      document.body.classList.remove("cursor-enabled");
+      return;
+    }
+
+    document.body.classList.add("cursor-enabled");
 
     // ── Event listeners ───────────────────────────────────────────────────
 
@@ -161,10 +172,11 @@ export function CustomCursor() {
       document.documentElement.removeEventListener("mouseleave", onLeave);
       document.removeEventListener("liquid:enter", onLiquidEnter);
       document.removeEventListener("liquid:leave", onLiquidLeave);
+      document.body.classList.remove("cursor-enabled");
     };
-  }, []);
+  }, [isDashboardRoute]);
 
-  if (!mounted) return null;
+  if (isDashboardRoute) return null;
 
   const isLiquidHover = !!hoverTarget;
 

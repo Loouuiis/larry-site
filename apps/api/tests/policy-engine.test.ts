@@ -24,5 +24,20 @@ describe("evaluateActionPolicy", () => {
     });
 
     expect(decision.requiresApproval).toBe(false);
+    expect(decision.decision).toBe("auto_execute");
+  });
+
+  it("requires approval for strategic action types even with high confidence", () => {
+    const decision = evaluateActionPolicy({
+      title: "Move deadline for release candidate",
+      confidence: 0.97,
+      impact: "medium",
+      actionType: "deadline_change",
+      reason: "Customer committed launch date shifted",
+      signals: ["deadline_shift"],
+    });
+
+    expect(decision.requiresApproval).toBe(true);
+    expect(decision.threshold).toContain("strategic_action_type");
   });
 });

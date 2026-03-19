@@ -1,7 +1,5 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
-import { LiquidBackground } from "@/components/ui/LiquidBackground";
-import { DashboardActions } from "./DashboardActions";
 import { WorkspaceDashboard } from "./WorkspaceDashboard";
 
 export const dynamic = "force-dynamic";
@@ -11,12 +9,8 @@ export default async function DashboardPage() {
   if (!session) redirect("/login");
 
   return (
-    <>
-      <LiquidBackground />
-      <DashboardActions />
-      <main className="min-h-screen px-4 pb-16 pt-24 sm:px-8">
-        <WorkspaceDashboard />
-      </main>
-    </>
+    <main className="min-h-screen bg-[#eef1f6] px-3 pb-8 pt-5 sm:px-5">
+      <WorkspaceDashboard />
+    </main>
   );
 }

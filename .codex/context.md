@@ -161,6 +161,60 @@ Last updated: 2026-03-16
   - worker consumes and updates DB state
   - approval routing and audit logging checks
 
+## 2026-03-19 Session Update (Frontend Rebaseline + Meeting-First Integration)
+
+### What was implemented
+- Dashboard architecture moved from one monolithic component to modular composition:
+  - `apps/web/src/app/dashboard/WorkspaceDashboard.tsx` now orchestrates composed panels
+  - New components:
+    - `apps/web/src/app/dashboard/Sidebar.tsx`
+    - `apps/web/src/app/dashboard/BoardToolbar.tsx`
+    - `apps/web/src/app/dashboard/TaskTable.tsx`
+    - `apps/web/src/app/dashboard/RightPanel.tsx`
+  - New shared hook + types:
+    - `apps/web/src/app/dashboard/useWorkspaceDashboard.ts`
+    - `apps/web/src/app/dashboard/types.ts`
+- Monday-inspired PM layout introduced while keeping Larry-specific workflows:
+  - Left rail navigation/workspaces/connectors
+  - Board toolbar (new task/search/filter shell)
+  - Grouped task table with collapsible groups, status pills, owner avatars, summary rows
+  - Board mode switching (`table`, `kanban`, `gantt`)
+  - Drag/drop status movement wired to task status API patch
+  - Right panel with health donut, Action Center approvals, connector shell, email draft actions, activity feed
+  - Meeting-to-execution transcript panel and redesigned Ask Larry command area
+- Prototype/landing visual bleed was reduced on dashboard:
+  - Dashboard page styling moved to dense PM-tool style
+  - Dashboard route no longer shows beta badge header
+  - Cursor effects no longer apply to `/dashboard` route
+
+### New API surfaces added for dashboard integration
+- Web proxy routes (`apps/web/src/app/api/workspace/...`):
+  - `GET /connectors/summary`
+  - `POST /meetings/transcript`
+  - `PATCH /tasks/{id}/status`
+  - `GET /activity`
+  - `GET /email/drafts`
+  - `POST /email/drafts/send`
+- Snapshot contract expanded in `apps/web/src/app/api/workspace/snapshot/route.ts`:
+  - Adds `boardMeta`, `connectors`, `activity`, and `emailDrafts`
+
+### Backend additions to support dashboard integration
+- New API route:
+  - `apps/api/src/routes/v1/activity.ts` -> `GET /v1/activity`
+- Existing connector route expanded:
+  - `apps/api/src/routes/v1/connectors-email.ts` -> `GET /v1/connectors/email/drafts`
+- Route registration updated in:
+  - `apps/api/src/routes/v1/index.ts`
+
+### Validation status
+- Passed:
+  - `npx tsc --noEmit -p apps/api/tsconfig.json`
+  - `npx tsc --noEmit -p apps/web/tsconfig.json`
+  - `npm run api:test` (all tests passed)
+  - `npm run web:build` (successful Next.js build)
+- Known lint baseline issue (pre-existing, not introduced in this session):
+  - `apps/web/src/app/dashboard/ReferralModal.tsx` fails eslint rules (`react-hooks/set-state-in-effect`, `react/no-unescaped-entities`)
+
 ### Assumptions/Decisions To Preserve
 - Keep Stage 1 infra simple even if AWS-ready abstractions exist.
 - Use Neon + Redis now; defer RDS/ElastiCache/SQS to Stage 2.
@@ -483,3 +537,140 @@ Last updated: 2026-03-16
 
 ### Validation
 - `npm run web:build` passes after per-user session and interaction changes.
+
+## 2026-03-18 AI Triage Flow for Tasks
+
+### User feedback addressed
+- Creating manual tasks showed zero pending actions in Action Center.
+- Clarification: manual CRUD alone does not automatically produce approval actions unless an agent run is triggered.
+
+### Implemented
+- Auto AI triage on task creation in web workspace route:
+  - `apps/web/src/app/api/workspace/tasks/route.ts`
+  - After successful `/v1/tasks` create, route now triggers `/v1/agent/runs` with transcript-style triage prompt.
+  - Returns `aiTriage` metadata in response.
+- Manual AI triage endpoint for existing tasks:
+  - `apps/web/src/app/api/workspace/tasks/triage/route.ts`
+- Dashboard task cards now include `Send to AI` action:
+  - `apps/web/src/app/dashboard/WorkspaceDashboard.tsx`
+  - Creates pending approval actions when extracted/policy-gated.
+
+### Runtime behavior
+- Action Center now fills from:
+  1. Slack/Email/Calendar ingestion agent runs
+  2. Auto-triage on new task creation
+  3. Manual `Send to AI` task triage
+- AI still does not auto-mark tasks completed by default; current posture remains approval-gated suggestions.
+
+### Validation
+- `npm run web:build` passes with new triage route and UI interactions.
+
+## 2026-03-18 Triage Reliability Fix + Larry Copilot Entry
+
+### User-reported issue
+- In dashboard, clicking `Send to AI` showed:
+  - `Workspace notice: Task triage network error.`
+- Console also showed a hydration mismatch warning.
+
+### Root cause and fixes
+- `apps/web/src/lib/workspace-proxy.ts` used a hard 12s timeout for every proxied API call.
+- `/v1/agent/runs` can exceed 12s during LLM processing, causing fetch abort exceptions that surfaced as generic network errors.
+
+### Implemented
+- `apps/web/src/lib/workspace-proxy.ts`
+  - Added per-request timeout override (`ProxyApiRequestOptions.timeoutMs`).
+  - Added robust catch around upstream fetch and retry fetch paths.
+  - Returns structured JSON errors (e.g. 504 with message) instead of throwing.
+  - Added safe parse fallback if upstream body is non-JSON.
+- Increased AI-run timeout to 60s in:
+  - `apps/web/src/app/api/workspace/tasks/route.ts` (auto-triage after task create)
+  - `apps/web/src/app/api/workspace/tasks/triage/route.ts` (manual triage)
+- `apps/web/src/app/dashboard/WorkspaceDashboard.tsx`
+  - Hardened response parsing to handle non-JSON responses without false "network error".
+  - Replaced locale-sensitive due-date render with deterministic ISO date to reduce hydration mismatch risk.
+  - Added success notice channel (`Larry update`) alongside error notice.
+
+### Product alignment improvement
+- Added explicit copilot entry point for PM workflows:
+  - `POST /api/workspace/larry/run`
+  - File: `apps/web/src/app/api/workspace/larry/run/route.ts`
+  - Triggers `/v1/agent/runs` from a freeform PM prompt.
+- Added `Ask Larry` panel in dashboard:
+  - PM can paste instruction/context.
+  - Larry run executes and refreshes Action Center proposals.
+  - Provides clearer “AI embedded PM” experience vs pure CRUD.
+
+### Validation
+- `npm run web:build` passes with all above changes.
+
+## 2026-03-19 Next-Level Rebaseline Implementation (Vertical Slice)
+
+### Scope shipped in this iteration
+- Implemented core of the investor-demo rebaseline with an agent-first command center and explainable actions.
+- Focused on execution-critical backend + worker + web interfaces that make Larry feel like an AI PM operating layer.
+
+### Backend/API additions
+- New command ingress endpoint:
+  - `POST /v1/larry/commands`
+  - File: `apps/api/src/routes/v1/larry.ts`
+  - Supports intents: `create_plan`, `update_scope`, `request_summary`, `draft_follow_up`, `freeform`.
+  - `request_summary` returns direct project summary; other intents queue transcript-based agent runs.
+- New workspace execution read model:
+  - `GET /v1/projects/:id/timeline` in `apps/api/src/routes/v1/projects.ts`
+  - Returns `gantt`, `kanban`, and dependency views from same task graph.
+- New outcomes endpoint:
+  - `GET /v1/projects/:id/outcomes` in `apps/api/src/routes/v1/reporting.ts`
+  - Persists report snapshot records.
+- New correction endpoint:
+  - `POST /v1/agent/actions/:id/correct` in `apps/api/src/routes/v1/agent.ts`
+  - Captures correction feedback and optionally tunes tenant thresholds.
+- New email connector scaffold:
+  - `apps/api/src/routes/v1/connectors-email.ts`
+  - Endpoints: `GET /status`, `GET /install-url`, `GET /callback`, `POST /inbound`, `POST /draft/send`
+  - Connected under `/v1/connectors/email/*`.
+
+### Explainability + mixed-autonomy implementation
+- `packages/shared/src/index.ts` now includes:
+  - `ActionReasoning`, `InterventionDecision`, `CorrectionFeedback`, and richer `ExtractedAction.actionType`.
+- `packages/ai/src/index.ts` now includes:
+  - action type inference,
+  - configurable confidence thresholds,
+  - intervention decision builder,
+  - action reasoning builder.
+- Agent/API + worker now persist `reasoning` and `interventions` per extracted action.
+- Policy tuning support added via tenant-level thresholds table.
+
+### Data model updates
+- `packages/db/src/schema.sql` expanded with:
+  - `reasoning` column on `extracted_actions`,
+  - `email_installations`,
+  - `email_outbound_drafts`,
+  - `interventions`,
+  - `report_snapshots`,
+  - `tenant_policy_settings`,
+  - RLS policies for all new tables.
+
+### Web command center upgrade
+- New web proxy routes:
+  - `POST /api/workspace/larry/commands`
+  - `POST /api/workspace/actions/:id/correct`
+  - `GET /api/workspace/projects/:id/timeline`
+  - `GET /api/workspace/projects/:id/health`
+  - `GET /api/workspace/projects/:id/outcomes`
+- `/api/workspace/snapshot` now returns:
+  - selected project context + timeline + health + outcomes.
+- `apps/web/src/app/dashboard/WorkspaceDashboard.tsx` rebuilt into 4 persistent zones:
+  - `Ask Larry`
+  - `Execution Board`
+  - `Action Center` with “Why Larry did this” details
+  - `Health & Outcomes`
+- Added correction loop action from UI (`Correct`) that posts feedback to backend.
+
+### Validation status
+- Passed:
+  - `npm run api:build`
+  - `npm run worker:build`
+  - `npm run web:build`
+  - `npm run api:test` (11 tests passed)
+- Not fully verified:
+  - `npm run db:migrate` timed out against current Neon host (`ETIMEDOUT`), so schema execution on remote DB not confirmed in this session.

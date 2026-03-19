@@ -36,6 +36,17 @@ export interface ExtractedAction {
   owner?: string;
   dueDate?: string;
   description?: string;
+  actionType?:
+    | "status_update"
+    | "task_create"
+    | "deadline_change"
+    | "owner_change"
+    | "scope_change"
+    | "risk_escalation"
+    | "email_draft"
+    | "meeting_invite"
+    | "follow_up"
+    | "other";
   confidence: number;
   impact: "low" | "medium" | "high";
   reason: string;
@@ -85,6 +96,40 @@ export interface AuditEntry {
   objectType: string;
   objectId: string;
   details: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface ActionReasoning {
+  what: string;
+  why: string;
+  signals: string[];
+  threshold: string;
+  decision: "auto_execute" | "approval_required";
+  override: string;
+}
+
+export interface InterventionDecision {
+  actionType: NonNullable<ExtractedAction["actionType"]>;
+  impact: ExtractedAction["impact"];
+  confidence: number;
+  requiresApproval: boolean;
+  threshold: string;
+  decision: ActionReasoning["decision"];
+  reason: string;
+  signals: string[];
+}
+
+export interface CorrectionFeedback {
+  actionId: string;
+  correctionType:
+    | "false_positive"
+    | "false_negative"
+    | "bad_reasoning"
+    | "payload_edit"
+    | "manual_override";
+  note?: string;
+  correctionPayload: Record<string, unknown>;
+  correctedByUserId: string;
   createdAt: string;
 }
 
