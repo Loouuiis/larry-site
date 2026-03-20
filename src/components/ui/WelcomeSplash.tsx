@@ -4,9 +4,9 @@ import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 
 // Duration of the hold before the fade begins automatically (ms)
-const HOLD_MS = 10_000;
+const HOLD_MS = 2_000;
 // Duration of the fade-out animation (seconds)
-const FADE_S = 3;
+const FADE_S = 1;
 
 /**
  * WelcomeSplash
