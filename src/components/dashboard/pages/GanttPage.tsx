@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ArrowLeft, ChevronRight, ChevronDown, MessageSquare,
-  X, Calendar, User, Flag, BarChart2, Circle,
+  ArrowLeft, ChevronRight, ChevronDown, MessageSquare, Circle,
 } from "lucide-react";
+import { TaskDetailPanel, type TaskPanelData } from "../TaskDetailPanel";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -141,102 +141,33 @@ function flatten(tasks: GanttTask[], expanded: Set<string>, depth = 0): FlatRow[
 
 function pct(day: number) { return `${(day / TOTAL_DAYS) * 100}%`; }
 
-/* ─── Task Detail Panel ─────────────────────────────────────────────────── */
+const ASSIGNEE_NAMES: Record<string, string> = {
+  SR: "Sarah R.", TK: "Tom K.", ME: "M. Evans", LP: "L. Park",
+  AK: "A. Khan",  JP: "J. Park",
+};
 
-function TaskPanel({ task, onClose }: { task: GanttTask; onClose: () => void }) {
-  const sc = STATUS_CFG[task.status];
-  const pc = PRIORITY_CFG[task.priority];
-  return (
-    <motion.div
-      initial={{ x: "100%", opacity: 0 }}
-      animate={{ x: 0, opacity: 1 }}
-      exit={{ x: "100%", opacity: 0 }}
-      transition={{ duration: 0.28, ease: EASE }}
-      className="absolute inset-y-0 right-0 z-30 flex w-80 flex-col border-l border-neutral-100 bg-white shadow-card-xl"
-    >
-      {/* Header */}
-      <div className="flex items-start justify-between gap-2 border-b border-neutral-100 px-5 py-4">
-        <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-brand)] mb-1">Task Detail</p>
-          <h3 className="text-sm font-bold text-neutral-900 leading-snug" style={{ letterSpacing: "-0.02em" }}>
-            {task.name}
-          </h3>
-        </div>
-        <button onClick={onClose} className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-neutral-300 hover:bg-neutral-100 hover:text-neutral-600 transition-colors">
-          <X size={13} />
-        </button>
-      </div>
+// Mar 1 = day 0 → "Mar 1"; day 35 = "Apr 5", etc.
+const PROJECT_START = new Date(2026, 2, 1); // Mar 1 2026
+function dayToDate(day: number): string {
+  const d = new Date(PROJECT_START);
+  d.setDate(d.getDate() + day);
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
 
-      {/* Body */}
-      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-        {/* Description */}
-        <p className="text-xs leading-relaxed text-neutral-500">{task.description}</p>
-
-        {/* Badges */}
-        <div className="flex flex-wrap gap-2">
-          <span className={`rounded-full border px-2.5 py-0.5 text-[10px] font-medium ${sc.badge}`}>{sc.label}</span>
-          <span className={`rounded-full border px-2.5 py-0.5 text-[10px] font-medium capitalize ${pc.badge}`}>{task.priority}</span>
-        </div>
-
-        {/* Meta */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-2.5 text-xs text-neutral-500">
-            <User size={12} className="text-neutral-300 shrink-0" />
-            <span className="font-medium text-neutral-700">{task.assignee}</span>
-            <span className="text-neutral-400">Assignee</span>
-          </div>
-          <div className="flex items-center gap-2.5 text-xs text-neutral-500">
-            <Calendar size={12} className="text-neutral-300 shrink-0" />
-            <span>Day {task.startDay + 1} → Day {task.endDay}</span>
-            <span className="text-neutral-400">({task.endDay - task.startDay} days)</span>
-          </div>
-          <div className="flex items-center gap-2.5 text-xs text-neutral-500">
-            <MessageSquare size={12} className="text-neutral-300 shrink-0" />
-            <span>{task.comments} comment{task.comments !== 1 ? "s" : ""}</span>
-          </div>
-          <div className="flex items-center gap-2.5 text-xs text-neutral-500">
-            <Flag size={12} className="text-neutral-300 shrink-0" />
-            <span className="font-medium text-neutral-700 capitalize">{task.priority}</span>
-            <span className="text-neutral-400">Priority</span>
-          </div>
-        </div>
-
-        {/* Progress */}
-        <div>
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-neutral-400 flex items-center gap-1">
-              <BarChart2 size={10} />Progress
-            </span>
-            <span className="text-sm font-bold text-neutral-900">{task.progress}%</span>
-          </div>
-          <div className="h-2 overflow-hidden rounded-full bg-neutral-100">
-            <motion.div
-              className={`h-full rounded-full ${STATUS_CFG[task.status].fill}`}
-              initial={{ width: 0 }}
-              animate={{ width: `${task.progress}%` }}
-              transition={{ duration: 0.7, ease: EASE }}
-            />
-          </div>
-        </div>
-
-        {/* Subtasks count */}
-        {task.subtasks?.length ? (
-          <div className="rounded-xl border border-neutral-100 bg-neutral-50 px-3.5 py-3">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-neutral-400 mb-2">Subtasks</p>
-            <div className="space-y-1.5">
-              {task.subtasks.map((sub) => (
-                <div key={sub.id} className="flex items-center gap-2">
-                  <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${STATUS_CFG[sub.status].dot}`} />
-                  <span className="text-xs text-neutral-600 truncate">{sub.name}</span>
-                  <span className="ml-auto text-[10px] text-neutral-400">{sub.progress}%</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
-      </div>
-    </motion.div>
-  );
+function toTaskPanelData(task: GanttTask, projectName: string): TaskPanelData {
+  return {
+    id:           task.id,
+    name:         task.name,
+    description:  task.description,
+    status:       task.status,
+    priority:     task.priority,
+    assignee:     task.assignee,
+    assigneeFull: ASSIGNEE_NAMES[task.assignee] ?? task.assignee,
+    project:      projectName,
+    deadline:     dayToDate(task.endDay),
+    progress:     task.progress,
+    subtasks:     task.subtasks?.map((s) => ({ name: s.name, status: s.status, progress: s.progress })),
+  };
 }
 
 /* ─── GanttPage ─────────────────────────────────────────────────────────── */
@@ -446,9 +377,9 @@ export function GanttPage({ projectName = "Alpha Launch", onBack }: GanttPagePro
         {/* Task detail side panel */}
         <AnimatePresence>
           {selected && (
-            <TaskPanel
+            <TaskDetailPanel
               key={selected.id}
-              task={selected}
+              task={toTaskPanelData(selected, projectName)}
               onClose={() => setSelectedId(null)}
             />
           )}
