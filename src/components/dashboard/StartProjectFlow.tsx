@@ -39,11 +39,9 @@ function StepWelcome({ onNext }: { onNext: () => void }) {
     >
       {/* Larry avatar */}
       <motion.div variants={item} className="mb-8 relative">
-        <div className="flex h-24 w-24 items-center justify-center rounded-2xl bg-gradient-to-br from-[var(--color-accent-purple)] to-[var(--color-accent-blue)] shadow-[0_8px_32px_rgba(139,92,246,0.35)]">
+        <div className="flex h-24 w-24 items-center justify-center rounded-2xl bg-[var(--color-brand)]">
           <span className="text-4xl font-bold text-white select-none">L</span>
         </div>
-        {/* Pulse ring */}
-        <span className="absolute inset-0 rounded-2xl animate-ping bg-[var(--color-brand)]/15 pointer-events-none" />
         {/* Online dot */}
         <span className="absolute bottom-1 right-1 h-4 w-4 rounded-full border-2 border-white bg-emerald-400" />
       </motion.div>
@@ -94,10 +92,10 @@ const OPTIONS = [
     title: "Manual Setup",
     description: "Create tasks, goals, and responsibilities manually",
     preview: null,
-    accentColor: "text-[var(--color-brand)]",
-    accentBg: "bg-[var(--color-brand)]/8",
-    borderHover: "hover:border-[var(--color-brand)]/30",
-    glow: "rgba(139,92,246,0.12)",
+    accentColor: "text-neutral-600",
+    accentBg: "bg-[var(--color-surface)]",
+    borderHover: "hover:border-[var(--color-border)]",
+    glow: "rgba(0,0,0,0.04)",
   },
   {
     id: "chat",
@@ -105,10 +103,10 @@ const OPTIONS = [
     title: "Chat with Larry",
     description: "Describe your project via text or voice",
     preview: "chat",
-    accentColor: "text-[var(--color-accent-mid)]",
-    accentBg: "bg-[var(--color-accent-mid)]/10",
-    borderHover: "hover:border-[var(--color-accent-mid)]/30",
-    glow: "rgba(168,85,247,0.1)",
+    accentColor: "text-neutral-600",
+    accentBg: "bg-[var(--color-surface)]",
+    borderHover: "hover:border-[var(--color-border)]",
+    glow: "rgba(0,0,0,0.04)",
   },
   {
     id: "meeting",
@@ -116,10 +114,10 @@ const OPTIONS = [
     title: "Start from Meeting",
     description: "Larry extracts structure from a meeting",
     preview: "meeting",
-    accentColor: "text-[var(--color-accent-blue)]",
-    accentBg: "bg-[var(--color-accent-blue)]/10",
-    borderHover: "hover:border-[var(--color-accent-blue)]/30",
-    glow: "rgba(129,140,248,0.1)",
+    accentColor: "text-neutral-600",
+    accentBg: "bg-[var(--color-surface)]",
+    borderHover: "hover:border-[var(--color-border)]",
+    glow: "rgba(0,0,0,0.04)",
   },
 ] as const;
 
@@ -159,10 +157,10 @@ function MeetingPreview() {
         Drop a recording or transcript
       </p>
       <div className="flex gap-1.5">
-        <button className="rounded-lg border border-neutral-200 bg-white px-2.5 py-1 text-[9px] font-medium text-neutral-600 hover:border-[var(--color-accent-blue)]/30 hover:text-[var(--color-accent-blue)] transition-colors">
+        <button className="rounded-lg border border-neutral-200 bg-white px-2.5 py-1 text-[9px] font-medium text-neutral-600 hover:border-neutral-300 hover:text-neutral-800 transition-colors">
           Upload file
         </button>
-        <button className="rounded-lg border border-[var(--color-accent-blue)]/20 bg-[var(--color-accent-blue)]/8 px-2.5 py-1 text-[9px] font-medium text-[var(--color-accent-blue)]">
+        <button className="rounded-lg border border-[var(--color-brand)]/20 bg-[var(--color-brand)]/8 px-2.5 py-1 text-[9px] font-medium text-[var(--color-brand)]">
           Start meeting
         </button>
       </div>
@@ -220,16 +218,10 @@ function StepOptions({ onClose }: { onClose: () => void }) {
               transition={{ duration: 0.18, ease: EASE }}
               className={[
                 "relative text-left rounded-2xl border bg-white p-5 transition-all duration-200",
-                opt.borderHover,
                 isSelected
-                  ? "border-[var(--color-brand)]/40 shadow-[0_0_0_2px_rgba(139,92,246,0.15),0_8px_24px_rgba(139,92,246,0.12)]"
-                  : "border-neutral-100 shadow-card hover:shadow-card-hover",
+                  ? "border-[var(--color-brand)] shadow-sm"
+                  : "border-[var(--color-border)] hover:border-neutral-300 hover:shadow-sm",
               ].join(" ")}
-              style={
-                isSelected
-                  ? { boxShadow: `0 0 0 2px rgba(139,92,246,0.2), 0 8px 24px ${opt.glow}` }
-                  : undefined
-              }
             >
               {/* Selected check */}
               <AnimatePresence>

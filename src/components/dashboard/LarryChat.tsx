@@ -62,7 +62,7 @@ function now() {
 function LarryAvatar({ size = 24 }: { size?: number }) {
   return (
     <span
-      className="shrink-0 flex items-center justify-center rounded-xl bg-gradient-to-br from-[var(--color-accent-purple)] to-[var(--color-accent-blue)] font-bold text-white select-none"
+      className="shrink-0 flex items-center justify-center rounded-xl bg-[var(--color-brand)] font-bold text-white select-none"
       style={{ height: size, width: size, fontSize: size * 0.38 }}
     >
       L
@@ -198,8 +198,8 @@ export function LarryChat() {
             style={{ maxHeight: minimised ? 0 : "min(580px, calc(100vh - 120px))" }}
           >
             {/* Header */}
-            <div className="flex items-center gap-3 border-b border-[var(--color-border)] bg-gradient-to-r from-[var(--color-brand)]/6 via-[var(--color-accent-purple)]/4 to-[var(--color-accent-blue)]/6 px-4 py-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--color-accent-purple)] to-[var(--color-accent-blue)] shadow-[0_2px_12px_rgba(139,92,246,0.35)]">
+            <div className="flex items-center gap-3 border-b border-[var(--color-border)] bg-white px-4 py-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--color-brand)]">
                 <Sparkles size={15} className="text-white" />
               </div>
               <div className="flex-1 min-w-0">
@@ -256,7 +256,7 @@ export function LarryChat() {
                         transition={{ duration: 0.3, ease: EASE }}
                         className="flex flex-col items-center gap-5 py-4 text-center"
                       >
-                        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-[var(--color-accent-purple)] to-[var(--color-accent-blue)] shadow-[0_4px_20px_rgba(139,92,246,0.3)]">
+                        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--color-brand)]">
                           <Sparkles size={24} className="text-white" />
                         </div>
                         <div>
@@ -395,7 +395,7 @@ export function LarryChat() {
         whileHover={{ scale: 1.07 }}
         whileTap={{ scale: 0.93 }}
         transition={{ duration: 0.18, ease: EASE }}
-        className="relative flex items-center justify-center rounded-2xl bg-gradient-to-br from-[var(--color-accent-purple)] to-[var(--color-accent-blue)] text-white shadow-[0_4px_24px_rgba(139,92,246,0.5)] hover:shadow-[0_6px_32px_rgba(139,92,246,0.6)] transition-shadow"
+        className="relative flex items-center justify-center rounded-2xl bg-[var(--color-brand)] text-white shadow-[0_4px_16px_rgba(139,92,246,0.3)] hover:bg-[var(--color-brand-dark)] hover:shadow-[0_6px_20px_rgba(139,92,246,0.35)] transition-all"
         style={{ height: 52, width: 52 }}
       >
         <AnimatePresence mode="wait">

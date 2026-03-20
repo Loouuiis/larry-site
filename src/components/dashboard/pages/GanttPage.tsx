@@ -34,7 +34,7 @@ interface GanttTask {
 
 const STATUS_CFG: Record<Status, { track: string; fill: string; dot: string; badge: string; label: string }> = {
   "done":      { track: "bg-emerald-100", fill: "bg-emerald-400",                   dot: "bg-emerald-400", badge: "bg-emerald-50 text-emerald-600 border-emerald-100",   label: "Done"      },
-  "on-track":  { track: "bg-[var(--color-brand)]/15", fill: "bg-[var(--color-brand)]", dot: "bg-[var(--color-brand)]", badge: "bg-[var(--color-brand)]/8 text-[var(--color-brand)] border-[var(--color-brand)]/20", label: "On track"  },
+  "on-track":  { track: "bg-neutral-200",              fill: "bg-neutral-900",          dot: "bg-neutral-900",         badge: "bg-neutral-100 text-neutral-700 border-neutral-200",                          label: "On track"  },
   "at-risk":   { track: "bg-amber-100",   fill: "bg-amber-400",                     dot: "bg-amber-400",   badge: "bg-amber-50 text-amber-600 border-amber-100",         label: "At risk"   },
   "overdue":   { track: "bg-red-100",     fill: "bg-red-400",                       dot: "bg-red-400",     badge: "bg-red-50 text-red-500 border-red-100",               label: "Overdue"   },
   "upcoming":  { track: "bg-neutral-100", fill: "bg-neutral-300",                   dot: "bg-neutral-300", badge: "bg-neutral-100 text-neutral-500 border-neutral-200",  label: "Upcoming"  },
@@ -311,7 +311,7 @@ export function GanttPage({ projectName = "Alpha Launch", onBack }: GanttPagePro
                       </span>
 
                       {/* Assignee */}
-                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-brand)]/10 text-[7px] font-bold text-[var(--color-brand)]">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[7px] font-bold text-[var(--color-muted)]">
                         {task.assignee}
                       </span>
 

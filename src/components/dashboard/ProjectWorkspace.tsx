@@ -356,7 +356,7 @@ function SectionLabel({
 
 function OwnerBubble({ initials }: { initials: string }) {
   return (
-    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--color-brand)]/10 text-[9px] font-bold text-[var(--color-brand)]">
+    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[9px] font-bold text-[var(--color-muted)]">
       {initials}
     </span>
   );
@@ -411,9 +411,9 @@ function OverviewTab({
         </SectionLabel>
 
         {data.attentionItems.length === 0 ? (
-          <div className="flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3.5">
+          <div className="flex items-center gap-2 rounded-xl border border-[var(--color-border)] bg-white px-4 py-3.5">
             <CheckCircle2 size={14} className="shrink-0 text-emerald-500" />
-            <span className="text-xs font-medium text-emerald-700">All clear</span>
+            <span className="text-xs font-medium text-neutral-700">All clear</span>
           </div>
         ) : (
           <div className="space-y-2">
@@ -421,7 +421,9 @@ function OverviewTab({
               <button
                 key={item.id}
                 onClick={() => onOpenTask(attentionToPanel(item, projectName))}
-                className="group w-full rounded-xl border border-[var(--color-border)] bg-white p-4 text-left transition-colors hover:border-[var(--color-brand)]/20 hover:bg-neutral-50/50"
+                className={`group w-full rounded-xl border border-[var(--color-border)] bg-white p-4 text-left transition-colors hover:bg-neutral-50/50 border-l-2 ${
+                  item.severity === "overdue" ? "border-l-red-400" : "border-l-amber-400"
+                }`}
               >
                 <div className="flex items-center gap-3">
                   <span
@@ -646,25 +648,25 @@ function AnalyticsTab({ data, projectName }: { data: WorkspaceData; projectName:
       label: "Total Tasks",
       value: total,
       cls: "text-neutral-900",
-      bg: "bg-neutral-50 border-neutral-200",
+      bg: "bg-white border-[var(--color-border)]",
     },
     {
       label: "Completed",
       value: completed,
       cls: "text-emerald-600",
-      bg: "bg-emerald-50 border-emerald-100",
+      bg: "bg-white border-[var(--color-border)]",
     },
     {
       label: "In Progress",
       value: inProgress,
-      cls: "text-[var(--color-brand)]",
-      bg: "bg-[var(--color-brand)]/5 border-[var(--color-brand)]/20",
+      cls: "text-neutral-900",
+      bg: "bg-white border-[var(--color-border)]",
     },
     {
       label: "Overdue",
       value: overdue,
       cls: "text-red-500",
-      bg: "bg-red-50 border-red-100",
+      bg: "bg-white border-[var(--color-border)]",
     },
   ];
 
@@ -865,7 +867,7 @@ function MeetingsTab() {
                     {meeting.attendees.map((a) => (
                       <span
                         key={a}
-                        className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--color-brand)]/10 text-[7px] font-bold text-[var(--color-brand)] ring-1 ring-white"
+                        className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[7px] font-bold text-[var(--color-muted)] ring-1 ring-white"
                       >
                         {a}
                       </span>
@@ -947,15 +949,8 @@ function MeetingsTab() {
 
 /* ─── Org chart tab ───────────────────────────────────────────────────────── */
 
-const AVATAR_GRADIENTS = [
-  "from-[var(--color-accent-purple)] to-[var(--color-accent-blue)]",
-  "from-[var(--color-brand)] to-[var(--color-accent-mid)]",
-  "from-[var(--color-accent-mid)] to-[var(--color-accent-blue)]",
-  "from-[var(--color-accent-blue)] to-[var(--color-brand)]",
-];
-
 function OrgCard({ node, depth }: { node: OrgNode; depth: number }) {
-  const gradient = AVATAR_GRADIENTS[depth % AVATAR_GRADIENTS.length];
+  const isRoot = depth === 0;
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -966,7 +961,11 @@ function OrgCard({ node, depth }: { node: OrgNode; depth: number }) {
       <div className="w-36 rounded-2xl border border-[var(--color-border)] bg-white p-4 text-center shadow-sm">
         {/* Avatar */}
         <div
-          className={`mx-auto mb-2.5 flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br ${gradient} text-sm font-bold text-white shadow`}
+          className={`mx-auto mb-2.5 flex h-11 w-11 items-center justify-center rounded-full text-sm font-bold ${
+            isRoot
+              ? "bg-neutral-900 text-white"
+              : "bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-muted)]"
+          }`}
         >
           {node.initials}
         </div>
@@ -980,7 +979,7 @@ function OrgCard({ node, depth }: { node: OrgNode; depth: number }) {
         </p>
         {/* Task chip */}
         {node.tasks > 0 && (
-          <span className="mt-2 inline-flex items-center rounded-full bg-[var(--color-brand)]/8 px-2 py-0.5 text-[9px] font-semibold text-[var(--color-brand)]">
+          <span className="mt-2 inline-flex items-center rounded-full bg-neutral-100 border border-neutral-200 px-2 py-0.5 text-[9px] font-semibold text-neutral-500">
             {node.tasks} task{node.tasks !== 1 ? "s" : ""}
           </span>
         )}
@@ -1118,7 +1117,7 @@ export function ProjectWorkspace({
         </span>
 
         {/* Avatar */}
-        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-[var(--color-brand)] to-[var(--color-accent-blue)] text-[10px] font-bold text-white shadow-sm">
+        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-neutral-900 text-[10px] font-bold text-white">
           A
         </span>
       </header>

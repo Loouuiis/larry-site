@@ -60,7 +60,7 @@ const MOCK_COMMENTS: Record<string, Comment[]> = {
 
 const STATUS_OPTIONS: { value: TaskStatus; label: string; dot: string; badge: string }[] = [
   { value: "done",      label: "Done",       dot: "bg-emerald-400", badge: "bg-emerald-50 text-emerald-600 border-emerald-100"   },
-  { value: "on-track",  label: "On track",   dot: "bg-[var(--color-brand)]", badge: "bg-[var(--color-brand)]/8 text-[var(--color-brand)] border-[var(--color-brand)]/20" },
+  { value: "on-track",  label: "On track",   dot: "bg-neutral-900", badge: "bg-neutral-100 text-neutral-700 border-neutral-200" },
   { value: "at-risk",   label: "At risk",    dot: "bg-amber-400",   badge: "bg-amber-50 text-amber-600 border-amber-100"         },
   { value: "overdue",   label: "Overdue",    dot: "bg-red-400",     badge: "bg-red-50 text-red-500 border-red-100"               },
   { value: "upcoming",  label: "Upcoming",   dot: "bg-neutral-300", badge: "bg-neutral-100 text-neutral-500 border-neutral-200"  },
@@ -179,7 +179,7 @@ function ProgressControl({ value, onChange }: { value: number; onChange: (v: num
   const step = (dir: 1 | -1) => onChange(Math.min(100, Math.max(0, value + dir * 5)));
   const statusColor =
     value === 100 ? "bg-emerald-400"
-    : value >= 60  ? "bg-[var(--color-brand)]"
+    : value >= 60  ? "bg-neutral-900"
     : value >= 30  ? "bg-amber-400"
     : "bg-red-400";
 
@@ -225,7 +225,7 @@ function CommentItem({ comment }: { comment: Comment }) {
       transition={{ duration: 0.25, ease: EASE }}
       className="flex gap-3"
     >
-      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--color-brand)]/10 text-[9px] font-bold text-[var(--color-brand)] mt-0.5">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[9px] font-bold text-[var(--color-muted)] mt-0.5">
         {comment.initials}
       </span>
       <div className="min-w-0 flex-1">
@@ -296,7 +296,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
       <div className="flex items-start gap-3 border-b border-neutral-100 px-5 py-4">
         <div className="flex-1 min-w-0">
           {/* Project breadcrumb */}
-          <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--color-brand)]">
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--color-muted)]">
             {task.project}
           </p>
           {/* Title — looks editable */}
@@ -349,7 +349,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
               <User size={13} className="shrink-0 text-neutral-300 group-hover:text-neutral-400 transition-colors" />
               <span className="text-neutral-400 w-16 shrink-0 text-left">Assignee</span>
               <div className="flex items-center gap-2">
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--color-brand)]/10 text-[8px] font-bold text-[var(--color-brand)]">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[8px] font-bold text-[var(--color-muted)]">
                   {task.assignee}
                 </span>
                 <span className="font-medium text-neutral-700">{task.assigneeFull}</span>
@@ -447,7 +447,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
       {/* ── Comment input (pinned to bottom) ── */}
       <div className="border-t border-neutral-100 px-4 py-3">
         <div className="flex items-end gap-2">
-          <span className="mb-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--color-brand)]/10 text-[9px] font-bold text-[var(--color-brand)]">
+          <span className="mb-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[9px] font-bold text-[var(--color-muted)]">
             ME
           </span>
           <div className="relative flex-1">

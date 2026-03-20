@@ -127,7 +127,7 @@ function Avatar({ initials, size = "sm" }: { initials: string; size?: "sm" | "md
   const dim = size === "md" ? "h-7 w-7 text-[10px]" : "h-5 w-5 text-[8px]";
   return (
     <span
-      className={`flex shrink-0 items-center justify-center rounded-full bg-[var(--color-brand)]/10 font-bold text-[var(--color-brand)] ${dim}`}
+      className={`flex shrink-0 items-center justify-center rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] font-bold text-[var(--color-muted)] ring-1 ring-white ${dim}`}
     >
       {initials}
     </span>
@@ -175,7 +175,7 @@ function ProjectCard({
       {/* Progress bar */}
       <div className="mb-4 h-1.5 overflow-hidden rounded-full bg-neutral-100">
         <motion.div
-          className={`h-full rounded-full ${cfg.bar}`}
+          className="h-full rounded-full bg-neutral-900"
           initial={{ width: 0 }}
           animate={{ width: `${project.progress}%` }}
           transition={{ duration: 0.7, ease: EASE, delay: 0.15 }}
@@ -225,7 +225,7 @@ export function ProjectSelectionScreen({
       <header className="flex h-14 shrink-0 items-center justify-between px-6">
         {/* Logo */}
         <div className="flex items-center gap-2.5">
-          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-[var(--color-brand)] to-[var(--color-accent-blue)] text-[11px] font-bold text-white shadow-sm">
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--color-brand)] text-[11px] font-bold text-white">
             L
           </span>
           <span className="text-sm font-semibold tracking-tight text-neutral-900">
@@ -235,7 +235,7 @@ export function ProjectSelectionScreen({
 
         {/* User avatar */}
         <div className="group relative">
-          <button className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--color-brand)]/10 text-[10px] font-bold text-[var(--color-brand)] transition-colors hover:bg-[var(--color-brand)]/20">
+          <button className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-900 text-[10px] font-bold text-white transition-colors hover:bg-neutral-700">
             A
           </button>
           {/* Sign-out tooltip */}
