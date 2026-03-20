@@ -4,11 +4,11 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   AlertCircle, Clock, CheckCircle2, TrendingUp, Plus,
-  Bell, ArrowUp, BarChart2, ArrowRight, ChevronRight,
-  ArrowLeft, Calendar, Users, MoreHorizontal,
+  Bell, ArrowUp, BarChart2, ArrowRight, ChevronRight, ChevronDown,
+  ArrowLeft, Calendar, Users, LayoutList, Rows3,
   CheckSquare, AlertTriangle, Zap,
 } from "lucide-react";
-import { GanttPage } from "./GanttPage";
+import { ProjectHub } from "./ProjectHub";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -433,9 +433,169 @@ function ProjectDetail({ project, onBack }: { project: Project; onBack: () => vo
   );
 }
 
+/* ─── Section order ─────────────────────────────────────────────────────── */
+
+const SECTION_ORDER: Health[] = ["overdue", "at-risk", "on-track", "not-started"];
+
+/* ─── Shared project row ─────────────────────────────────────────────────── */
+
+function ProjectRow({ proj, onSelect }: { proj: Project; onSelect: (id: string) => void }) {
+  const hc = HEALTH[proj.health];
+  return (
+    <motion.li
+      whileHover={{ backgroundColor: "rgba(139,92,246,0.025)" }}
+      transition={{ duration: 0.15 }}
+      className="group cursor-pointer"
+      onClick={() => onSelect(proj.id)}
+    >
+      {/* Desktop row */}
+      <div className="hidden sm:grid grid-cols-[2fr_1fr_140px_100px_80px_32px] items-center px-5 py-4 gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className={`h-2 w-2 shrink-0 rounded-full ${hc.dot}`} />
+            <p className="truncate text-xs font-semibold text-neutral-800 group-hover:text-[var(--color-brand)] transition-colors">
+              {proj.name}
+            </p>
+          </div>
+          <p className="mt-0.5 truncate pl-4 text-[10px] text-neutral-400">{proj.description}</p>
+        </div>
+        <div>
+          <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium ${hc.badge}`}>
+            {hc.label}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-neutral-100">
+            <motion.div
+              className={`h-full rounded-full ${hc.bar}`}
+              initial={{ width: 0 }}
+              animate={{ width: `${proj.progress}%` }}
+              transition={{ duration: 0.9, ease: EASE }}
+            />
+          </div>
+          <span className="w-7 shrink-0 text-right text-[10px] font-medium text-neutral-500">{proj.progress}%</span>
+        </div>
+        <div className="flex justify-center -space-x-1.5">
+          {proj.team.map((initials) => (
+            <span key={initials} title={initials} className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-[var(--color-brand)]/10 text-[7px] font-bold text-[var(--color-brand)]">
+              {initials}
+            </span>
+          ))}
+        </div>
+        <div className="text-right">
+          <span className="text-[10px] text-neutral-500">{proj.deadline}</span>
+        </div>
+        <ChevronRight size={13} className="text-neutral-200 group-hover:text-[var(--color-brand)] transition-colors" />
+      </div>
+
+      {/* Mobile row */}
+      <div className="flex flex-col gap-3 px-4 py-4 sm:hidden">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className={`h-2 w-2 shrink-0 rounded-full ${hc.dot}`} />
+            <p className="truncate text-xs font-semibold text-neutral-800">{proj.name}</p>
+          </div>
+          <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium ${hc.badge}`}>
+            {hc.label}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-neutral-100">
+            <div className={`h-full rounded-full ${hc.bar}`} style={{ width: `${proj.progress}%` }} />
+          </div>
+          <span className="text-[10px] font-medium text-neutral-500">{proj.progress}%</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <div className="flex -space-x-1.5">
+            {proj.team.map((i) => (
+              <span key={i} className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-[var(--color-brand)]/10 text-[7px] font-bold text-[var(--color-brand)]">{i}</span>
+            ))}
+          </div>
+          <span className="text-[10px] text-neutral-400">Due {proj.deadline}</span>
+          <ChevronRight size={13} className="text-neutral-300" />
+        </div>
+      </div>
+    </motion.li>
+  );
+}
+
+/* ─── Collapsible section ────────────────────────────────────────────────── */
+
+function ProjectSection({
+  health, projects, onSelect, defaultOpen = true,
+}: {
+  health: Health;
+  projects: Project[];
+  onSelect: (id: string) => void;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const hc = HEALTH[health];
+
+  if (projects.length === 0) return null;
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-neutral-100 bg-white shadow-card">
+      {/* Section header */}
+      <motion.button
+        onClick={() => setOpen((v) => !v)}
+        whileTap={{ scale: 0.995 }}
+        className="flex w-full items-center gap-3 border-b border-neutral-50 px-5 py-3.5 text-left hover:bg-neutral-50/60 transition-colors"
+      >
+        <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${hc.dot}`} />
+        <span className="text-xs font-semibold text-neutral-800">{hc.label}</span>
+        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${hc.badge}`}>
+          {projects.length}
+        </span>
+        <motion.span
+          animate={{ rotate: open ? 0 : -90 }}
+          transition={{ duration: 0.2, ease: EASE }}
+          className="ml-auto text-neutral-300"
+        >
+          <ChevronDown size={14} />
+        </motion.span>
+      </motion.button>
+
+      {/* Column headers — only shown when open */}
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.22, ease: EASE }}
+            className="overflow-hidden"
+          >
+            <div className="hidden sm:grid grid-cols-[2fr_1fr_140px_100px_80px_32px] border-b border-neutral-50 px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-neutral-400">
+              <span>Project</span>
+              <span>Status</span>
+              <span>Timeline</span>
+              <span className="text-center">Team</span>
+              <span className="text-right">Deadline</span>
+              <span />
+            </div>
+            <ul role="list" className="divide-y divide-neutral-50">
+              {projects.map((proj) => (
+                <ProjectRow key={proj.id} proj={proj} onSelect={onSelect} />
+              ))}
+            </ul>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 /* ─── Projects Overview (table/card hybrid) ─────────────────────────────── */
 
 function ProjectsOverview({ onSelect, onNewProject }: { onSelect: (id: string) => void; onNewProject?: () => void }) {
+  const [view, setView] = useState<"grouped" | "all">("grouped");
+
+  const grouped = SECTION_ORDER.map((health) => ({
+    health,
+    projects: PROJECTS.filter((p) => p.health === health),
+  }));
+
   return (
     <motion.div variants={container} initial="hidden" animate="visible" className="space-y-6 pb-10">
 
@@ -455,10 +615,44 @@ function ProjectsOverview({ onSelect, onNewProject }: { onSelect: (id: string) =
       {/* Main content */}
       <motion.div variants={item} className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_300px]">
 
-        {/* Project table */}
+        {/* Project list */}
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-neutral-800">All Projects</h2>
+          {/* Toolbar */}
+          <div className="flex items-center gap-2">
+            <h2 className="flex-1 text-sm font-semibold text-neutral-800">
+              {view === "grouped" ? "Projects by Status" : "All Projects"}
+            </h2>
+
+            {/* View toggle */}
+            <div className="flex items-center rounded-xl border border-neutral-200 bg-white p-0.5">
+              <motion.button
+                onClick={() => setView("grouped")}
+                whileTap={{ scale: 0.95 }}
+                className={[
+                  "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-all duration-150",
+                  view === "grouped"
+                    ? "bg-[var(--color-brand)] text-white shadow-sm"
+                    : "text-neutral-500 hover:text-neutral-700",
+                ].join(" ")}
+              >
+                <Rows3 size={12} />
+                <span className="hidden sm:inline">Grouped</span>
+              </motion.button>
+              <motion.button
+                onClick={() => setView("all")}
+                whileTap={{ scale: 0.95 }}
+                className={[
+                  "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-all duration-150",
+                  view === "all"
+                    ? "bg-[var(--color-brand)] text-white shadow-sm"
+                    : "text-neutral-500 hover:text-neutral-700",
+                ].join(" ")}
+              >
+                <LayoutList size={12} />
+                <span className="hidden sm:inline">All</span>
+              </motion.button>
+            </div>
+
             <button
               onClick={onNewProject}
               className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:border-[var(--color-brand)]/40 hover:text-[var(--color-brand)] transition-colors"
@@ -468,126 +662,52 @@ function ProjectsOverview({ onSelect, onNewProject }: { onSelect: (id: string) =
             </button>
           </div>
 
-          {/* Table card */}
-          <div className="overflow-hidden rounded-2xl border border-neutral-100 bg-white shadow-card">
-            {/* Column headers */}
-            <div className="hidden sm:grid grid-cols-[2fr_1fr_140px_100px_80px_32px] border-b border-neutral-100 px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-neutral-400">
-              <span>Project</span>
-              <span>Status</span>
-              <span>Timeline</span>
-              <span className="text-center">Team</span>
-              <span className="text-right">Deadline</span>
-              <span />
-            </div>
-
-            <ul role="list" className="divide-y divide-neutral-50">
-              {PROJECTS.map((proj) => {
-                const hc = HEALTH[proj.health];
-                return (
-                  <motion.li
-                    key={proj.id}
-                    whileHover={{ backgroundColor: "rgba(139,92,246,0.025)" }}
-                    transition={{ duration: 0.15 }}
-                    className="group cursor-pointer"
-                    onClick={() => onSelect(proj.id)}
-                  >
-                    {/* Desktop row */}
-                    <div className="hidden sm:grid grid-cols-[2fr_1fr_140px_100px_80px_32px] items-center px-5 py-4 gap-3">
-                      {/* Name + description */}
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className={`h-2 w-2 shrink-0 rounded-full ${hc.dot}`} />
-                          <p className="truncate text-xs font-semibold text-neutral-800 group-hover:text-[var(--color-brand)] transition-colors">
-                            {proj.name}
-                          </p>
-                        </div>
-                        <p className="mt-0.5 truncate pl-4 text-[10px] text-neutral-400">{proj.description}</p>
-                      </div>
-
-                      {/* Status badge */}
-                      <div>
-                        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium ${hc.badge}`}>
-                          {hc.label}
-                        </span>
-                      </div>
-
-                      {/* Progress bar + % */}
-                      <div className="flex items-center gap-2">
-                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-neutral-100">
-                          <motion.div
-                            className={`h-full rounded-full ${hc.bar}`}
-                            initial={{ width: 0 }}
-                            animate={{ width: `${proj.progress}%` }}
-                            transition={{ duration: 0.9, ease: EASE }}
-                          />
-                        </div>
-                        <span className="w-7 shrink-0 text-right text-[10px] font-medium text-neutral-500">
-                          {proj.progress}%
-                        </span>
-                      </div>
-
-                      {/* Team avatars */}
-                      <div className="flex justify-center -space-x-1.5">
-                        {proj.team.map((initials) => (
-                          <span
-                            key={initials}
-                            title={initials}
-                            className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-[var(--color-brand)]/10 text-[7px] font-bold text-[var(--color-brand)]"
-                          >
-                            {initials}
-                          </span>
-                        ))}
-                      </div>
-
-                      {/* Deadline */}
-                      <div className="text-right">
-                        <span className="text-[10px] text-neutral-500">{proj.deadline}</span>
-                      </div>
-
-                      {/* Chevron */}
-                      <ChevronRight
-                        size={13}
-                        className="text-neutral-200 group-hover:text-[var(--color-brand)] transition-colors"
-                      />
-                    </div>
-
-                    {/* Mobile card row */}
-                    <div className="flex flex-col gap-3 px-4 py-4 sm:hidden">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className={`h-2 w-2 shrink-0 rounded-full ${hc.dot}`} />
-                          <p className="truncate text-xs font-semibold text-neutral-800">{proj.name}</p>
-                        </div>
-                        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium ${hc.badge}`}>
-                          {hc.label}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-neutral-100">
-                          <div
-                            className={`h-full rounded-full ${hc.bar}`}
-                            style={{ width: `${proj.progress}%` }}
-                          />
-                        </div>
-                        <span className="text-[10px] font-medium text-neutral-500">{proj.progress}%</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <div className="flex -space-x-1.5">
-                          {proj.team.map((initials) => (
-                            <span key={initials} className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-[var(--color-brand)]/10 text-[7px] font-bold text-[var(--color-brand)]">
-                              {initials}
-                            </span>
-                          ))}
-                        </div>
-                        <span className="text-[10px] text-neutral-400">Due {proj.deadline}</span>
-                        <ChevronRight size={13} className="text-neutral-300" />
-                      </div>
-                    </div>
-                  </motion.li>
-                );
-              })}
-            </ul>
-          </div>
+          {/* Grouped view */}
+          <AnimatePresence mode="wait">
+            {view === "grouped" ? (
+              <motion.div
+                key="grouped"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.2, ease: EASE }}
+                className="space-y-3"
+              >
+                {grouped.map(({ health, projects }) => (
+                  <ProjectSection
+                    key={health}
+                    health={health}
+                    projects={projects}
+                    onSelect={onSelect}
+                    defaultOpen={health !== "not-started"}
+                  />
+                ))}
+              </motion.div>
+            ) : (
+              <motion.div
+                key="all"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.2, ease: EASE }}
+                className="overflow-hidden rounded-2xl border border-neutral-100 bg-white shadow-card"
+              >
+                <div className="hidden sm:grid grid-cols-[2fr_1fr_140px_100px_80px_32px] border-b border-neutral-100 px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-neutral-400">
+                  <span>Project</span>
+                  <span>Status</span>
+                  <span>Timeline</span>
+                  <span className="text-center">Team</span>
+                  <span className="text-right">Deadline</span>
+                  <span />
+                </div>
+                <ul role="list" className="divide-y divide-neutral-50">
+                  {PROJECTS.map((proj) => (
+                    <ProjectRow key={proj.id} proj={proj} onSelect={onSelect} />
+                  ))}
+                </ul>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* Larry activity feed */}
@@ -636,13 +756,17 @@ export function ProjectsPage({ onNewProject }: { onNewProject?: () => void }) {
     <AnimatePresence mode="wait">
       {selected ? (
         <motion.div
-          key={`gantt-${selected.id}`}
+          key={`hub-${selected.id}`}
           initial={{ opacity: 0, x: 24 }}
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: -12 }}
           transition={{ duration: 0.28, ease: EASE }}
         >
-          <GanttPage projectName={selected.name} onBack={() => setSelectedId(null)} />
+          <ProjectHub
+            projectId={selected.id}
+            projectName={selected.name}
+            onBack={() => setSelectedId(null)}
+          />
         </motion.div>
       ) : (
         <motion.div
