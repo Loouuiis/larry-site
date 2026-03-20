@@ -1,17 +1,18 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { FolderOpen, FileText, MessageSquare, ClipboardList, X, Bot } from "lucide-react";
+import { FolderOpen, FileText, MessageSquare, ClipboardList, X, Bot, BarChart2 } from "lucide-react";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
-export type NavSection = "projects" | "documents" | "chats" | "meetings";
+export type NavSection = "projects" | "documents" | "chats" | "meetings" | "analytics";
 
 const NAV_ITEMS: { id: NavSection; label: string; icon: React.ElementType }[] = [
   { id: "projects",  label: "Projects",      icon: FolderOpen     },
   { id: "documents", label: "Documents",     icon: FileText       },
   { id: "chats",     label: "Chats",         icon: MessageSquare  },
   { id: "meetings",  label: "Meeting Notes", icon: ClipboardList  },
+  { id: "analytics", label: "Analytics",     icon: BarChart2      },
 ];
 
 interface SidebarProps {

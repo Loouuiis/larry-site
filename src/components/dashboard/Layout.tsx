@@ -10,6 +10,7 @@ import { ProjectsPage }    from "./pages/ProjectsPage";
 import { DocumentsPage }   from "./pages/DocumentsPage";
 import { ChatsPage }       from "./pages/ChatsPage";
 import { MeetingNotesPage } from "./pages/MeetingNotesPage";
+import { AnalyticsPage }   from "./pages/AnalyticsPage";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -18,6 +19,7 @@ const ACTION_COUNTS: Record<NavSection, number> = {
   documents: 0,
   chats:     6,
   meetings:  2,
+  analytics: 0,
 };
 
 function PageContent({ section, onNewProject }: { section: NavSection; onNewProject: () => void }) {
@@ -26,6 +28,7 @@ function PageContent({ section, onNewProject }: { section: NavSection; onNewProj
     case "documents": return <DocumentsPage />;
     case "chats":     return <ChatsPage />;
     case "meetings":  return <MeetingNotesPage />;
+    case "analytics": return <AnalyticsPage />;
   }
 }
 
