@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Sidebar, type NavSection } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { LarryChat } from "./LarryChat";
+import { StartProjectFlow } from "./StartProjectFlow";
 import { ProjectsPage }    from "./pages/ProjectsPage";
 import { DocumentsPage }   from "./pages/DocumentsPage";
 import { ChatsPage }       from "./pages/ChatsPage";
@@ -19,9 +20,9 @@ const ACTION_COUNTS: Record<NavSection, number> = {
   meetings:  2,
 };
 
-function PageContent({ section }: { section: NavSection }) {
+function PageContent({ section, onNewProject }: { section: NavSection; onNewProject: () => void }) {
   switch (section) {
-    case "projects":  return <ProjectsPage />;
+    case "projects":  return <ProjectsPage onNewProject={onNewProject} />;
     case "documents": return <DocumentsPage />;
     case "chats":     return <ChatsPage />;
     case "meetings":  return <MeetingNotesPage />;
@@ -31,6 +32,7 @@ function PageContent({ section }: { section: NavSection }) {
 export function Layout() {
   const [active, setActive]           = useState<NavSection>("projects");
   const [mobileOpen, setMobileOpen]   = useState(false);
+  const [showNewProject, setShowNewProject] = useState(false);
 
   return (
     <div className="dashboard flex h-screen overflow-hidden bg-[var(--background)]">
@@ -58,13 +60,20 @@ export function Layout() {
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.28, ease: EASE }}
             >
-              <PageContent section={active} />
+              <PageContent section={active} onNewProject={() => setShowNewProject(true)} />
             </motion.div>
           </AnimatePresence>
         </main>
       </div>
 
       <LarryChat />
+
+      {/* Start Project overlay */}
+      <AnimatePresence>
+        {showNewProject && (
+          <StartProjectFlow onClose={() => setShowNewProject(false)} />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

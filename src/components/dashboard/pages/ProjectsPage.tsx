@@ -96,7 +96,7 @@ const item = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: EASE } },
 };
 
-export function ProjectsPage() {
+export function ProjectsPage({ onNewProject }: { onNewProject?: () => void }) {
   return (
     <motion.div variants={container} initial="hidden" animate="visible" className="space-y-6 pb-10">
 
@@ -123,7 +123,10 @@ export function ProjectsPage() {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-neutral-800">All Projects</h2>
-            <button className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:border-[var(--color-brand)]/40 hover:text-[var(--color-brand)] transition-colors">
+            <button
+              onClick={onNewProject}
+              className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:border-[var(--color-brand)]/40 hover:text-[var(--color-brand)] transition-colors"
+            >
               <Plus size={12} />
               New Project
             </button>
