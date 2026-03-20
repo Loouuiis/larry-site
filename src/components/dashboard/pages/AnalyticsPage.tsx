@@ -55,7 +55,7 @@ const STATS = [
   { label: "Total Tasks",  value: String(TOTAL_TASKS), icon: Circle,       color: "text-neutral-500", bg: "bg-neutral-100" },
   { label: "Completed",    value: "28",                icon: CheckCircle2, color: "text-emerald-500", bg: "bg-emerald-50"  },
   { label: "At Risk",      value: "9",                 icon: AlertTriangle, color: "text-amber-500",  bg: "bg-amber-50"   },
-  { label: "On Time %",    value: `${COMPLETE_PCT}%`,  icon: TrendingUp,   color: "text-[#8b5cf6]",  bg: "bg-[#8b5cf6]/8"  },
+  { label: "On Time %",    value: `${COMPLETE_PCT}%`,  icon: TrendingUp,   color: "text-[var(--color-brand)]",  bg: "bg-[var(--color-brand)]/8"  },
 ];
 
 /* ─── Animation variants ────────────────────────────────────────────────── */
@@ -130,7 +130,7 @@ function ChartCard({ title, subtitle, children }: {
   return (
     <motion.div variants={item} className="rounded-2xl border border-neutral-100 bg-white p-5 shadow-card">
       <div className="mb-4">
-        <h3 className="text-sm font-semibold text-neutral-800" style={{ letterSpacing: "-0.01em" }}>
+        <h3 className="text-sm font-semibold text-neutral-800">
           {title}
         </h3>
         {subtitle && <p className="mt-0.5 text-[11px] text-neutral-400">{subtitle}</p>}
@@ -259,13 +259,13 @@ function GenerateReportCard() {
   }
 
   return (
-    <motion.div variants={item} className="rounded-2xl border border-[#8b5cf6]/12 bg-gradient-to-br from-[#8b5cf6]/5 via-white to-[#818cf8]/5 p-6 shadow-card">
+    <motion.div variants={item} className="rounded-2xl border border-[var(--color-brand)]/12 bg-gradient-to-br from-[var(--color-brand)]/5 via-white to-[var(--color-accent-blue)]/5 p-6 shadow-card">
       <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
         {/* Left copy */}
         <div className="flex-1">
           <div className="mb-1 flex items-center gap-2">
-            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#8b5cf6] text-[9px] font-bold text-white">L</span>
-            <h3 className="text-sm font-semibold text-neutral-800" style={{ letterSpacing: "-0.01em" }}>
+            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[var(--color-brand)] text-[9px] font-bold text-white">L</span>
+            <h3 className="text-sm font-semibold text-neutral-800">
               Generate Report
             </h3>
           </div>
@@ -273,7 +273,7 @@ function GenerateReportCard() {
             Export a formatted summary of this project&apos;s current status, tasks, risks, and progress — ready to share with stakeholders.
           </p>
           <div className="mt-2 flex items-center gap-1.5 text-[11px] text-neutral-400">
-            <Sparkles size={11} className="text-[#8b5cf6]/60" />
+            <Sparkles size={11} className="text-[var(--color-brand)]/60" />
             Last generated: <span className="font-medium text-neutral-500">Mar 20, 2026 at 09:14am</span>
           </div>
         </div>
@@ -286,7 +286,7 @@ function GenerateReportCard() {
             whileTap={{ scale: 0.97 }}
             transition={{ duration: 0.16, ease: EASE }}
             disabled={!!generating}
-            className="flex items-center gap-2 rounded-xl bg-[#8b5cf6] px-4 py-2.5 text-xs font-semibold text-white shadow-[0_3px_12px_rgba(139,92,246,0.3)] hover:bg-[#7c3aed] transition-colors disabled:opacity-60"
+            className="flex items-center gap-2 rounded-xl bg-[var(--color-brand)] px-4 py-2.5 text-xs font-semibold text-white shadow-[0_3px_12px_rgba(139,92,246,0.3)] hover:bg-[var(--color-brand-dark)] transition-colors disabled:opacity-60"
           >
             {generating === "pdf" ? (
               <RefreshCw size={13} className="animate-spin" />
@@ -302,7 +302,7 @@ function GenerateReportCard() {
             whileTap={{ scale: 0.97 }}
             transition={{ duration: 0.16, ease: EASE }}
             disabled={!!generating}
-            className="flex items-center gap-2 rounded-xl border border-[#8b5cf6]/25 bg-white px-4 py-2.5 text-xs font-semibold text-[#8b5cf6] hover:border-[#8b5cf6]/50 hover:bg-[#8b5cf6]/5 transition-colors disabled:opacity-60"
+            className="flex items-center gap-2 rounded-xl border border-[var(--color-brand)]/25 bg-white px-4 py-2.5 text-xs font-semibold text-[var(--color-brand)] hover:border-[var(--color-brand)]/50 hover:bg-[var(--color-brand)]/5 transition-colors disabled:opacity-60"
           >
             {generating === "ppt" ? (
               <RefreshCw size={13} className="animate-spin" />
@@ -341,7 +341,7 @@ function ProjectSelector() {
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3.5 py-2 text-xs font-medium text-neutral-700 shadow-sm hover:border-neutral-300 transition-colors"
       >
-        <span className="flex h-4 w-4 items-center justify-center rounded bg-[#8b5cf6] text-[7px] font-bold text-white">L</span>
+        <span className="flex h-4 w-4 items-center justify-center rounded bg-[var(--color-brand)] text-[7px] font-bold text-white">L</span>
         {selected}
         <ChevronDown size={12} className={`ml-1 text-neutral-400 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
       </button>
@@ -351,9 +351,9 @@ function ProjectSelector() {
             <button
               key={p}
               onClick={() => { setSelected(p); setOpen(false); }}
-              className={`flex w-full items-center gap-2 px-3.5 py-2 text-xs transition-colors ${p === selected ? "bg-[#8b5cf6]/5 font-semibold text-[#8b5cf6]" : "text-neutral-600 hover:bg-neutral-50"}`}
+              className={`flex w-full items-center gap-2 px-3.5 py-2 text-xs transition-colors ${p === selected ? "bg-[var(--color-brand)]/5 font-semibold text-[var(--color-brand)]" : "text-neutral-600 hover:bg-neutral-50"}`}
             >
-              {p === selected && <span className="h-1 w-1 rounded-full bg-[#8b5cf6]" />}
+              {p === selected && <span className="h-1 w-1 rounded-full bg-[var(--color-brand)]" />}
               {p}
             </button>
           ))}
@@ -376,7 +376,7 @@ export function AnalyticsPage() {
       {/* Page header */}
       <motion.div variants={item} className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-neutral-800" style={{ letterSpacing: "-0.01em" }}>
+          <h2 className="text-sm font-semibold text-neutral-800">
             Dashboard &amp; Results
           </h2>
           <p className="text-[11px] text-neutral-400">Mar 1 – Apr 30, 2026</p>

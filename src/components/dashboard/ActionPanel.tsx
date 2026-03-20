@@ -94,7 +94,7 @@ const TYPE_CFG: Record<ActionType, {
   iconColor: string;
 }> = {
   email:   { icon: Mail,     label: "Email Draft",    iconBg: "bg-blue-50",             iconColor: "text-blue-500"             },
-  meeting: { icon: Calendar, label: "Meeting Invite", iconBg: "bg-[#8b5cf6]/8",         iconColor: "text-[#8b5cf6]"            },
+  meeting: { icon: Calendar, label: "Meeting Invite", iconBg: "bg-[var(--color-brand)]/8",         iconColor: "text-[var(--color-brand)]"            },
   action:  { icon: Zap,      label: "Action",         iconBg: "bg-amber-50",            iconColor: "text-amber-500"            },
 };
 
@@ -193,7 +193,7 @@ function ActionCard({
               whileHover={{ scale: 1.04 }}
               whileTap={{ scale: 0.95 }}
               transition={{ duration: 0.13 }}
-              className="flex items-center gap-1 rounded-lg bg-[#8b5cf6] px-2.5 py-1.5 text-[10px] font-semibold text-white shadow-[0_2px_8px_rgba(139,92,246,0.25)] hover:bg-[#7c3aed] transition-colors"
+              className="flex items-center gap-1 rounded-lg bg-[var(--color-brand)] px-2.5 py-1.5 text-[10px] font-semibold text-white shadow-[0_2px_8px_rgba(139,92,246,0.25)] hover:bg-[var(--color-brand-dark)] transition-colors"
             >
               <Check size={10} strokeWidth={2.5} />
               Approve
@@ -272,15 +272,15 @@ export function ActionPanel({ onClose }: ActionPanelProps) {
       >
         {/* Header */}
         <div className="flex items-center gap-3 border-b border-neutral-100 px-5 py-4">
-          <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-[#8b5cf6] shadow-[0_2px_8px_rgba(139,92,246,0.3)]">
+          <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-[var(--color-brand)] shadow-[0_2px_8px_rgba(139,92,246,0.3)]">
             <Zap size={13} className="text-white" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-neutral-900" style={{ letterSpacing: "-0.01em" }}>
+            <p className="text-sm font-bold text-neutral-900">
               Action Tab
             </p>
             <p className="text-[10px] text-neutral-400 flex items-center gap-1">
-              <Sparkles size={9} className="text-[#8b5cf6]/60" />
+              <Sparkles size={9} className="text-[var(--color-brand)]/60" />
               {items.length > 0
                 ? `Larry flagged ${items.length} item${items.length !== 1 ? "s" : ""} for your review`
                 : "All actions resolved"}
@@ -289,7 +289,7 @@ export function ActionPanel({ onClose }: ActionPanelProps) {
 
           <div className="flex items-center gap-2">
             {items.length > 0 && (
-              <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#8b5cf6] px-1.5 text-[9px] font-bold text-white">
+              <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[var(--color-brand)] px-1.5 text-[9px] font-bold text-white">
                 {items.length}
               </span>
             )}
@@ -318,19 +318,19 @@ export function ActionPanel({ onClose }: ActionPanelProps) {
                 onClick={() => setTab(key)}
                 className={[
                   "relative flex items-center gap-1.5 rounded-t-lg px-3 py-2 text-[11px] font-medium transition-colors",
-                  isActive ? "text-[#8b5cf6]" : "text-neutral-400 hover:text-neutral-600",
+                  isActive ? "text-[var(--color-brand)]" : "text-neutral-400 hover:text-neutral-600",
                 ].join(" ")}
               >
                 {label}
                 {count > 0 && (
-                  <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold tabular-nums ${isActive ? "bg-[#8b5cf6]/10 text-[#8b5cf6]" : "bg-neutral-100 text-neutral-400"}`}>
+                  <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold tabular-nums ${isActive ? "bg-[var(--color-brand)]/10 text-[var(--color-brand)]" : "bg-neutral-100 text-neutral-400"}`}>
                     {count}
                   </span>
                 )}
                 {isActive && (
                   <motion.div
                     layoutId="action-tab-underline"
-                    className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-[#8b5cf6]"
+                    className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-[var(--color-brand)]"
                     transition={{ duration: 0.2, ease: EASE }}
                   />
                 )}
@@ -371,7 +371,7 @@ export function ActionPanel({ onClose }: ActionPanelProps) {
             <p className="text-[10px] text-neutral-400">
               Larry auto-drafts these — review before approving
             </p>
-            <button className="flex items-center gap-1 text-[10px] font-medium text-[#8b5cf6] hover:underline">
+            <button className="flex items-center gap-1 text-[10px] font-medium text-[var(--color-brand)] hover:underline">
               View history <ChevronRight size={10} />
             </button>
           </div>

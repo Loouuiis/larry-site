@@ -34,7 +34,7 @@ function SidebarInner({
   return (
     <div className="flex h-full flex-col">
       {/* Logo */}
-      <div className="flex h-16 items-center justify-between px-5 border-b border-neutral-100">
+      <div className="flex h-16 items-center justify-between px-5 border-b border-[var(--color-border)]">
         <div className="flex items-center gap-2.5">
           <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[var(--color-brand)] shadow-[0_2px_8px_rgba(139,92,246,0.35)]">
             <span className="text-sm font-bold text-white select-none">L</span>
@@ -112,8 +112,8 @@ function SidebarInner({
       </nav>
 
       {/* Bottom — Larry badge */}
-      <div className="px-4 py-4 border-t border-neutral-100">
-        <div className="flex items-center gap-2.5 rounded-xl bg-[var(--color-brand)]/5 border border-[var(--color-brand)]/12 px-3 py-2.5">
+      <div className="px-4 py-4 border-t border-[var(--color-border)]">
+        <div className="flex items-center gap-2.5 rounded-xl bg-[var(--color-brand)]/5 border border-[var(--color-brand)]/15 px-3 py-2.5">
           <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[var(--color-brand)] text-white">
             <Bot size={13} />
           </span>
@@ -132,7 +132,7 @@ export function Sidebar({ active, setActive, mobileOpen, onMobileClose }: Sideba
   return (
     <>
       {/* Desktop */}
-      <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-neutral-100 bg-white">
+      <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-[var(--color-border)] bg-white">
         <SidebarInner active={active} setActive={setActive} />
       </aside>
 
@@ -155,7 +155,7 @@ export function Sidebar({ active, setActive, mobileOpen, onMobileClose }: Sideba
               animate={{ x: 0 }}
               exit={{ x: "-100%" }}
               transition={{ duration: 0.26, ease: EASE }}
-              className="fixed inset-y-0 left-0 z-50 w-64 flex flex-col border-r border-neutral-100 bg-white shadow-2xl md:hidden"
+              className="fixed inset-y-0 left-0 z-50 w-64 flex flex-col border-r border-[var(--color-border)] bg-white shadow-2xl md:hidden"
             >
               <SidebarInner active={active} setActive={setActive} onClose={onMobileClose} />
             </motion.aside>

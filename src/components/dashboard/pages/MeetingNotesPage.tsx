@@ -183,7 +183,7 @@ const MEETINGS: Meeting[] = [
 /* ─── Config ─────────────────────────────────────────────────────────────── */
 
 const SPEAKER_COLORS: Record<string, { bg: string; text: string }> = {
-  SR: { bg: "bg-[#8b5cf6]/10", text: "text-[#8b5cf6]"    },
+  SR: { bg: "bg-[var(--color-brand)]/10", text: "text-[var(--color-brand)]"    },
   LP: { bg: "bg-emerald-50",   text: "text-emerald-600"   },
   AK: { bg: "bg-indigo-50",    text: "text-indigo-500"    },
   ME: { bg: "bg-amber-50",     text: "text-amber-600"     },
@@ -251,7 +251,7 @@ function SuggestedActionCard({
           "shrink-0 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] font-semibold transition-all",
           state === "done"
             ? "bg-emerald-100 text-emerald-600 cursor-default"
-            : "bg-[#8b5cf6] text-white shadow-[0_2px_6px_rgba(139,92,246,0.25)] hover:bg-[#7c3aed]",
+            : "bg-[var(--color-brand)] text-white shadow-[0_2px_6px_rgba(139,92,246,0.25)] hover:bg-[var(--color-brand-dark)]",
         ].join(" ")}
         disabled={state !== "idle"}
       >
@@ -280,8 +280,8 @@ function UploadButton() {
       className={[
         "flex w-full items-center gap-2 rounded-xl border-2 border-dashed px-4 py-3 text-xs font-medium transition-all duration-150",
         dragging
-          ? "border-[#8b5cf6]/50 bg-[#8b5cf6]/5 text-[#8b5cf6]"
-          : "border-neutral-200 text-neutral-400 hover:border-[#8b5cf6]/40 hover:bg-[#8b5cf6]/4 hover:text-[#8b5cf6]",
+          ? "border-[var(--color-brand)]/50 bg-[var(--color-brand)]/5 text-[var(--color-brand)]"
+          : "border-neutral-200 text-neutral-400 hover:border-[var(--color-brand)]/40 hover:bg-[var(--color-brand)]/4 hover:text-[var(--color-brand)]",
       ].join(" ")}
     >
       <Upload size={13} className="shrink-0" />
@@ -308,10 +308,10 @@ function MeetingDetail({ meeting, onClose }: { meeting: Meeting; onClose: () => 
       {/* Detail header */}
       <div className="flex items-start justify-between gap-3 border-b border-neutral-100 px-5 py-4 shrink-0">
         <div className="min-w-0">
-          <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-widest text-[#8b5cf6]">
+          <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-widest text-[var(--color-brand)]">
             {meeting.project}
           </p>
-          <h2 className="text-sm font-bold text-neutral-900 leading-snug" style={{ letterSpacing: "-0.02em" }}>
+          <h2 className="text-sm font-bold text-neutral-900 leading-snug tracking-[-0.02em]">
             {meeting.title}
           </h2>
           <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[10px] text-neutral-400">
@@ -322,7 +322,7 @@ function MeetingDetail({ meeting, onClose }: { meeting: Meeting; onClose: () => 
         </div>
         {/* AI badge */}
         <div className="flex shrink-0 items-center gap-2">
-          <span className="hidden sm:flex items-center gap-1.5 rounded-lg bg-[#8b5cf6]/5 border border-[#8b5cf6]/12 px-2.5 py-1.5 text-[10px] font-medium text-[#8b5cf6]">
+          <span className="hidden sm:flex items-center gap-1.5 rounded-lg bg-[var(--color-brand)]/5 border border-[var(--color-brand)]/12 px-2.5 py-1.5 text-[10px] font-medium text-[var(--color-brand)]">
             <Sparkles size={10} />
             AI Processed
           </span>
@@ -338,11 +338,11 @@ function MeetingDetail({ meeting, onClose }: { meeting: Meeting; onClose: () => 
           <button
             key={t}
             onClick={() => setActiveTab(t)}
-            className={`flex-1 py-2.5 text-xs font-medium capitalize transition-colors relative ${activeTab === t ? "text-[#8b5cf6]" : "text-neutral-400 hover:text-neutral-600"}`}
+            className={`flex-1 py-2.5 text-xs font-medium capitalize transition-colors relative ${activeTab === t ? "text-[var(--color-brand)]" : "text-neutral-400 hover:text-neutral-600"}`}
           >
             {t === "transcript" ? "Transcript" : "Summary & Actions"}
             {activeTab === t && (
-              <motion.div layoutId="meeting-tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#8b5cf6]" />
+              <motion.div layoutId="meeting-tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--color-brand)]" />
             )}
           </button>
         ))}
@@ -394,10 +394,10 @@ function MeetingDetail({ meeting, onClose }: { meeting: Meeting; onClose: () => 
             {/* AI Summary */}
             <motion.div variants={item}>
               <div className="mb-2 flex items-center gap-1.5">
-                <Sparkles size={11} className="text-[#8b5cf6]" />
+                <Sparkles size={11} className="text-[var(--color-brand)]" />
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-neutral-400">AI Summary</p>
               </div>
-              <p className="text-xs leading-relaxed text-neutral-600 bg-[#8b5cf6]/4 rounded-xl border border-[#8b5cf6]/10 px-4 py-3">
+              <p className="text-xs leading-relaxed text-neutral-600 bg-[var(--color-brand)]/4 rounded-xl border border-[var(--color-brand)]/10 px-4 py-3">
                 {meeting.summary}
               </p>
             </motion.div>
@@ -467,7 +467,7 @@ function MeetingDetail({ meeting, onClose }: { meeting: Meeting; onClose: () => 
             {/* Suggested actions */}
             <motion.div variants={item}>
               <div className="mb-3 flex items-center gap-1.5">
-                <Sparkles size={11} className="text-[#8b5cf6]" />
+                <Sparkles size={11} className="text-[var(--color-brand)]" />
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-neutral-400">Suggested Actions</p>
               </div>
               <div className="space-y-2">
@@ -481,8 +481,8 @@ function MeetingDetail({ meeting, onClose }: { meeting: Meeting; onClose: () => 
                 />
                 <SuggestedActionCard
                   icon={CalendarPlus}
-                  iconBg="bg-[#8b5cf6]/8"
-                  iconColor="text-[#8b5cf6]"
+                  iconBg="bg-[var(--color-brand)]/8"
+                  iconColor="text-[var(--color-brand)]"
                   title="Schedule next meeting"
                   description={`Proposed: +7 days from today · Same attendees · 45 min`}
                   buttonLabel="Add to calendar"
@@ -519,7 +519,7 @@ export function MeetingNotesPage() {
         {/* List header */}
         <div className="flex items-center border-b border-neutral-100 px-4 py-3.5">
           <div className="flex items-center gap-2">
-            <Mic size={13} className="text-[#8b5cf6]" />
+            <Mic size={13} className="text-[var(--color-brand)]" />
             <p className="text-xs font-semibold text-neutral-800">Meetings</p>
           </div>
           <span className="ml-2 rounded-full bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-500">
@@ -535,13 +535,13 @@ export function MeetingNotesPage() {
               <motion.li key={m.id} whileHover={{ backgroundColor: isActive ? undefined : "rgba(139,92,246,0.02)" }}>
                 <button
                   onClick={() => setSelected(m.id)}
-                  className={`w-full text-left px-4 py-3.5 transition-colors ${isActive ? "bg-[#8b5cf6]/5" : ""}`}
+                  className={`w-full text-left px-4 py-3.5 transition-colors ${isActive ? "bg-[var(--color-brand)]/5" : ""}`}
                 >
                   <div className="flex items-start justify-between gap-1">
-                    <p className={`text-xs font-semibold leading-snug ${isActive ? "text-[#8b5cf6]" : "text-neutral-800"}`}>
+                    <p className={`text-xs font-semibold leading-snug ${isActive ? "text-[var(--color-brand)]" : "text-neutral-800"}`}>
                       {m.title}
                     </p>
-                    <ChevronRight size={11} className={`mt-0.5 shrink-0 transition-colors ${isActive ? "text-[#8b5cf6]" : "text-neutral-200"}`} />
+                    <ChevronRight size={11} className={`mt-0.5 shrink-0 transition-colors ${isActive ? "text-[var(--color-brand)]" : "text-neutral-200"}`} />
                   </div>
                   <p className="mt-0.5 text-[10px] font-medium text-neutral-400">{m.project}</p>
                   <div className="mt-2 flex items-center gap-2.5 text-[10px] text-neutral-400">

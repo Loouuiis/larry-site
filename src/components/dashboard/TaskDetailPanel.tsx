@@ -4,8 +4,9 @@ import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X, ChevronDown, Calendar, User, Paperclip,
-  Send, Smile, MoreHorizontal, Check,
+  Send, Smile, MoreHorizontal, Check, Layers,
 } from "lucide-react";
+import { SourceBadge, type TaskSource } from "@/components/ui/SourceBadge";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -25,6 +26,7 @@ export interface TaskPanelData {
   project: string;
   deadline: string;
   progress: number;
+  source?: TaskSource;
   subtasks?: { name: string; status: TaskStatus; progress: number }[];
 }
 
@@ -299,8 +301,8 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
           </p>
           {/* Title — looks editable */}
           <h2
-            className="text-sm font-bold text-neutral-900 leading-snug outline-none rounded focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/30 cursor-text"
-            style={{ letterSpacing: "-0.02em" }}
+            className="text-sm font-bold text-neutral-900 leading-snug tracking-[-0.02em] outline-none rounded focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/30 cursor-text"
+           
             contentEditable
             suppressContentEditableWarning
           >
@@ -362,6 +364,15 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
               <span className="font-medium text-neutral-700">{task.deadline}</span>
               <ChevronDown size={11} className="ml-auto text-neutral-300" />
             </button>
+
+            {/* Source */}
+            {task.source && (
+              <div className="flex w-full items-center gap-3 rounded-xl border border-neutral-100 bg-neutral-50/60 px-3 py-2.5 text-xs">
+                <Layers size={13} className="shrink-0 text-neutral-300" />
+                <span className="text-neutral-400 w-16 shrink-0 text-left">Source</span>
+                <SourceBadge source={task.source} />
+              </div>
+            )}
           </motion.div>
 
           {/* Divider */}

@@ -7,6 +7,7 @@ import { Topbar } from "./Topbar";
 import { LarryChat } from "./LarryChat";
 import { StartProjectFlow } from "./StartProjectFlow";
 import { ActionPanel } from "./ActionPanel";
+import { NotificationPanel, TOTAL_NOTIFICATION_COUNT } from "./NotificationPanel";
 import { ProjectsPage }    from "./pages/ProjectsPage";
 import { DocumentsPage }   from "./pages/DocumentsPage";
 import { ChatsPage }       from "./pages/ChatsPage";
@@ -32,7 +33,8 @@ export function Layout() {
   const [active, setActive]               = useState<NavSection>("projects");
   const [mobileOpen, setMobileOpen]       = useState(false);
   const [showNewProject, setShowNewProject] = useState(false);
-  const [actionPanelOpen, setActionPanelOpen] = useState(false);
+  const [actionPanelOpen, setActionPanelOpen]         = useState(false);
+  const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
 
   return (
     <div className="dashboard flex h-screen overflow-hidden bg-[var(--background)]">
@@ -48,8 +50,11 @@ export function Layout() {
           activeSection={active}
           actionCount={TOTAL_ACTION_COUNT}
           actionPanelOpen={actionPanelOpen}
+          notificationCount={TOTAL_NOTIFICATION_COUNT}
+          notificationPanelOpen={notificationPanelOpen}
           onMenuClick={() => setMobileOpen(true)}
-          onActionTabClick={() => setActionPanelOpen((v) => !v)}
+          onActionTabClick={() => { setActionPanelOpen((v) => !v); setNotificationPanelOpen(false); }}
+          onNotificationClick={() => { setNotificationPanelOpen((v) => !v); setActionPanelOpen(false); }}
         />
 
         {/* Page content with animated transitions */}
@@ -74,6 +79,13 @@ export function Layout() {
       <AnimatePresence>
         {actionPanelOpen && (
           <ActionPanel onClose={() => setActionPanelOpen(false)} />
+        )}
+      </AnimatePresence>
+
+      {/* Notification panel */}
+      <AnimatePresence>
+        {notificationPanelOpen && (
+          <NotificationPanel onClose={() => setNotificationPanelOpen(false)} />
         )}
       </AnimatePresence>
 

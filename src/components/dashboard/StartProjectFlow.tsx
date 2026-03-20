@@ -39,11 +39,11 @@ function StepWelcome({ onNext }: { onNext: () => void }) {
     >
       {/* Larry avatar */}
       <motion.div variants={item} className="mb-8 relative">
-        <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-[var(--color-brand)] shadow-[0_8px_32px_rgba(139,92,246,0.4)]">
+        <div className="flex h-24 w-24 items-center justify-center rounded-2xl bg-gradient-to-br from-[var(--color-accent-purple)] to-[var(--color-accent-blue)] shadow-[0_8px_32px_rgba(139,92,246,0.35)]">
           <span className="text-4xl font-bold text-white select-none">L</span>
         </div>
         {/* Pulse ring */}
-        <span className="absolute inset-0 rounded-3xl animate-ping bg-[var(--color-brand)]/20 pointer-events-none" />
+        <span className="absolute inset-0 rounded-2xl animate-ping bg-[var(--color-brand)]/15 pointer-events-none" />
         {/* Online dot */}
         <span className="absolute bottom-1 right-1 h-4 w-4 rounded-full border-2 border-white bg-emerald-400" />
       </motion.div>
@@ -51,8 +51,8 @@ function StepWelcome({ onNext }: { onNext: () => void }) {
       {/* Text */}
       <motion.h1
         variants={item}
-        className="text-3xl font-bold text-neutral-900"
-        style={{ letterSpacing: "-0.03em", lineHeight: 1.1 }}
+        className="text-3xl font-bold text-neutral-900 tracking-[-0.03em] leading-[1.1]"
+       
       >
         Welcome! I&apos;m Larry,
         <br />
@@ -105,10 +105,10 @@ const OPTIONS = [
     title: "Chat with Larry",
     description: "Describe your project via text or voice",
     preview: "chat",
-    accentColor: "text-violet-500",
-    accentBg: "bg-violet-50",
-    borderHover: "hover:border-violet-200",
-    glow: "rgba(139,92,246,0.1)",
+    accentColor: "text-[var(--color-accent-mid)]",
+    accentBg: "bg-[var(--color-accent-mid)]/10",
+    borderHover: "hover:border-[var(--color-accent-mid)]/30",
+    glow: "rgba(168,85,247,0.1)",
   },
   {
     id: "meeting",
@@ -116,10 +116,10 @@ const OPTIONS = [
     title: "Start from Meeting",
     description: "Larry extracts structure from a meeting",
     preview: "meeting",
-    accentColor: "text-indigo-500",
-    accentBg: "bg-indigo-50",
-    borderHover: "hover:border-indigo-200",
-    glow: "rgba(99,102,241,0.1)",
+    accentColor: "text-[var(--color-accent-blue)]",
+    accentBg: "bg-[var(--color-accent-blue)]/10",
+    borderHover: "hover:border-[var(--color-accent-blue)]/30",
+    glow: "rgba(129,140,248,0.1)",
   },
 ] as const;
 
@@ -159,10 +159,10 @@ function MeetingPreview() {
         Drop a recording or transcript
       </p>
       <div className="flex gap-1.5">
-        <button className="rounded-lg border border-neutral-200 bg-white px-2.5 py-1 text-[9px] font-medium text-neutral-600 hover:border-indigo-200 hover:text-indigo-600 transition-colors">
+        <button className="rounded-lg border border-neutral-200 bg-white px-2.5 py-1 text-[9px] font-medium text-neutral-600 hover:border-[var(--color-accent-blue)]/30 hover:text-[var(--color-accent-blue)] transition-colors">
           Upload file
         </button>
-        <button className="rounded-lg border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-[9px] font-medium text-indigo-600">
+        <button className="rounded-lg border border-[var(--color-accent-blue)]/20 bg-[var(--color-accent-blue)]/8 px-2.5 py-1 text-[9px] font-medium text-[var(--color-accent-blue)]">
           Start meeting
         </button>
       </div>
@@ -195,8 +195,8 @@ function StepOptions({ onClose }: { onClose: () => void }) {
     >
       <motion.div variants={item} className="text-center mb-8">
         <h2
-          className="text-2xl font-bold text-neutral-900"
-          style={{ letterSpacing: "-0.03em" }}
+          className="text-2xl font-bold text-neutral-900 tracking-[-0.03em]"
+         
         >
           How would you like to start?
         </h2>
@@ -355,7 +355,7 @@ export function StartProjectFlow({ onClose }: StartProjectFlowProps) {
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.96, opacity: 0, y: 10 }}
         transition={{ duration: 0.32, ease: EASE }}
-        className="relative w-full max-w-2xl rounded-3xl border border-neutral-100 bg-white p-8 shadow-card-xl"
+        className="relative w-full max-w-2xl rounded-2xl border border-[var(--color-border)] bg-white p-8 shadow-card-xl"
       >
         {/* Close */}
         <button

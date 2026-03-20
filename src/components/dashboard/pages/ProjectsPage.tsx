@@ -275,7 +275,7 @@ function ProjectDetail({ project, onBack }: { project: Project; onBack: () => vo
           <div className="min-w-0">
             <div className="mb-1.5 flex flex-wrap items-center gap-2">
               <h2
-                className="text-xl font-bold text-neutral-900"
+                className="text-xl font-bold text-neutral-900 tracking-[-0.025em]"
                 style={{ letterSpacing: "-0.025em" }}
               >
                 {project.name}

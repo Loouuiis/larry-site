@@ -6,6 +6,7 @@ import {
   ArrowLeft, ChevronRight, ChevronDown, MessageSquare, Circle,
 } from "lucide-react";
 import { TaskDetailPanel, type TaskPanelData } from "../TaskDetailPanel";
+import { SourceDot, type TaskSource } from "@/components/ui/SourceBadge";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -25,6 +26,7 @@ interface GanttTask {
   assignee: string;
   comments: number;
   description: string;
+  source: TaskSource;
   subtasks?: GanttTask[];
 }
 
@@ -67,58 +69,58 @@ const TODAY_DAY = 19;
 const TASKS: GanttTask[] = [
   {
     id: "t1", name: "Discovery & Planning", startDay: 0, endDay: 14,
-    progress: 100, status: "done", priority: "high", assignee: "SR", comments: 3,
+    progress: 100, status: "done", priority: "high", assignee: "SR", comments: 3, source: "meeting",
     description: "Stakeholder interviews, requirements gathering, and project scoping.",
     subtasks: [
-      { id: "t1a", name: "Stakeholder interviews",  startDay: 0,  endDay: 7,  progress: 100, status: "done", priority: "high",   assignee: "SR", comments: 1, description: "Interview key stakeholders to capture goals and constraints." },
-      { id: "t1b", name: "Requirements document",   startDay: 5,  endDay: 14, progress: 100, status: "done", priority: "medium", assignee: "LP", comments: 2, description: "Produce and obtain sign-off on the requirements document." },
+      { id: "t1a", name: "Stakeholder interviews",  startDay: 0,  endDay: 7,  progress: 100, status: "done", priority: "high",   assignee: "SR", comments: 1, source: "meeting", description: "Interview key stakeholders to capture goals and constraints." },
+      { id: "t1b", name: "Requirements document",   startDay: 5,  endDay: 14, progress: 100, status: "done", priority: "medium", assignee: "LP", comments: 2, source: "email",   description: "Produce and obtain sign-off on the requirements document." },
     ],
   },
   {
     id: "t2", name: "Architecture Design", startDay: 12, endDay: 21,
-    progress: 100, status: "done", priority: "high", assignee: "TK", comments: 5,
+    progress: 100, status: "done", priority: "high", assignee: "TK", comments: 5, source: "email",
     description: "System architecture design, infra planning, and tech stack decisions.",
     subtasks: [
-      { id: "t2a", name: "System design doc",   startDay: 12, endDay: 18, progress: 100, status: "done", priority: "high",   assignee: "TK", comments: 2, description: "Produce the system design document for review." },
-      { id: "t2b", name: "Tech stack decision", startDay: 17, endDay: 21, progress: 100, status: "done", priority: "medium", assignee: "TK", comments: 3, description: "Finalise and document all technology selections." },
+      { id: "t2a", name: "System design doc",   startDay: 12, endDay: 18, progress: 100, status: "done", priority: "high",   assignee: "TK", comments: 2, source: "email",  description: "Produce the system design document for review." },
+      { id: "t2b", name: "Tech stack decision", startDay: 17, endDay: 21, progress: 100, status: "done", priority: "medium", assignee: "TK", comments: 3, source: "slack",  description: "Finalise and document all technology selections." },
     ],
   },
   {
     id: "t3", name: "Build Phase", startDay: 20, endDay: 49,
-    progress: 68, status: "on-track", priority: "critical", assignee: "ME", comments: 12,
+    progress: 68, status: "on-track", priority: "critical", assignee: "ME", comments: 12, source: "manual",
     description: "Core development across API, frontend, and database layers.",
     subtasks: [
       {
         id: "t3a", name: "API Development", startDay: 20, endDay: 42,
-        progress: 55, status: "at-risk", priority: "critical", assignee: "TK", comments: 6,
+        progress: 55, status: "at-risk", priority: "critical", assignee: "TK", comments: 6, source: "slack",
         description: "Build and document all REST API endpoints.",
         subtasks: [
-          { id: "t3a1", name: "Auth endpoints",        startDay: 20, endDay: 28, progress: 100, status: "done",     priority: "critical", assignee: "TK", comments: 2, description: "OAuth2 and JWT authentication flow." },
-          { id: "t3a2", name: "Core API spec sign-off", startDay: 28, endDay: 35, progress: 30,  status: "overdue",  priority: "critical", assignee: "TK", comments: 4, description: "Obtain stakeholder sign-off on the full API spec." },
-          { id: "t3a3", name: "Integration endpoints", startDay: 33, endDay: 42, progress: 0,   status: "upcoming", priority: "high",     assignee: "TK", comments: 0, description: "Third-party integration API endpoints." },
+          { id: "t3a1", name: "Auth endpoints",         startDay: 20, endDay: 28, progress: 100, status: "done",     priority: "critical", assignee: "TK", comments: 2, source: "slack",   description: "OAuth2 and JWT authentication flow." },
+          { id: "t3a2", name: "Core API spec sign-off", startDay: 28, endDay: 35, progress: 30,  status: "overdue",  priority: "critical", assignee: "TK", comments: 4, source: "meeting", description: "Obtain stakeholder sign-off on the full API spec." },
+          { id: "t3a3", name: "Integration endpoints",  startDay: 33, endDay: 42, progress: 0,   status: "upcoming", priority: "high",     assignee: "TK", comments: 0, source: "manual",  description: "Third-party integration API endpoints." },
         ],
       },
-      { id: "t3b", name: "Frontend scaffolding", startDay: 24, endDay: 42, progress: 75, status: "on-track", priority: "high",   assignee: "ME", comments: 3, description: "React app, routing, component library, and state management." },
-      { id: "t3c", name: "Database schema",      startDay: 20, endDay: 30, progress: 100, status: "done",    priority: "high",   assignee: "SR", comments: 2, description: "Design and migrate the production database schema." },
+      { id: "t3b", name: "Frontend scaffolding", startDay: 24, endDay: 42, progress: 75, status: "on-track", priority: "high",   assignee: "ME", comments: 3, source: "manual",  description: "React app, routing, component library, and state management." },
+      { id: "t3c", name: "Database schema",      startDay: 20, endDay: 30, progress: 100, status: "done",    priority: "high",   assignee: "SR", comments: 2, source: "email",   description: "Design and migrate the production database schema." },
     ],
   },
   {
     id: "t4", name: "UAT & Testing", startDay: 42, endDay: 54,
-    progress: 0, status: "upcoming", priority: "high", assignee: "ME", comments: 0,
+    progress: 0, status: "upcoming", priority: "high", assignee: "ME", comments: 0, source: "manual",
     description: "User acceptance testing with the client team.",
     subtasks: [
-      { id: "t4a", name: "Test cases",          startDay: 42, endDay: 47, progress: 0, status: "upcoming", priority: "medium",   assignee: "ME", comments: 0, description: "Document all UAT test cases and acceptance criteria." },
-      { id: "t4b", name: "UAT environment",     startDay: 44, endDay: 48, progress: 0, status: "upcoming", priority: "high",     assignee: "SR", comments: 0, description: "Provision and configure the UAT environment." },
-      { id: "t4c", name: "Client sign-off",     startDay: 48, endDay: 54, progress: 0, status: "upcoming", priority: "critical", assignee: "SR", comments: 0, description: "Obtain written UAT sign-off from client leads." },
+      { id: "t4a", name: "Test cases",      startDay: 42, endDay: 47, progress: 0, status: "upcoming", priority: "medium",   assignee: "ME", comments: 0, source: "manual",  description: "Document all UAT test cases and acceptance criteria." },
+      { id: "t4b", name: "UAT environment", startDay: 44, endDay: 48, progress: 0, status: "upcoming", priority: "high",     assignee: "SR", comments: 0, source: "email",   description: "Provision and configure the UAT environment." },
+      { id: "t4c", name: "Client sign-off", startDay: 48, endDay: 54, progress: 0, status: "upcoming", priority: "critical", assignee: "SR", comments: 0, source: "meeting", description: "Obtain written UAT sign-off from client leads." },
     ],
   },
   {
     id: "t5", name: "Launch", startDay: 54, endDay: 61,
-    progress: 0, status: "upcoming", priority: "critical", assignee: "SR", comments: 1,
+    progress: 0, status: "upcoming", priority: "critical", assignee: "SR", comments: 1, source: "manual",
     description: "Go-live preparation and launch execution.",
     subtasks: [
-      { id: "t5a", name: "Go-live checklist",   startDay: 54, endDay: 58, progress: 0, status: "upcoming", priority: "high",   assignee: "ME", comments: 0, description: "Complete all pre-launch checklist items." },
-      { id: "t5b", name: "Stakeholder comms",   startDay: 57, endDay: 61, progress: 0, status: "upcoming", priority: "medium", assignee: "SR", comments: 1, description: "Send launch communications to all stakeholders." },
+      { id: "t5a", name: "Go-live checklist", startDay: 54, endDay: 58, progress: 0, status: "upcoming", priority: "high",   assignee: "ME", comments: 0, source: "manual", description: "Complete all pre-launch checklist items." },
+      { id: "t5b", name: "Stakeholder comms", startDay: 57, endDay: 61, progress: 0, status: "upcoming", priority: "medium", assignee: "SR", comments: 1, source: "email",  description: "Send launch communications to all stakeholders." },
     ],
   },
 ];
@@ -166,6 +168,7 @@ function toTaskPanelData(task: GanttTask, projectName: string): TaskPanelData {
     project:      projectName,
     deadline:     dayToDate(task.endDay),
     progress:     task.progress,
+    source:       task.source,
     subtasks:     task.subtasks?.map((s) => ({ name: s.name, status: s.status, progress: s.progress })),
   };
 }
@@ -298,6 +301,9 @@ export function GanttPage({ projectName = "Alpha Launch", onBack }: GanttPagePro
                       >
                         {task.name}
                       </span>
+
+                      {/* Source dot */}
+                      <SourceDot source={task.source} />
 
                       {/* Priority pill (desktop) */}
                       <span className={`hidden xl:inline-flex shrink-0 rounded-full border px-1.5 py-0.5 text-[8px] font-semibold capitalize ${pc.badge}`}>
