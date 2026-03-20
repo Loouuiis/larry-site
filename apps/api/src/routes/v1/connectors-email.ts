@@ -271,6 +271,28 @@ export const emailConnectorRoutes: FastifyPluginAsync = async (fastify) => {
       );
 
       if (body.sendNow) {
+        // Real email sending via Resend when API key is configured
+        const resendKey = fastify.config.RESEND_API_KEY;
+        if (resendKey) {
+          try {
+            await fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${resendKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                from: "Larry <noreply@larry.app>",
+                to: [body.to],
+                subject: body.subject,
+                text: body.body,
+              }),
+            });
+          } catch (err) {
+            fastify.log.warn({ err }, "Resend email delivery failed — draft saved anyway");
+          }
+        }
+
         await fastify.db.queryTenant(
           tenantId,
           `INSERT INTO notifications (tenant_id, user_id, channel, subject, body, sent_at, metadata)
@@ -279,7 +301,7 @@ export const emailConnectorRoutes: FastifyPluginAsync = async (fastify) => {
             tenantId,
             body.subject,
             body.body,
-            JSON.stringify({ recipient: body.to, draftId: rows[0].id }),
+            JSON.stringify({ recipient: body.to, draftId: rows[0].id, resendUsed: Boolean(resendKey) }),
           ]
         );
       }

@@ -14,6 +14,7 @@ interface TaskTableProps {
   onMoveTask: (taskId: string, status: TaskStatus) => Promise<void> | void;
   onTaskTriage: (task: WorkspaceTask) => Promise<void> | void;
   onAddTaskClick: () => void;
+  onTaskClick?: (task: BoardTaskRow) => void;
 }
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string }> = {
@@ -112,6 +113,7 @@ export function TaskTable({
   onMoveTask,
   onTaskTriage,
   onAddTaskClick,
+  onTaskClick,
 }: TaskTableProps) {
   const [dragTaskId, setDragTaskId] = useState<string | null>(null);
   const allTasks = useMemo(() => groups.flatMap(g => g.tasks), [groups]);
@@ -247,7 +249,8 @@ export function TaskTable({
                         draggable
                         onDragStart={() => setDragTaskId(task.id)}
                         onDragEnd={() => setDragTaskId(null)}
-                        className="grid cursor-grab grid-cols-[2fr_90px_130px_90px_110px_40px] items-center border-b border-[#f0f1f3] px-4 py-2 text-[14px] transition-colors hover:bg-[#f8f9fb]"
+                        onClick={() => onTaskClick?.(task)}
+                        className="grid cursor-pointer grid-cols-[2fr_90px_130px_90px_110px_40px] items-center border-b border-[#f0f1f3] px-4 py-2 text-[14px] transition-colors hover:bg-[#f8f9fb]"
                       >
                         {/* Task name */}
                         <span className="truncate pr-2 text-[#323338]">{task.title}</span>

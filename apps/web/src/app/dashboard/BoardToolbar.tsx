@@ -1,6 +1,7 @@
 "use client";
 
-import { ChevronDown, MessageSquare, Plus, Search, Sparkles } from "lucide-react";
+import Link from "next/link";
+import { ChevronDown, LayoutDashboard, MessageSquare, Plus, Search, Sparkles } from "lucide-react";
 import { BoardView, WorkspaceProject } from "./types";
 
 interface BoardToolbarProps {
@@ -14,8 +15,7 @@ interface BoardToolbarProps {
   onNewTaskClick: () => void;
   onBoardViewChange: (view: BoardView) => void;
   onMeetingClick: () => void;
-  onLarryClick: () => void;
-  larryActive: boolean;
+  onLarryOpen: () => void;
 }
 
 const VIEW_LABELS: Record<BoardView, string> = {
@@ -35,12 +35,11 @@ export function BoardToolbar({
   onNewTaskClick,
   onBoardViewChange,
   onMeetingClick,
-  onLarryClick,
-  larryActive,
+  onLarryOpen,
 }: BoardToolbarProps) {
   return (
     <header className="bg-[var(--pm-surface)] border-b border-[var(--pm-border)]">
-      {/* Top row: Board name + tabs */}
+      {/* Top row: Board name + Larry button */}
       <div className="flex items-center justify-between px-5 pt-4 pb-0">
         <div className="flex items-center gap-3">
           <h1 className="text-[20px] font-semibold text-[var(--pm-text)]">
@@ -62,15 +61,11 @@ export function BoardToolbar({
         <div className="flex items-center gap-2 pr-1">
           <button
             type="button"
-            onClick={onLarryClick}
-            className={`inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-[13px] font-medium transition-colors ${
-              larryActive
-                ? "border-[#6366f1] bg-[#f5f3ff] text-[#5b21b6]"
-                : "border-[var(--pm-border)] bg-[var(--pm-surface)] text-[var(--pm-text-secondary)] hover:bg-[var(--pm-gray-light)]"
-            }`}
+            onClick={onLarryOpen}
+            className="inline-flex h-9 items-center gap-1.5 rounded-md border border-[var(--pm-border)] bg-[var(--pm-surface)] px-3 text-[13px] font-medium text-[var(--pm-text-secondary)] transition-colors hover:border-[#6366f1] hover:bg-[#f5f3ff] hover:text-[#5b21b6]"
           >
             <Sparkles size={15} className="text-[#6366f1]" />
-            Larry
+            Ask Larry
           </button>
         </div>
       </div>
@@ -94,6 +89,15 @@ export function BoardToolbar({
             )}
           </button>
         ))}
+        {selectedProjectId && (
+          <Link
+            href={`/workspace/projects/${selectedProjectId}/dashboard`}
+            className="relative inline-flex items-center gap-1 px-4 pb-2 pt-1 text-[14px] font-medium text-[var(--pm-text-secondary)] transition-colors hover:text-[var(--pm-text)]"
+          >
+            <LayoutDashboard size={14} />
+            Dashboard
+          </Link>
+        )}
       </div>
 
       {/* Toolbar row */}

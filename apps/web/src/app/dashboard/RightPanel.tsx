@@ -1,6 +1,7 @@
 "use client";
 
-import { Check, Clock, RefreshCw, Send, ShieldCheck, X } from "lucide-react";
+import { Clock } from "lucide-react";
+import Link from "next/link";
 import { ActionCardViewModel, ConnectorStatus, EmailDraft, WorkspaceActivityItem, WorkspaceOutcomes } from "./types";
 
 interface RightPanelProps {
@@ -25,26 +26,6 @@ interface RightPanelProps {
   onSendDraft: (draftId: string) => Promise<void> | void;
 }
 
-function impactBadge(impact: ActionCardViewModel["impact"]): { label: string; bg: string } {
-  if (impact === "high") return { label: "High impact", bg: "bg-[var(--pm-red-light)] text-[var(--pm-red)]" };
-  if (impact === "medium") return { label: "Medium", bg: "bg-[var(--pm-orange-light)] text-[#b87900]" };
-  return { label: "Low", bg: "bg-[#e6f0ff] text-[var(--pm-blue)]" };
-}
-
-function ConnectorRow({ label, connected, onConnect }: { label: string; connected: boolean; onConnect: () => void }) {
-  return (
-    <div className="flex items-center justify-between py-1.5">
-      <div className="flex items-center gap-2">
-        <span className={`pm-dot ${connected ? "pm-dot-connected" : "pm-dot-disconnected"}`} />
-        <span className="text-[13px] text-[var(--pm-text)]">{label}</span>
-      </div>
-      <button type="button" onClick={onConnect} className="text-[12px] text-[var(--pm-blue)] hover:underline font-medium">
-        {connected ? "Reconnect" : "Connect"}
-      </button>
-    </div>
-  );
-}
-
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
@@ -62,15 +43,6 @@ export function RightPanel({
   outcomes,
   actionCards,
   activityItems,
-  emailDrafts,
-  actionBusyId,
-  correctionBusyId,
-  draftBusyId,
-  connectors,
-  onActionDecision,
-  onActionCorrect,
-  onConnectorInstall,
-  onSendDraft,
 }: RightPanelProps) {
   const radius = 30;
   const circumference = 2 * Math.PI * radius;
@@ -133,17 +105,9 @@ export function RightPanel({
         )}
       </section>
 
-      {/* Connectors */}
+      {/* Action Center summary → link to full page */}
       <section className="rounded-xl border border-[var(--pm-border)] bg-[var(--pm-surface)] p-4">
-        <h3 className="text-[12px] font-semibold uppercase tracking-wider text-[var(--pm-text-muted)] mb-2">Connections</h3>
-        <ConnectorRow label="Slack" connected={Boolean(connectors.slack?.connected)} onConnect={() => void onConnectorInstall("slack")} />
-        <ConnectorRow label="Google Calendar" connected={Boolean(connectors.calendar?.connected)} onConnect={() => void onConnectorInstall("calendar")} />
-        <ConnectorRow label="Email" connected={Boolean(connectors.email?.connected)} onConnect={() => void onConnectorInstall("email")} />
-      </section>
-
-      {/* Action Center */}
-      <section className="rounded-xl border border-[var(--pm-border)] bg-[var(--pm-surface)] p-4">
-        <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center justify-between mb-2">
           <h3 className="text-[12px] font-semibold uppercase tracking-wider text-[var(--pm-text-muted)]">Action Center</h3>
           {actionCards.length > 0 && (
             <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--pm-blue)] text-[10px] font-bold text-white px-1.5">
@@ -151,89 +115,20 @@ export function RightPanel({
             </span>
           )}
         </div>
-        <p className="mb-3 text-[11px] leading-snug text-[var(--pm-text-muted)]">
-          Prepared for your approval: deadline, scope, ownership, or external impact—review signals, then approve or correct.
-        </p>
-
-        <div className="space-y-2 max-h-[300px] overflow-y-auto">
-          {actionCards.map((action) => {
-            const badge = impactBadge(action.impact);
-            return (
-              <article key={action.id} className={`rounded-lg border border-[#e6e9ef] p-3 transition-shadow hover:shadow-sm ${
-                action.impact === "high" ? "border-l-4 border-l-[#E2445C]" :
-                action.impact === "medium" ? "border-l-4 border-l-[#FDAB3D]" :
-                "border-l-4 border-l-[#0073EA]"
-              }`}>
-                <div className="flex items-start justify-between gap-2 mb-1.5">
-                  <div>
-                    <span className="text-[13px] font-semibold text-[var(--pm-text)] capitalize">{action.title.replace(/_/g, " ")}</span>
-                    <span className={`ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${badge.bg}`}>
-                      {badge.label}
-                    </span>
-                  </div>
-                </div>
-                <p className="text-[13px] text-[var(--pm-text-secondary)] mb-1">{action.reason}</p>
-                <p className="text-[11px] text-[var(--pm-text-muted)]">Confidence {action.confidence} · {action.threshold}</p>
-                <div className="flex gap-1.5 mt-2.5">
-                  <button
-                    type="button"
-                    disabled={actionBusyId === action.id}
-                    onClick={() => void onActionDecision(action.id, "approve")}
-                    className="inline-flex h-7 items-center gap-1 rounded-md bg-[#00C875] px-2.5 text-[12px] font-semibold text-white disabled:opacity-50"
-                  >
-                    <Check size={13} /> Approve
-                  </button>
-                  <button
-                    type="button"
-                    disabled={actionBusyId === action.id}
-                    onClick={() => void onActionDecision(action.id, "reject")}
-                    className="inline-flex h-7 items-center gap-1 rounded-md bg-[#E2445C] px-2.5 text-[12px] font-semibold text-white disabled:opacity-50"
-                  >
-                    <X size={13} /> Reject
-                  </button>
-                  <button
-                    type="button"
-                    disabled={correctionBusyId === action.id}
-                    onClick={() => void onActionCorrect(action.id)}
-                    className="inline-flex h-7 items-center gap-1 rounded-md border border-[#e6e9ef] bg-white px-2.5 text-[12px] font-semibold text-[#323338] disabled:opacity-50"
-                  >
-                    <RefreshCw size={13} /> Correct
-                  </button>
-                </div>
-              </article>
-            );
-          })}
-          {actionCards.length === 0 && (
-            <div className="flex flex-col items-center py-4 text-[var(--pm-text-muted)]">
-              <ShieldCheck size={24} className="mb-1.5 opacity-40" />
-              <p className="text-[13px]">No pending approvals</p>
-            </div>
-          )}
-        </div>
+        {actionCards.length > 0 ? (
+          <p className="text-[13px] text-[var(--pm-text-secondary)] mb-3">
+            {actionCards.length} action{actionCards.length !== 1 ? "s" : ""} awaiting your review.
+          </p>
+        ) : (
+          <p className="text-[13px] text-[var(--pm-text-muted)] mb-3">No pending approvals.</p>
+        )}
+        <Link
+          href="/workspace/actions"
+          className="inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-[var(--pm-border)] bg-white text-[13px] font-medium text-[var(--pm-text-secondary)] hover:bg-[var(--pm-gray-light)]"
+        >
+          Open Action Center →
+        </Link>
       </section>
-
-      {/* Email Drafts */}
-      {emailDrafts.length > 0 && (
-        <section className="rounded-xl border border-[var(--pm-border)] bg-[var(--pm-surface)] p-4">
-          <h3 className="text-[12px] font-semibold uppercase tracking-wider text-[var(--pm-text-muted)] mb-2">Email Drafts</h3>
-          <div className="space-y-2 max-h-[180px] overflow-y-auto">
-            {emailDrafts.map(draft => (
-              <div key={draft.id} className="rounded-lg border border-[var(--pm-border)] p-3">
-                <p className="text-[13px] font-medium text-[var(--pm-text)]">{draft.subject}</p>
-                <p className="text-[12px] text-[var(--pm-text-muted)] mt-0.5">To: {draft.recipient}</p>
-                <button
-                  type="button"
-                  disabled={draftBusyId === draft.id}
-                  onClick={() => void onSendDraft(draft.id)}
-                  className="inline-flex h-7 items-center gap-1 rounded-md bg-[#0073EA] px-2.5 text-[12px] font-semibold text-white disabled:opacity-50 mt-2"
-                >
-                  <Send size={12} /> Send
-                </button>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
 
       {/* Activity Feed */}
       <section className="rounded-xl border border-[var(--pm-border)] bg-[var(--pm-surface)] p-4">

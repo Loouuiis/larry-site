@@ -143,6 +143,22 @@ export const ingestRoutes: FastifyPluginAsync = async (fastify) => {
         dedupeKey: `${tenantId}:${runId}:INGESTED`,
       });
 
+      // Create meeting_notes row for this transcript
+      await fastify.db.queryTenant(
+        tenantId,
+        `INSERT INTO meeting_notes
+          (tenant_id, project_id, agent_run_id, title, transcript, created_by_user_id)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [
+          tenantId,
+          body.projectId ?? null,
+          runId,
+          body.meetingTitle ?? null,
+          body.transcript,
+          request.user.userId,
+        ]
+      );
+
       await writeAuditLog(fastify.db, {
         tenantId,
         actorUserId: request.user.userId,

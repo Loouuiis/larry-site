@@ -1,38 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import {
-  Bot,
-  ChevronDown,
-  FileText,
-  LayoutGrid,
-  ListChecks,
-  MessageSquare,
-  Sparkles,
-  WandSparkles,
-  X,
-} from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { BoardToolbar } from "./BoardToolbar";
 import { RightPanel } from "./RightPanel";
 import { TaskTable } from "./TaskTable";
 import { useWorkspaceDashboard } from "./useWorkspaceDashboard";
 import { useWorkspaceChrome } from "@/app/workspace/WorkspaceChromeContext";
-import { WorkspaceTask } from "./types";
-
-const INTENT_OPTIONS = [
-  { value: "freeform", label: "Freeform", icon: WandSparkles },
-  { value: "create_plan", label: "Create Plan", icon: ListChecks },
-  { value: "update_scope", label: "Update Scope", icon: LayoutGrid },
-  { value: "draft_follow_up", label: "Follow-up", icon: Bot },
-  { value: "request_summary", label: "Summary", icon: FileText },
-] as const;
-
-const COMMAND_SUGGESTIONS = [
-  "Summarize this week's blockers and propose fixes.",
-  "Generate ownership follow-ups for overdue items.",
-  "Create a leadership update based on project risk.",
-  "Turn meeting actions into tasks with deadlines.",
-];
+import { BoardTaskRow, WorkspaceTask } from "./types";
+import { TaskDetailDrawer } from "@/app/workspace/projects/[projectId]/TaskDetailDrawer";
 
 type WorkspaceDashboardProps = {
   projectId: string;
@@ -64,19 +40,10 @@ export function WorkspaceDashboard({ projectId }: WorkspaceDashboardProps) {
     canCreateTask,
     taskTriageBusyId,
     taskMoveBusyId,
-    larryPrompt,
-    larryIntent,
-    larryBusy,
-    lastLarryResponse,
-    actionBusyId,
-    correctionBusyId,
-    draftBusyId,
     setProjectName,
     setTaskTitle,
     setBoardView,
     setSearchQuery,
-    setLarryPrompt,
-    setLarryIntent,
     setRightPanelOpen,
     toggleGroupCollapse,
     selectProject,
@@ -86,21 +53,15 @@ export function WorkspaceDashboard({ projectId }: WorkspaceDashboardProps) {
     handleMoveTask,
     handleActionDecision,
     handleActionCorrect,
-    handleLarryRun,
     openConnectorInstall,
     sendEmailDraft,
+    actionBusyId,
+    correctionBusyId,
+    draftBusyId,
   } = useWorkspaceDashboard(projectId);
 
-  const [larryOpen, setLarryOpen] = useState(false);
-  const [suggestionIndex, setSuggestionIndex] = useState(0);
   const taskInputRef = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      setSuggestionIndex((c) => (c + 1) % COMMAND_SUGGESTIONS.length);
-    }, 3500);
-    return () => window.clearInterval(id);
-  }, []);
+  const [selectedTask, setSelectedTask] = useState<BoardTaskRow | null>(null);
 
   useEffect(() => {
     if (!notice) return;
@@ -108,9 +69,8 @@ export function WorkspaceDashboard({ projectId }: WorkspaceDashboardProps) {
     return () => window.clearTimeout(id);
   }, [notice, setNotice]);
 
-  const openMeeting = () => {
-    chrome?.openMeeting();
-  };
+  const openMeeting = () => chrome?.openMeeting();
+  const openLarry = () => chrome?.openLarry();
 
   const onTaskTriageFromRow = (task: WorkspaceTask) => handleTaskTriage(task);
   const selectedProjectName = selectedProject?.name ?? "Project board";
@@ -142,84 +102,8 @@ export function WorkspaceDashboard({ projectId }: WorkspaceDashboardProps) {
         onNewTaskClick={() => taskInputRef.current?.focus()}
         onBoardViewChange={setBoardView}
         onMeetingClick={openMeeting}
-        onLarryClick={() => setLarryOpen((o) => !o)}
-        larryActive={larryOpen}
+        onLarryOpen={openLarry}
       />
-
-      {larryOpen && (
-        <div className="shrink-0 border-b border-[var(--pm-border)] bg-[var(--pm-surface)] px-5 py-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--pm-border)] pb-2 mb-2">
-            <div className="flex items-center gap-2 text-[13px] font-semibold text-[var(--pm-text)]">
-              <Sparkles size={16} className="text-[#6366f1]" />
-              Coordination commands
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={openMeeting}
-                className="inline-flex h-7 items-center gap-1 rounded-md border border-[var(--pm-border)] bg-white px-2 text-[12px] text-[var(--pm-text-secondary)] hover:bg-[var(--pm-gray-light)]"
-              >
-                <MessageSquare size={13} />
-                Meeting
-              </button>
-              <button
-                type="button"
-                onClick={() => setLarryOpen(false)}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--pm-text-muted)] hover:bg-[var(--pm-gray-light)]"
-              >
-                <X size={16} />
-              </button>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-1.5 pb-2">
-            {INTENT_OPTIONS.map((opt) => {
-              const Icon = opt.icon;
-              const active = larryIntent === opt.value;
-              return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setLarryIntent(opt.value)}
-                  className={`inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-[12px] font-medium transition ${
-                    active
-                      ? "bg-[#6366f1] text-white"
-                      : "bg-[var(--pm-gray-light)] text-[var(--pm-text-secondary)] hover:bg-[#e0e2e8]"
-                  }`}
-                >
-                  <Icon size={12} />
-                  {opt.label}
-                </button>
-              );
-            })}
-          </div>
-          <div className="max-h-[120px] overflow-y-auto text-[13px] text-[var(--pm-text-secondary)] mb-2">
-            {lastLarryResponse ? (
-              <p className="leading-relaxed">{lastLarryResponse}</p>
-            ) : (
-              <p className="text-[var(--pm-text-muted)]">
-                Run coordination commands on this project. High-impact outputs still route through Action Center for
-                approval.
-              </p>
-            )}
-          </div>
-          <form onSubmit={handleLarryRun} className="flex items-center gap-2">
-            <input
-              value={larryPrompt}
-              onChange={(e) => setLarryPrompt(e.target.value)}
-              placeholder={COMMAND_SUGGESTIONS[suggestionIndex]}
-              className="flex-1 h-9 rounded-lg border border-[var(--pm-border)] bg-[var(--pm-gray-light)] px-3 text-[13px] outline-none focus:border-[#6366f1] focus:bg-white"
-            />
-            <button
-              type="submit"
-              disabled={larryBusy || larryPrompt.trim().length < 3}
-              className="pm-btn pm-btn-primary pm-btn-sm"
-              style={{ background: "#6366f1", borderColor: "#6366f1" }}
-            >
-              {larryBusy ? "…" : "Send"}
-            </button>
-          </form>
-        </div>
-      )}
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <div className="min-w-0 flex-1 overflow-y-auto">
@@ -294,7 +178,9 @@ export function WorkspaceDashboard({ projectId }: WorkspaceDashboardProps) {
             onMoveTask={handleMoveTask}
             onTaskTriage={onTaskTriageFromRow}
             onAddTaskClick={() => taskInputRef.current?.focus()}
+            onTaskClick={(task) => setSelectedTask(task)}
           />
+          <TaskDetailDrawer task={selectedTask} onClose={() => setSelectedTask(null)} />
 
           <div className="px-5 py-4">
             <form onSubmit={handleCreateProject} className="flex max-w-md items-center gap-2">

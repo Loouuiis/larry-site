@@ -13,6 +13,11 @@ export interface WorkspaceProject {
   name: string;
   status: string;
   riskLevel: string | null;
+  startDate?: string | null;
+  targetDate?: string | null;
+  riskScore?: number | null;
+  completionRate?: number | null;
+  updatedAt?: string | null;
 }
 
 export interface WorkspaceTask {
@@ -58,6 +63,7 @@ export interface WorkspaceTimelineTask {
 export interface WorkspaceTimeline {
   gantt?: WorkspaceTimelineTask[];
   kanban?: Record<string, Array<{ id: string }>>;
+  dependencies?: Array<{ taskId: string; dependsOnTaskId: string; relation: string }>;
 }
 
 export interface WorkspaceHealth {

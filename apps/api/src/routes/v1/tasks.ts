@@ -106,6 +106,129 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
+  fastify.get(
+    "/:id",
+    { preHandler: [fastify.authenticate] },
+    async (request) => {
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const tenantId = request.user.tenantId;
+
+      const rows = await fastify.db.queryTenant<{
+        id: string; project_id: string; title: string; description: string | null;
+        status: string; priority: string; assignee_user_id: string | null;
+        progress_percent: number; risk_score: number; risk_level: string;
+        start_date: string | null; due_date: string | null; created_at: string; updated_at: string;
+      }>(
+        tenantId,
+        `SELECT id, project_id, title, description, status, priority,
+                assignee_user_id, progress_percent, risk_score, risk_level,
+                start_date, due_date, created_at, updated_at
+         FROM tasks WHERE tenant_id = $1 AND id = $2 LIMIT 1`,
+        [tenantId, params.id]
+      );
+
+      if (!rows[0]) throw fastify.httpErrors.notFound("Task not found.");
+
+      const r = rows[0];
+      return {
+        id: r.id, projectId: r.project_id, title: r.title, description: r.description,
+        status: r.status, priority: r.priority, assigneeUserId: r.assignee_user_id,
+        progressPercent: r.progress_percent, riskScore: r.risk_score, riskLevel: r.risk_level,
+        startDate: r.start_date, dueDate: r.due_date, createdAt: r.created_at, updatedAt: r.updated_at,
+      };
+    }
+  );
+
+  fastify.patch(
+    "/:id",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
+    async (request) => {
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const body = z.object({
+        title: z.string().min(1).max(300).optional(),
+        description: z.string().max(4000).optional(),
+        status: z.enum(["backlog", "not_started", "in_progress", "waiting", "completed", "blocked"]).optional(),
+        progressPercent: z.number().int().min(0).max(100).optional(),
+        dueDate: z.string().date().optional(),
+        assigneeUserId: z.string().uuid().optional().nullable(),
+      }).parse(request.body);
+      const tenantId = request.user.tenantId;
+
+      const setClauses: string[] = ["updated_at = NOW()"];
+      const values: unknown[] = [tenantId, params.id];
+      let idx = 3;
+
+      if (body.title !== undefined) { setClauses.push(`title = $${idx++}`); values.push(body.title); }
+      if (body.description !== undefined) { setClauses.push(`description = $${idx++}`); values.push(body.description); }
+      if (body.status !== undefined) { setClauses.push(`status = $${idx++}`); values.push(body.status); }
+      if (body.progressPercent !== undefined) { setClauses.push(`progress_percent = $${idx++}`); values.push(body.progressPercent); }
+      if (body.dueDate !== undefined) { setClauses.push(`due_date = $${idx++}`); values.push(body.dueDate); }
+      if (body.assigneeUserId !== undefined) { setClauses.push(`assignee_user_id = $${idx++}`); values.push(body.assigneeUserId); }
+
+      if (setClauses.length === 1) return { success: true };
+
+      await fastify.db.queryTenant(
+        tenantId,
+        `UPDATE tasks SET ${setClauses.join(", ")} WHERE tenant_id = $1 AND id = $2`,
+        values
+      );
+
+      return { success: true };
+    }
+  );
+
+  fastify.get(
+    "/:id/comments",
+    { preHandler: [fastify.authenticate] },
+    async (request) => {
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const tenantId = request.user.tenantId;
+
+      const rows = await fastify.db.queryTenant<{
+        id: string; body: string; author_user_id: string; created_at: string;
+      }>(
+        tenantId,
+        `SELECT id, body, author_user_id, created_at
+         FROM task_comments WHERE tenant_id = $1 AND task_id = $2 ORDER BY created_at ASC`,
+        [tenantId, params.id]
+      );
+
+      return { items: rows.map((r) => ({ id: r.id, body: r.body, authorUserId: r.author_user_id, createdAt: r.created_at })) };
+    }
+  );
+
+  fastify.post(
+    "/:id/comments",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
+    async (request, reply) => {
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const body = z.object({ body: z.string().min(1).max(4000) }).parse(request.body);
+      const tenantId = request.user.tenantId;
+
+      // Look up project_id from the task (required by task_comments schema)
+      const taskRow = await fastify.db.queryTenant<{ project_id: string }>(
+        tenantId,
+        `SELECT project_id FROM tasks WHERE tenant_id = $1 AND id = $2 LIMIT 1`,
+        [tenantId, params.id]
+      );
+      if (!taskRow[0]) throw fastify.httpErrors.notFound("Task not found.");
+
+      const rows = await fastify.db.queryTenant<{ id: string; created_at: string }>(
+        tenantId,
+        `INSERT INTO task_comments (tenant_id, project_id, task_id, author_user_id, body)
+         VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at`,
+        [tenantId, taskRow[0].project_id, params.id, request.user.userId, body.body]
+      );
+
+      return reply.code(201).send({
+        id: rows[0].id,
+        body: body.body,
+        authorUserId: request.user.userId,
+        createdAt: rows[0].created_at,
+      });
+    }
+  );
+
   fastify.post(
     "/:id/dependencies",
     { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },

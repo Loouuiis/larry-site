@@ -190,4 +190,35 @@ export const reportingRoutes: FastifyPluginAsync = async (fastify) => {
       return summary;
     }
   );
+
+  fastify.get(
+    "/projects/:id/task-breakdown",
+    { preHandler: [fastify.authenticate] },
+    async (request) => {
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const tenantId = request.user.tenantId;
+
+      const rows = await fastify.db.queryTenant<{
+        status: string;
+        assignee_user_id: string | null;
+      }>(
+        tenantId,
+        `SELECT status, assignee_user_id FROM tasks WHERE tenant_id = $1 AND project_id = $2`,
+        [tenantId, params.id]
+      );
+
+      const byStatus: Record<string, number> = {};
+      const byAssignee: Record<string, { total: number; completed: number }> = {};
+
+      for (const row of rows) {
+        byStatus[row.status] = (byStatus[row.status] ?? 0) + 1;
+        const key = row.assignee_user_id ?? "unassigned";
+        if (!byAssignee[key]) byAssignee[key] = { total: 0, completed: 0 };
+        byAssignee[key].total++;
+        if (row.status === "completed") byAssignee[key].completed++;
+      }
+
+      return { byStatus, byAssignee };
+    }
+  );
 };

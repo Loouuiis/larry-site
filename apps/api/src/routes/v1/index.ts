@@ -11,6 +11,8 @@ import { googleCalendarConnectorRoutes } from "./connectors-google-calendar.js";
 import { larryRoutes } from "./larry.js";
 import { emailConnectorRoutes } from "./connectors-email.js";
 import { activityRoutes } from "./activity.js";
+import { notificationRoutes } from "./notifications.js";
+import { meetingRoutes } from "./meetings.js";
 
 export const v1Routes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(authRoutes, { prefix: "/auth" });
@@ -25,4 +27,6 @@ export const v1Routes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(actionRoutes, { prefix: "/actions" });
   await fastify.register(activityRoutes);
   await fastify.register(reportingRoutes);
+  await fastify.register(notificationRoutes);
+  await fastify.register(meetingRoutes);
 };

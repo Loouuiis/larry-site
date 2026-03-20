@@ -167,3 +167,24 @@ export function verifySignedStateToken(token: string, secret: string): Record<st
 
   return parsed;
 }
+
+
+/**
+ * Post a message to a Slack channel using the bot token.
+ */
+export async function postSlackMessage(
+  botToken: string,
+  channel: string,
+  text: string
+): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch("https://slack.com/api/chat.postMessage", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${botToken}`,
+      "Content-Type": "application/json; charset=utf-8",
+    },
+    body: JSON.stringify({ channel, text }),
+  });
+  const data = await res.json() as { ok: boolean; error?: string };
+  return data;
+}

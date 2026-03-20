@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { writeAuditLog } from "../../lib/audit.js";
+import { postSlackMessage } from "../../services/connectors/slack.js";
 
 const DecisionBodySchema = z.object({
   note: z.string().max(1_000).optional(),
@@ -15,14 +16,18 @@ async function loadActionOrThrow(
   id: string;
   agentRunId: string | null;
   state: "pending" | "approved" | "rejected" | "overridden" | "executed";
+  actionType: string;
+  payload: Record<string, unknown>;
 }> {
   const rows = await fastify.db.queryTenant<{
     id: string;
     agentRunId: string | null;
     state: "pending" | "approved" | "rejected" | "overridden" | "executed";
+    actionType: string;
+    payload: Record<string, unknown>;
   }>(
     tenantId,
-    `SELECT id, agent_run_id as "agentRunId", state
+    `SELECT id, agent_run_id as "agentRunId", state, action_type as "actionType", payload
      FROM extracted_actions
      WHERE tenant_id = $1 AND id = $2
      LIMIT 1`,
@@ -188,6 +193,36 @@ export const actionRoutes: FastifyPluginAsync = async (fastify) => {
         note: body.note,
       });
       await updateInterventionStatus(fastify, tenantId, params.id, "approved");
+
+      // Phase 7.2 — Slack outbound: post message when a follow_up or email_draft action
+      // with a slackChannelId in its payload is approved.
+      if (
+        (action.actionType === "follow_up" || action.actionType === "email_draft") &&
+        typeof action.payload.slackChannelId === "string" &&
+        action.payload.slackChannelId
+      ) {
+        const slackRows = await fastify.db.queryTenant<{ bot_access_token: string }>(
+          tenantId,
+          `SELECT bot_access_token FROM slack_installations WHERE tenant_id = $1 LIMIT 1`,
+          [tenantId]
+        );
+        if (slackRows[0]) {
+          const text =
+            typeof action.payload.slackMessage === "string"
+              ? action.payload.slackMessage
+              : typeof action.payload.body === "string"
+              ? action.payload.body
+              : `Action approved: ${action.actionType}`;
+          const result = await postSlackMessage(
+            slackRows[0].bot_access_token,
+            action.payload.slackChannelId,
+            text
+          );
+          if (!result.ok) {
+            fastify.log.warn({ slackError: result.error, actionId: params.id }, "Slack postMessage failed after action approval");
+          }
+        }
+      }
 
       await writeAuditLog(fastify.db, {
         tenantId,

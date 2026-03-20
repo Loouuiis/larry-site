@@ -41,6 +41,7 @@ const ApiSchema = SharedSchema.extend({
   EMAIL_CONNECTOR_PROVIDER: z.string().default("mock"),
   EMAIL_CONNECTOR_PUBLIC_BASE_URL: z.string().url().optional(),
   EMAIL_CONNECTOR_OAUTH_STATE_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
+  RESEND_API_KEY: z.string().optional(),
 });
 
 const WorkerSchema = SharedSchema.extend({
