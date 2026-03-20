@@ -53,8 +53,7 @@ export function DocumentsPage() {
       {/* Table */}
       <motion.div
         variants={item}
-        className="overflow-hidden rounded-2xl border border-neutral-100 bg-white"
-        style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}
+        className="overflow-hidden rounded-2xl border border-neutral-100 bg-white shadow-card"
       >
         {/* Header */}
         <div className="hidden sm:grid grid-cols-[2fr_1fr_1fr_80px_40px] border-b border-neutral-100 px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-neutral-400">

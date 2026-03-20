@@ -91,7 +91,7 @@ export function ChatsPage() {
   const thread = THREADS.find((t) => t.id === activeThread)!;
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] overflow-hidden rounded-2xl border border-neutral-100 bg-white pb-4" style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+    <div className="flex h-[calc(100vh-4rem)] overflow-hidden rounded-2xl border border-neutral-100 bg-white pb-4 shadow-card">
 
       {/* Thread list */}
       <motion.aside

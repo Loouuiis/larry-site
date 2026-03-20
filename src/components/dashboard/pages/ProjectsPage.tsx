@@ -1,7 +1,8 @@
 "use client";
 
+import React from "react";
 import { motion } from "framer-motion";
-import { AlertCircle, Clock, CheckCircle2, TrendingUp, Plus, MoreHorizontal } from "lucide-react";
+import { AlertCircle, Clock, CheckCircle2, TrendingUp, Plus, MoreHorizontal, Bell, ArrowUp, BarChart2, ArrowRight } from "lucide-react";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -79,6 +80,13 @@ const ACTIVITY_ICON: Record<string, string> = {
   assign:     "bg-emerald-50 text-emerald-600",
 };
 
+const ACTIVITY_LUCIDE: Record<string, React.ElementType> = {
+  reminder:   Bell,
+  escalation: ArrowUp,
+  report:     BarChart2,
+  assign:     ArrowRight,
+};
+
 const container = {
   hidden:  {},
   visible: { transition: { staggerChildren: 0.07, delayChildren: 0.05 } },
@@ -97,8 +105,7 @@ export function ProjectsPage() {
         {STATS.map(({ label, value, icon: Icon, color, bg }) => (
           <div
             key={label}
-            className="rounded-2xl border border-neutral-100 bg-white p-4 sm:p-5"
-            style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.03)" }}
+            className="rounded-2xl border border-neutral-100 bg-white p-4 sm:p-5 shadow-card"
           >
             <div className={`mb-3 flex h-8 w-8 items-center justify-center rounded-xl ${bg}`}>
               <Icon size={15} className={color} />
@@ -129,8 +136,7 @@ export function ProjectsPage() {
                 key={id}
                 whileHover={{ y: -1 }}
                 transition={{ duration: 0.15 }}
-                className="group rounded-2xl border border-neutral-100 bg-white p-5 cursor-pointer transition-shadow hover:shadow-[0_4px_20px_rgba(0,0,0,0.07)]"
-                style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}
+                className="group rounded-2xl border border-neutral-100 bg-white p-5 cursor-pointer shadow-card hover:shadow-card-hover transition-shadow duration-200"
               >
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -192,8 +198,7 @@ export function ProjectsPage() {
 
         {/* Larry activity feed */}
         <div
-          className="rounded-2xl border border-neutral-100 bg-white overflow-hidden self-start"
-          style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}
+          className="rounded-2xl border border-neutral-100 bg-white overflow-hidden self-start shadow-card"
         >
           <div className="flex items-center gap-2 border-b border-neutral-100 px-5 py-3.5">
             <span className="flex h-4 w-4 items-center justify-center rounded-lg bg-[var(--color-brand)] text-[7px] font-bold text-white select-none">L</span>
@@ -201,17 +206,20 @@ export function ProjectsPage() {
             <span className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-400 live-pulse shrink-0" aria-hidden="true" />
           </div>
           <ul role="list" className="divide-y divide-neutral-50">
-            {RECENT_ACTIVITY.map(({ time, text, type }, i) => (
+            {RECENT_ACTIVITY.map(({ time, text, type }, i) => {
+              const IconComponent = ACTIVITY_LUCIDE[type];
+              return (
               <li key={i} className="flex items-start gap-3 px-5 py-3.5">
-                <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] ${ACTIVITY_ICON[type]}`}>
-                  {type === "reminder" ? "⏰" : type === "escalation" ? "↑" : type === "report" ? "📋" : "→"}
+                <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${ACTIVITY_ICON[type]}`}>
+                  <IconComponent size={10} />
                 </span>
                 <div className="min-w-0">
                   <p className="text-xs leading-relaxed text-neutral-600">{text}</p>
                   <p className="mt-0.5 text-[10px] text-neutral-400">{time}</p>
                 </div>
               </li>
-            ))}
+              );
+            })}
           </ul>
           <div className="border-t border-neutral-50 px-5 py-3">
             <button className="w-full text-center text-xs text-[var(--color-brand)] hover:underline">

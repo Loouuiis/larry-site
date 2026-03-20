@@ -61,9 +61,11 @@
 }
 
 /* ─── Base ────────────────────────────────────────────────────────── */
-/* Hide native cursor — CustomCursor component takes over on fine-pointer devices */
+/* Hide native cursor — CustomCursor component takes over on fine-pointer devices.
+   .use-custom-cursor must be present on the root for this to apply, so dashboard
+   and other non-landing pages keep their native cursor. */
 @media (pointer: fine) {
-  * {
+  .use-custom-cursor * {
     cursor: none !important;
   }
 }

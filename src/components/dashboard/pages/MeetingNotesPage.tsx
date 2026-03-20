@@ -127,9 +127,8 @@ export function MeetingNotesPage() {
                 "w-full text-left rounded-xl border p-4 transition-all duration-150",
                 isActive
                   ? "border-[var(--color-brand)]/20 bg-[var(--color-brand)]/5 shadow-[0_0_0_1px_rgba(139,92,246,0.12)]"
-                  : "border-neutral-100 bg-white hover:border-neutral-200 hover:shadow-sm",
+                  : "border-neutral-100 bg-white shadow-card hover:border-neutral-200 hover:shadow-card-hover",
               ].join(" ")}
-              style={{ boxShadow: isActive ? undefined : "0 1px 3px rgba(0,0,0,0.03)" }}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
@@ -160,10 +159,7 @@ export function MeetingNotesPage() {
           className="space-y-4"
         >
           {/* Header */}
-          <div
-            className="rounded-2xl border border-neutral-100 bg-white p-5 sm:p-6"
-            style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}
-          >
+          <div className="rounded-2xl border border-neutral-100 bg-white p-5 sm:p-6 shadow-card">
             <div className="mb-4 flex items-start justify-between gap-3">
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--color-brand)] mb-1">
@@ -192,10 +188,7 @@ export function MeetingNotesPage() {
           {/* Actions + Risks row */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {/* Action items */}
-            <div
-              className="rounded-2xl border border-neutral-100 bg-white p-5"
-              style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}
-            >
+            <div className="rounded-2xl border border-neutral-100 bg-white p-5 shadow-card">
               <div className="mb-3 flex items-center gap-2">
                 <CheckSquare size={13} className="text-[var(--color-brand)]" />
                 <h3 className="text-xs font-semibold text-neutral-800">Action Items</h3>
@@ -224,10 +217,7 @@ export function MeetingNotesPage() {
             </div>
 
             {/* Risks */}
-            <div
-              className="rounded-2xl border border-neutral-100 bg-white p-5"
-              style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}
-            >
+            <div className="rounded-2xl border border-neutral-100 bg-white p-5 shadow-card">
               <div className="mb-3 flex items-center gap-2">
                 <AlertTriangle size={13} className="text-amber-500" />
                 <h3 className="text-xs font-semibold text-neutral-800">Flagged Risks</h3>
@@ -244,10 +234,7 @@ export function MeetingNotesPage() {
           </div>
 
           {/* Raw notes toggle */}
-          <div
-            className="rounded-2xl border border-neutral-100 bg-white overflow-hidden"
-            style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}
-          >
+          <div className="rounded-2xl border border-neutral-100 bg-white overflow-hidden shadow-card">
             <button
               onClick={() => setShowRaw((v) => !v)}
               className="flex w-full items-center justify-between px-5 py-3.5 text-left hover:bg-neutral-50/50 transition-colors"

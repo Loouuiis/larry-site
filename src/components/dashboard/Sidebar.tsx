@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { FolderOpen, FileText, MessageSquare, ClipboardList, X } from "lucide-react";
+import { FolderOpen, FileText, MessageSquare, ClipboardList, X, Bot } from "lucide-react";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -61,16 +61,29 @@ function SidebarInner({
         {NAV_ITEMS.map(({ id, label, icon: Icon }) => {
           const isActive = active === id;
           return (
-            <button
+            <motion.button
               key={id}
               onClick={() => { setActive(id); onClose?.(); }}
+              whileHover={!isActive ? { x: 2 } : {}}
+              whileTap={{ scale: 0.98 }}
+              transition={{ duration: 0.18, ease: EASE }}
               className={[
-                "relative w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-left transition-colors duration-150",
+                "relative w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-left",
                 isActive
                   ? "text-[var(--color-brand)] font-medium"
-                  : "text-neutral-500 hover:bg-neutral-50 hover:text-neutral-800",
+                  : "text-[var(--color-muted)]",
               ].join(" ")}
             >
+              {/* Hover background */}
+              {!isActive && (
+                <motion.div
+                  className="absolute inset-0 rounded-xl bg-[var(--color-surface)]"
+                  initial={{ opacity: 0 }}
+                  whileHover={{ opacity: 1 }}
+                  transition={{ duration: 0.15 }}
+                />
+              )}
+              {/* Active background */}
               {isActive && (
                 <motion.div
                   layoutId="sidebar-active-bg"
@@ -80,8 +93,8 @@ function SidebarInner({
               )}
               <Icon
                 size={16}
-                className={`relative z-10 shrink-0 transition-colors ${
-                  isActive ? "text-[var(--color-brand)]" : "text-neutral-400"
+                className={`relative z-10 shrink-0 ${
+                  isActive ? "text-[var(--color-brand)]" : "text-[var(--color-muted)]"
                 }`}
               />
               <span className="relative z-10">{label}</span>
@@ -92,7 +105,7 @@ function SidebarInner({
                   transition={{ duration: 0.22, ease: EASE }}
                 />
               )}
-            </button>
+            </motion.button>
           );
         })}
       </nav>
@@ -100,8 +113,8 @@ function SidebarInner({
       {/* Bottom — Larry badge */}
       <div className="px-4 py-4 border-t border-neutral-100">
         <div className="flex items-center gap-2.5 rounded-xl bg-[var(--color-brand)]/5 border border-[var(--color-brand)]/12 px-3 py-2.5">
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[var(--color-brand)] text-[9px] font-bold text-white select-none">
-            AI
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[var(--color-brand)] text-white">
+            <Bot size={13} />
           </span>
           <div>
             <p className="text-xs font-medium text-neutral-800">Larry is active</p>

@@ -33,7 +33,7 @@ export function Layout() {
   const [mobileOpen, setMobileOpen]   = useState(false);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-neutral-50/60">
+    <div className="dashboard flex h-screen overflow-hidden bg-[var(--background)]">
       <Sidebar
         active={active}
         setActive={setActive}
