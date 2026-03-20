@@ -8,6 +8,7 @@ import {
   ArrowLeft, Calendar, Users, MoreHorizontal,
   CheckSquare, AlertTriangle, Zap,
 } from "lucide-react";
+import { GanttPage } from "./GanttPage";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -634,11 +635,15 @@ export function ProjectsPage({ onNewProject }: { onNewProject?: () => void }) {
   return (
     <AnimatePresence mode="wait">
       {selected ? (
-        <ProjectDetail
-          key={`detail-${selected.id}`}
-          project={selected}
-          onBack={() => setSelectedId(null)}
-        />
+        <motion.div
+          key={`gantt-${selected.id}`}
+          initial={{ opacity: 0, x: 24 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -12 }}
+          transition={{ duration: 0.28, ease: EASE }}
+        >
+          <GanttPage projectName={selected.name} onBack={() => setSelectedId(null)} />
+        </motion.div>
       ) : (
         <motion.div
           key="overview"
