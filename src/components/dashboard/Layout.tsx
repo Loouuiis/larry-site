@@ -6,6 +6,7 @@ import { Sidebar, type NavSection } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { LarryChat } from "./LarryChat";
 import { StartProjectFlow } from "./StartProjectFlow";
+import { ActionPanel } from "./ActionPanel";
 import { ProjectsPage }    from "./pages/ProjectsPage";
 import { DocumentsPage }   from "./pages/DocumentsPage";
 import { ChatsPage }       from "./pages/ChatsPage";
@@ -14,13 +15,8 @@ import { AnalyticsPage }   from "./pages/AnalyticsPage";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
-const ACTION_COUNTS: Record<NavSection, number> = {
-  projects:  3,
-  documents: 0,
-  chats:     6,
-  meetings:  2,
-  analytics: 0,
-};
+// Global action count (across all sections)
+const TOTAL_ACTION_COUNT = 7;
 
 function PageContent({ section, onNewProject }: { section: NavSection; onNewProject: () => void }) {
   switch (section) {
@@ -33,9 +29,10 @@ function PageContent({ section, onNewProject }: { section: NavSection; onNewProj
 }
 
 export function Layout() {
-  const [active, setActive]           = useState<NavSection>("projects");
-  const [mobileOpen, setMobileOpen]   = useState(false);
+  const [active, setActive]               = useState<NavSection>("projects");
+  const [mobileOpen, setMobileOpen]       = useState(false);
   const [showNewProject, setShowNewProject] = useState(false);
+  const [actionPanelOpen, setActionPanelOpen] = useState(false);
 
   return (
     <div className="dashboard flex h-screen overflow-hidden bg-[var(--background)]">
@@ -49,8 +46,10 @@ export function Layout() {
       <div className="flex flex-1 flex-col overflow-hidden">
         <Topbar
           activeSection={active}
-          actionCount={ACTION_COUNTS[active]}
+          actionCount={TOTAL_ACTION_COUNT}
+          actionPanelOpen={actionPanelOpen}
           onMenuClick={() => setMobileOpen(true)}
+          onActionTabClick={() => setActionPanelOpen((v) => !v)}
         />
 
         {/* Page content with animated transitions */}
@@ -70,6 +69,13 @@ export function Layout() {
       </div>
 
       <LarryChat />
+
+      {/* Action panel */}
+      <AnimatePresence>
+        {actionPanelOpen && (
+          <ActionPanel onClose={() => setActionPanelOpen(false)} />
+        )}
+      </AnimatePresence>
 
       {/* Start Project overlay */}
       <AnimatePresence>
