@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import {
   motion,
   AnimatePresence,
@@ -13,10 +13,18 @@ import {
   BarChart2,
   Video,
   Network,
+  FolderOpen,
   ChevronRight,
   Calendar,
   CheckCircle2,
   ChevronDown,
+  Upload,
+  FileText,
+  FileImage,
+  FileSpreadsheet,
+  File,
+  Trash2,
+  Download,
 } from "lucide-react";
 import {
   PieChart,
@@ -32,7 +40,7 @@ const EASE = [0.22, 1, 0.36, 1] as const;
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 
-type TabId = "overview" | "timeline" | "analytics" | "meetings" | "orgchart";
+type TabId = "overview" | "timeline" | "analytics" | "meetings" | "orgchart" | "documents";
 type PhaseStatus = "done" | "active" | "upcoming";
 type TaskStatus = "done" | "pending" | "overdue";
 type Severity = "overdue" | "at-risk";
@@ -1064,14 +1072,235 @@ function OrgChartTab({ projectId }: { projectId: string }) {
   );
 }
 
+/* ─── Documents tab ───────────────────────────────────────────────────────── */
+
+type DocType = "pdf" | "doc" | "sheet" | "image" | "other";
+
+interface ProjectDocument {
+  id: string;
+  name: string;
+  type: DocType;
+  size: string;
+  uploader: string;
+  date: string;
+}
+
+const INITIAL_DOCUMENTS: ProjectDocument[] = [
+  { id: "d1", name: "Project Charter.pdf",         type: "pdf",   size: "1.2 MB", uploader: "LP", date: "Mar 15" },
+  { id: "d2", name: "Technical Spec v2.docx",       type: "doc",   size: "845 KB", uploader: "TK", date: "Mar 17" },
+  { id: "d3", name: "Budget Breakdown Q1.xlsx",     type: "sheet", size: "320 KB", uploader: "JP", date: "Mar 18" },
+  { id: "d4", name: "Architecture Diagram.png",     type: "image", size: "2.4 MB", uploader: "TK", date: "Mar 10" },
+  { id: "d5", name: "Risk Register.pdf",            type: "pdf",   size: "560 KB", uploader: "SR", date: "Mar 12" },
+];
+
+function docTypeIcon(type: DocType) {
+  const cls = "shrink-0";
+  switch (type) {
+    case "pdf":   return <FileText   size={16} className={cls} />;
+    case "doc":   return <FileText   size={16} className={cls} />;
+    case "sheet": return <FileSpreadsheet size={16} className={cls} />;
+    case "image": return <FileImage  size={16} className={cls} />;
+    default:      return <File       size={16} className={cls} />;
+  }
+}
+
+function inferType(name: string): DocType {
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  if (ext === "pdf") return "pdf";
+  if (["doc", "docx"].includes(ext)) return "doc";
+  if (["xls", "xlsx", "csv"].includes(ext)) return "sheet";
+  if (["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(ext)) return "image";
+  return "other";
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function DocumentsTab() {
+  const [docs, setDocs] = useState<ProjectDocument[]>(INITIAL_DOCUMENTS);
+  const [dragging, setDragging] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const addFiles = useCallback((files: FileList | null) => {
+    if (!files) return;
+    const now = new Date();
+    const dateStr = now.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+    const newDocs: ProjectDocument[] = Array.from(files).map((f) => ({
+      id: `d${Date.now()}-${Math.random()}`,
+      name: f.name,
+      type: inferType(f.name),
+      size: formatBytes(f.size),
+      uploader: "ME",
+      date: dateStr,
+    }));
+    setDocs((prev) => [...newDocs, ...prev]);
+  }, []);
+
+  const onDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragging(false);
+      addFiles(e.dataTransfer.files);
+    },
+    [addFiles]
+  );
+
+  const removeDoc = (id: string) =>
+    setDocs((prev) => prev.filter((d) => d.id !== id));
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-bold tracking-tight text-neutral-900">Documents</h2>
+          <p className="mt-0.5 text-xs text-[var(--color-muted)]">
+            {docs.length} file{docs.length !== 1 ? "s" : ""} · project workspace
+          </p>
+        </div>
+        <motion.button
+          whileTap={{ scale: 0.97 }}
+          transition={{ duration: 0.18, ease: EASE }}
+          onClick={() => inputRef.current?.click()}
+          className="flex items-center gap-2 rounded-xl border border-[var(--color-border)] bg-white px-4 py-2 text-xs font-medium text-neutral-700 shadow-sm hover:border-neutral-300 hover:bg-neutral-50 transition-colors"
+        >
+          <Upload size={13} />
+          Upload
+        </motion.button>
+        <input
+          ref={inputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={(e) => addFiles(e.target.files)}
+        />
+      </div>
+
+      {/* Drop zone */}
+      <motion.div
+        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={onDrop}
+        animate={{ borderColor: dragging ? "var(--color-brand)" : "var(--color-border)" }}
+        transition={{ duration: 0.15 }}
+        onClick={() => inputRef.current?.click()}
+        className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed bg-white py-10 transition-colors hover:bg-neutral-50/60"
+      >
+        <div className={`flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] transition-colors ${dragging ? "border-[var(--color-brand)]/30 bg-[var(--color-brand)]/5" : ""}`}>
+          <Upload size={18} className={dragging ? "text-[var(--color-brand)]" : "text-neutral-400"} />
+        </div>
+        <div className="text-center">
+          <p className="text-sm font-medium text-neutral-700">
+            {dragging ? "Drop to upload" : "Drop files here"}
+          </p>
+          <p className="mt-0.5 text-xs text-[var(--color-muted)]">
+            or click to browse — PDF, Word, Excel, images
+          </p>
+        </div>
+      </motion.div>
+
+      {/* File list */}
+      {docs.length > 0 && (
+        <div className="rounded-2xl border border-[var(--color-border)] bg-white overflow-hidden">
+          {/* Column headers */}
+          <div className="grid grid-cols-[1fr_80px_52px_80px_44px] gap-3 border-b border-[var(--color-border)] px-5 py-2.5">
+            {["Name", "Size", "By", "Added", ""].map((h, i) => (
+              <span key={i} className="text-[10px] font-semibold uppercase tracking-widest text-neutral-400">
+                {h}
+              </span>
+            ))}
+          </div>
+
+          <AnimatePresence initial={false}>
+            {docs.map((doc, idx) => (
+              <motion.div
+                key={doc.id}
+                layout
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.22, ease: EASE }}
+                className="overflow-hidden"
+              >
+                <div
+                  className={`group grid grid-cols-[1fr_80px_52px_80px_44px] items-center gap-3 px-5 py-3.5 transition-colors hover:bg-neutral-50/60 ${
+                    idx !== docs.length - 1 ? "border-b border-[var(--color-border)]" : ""
+                  }`}
+                >
+                  {/* Name + icon */}
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="text-neutral-400">{docTypeIcon(doc.type)}</span>
+                    <span className="truncate text-sm font-medium text-neutral-800">
+                      {doc.name}
+                    </span>
+                  </div>
+
+                  {/* Size */}
+                  <span className="text-xs text-[var(--color-muted)] tabular-nums">
+                    {doc.size}
+                  </span>
+
+                  {/* Uploader */}
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[8px] font-bold text-[var(--color-muted)]">
+                    {doc.uploader}
+                  </span>
+
+                  {/* Date */}
+                  <span className="text-xs text-[var(--color-muted)]">{doc.date}</span>
+
+                  {/* Actions */}
+                  <div className="flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                    <motion.button
+                      whileTap={{ scale: 0.9 }}
+                      transition={{ duration: 0.15 }}
+                      title="Download"
+                      className="flex h-7 w-7 items-center justify-center rounded-lg border border-[var(--color-border)] bg-white text-neutral-400 hover:text-neutral-700 hover:border-neutral-300 transition-colors"
+                    >
+                      <Download size={12} />
+                    </motion.button>
+                    <motion.button
+                      whileTap={{ scale: 0.9 }}
+                      transition={{ duration: 0.15 }}
+                      title="Delete"
+                      onClick={() => removeDoc(doc.id)}
+                      className="flex h-7 w-7 items-center justify-center rounded-lg border border-[var(--color-border)] bg-white text-neutral-400 hover:text-red-500 hover:border-red-200 transition-colors"
+                    >
+                      <Trash2 size={12} />
+                    </motion.button>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {docs.length === 0 && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="py-4 text-center text-xs text-[var(--color-muted)]"
+        >
+          No documents yet. Upload the first one above.
+        </motion.div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Tab definitions ─────────────────────────────────────────────────────── */
 
 const TABS: { id: TabId; label: string; Icon: React.FC<{ size?: number; className?: string }> }[] = [
-  { id: "overview", label: "Overview", Icon: LayoutDashboard },
-  { id: "timeline", label: "Timeline", Icon: GanttChartSquare },
-  { id: "analytics", label: "Analytics", Icon: BarChart2 },
-  { id: "meetings", label: "Meetings", Icon: Video },
-  { id: "orgchart", label: "Org Chart", Icon: Network },
+  { id: "overview",   label: "Overview",  Icon: LayoutDashboard },
+  { id: "timeline",   label: "Timeline",  Icon: GanttChartSquare },
+  { id: "analytics",  label: "Analytics", Icon: BarChart2 },
+  { id: "meetings",   label: "Meetings",  Icon: Video },
+  { id: "orgchart",   label: "Org Chart", Icon: Network },
+  { id: "documents",  label: "Documents", Icon: FolderOpen },
 ];
 
 /* ─── Props ───────────────────────────────────────────────────────────────── */
@@ -1189,9 +1418,13 @@ export function ProjectWorkspace({
                 <div className="mx-auto max-w-4xl">
                   <MeetingsTab />
                 </div>
-              ) : (
+              ) : activeTab === "orgchart" ? (
                 <div className="mx-auto max-w-5xl">
                   <OrgChartTab projectId={projectId} />
+                </div>
+              ) : (
+                <div className="mx-auto max-w-4xl">
+                  <DocumentsTab />
                 </div>
               )}
             </motion.div>
