@@ -1,109 +1,131 @@
 "use client";
 
-import {
-  ChevronDown,
-  Ellipsis,
-  Filter,
-  Group,
-  Plus,
-  Search,
-  SlidersHorizontal,
-  SortAsc,
-  UserRound,
-} from "lucide-react";
-import { WorkspaceProject } from "./types";
-import { LogoutButton } from "./LogoutButton";
+import { ChevronDown, MessageSquare, Plus, Search, Sparkles } from "lucide-react";
+import { BoardView, WorkspaceProject } from "./types";
 
 interface BoardToolbarProps {
   projects: WorkspaceProject[];
   selectedProjectId: string;
   selectedProjectName: string;
   searchQuery: string;
+  boardView: BoardView;
   onSelectProject: (projectId: string) => void;
   onSearchChange: (value: string) => void;
   onNewTaskClick: () => void;
+  onBoardViewChange: (view: BoardView) => void;
+  onMeetingClick: () => void;
+  onLarryClick: () => void;
+  larryActive: boolean;
 }
 
-const iconButtonClass =
-  "inline-flex h-8 items-center gap-1 rounded-md border border-slate-200 px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50";
+const VIEW_LABELS: Record<BoardView, string> = {
+  table: "Table",
+  kanban: "Kanban",
+  gantt: "Timeline",
+};
 
 export function BoardToolbar({
   projects,
   selectedProjectId,
   selectedProjectName,
   searchQuery,
+  boardView,
   onSelectProject,
   onSearchChange,
   onNewTaskClick,
+  onBoardViewChange,
+  onMeetingClick,
+  onLarryClick,
+  larryActive,
 }: BoardToolbarProps) {
   return (
-    <header className="rounded-xl border border-slate-200 bg-white">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-semibold text-slate-900">{selectedProjectName || "Project Board"}</h1>
+    <header className="bg-[var(--pm-surface)] border-b border-[var(--pm-border)]">
+      {/* Top row: Board name + tabs */}
+      <div className="flex items-center justify-between px-5 pt-4 pb-0">
+        <div className="flex items-center gap-3">
+          <h1 className="text-[20px] font-semibold text-[var(--pm-text)]">
+            {selectedProjectName || "Project Board"}
+          </h1>
           <div className="relative">
             <select
               value={selectedProjectId}
-              onChange={(event) => onSelectProject(event.target.value)}
-              className="h-9 rounded-md border border-slate-200 bg-slate-50 px-3 pr-7 text-sm text-slate-700 outline-none focus:border-[#0073EA]"
+              onChange={(e) => onSelectProject(e.target.value)}
+              className="appearance-none h-7 rounded border border-[var(--pm-border)] bg-[var(--pm-gray-light)] pl-2 pr-6 text-[13px] text-[var(--pm-text-secondary)] outline-none hover:border-[var(--pm-blue)] focus:border-[var(--pm-blue)]"
             >
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name}
-                </option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
-            <ChevronDown size={14} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500" />
+            <ChevronDown size={12} className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-[var(--pm-text-muted)]" />
           </div>
         </div>
-        <LogoutButton />
+        <div className="flex items-center gap-2 pr-1">
+          <button
+            type="button"
+            onClick={onLarryClick}
+            className={`inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-[13px] font-medium transition-colors ${
+              larryActive
+                ? "border-[#6366f1] bg-[#f5f3ff] text-[#5b21b6]"
+                : "border-[var(--pm-border)] bg-[var(--pm-surface)] text-[var(--pm-text-secondary)] hover:bg-[var(--pm-gray-light)]"
+            }`}
+          >
+            <Sparkles size={15} className="text-[#6366f1]" />
+            Larry
+          </button>
+        </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 px-4 py-3">
+      {/* Tab row */}
+      <div className="flex items-end gap-0 px-5 mt-2">
+        {(["table", "kanban", "gantt"] as BoardView[]).map((view) => (
+          <button
+            key={view}
+            type="button"
+            onClick={() => onBoardViewChange(view)}
+            className={`relative px-4 pb-2 pt-1 text-[14px] font-medium transition-colors ${
+              boardView === view
+                ? "text-[var(--pm-blue)]"
+                : "text-[var(--pm-text-secondary)] hover:text-[var(--pm-text)]"
+            }`}
+          >
+            {VIEW_LABELS[view]}
+            {boardView === view && (
+              <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-t bg-[var(--pm-blue)]" />
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* Toolbar row */}
+      <div className="flex items-center gap-2 px-5 py-2 border-t border-[var(--pm-border)] bg-[var(--pm-surface)]">
         <button
           type="button"
           onClick={onNewTaskClick}
-          className="inline-flex h-9 items-center gap-1 rounded-md bg-[#0073EA] px-3 text-sm font-medium text-white hover:bg-[#0068d6]"
+          className="inline-flex h-[30px] items-center gap-1.5 rounded-md bg-[#0073EA] px-3 text-[13px] font-medium text-white hover:bg-[#0060c2]"
         >
-          <Plus size={16} />
+          <Plus size={14} />
           New task
         </button>
 
-        <div className="relative min-w-[220px] flex-1 sm:max-w-[360px]">
-          <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+        <button
+          type="button"
+          onClick={onMeetingClick}
+          className="inline-flex h-[30px] items-center gap-1.5 rounded-md border border-[#e6e9ef] bg-white px-2.5 text-[13px] font-medium text-[#323338] hover:bg-[#f5f6f8]"
+        >
+          <MessageSquare size={14} className="text-[#676879]" />
+          Meeting
+        </button>
+
+        <div className="relative ml-1">
+          <Search size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--pm-text-muted)]" />
           <input
             value={searchQuery}
-            onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="Search task or owner"
-            className="h-9 w-full rounded-md border border-slate-200 bg-white pl-8 pr-3 text-sm outline-none focus:border-[#0073EA]"
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder="Search"
+            className="h-7 w-[180px] rounded border border-[var(--pm-border)] bg-[var(--pm-surface)] pl-8 pr-2 text-[13px] outline-none focus:border-[var(--pm-blue)] focus:w-[260px] transition-all"
           />
         </div>
-
-        <button type="button" className={iconButtonClass}>
-          <UserRound size={14} />
-          Person
-        </button>
-        <button type="button" className={iconButtonClass}>
-          <Filter size={14} />
-          Filter
-        </button>
-        <button type="button" className={iconButtonClass}>
-          <SortAsc size={14} />
-          Sort
-        </button>
-        <button type="button" className={iconButtonClass}>
-          <SlidersHorizontal size={14} />
-          Hide
-        </button>
-        <button type="button" className={iconButtonClass}>
-          <Group size={14} />
-          Group by
-        </button>
-        <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50">
-          <Ellipsis size={14} />
-        </button>
       </div>
     </header>
   );
 }
-

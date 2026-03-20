@@ -1,17 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import Link from "next/link";
+import { useState } from "react";
 import {
+  BarChart3,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   Home,
-  Search,
-  Sparkles,
-  Star,
-  Waypoints,
-  Bot,
-  Workflow,
+  ListTodo,
+  MessageSquare,
 } from "lucide-react";
 import { WorkspaceProject } from "./types";
 
@@ -21,176 +18,143 @@ type ConnectorDot = {
   connected: boolean;
 };
 
+export type WorkspaceSidebarNav = "home" | "my-work" | "project";
+
 interface SidebarProps {
   workspaceName: string;
   projects: WorkspaceProject[];
   selectedProjectId: string;
-  onSelectProject: (projectId: string) => void;
+  onMeetingTranscriptClick: () => void;
   connectorDots: ConnectorDot[];
+  activeNav: WorkspaceSidebarNav;
 }
 
-function Dot({ connected }: { connected: boolean }) {
-  return (
-    <span
-      className={`inline-block h-2.5 w-2.5 rounded-full ${connected ? "bg-emerald-500" : "bg-slate-300"}`}
-      aria-hidden
-    />
-  );
+function navClass(active: boolean) {
+  return `flex w-full items-center gap-2 rounded-md py-[7px] pl-3 pr-3 text-[14px] transition-colors ${
+    active
+      ? "bg-[#ede9fe] font-medium text-[#5b21b6]"
+      : "text-[#323338] hover:bg-[#f5f6f8]"
+  }`;
 }
 
 export function Sidebar({
   workspaceName,
   projects,
   selectedProjectId,
-  onSelectProject,
+  onMeetingTranscriptClick,
   connectorDots,
+  activeNav,
 }: SidebarProps) {
-  const [collapsed, setCollapsed] = useState(false);
   const [favoritesOpen, setFavoritesOpen] = useState(true);
   const [workspaceOpen, setWorkspaceOpen] = useState(true);
 
-  const favoriteProjects = useMemo(() => projects.slice(0, 3), [projects]);
-
   return (
-    <aside
-      className={`dashboard-sidebar border-r border-slate-200 bg-white transition-all ${collapsed ? "w-[88px]" : "w-[290px]"}`}
-    >
-      <div className="flex h-full flex-col p-3">
-        <div className="mb-3 flex items-center justify-between">
-          <div className="flex items-center gap-2 overflow-hidden">
-            <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#0073EA] text-xs font-bold text-white">
-              L
-            </span>
-            {!collapsed && (
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-slate-900">{workspaceName}</p>
-                <p className="text-[11px] uppercase tracking-wide text-slate-500">Workspace</p>
-              </div>
-            )}
-          </div>
-          <button
-            type="button"
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-100"
-            onClick={() => setCollapsed((value) => !value)}
-          >
-            {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-          </button>
-        </div>
+    <aside className="flex h-full w-[260px] shrink-0 flex-col border-r border-[#e6e9ef] bg-white">
+      <div className="flex items-center gap-2.5 border-b border-[#e6e9ef] px-4 py-3">
+        <Link
+          href="/workspace"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#6366f1] to-[#0073EA] text-xs font-bold text-white"
+        >
+          L
+        </Link>
+        <p className="truncate text-[14px] font-semibold text-[#323338]">{workspaceName}</p>
+      </div>
 
-        <nav className="space-y-1 border-b border-slate-200 pb-3">
-          <button className="dashboard-nav-item">
-            <Home size={16} />
-            {!collapsed && <span>Home</span>}
-          </button>
-          <button className="dashboard-nav-item">
-            <Waypoints size={16} />
-            {!collapsed && <span>My Work</span>}
-          </button>
-          <button className="dashboard-nav-item">
-            <Search size={16} />
-            {!collapsed && <span>Search</span>}
-          </button>
-        </nav>
+      <div className="px-2 pt-2 space-y-0.5">
+        <Link href="/workspace" className={navClass(activeNav === "home")}>
+          <Home size={16} className="shrink-0 text-[#9699a8]" />
+          <span>Home</span>
+        </Link>
+        <Link href="/workspace/my-work" className={navClass(activeNav === "my-work")}>
+          <ListTodo size={16} className="shrink-0 text-[#9699a8]" />
+          <span>My work</span>
+        </Link>
+      </div>
 
-        <section className="mt-3 border-b border-slate-200 pb-3">
-          {!collapsed && <p className="mb-2 px-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Larry AI</p>}
-          <button className="dashboard-nav-item">
-            <Sparkles size={16} />
-            {!collapsed && <span>AI Sidekick</span>}
-          </button>
-          <button className="dashboard-nav-item">
-            <Workflow size={16} />
-            {!collapsed && <span>Workflows</span>}
-          </button>
-          <button className="dashboard-nav-item">
-            <Bot size={16} />
-            {!collapsed && <span>Agents</span>}
-          </button>
-        </section>
-
-        <section className="mt-3 border-b border-slate-200 pb-3">
-          <button
-            type="button"
-            className="mb-2 flex w-full items-center justify-between px-2 text-xs font-semibold uppercase tracking-wide text-slate-500"
-            onClick={() => setFavoritesOpen((value) => !value)}
-          >
-            {!collapsed ? <span>Favorites</span> : <Star size={14} />}
-            {!collapsed && (favoritesOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />)}
-          </button>
-          {!collapsed && favoritesOpen && (
-            <div className="space-y-1">
-              {favoriteProjects.map((project) => (
-                <button
-                  key={project.id}
-                  className={`dashboard-project-item ${selectedProjectId === project.id ? "active" : ""}`}
-                  onClick={() => onSelectProject(project.id)}
-                >
-                  <span className="truncate">{project.name}</span>
-                </button>
-              ))}
-              {favoriteProjects.length === 0 && (
-                <p className="px-2 text-xs text-slate-500">No favorites yet.</p>
-              )}
-            </div>
-          )}
-        </section>
-
-        <section className="mt-3 min-h-0 flex-1">
-          <button
-            type="button"
-            className="mb-2 flex w-full items-center justify-between px-2 text-xs font-semibold uppercase tracking-wide text-slate-500"
-            onClick={() => setWorkspaceOpen((value) => !value)}
-          >
-            {!collapsed ? <span>Workspaces</span> : <ChevronDown size={14} />}
-            {!collapsed && (workspaceOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />)}
-          </button>
-
-          {!collapsed && workspaceOpen && (
-            <div className="max-h-[260px] space-y-1 overflow-y-auto pr-1">
-              {projects.map((project) => (
-                <button
-                  key={project.id}
-                  className={`dashboard-project-item ${selectedProjectId === project.id ? "active" : ""}`}
-                  onClick={() => onSelectProject(project.id)}
-                >
-                  <span className="truncate">{project.name}</span>
-                  <span className="text-[11px] text-slate-500">risk {project.riskLevel ?? "low"}</span>
-                </button>
-              ))}
-              {projects.length === 0 && (
-                <p className="px-2 text-xs text-slate-500">No boards yet.</p>
-              )}
-            </div>
-          )}
-        </section>
-
-        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-2">
-          {!collapsed && (
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Connections</p>
-          )}
-          <div className={`grid gap-2 ${collapsed ? "grid-cols-1" : "grid-cols-3"}`}>
-            {connectorDots.map((connector) => (
-              <div
-                key={connector.key}
-                className="flex items-center gap-1.5 rounded-md bg-white px-2 py-1.5 text-[11px] text-slate-700"
-              >
-                <Dot connected={connector.connected} />
-                {!collapsed && <span>{connector.label}</span>}
-              </div>
-            ))}
-          </div>
-        </div>
-
+      <div className="px-3 pt-3 pb-1">
         <button
           type="button"
-          className="mt-3 flex h-10 items-center justify-between rounded-lg border border-slate-200 px-3 text-sm text-slate-700 hover:bg-slate-50"
+          onClick={onMeetingTranscriptClick}
+          className="flex w-full items-center gap-2.5 rounded-lg border border-[#e0e7ff] bg-[#f5f3ff] px-3 py-2.5 text-[14px] font-medium text-[#5b21b6] transition-colors hover:bg-[#ede9fe]"
         >
-          {!collapsed && <span>{workspaceName}</span>}
-          <ChevronDown size={16} />
+          <MessageSquare size={18} className="shrink-0" />
+          <span>Meeting → execution</span>
         </button>
+      </div>
+
+      <div className="mx-3 my-2 border-t border-[#e6e9ef]" />
+
+      <div className="px-2">
+        <button
+          type="button"
+          className="flex w-full items-center justify-between px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#9699a8] hover:text-[#676879]"
+          onClick={() => setFavoritesOpen((v) => !v)}
+        >
+          <span>Favorites</span>
+          {favoritesOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        </button>
+        {favoritesOpen && (
+          <div className="space-y-0.5">
+            {projects.slice(0, 3).map((project) => (
+              <Link
+                key={project.id}
+                href={`/workspace/projects/${project.id}`}
+                className={`flex w-full items-center gap-2 rounded-md py-[6px] pl-6 pr-3 text-[14px] transition-colors ${
+                  selectedProjectId === project.id
+                    ? "border-l-[3px] border-l-[#6366f1] bg-[#ede9fe] pl-[21px] font-medium text-[#5b21b6]"
+                    : "text-[#323338] hover:bg-[#f5f6f8]"
+                }`}
+              >
+                <BarChart3 size={16} className="shrink-0 text-[#9699a8]" />
+                <span className="truncate">{project.name}</span>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-1 min-h-0 flex-1 px-2">
+        <button
+          type="button"
+          className="flex w-full items-center justify-between px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#9699a8] hover:text-[#676879]"
+          onClick={() => setWorkspaceOpen((v) => !v)}
+        >
+          <span>Projects</span>
+          {workspaceOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        </button>
+        {workspaceOpen && (
+          <div className="max-h-[200px] space-y-0.5 overflow-y-auto pb-2">
+            {projects.map((project) => (
+              <Link
+                key={project.id}
+                href={`/workspace/projects/${project.id}`}
+                className={`flex w-full items-center gap-2 rounded-md py-[6px] pl-6 pr-3 text-[14px] transition-colors ${
+                  selectedProjectId === project.id
+                    ? "border-l-[3px] border-l-[#6366f1] bg-[#ede9fe] pl-[21px] font-medium text-[#5b21b6]"
+                    : "text-[#323338] hover:bg-[#f5f6f8]"
+                }`}
+              >
+                <BarChart3 size={16} className="shrink-0 text-[#9699a8]" />
+                <span className="truncate">{project.name}</span>
+              </Link>
+            ))}
+            {projects.length === 0 && (
+              <p className="px-6 py-2 text-[13px] text-[#9699a8]">No projects yet.</p>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-auto border-t border-[#e6e9ef] px-3 py-3">
+        <div className="flex items-center gap-4">
+          {connectorDots.map((c) => (
+            <div key={c.key} className="flex items-center gap-1.5">
+              <span className={`h-2 w-2 rounded-full ${c.connected ? "bg-[#00C875]" : "bg-[#C4C4C4]"}`} />
+              <span className="text-[12px] text-[#9699a8]">{c.label}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </aside>
   );
 }
-

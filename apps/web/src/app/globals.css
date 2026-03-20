@@ -2,30 +2,24 @@
 
 /* ─── Design tokens ───────────────────────────────────────────────── */
 :root {
-  /* Light with subtle purple tint — matches brand palette */
   --background: #F8F7FF;
   --foreground: #111110;
 
-  /* Brand */
   --color-brand: #8b5cf6;
   --color-brand-dark: #7c3aed;
 
-  /* Accent gradient — lavender → violet → periwinkle */
   --color-accent-purple: #c084fc;
   --color-accent-mid: #a855f7;
   --color-accent-blue: #818cf8;
 
-  /* Surfaces — warm-toned for editorial depth */
   --color-surface: #EFEFE9;
   --color-border: #E0E0DA;
   --color-muted: #6B6B63;
 
-  /* Shadow system — intentionally muted for enterprise feel */
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
   --shadow-card-hover: 0 8px 28px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04);
   --shadow-card-xl: 0 24px 48px rgba(0, 0, 0, 0.09), 0 8px 16px rgba(0, 0, 0, 0.04);
 
-  /* Premium easing curve — feels physical, not mechanical */
   --ease-premium: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-out-soft: cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -44,8 +38,6 @@
   --color-border: var(--color-border);
   --color-muted: var(--color-muted);
 
-  /* Neutral palette with a very slight purple tint for brand cohesion.
-     Darker neutrals (800+) stay unchanged so CTASection's dark treatment is unaffected. */
   --color-neutral-50:  #F5F4FF;
   --color-neutral-100: #EDEAFF;
   --color-neutral-200: #DAD7F0;
@@ -61,7 +53,6 @@
 }
 
 /* ─── Base ────────────────────────────────────────────────────────── */
-/* Hide native cursor — CustomCursor component takes over on fine-pointer devices */
 @media (pointer: fine) {
   .cursor-enabled * {
     cursor: none !important;
@@ -69,13 +60,7 @@
 }
 
 html {
-  /* Native smooth scrolling — no JS, no layout cost, respects
-     prefers-reduced-motion (browser overrides this automatically). */
   scroll-behavior: smooth;
-
-  /* Reserve space above anchor targets so the fixed navbar never
-     obscures a section heading. navbar (~48px) + top padding (12px)
-     + breathing room = 80px. */
   scroll-padding-top: 80px;
 }
 
@@ -89,13 +74,6 @@ body {
   overflow-x: hidden;
 }
 
-/* ─── iOS zoom prevention ─────────────────────────────────────────── */
-/* iOS Safari auto-zooms into any input with font-size < 16px on focus.
-   Setting font-size: 1rem (16px) globally on all interactive form elements
-   prevents the viewport from scaling, which causes jarring layout jumps
-   on mobile. Individual components may visually override with font-size
-   transforms or parent scaling, but the input's own font-size must remain
-   at or above 16px to suppress the zoom behaviour. */
 input,
 textarea,
 select {
@@ -107,10 +85,6 @@ select {
   color: inherit;
 }
 
-/* ─── Editorial typography defaults ──────────────────────────────── */
-/* Tighter tracking on display headings — hallmark of premium editorial
-   design (project-a.vc, Linear, Vercel). Applied globally so every h1/h2
-   inherits; individual components can override if needed. */
 h1, h2 {
   letter-spacing: -0.03em;
   line-height: 1.06;
@@ -141,7 +115,7 @@ h3, h4 {
   box-shadow: var(--shadow-card-xl);
 }
 
-/* ─── Hero ambient glow — breathes at 8s, barely perceptible ─────── */
+/* ─── Hero ambient glow ───────────────────────────────────────────── */
 @keyframes heroGlow {
   0%, 100% { opacity: 0.5; transform: scale(1); }
   50%       { opacity: 0.85; transform: scale(1.06); }
@@ -152,11 +126,6 @@ h3, h4 {
   will-change: opacity, transform;
 }
 
-/* ─── Hero gradient drift ─────────────────────────────────────────── */
-/* Translates the gradient div on the compositor thread (transform only —
-   no repaints, no layout shifts). Values are small enough that the
-   gradient's transparent edges never become visible. Duration is long
-   (28s) so the motion reads as ambient breathing, not animation. */
 @keyframes gradientDrift {
   0%,  100% { transform: translate(0%,  0%); }
   25%        { transform: translate(4%, -2%); }
@@ -169,36 +138,17 @@ h3, h4 {
   will-change: transform;
 }
 
-/* ─── Logo carousel marquee scroll ──────────────────────────────── */
 @keyframes marquee {
   from { transform: translateX(0); }
   to   { transform: translateX(-50%); }
 }
 
-/* ─── Scroll container containment ───────────────────────────────── */
-/* Prevent scroll chaining on iOS Safari — when a contained scroll panel
-   reaches its boundary it won't propagate to the document body, avoiding
-   the "overscroll bounces the whole page" issue that breaks modal UX. */
 .scroll-contain {
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
 
 /* ─── ROI Calculator slider ──────────────────────────────────────── */
-/*
- * Custom range input — three rules cover the full cross-browser surface:
- *   1. Reset native appearance, set track height + border-radius
- *   2. Webkit thumb: clean disc, brand-green fill, white border halo
- *   3. Firefox thumb: same visual, different pseudo-element
- *
- * The track fill (the accent "progress" left of the thumb) is handled by
- * an inline linear-gradient in ROICalculator.tsx — no JS per frame,
- * computed once per slider interaction. This avoids the ::-webkit-slider-
- * runnable-track trick which is unreliable across browsers.
- *
- * Focus ring on the thumb (not the track) matches the WCAG 2.1 AA
- * requirement without polluting the visual baseline state.
- */
 .roi-slider {
   -webkit-appearance: none;
   appearance: none;
@@ -206,16 +156,12 @@ h3, h4 {
   border-radius: 9999px;
   outline: none;
   cursor: pointer;
-  /* Increase the tap/click target height on touch devices without
-     changing the visual track height — the invisible extra area
-     prevents mis-taps on narrow track heights on mobile. */
   padding-block: 12px;
 }
 
 .roi-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  /* 22px on mobile for a better touch target (visually still compact) */
   width: 22px;
   height: 22px;
   border-radius: 50%;
@@ -249,7 +195,6 @@ h3, h4 {
   box-shadow: 0 0 0 3px rgba(124, 107, 255, 0.30), 0 1px 4px rgba(0, 0, 0, 0.10);
 }
 
-/* ─── Ambient dot pulse for "live" indicators ────────────────────── */
 @keyframes livePulse {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.4; }
@@ -259,10 +204,6 @@ h3, h4 {
   animation: livePulse 2.4s ease-in-out infinite;
 }
 
-/* ─── Reduced motion — accessibility & low-power devices ─────────── */
-/* Framer Motion respects prefers-reduced-motion automatically via its
-   built-in useReducedMotion hook — no CSS override needed for JS animations.
-   We only need to stop the CSS keyframe animations that run outside Framer. */
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
@@ -276,68 +217,313 @@ h3, h4 {
   }
 }
 
-/* Dashboard-specific system: dense PM tooling look, no glass treatment. */
-.dashboard-shell {
-  --pm-green: #00C875;
-  --pm-orange: #FDAB3D;
-  --pm-red: #E2445C;
+/* ══════════════════════════════════════════════════════════════════════
+   DASHBOARD — Monday.com-grade dense PM UI
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ─── Monday-style color tokens ───────────────────────────────────── */
+.dashboard-root,
+.workspace-root {
+  --pm-accent: #6366f1;
+  --pm-accent-hover: #4f46e5;
+  --pm-accent-soft: #f5f3ff;
   --pm-blue: #0073EA;
+  --pm-blue-hover: #0060c2;
+  --pm-green: #00C875;
+  --pm-green-light: #e6faf0;
+  --pm-orange: #FDAB3D;
+  --pm-orange-light: #fff5e6;
+  --pm-red: #E2445C;
+  --pm-red-light: #fde8ec;
   --pm-gray: #C4C4C4;
-  --pm-bg: #f6f7fb;
-  --pm-panel: #ffffff;
-  --pm-border: #d8e0eb;
+  --pm-gray-light: #f5f6f8;
+  --pm-bg: #F6F7FB;
+  --pm-surface: #ffffff;
+  --pm-border: #e6e9ef;
+  --pm-text: #323338;
+  --pm-text-secondary: #676879;
+  --pm-text-muted: #9699a8;
+
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   font-size: 14px;
-  line-height: 1.35;
+  line-height: 1.4;
+  color: var(--pm-text);
+  background: var(--pm-bg);
 }
 
-.dashboard-shell h1,
-.dashboard-shell h2,
-.dashboard-shell h3,
-.dashboard-shell h4 {
-  letter-spacing: -0.015em;
+.dashboard-root *,
+.dashboard-root *::before,
+.dashboard-root *::after {
+  letter-spacing: normal;
+  line-height: inherit;
 }
 
-.dashboard-frame,
-.dashboard-sidebar {
-  background: var(--pm-panel);
+.dashboard-root h1,
+.dashboard-root h2,
+.dashboard-root h3 {
+  letter-spacing: -0.01em;
+  line-height: 1.3;
 }
 
-.dashboard-nav-item {
-  display: inline-flex;
-  width: 100%;
-  align-items: center;
-  gap: 8px;
-  border-radius: 8px;
-  padding: 7px 10px;
-  font-size: 13px;
-  font-weight: 500;
-  color: #334155;
+/* ─── Sidebar ─────────────────────────────────────────────────────── */
+.pm-sidebar {
+  background: var(--pm-surface);
+  border-right: 1px solid var(--pm-border);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
-.dashboard-nav-item:hover {
-  background: #f1f5f9;
-}
-
-.dashboard-project-item {
+.pm-nav-item {
   display: flex;
   width: 100%;
   align-items: center;
-  justify-content: space-between;
+  gap: 10px;
+  border-radius: 6px;
+  padding: 7px 12px;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--pm-text);
+  transition: background 0.12s;
+}
+
+.pm-nav-item:hover {
+  background: var(--pm-gray-light);
+}
+
+.pm-nav-item.active {
+  background: #e6f0ff;
+  color: var(--pm-blue);
+  font-weight: 500;
+}
+
+.pm-board-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
   gap: 8px;
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 8px 10px;
+  border-radius: 6px;
+  padding: 6px 12px 6px 24px;
+  font-size: 14px;
+  color: var(--pm-text);
+  transition: background 0.12s;
+  border-left: 3px solid transparent;
+}
+
+.pm-board-item:hover {
+  background: var(--pm-gray-light);
+}
+
+.pm-board-item.active {
+  background: #e6f0ff;
+  color: var(--pm-blue);
+  font-weight: 500;
+  border-left-color: var(--pm-blue);
+}
+
+/* ─── Table ───────────────────────────────────────────────────────── */
+.pm-table-header {
+  display: grid;
+  align-items: center;
+  padding: 0 16px;
+  height: 36px;
+  background: var(--pm-gray-light);
+  border-bottom: 1px solid var(--pm-border);
   font-size: 12px;
-  color: #334155;
+  font-weight: 600;
+  color: var(--pm-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
-.dashboard-project-item:hover {
-  border-color: #dbe3ef;
-  background: #f8fafc;
+.pm-table-row {
+  display: grid;
+  align-items: center;
+  padding: 0 16px;
+  min-height: 40px;
+  border-bottom: 1px solid #f0f1f3;
+  font-size: 14px;
+  transition: background 0.1s;
 }
 
-.dashboard-project-item.active {
-  border-color: #bfdbfe;
-  background: #eff6ff;
-  color: #1d4ed8;
+.pm-table-row:hover {
+  background: #f8f9fb;
+}
+
+/* ─── Status pills ────────────────────────────────────────────────── */
+.pm-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 100px;
+  height: 24px;
+  padding: 0 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.pm-pill-done { background: var(--pm-green); }
+.pm-pill-working { background: var(--pm-orange); }
+.pm-pill-stuck { background: var(--pm-red); }
+.pm-pill-not-started { background: var(--pm-gray); color: var(--pm-text); }
+
+/* ─── Priority dots ───────────────────────────────────────────────── */
+.pm-priority {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--pm-text-secondary);
+}
+
+.pm-priority-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.pm-priority-critical { background: var(--pm-red); }
+.pm-priority-high { background: var(--pm-orange); }
+.pm-priority-medium { background: var(--pm-blue); }
+.pm-priority-low { background: var(--pm-gray); }
+
+/* ─── Group header ────────────────────────────────────────────────── */
+.pm-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.1s;
+}
+
+.pm-group-header:hover {
+  background: var(--pm-gray-light);
+}
+
+/* ─── Group accent bars ───────────────────────────────────────────── */
+.pm-group-accent-todo { border-left: 4px solid var(--pm-blue); }
+.pm-group-accent-progress { border-left: 4px solid var(--pm-orange); }
+.pm-group-accent-blocked { border-left: 4px solid var(--pm-red); }
+.pm-group-accent-done { border-left: 4px solid var(--pm-green); }
+
+/* ─── Summary bar ─────────────────────────────────────────────────── */
+.pm-summary-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--pm-gray-light);
+}
+
+/* ─── Action cards ────────────────────────────────────────────────── */
+.pm-action-card {
+  border: 1px solid var(--pm-border);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--pm-surface);
+  transition: box-shadow 0.15s;
+}
+
+.pm-action-card:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.pm-action-card-high { border-left: 4px solid var(--pm-red); }
+.pm-action-card-medium { border-left: 4px solid var(--pm-orange); }
+.pm-action-card-low { border-left: 4px solid var(--pm-blue); }
+
+/* ─── Buttons ─────────────────────────────────────────────────────── */
+.pm-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 6px 14px;
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pm-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pm-btn-primary {
+  background: var(--pm-blue);
+  color: #fff;
+  border: none;
+}
+
+.pm-btn-primary:hover:not(:disabled) {
+  background: var(--pm-blue-hover);
+}
+
+.pm-btn-secondary {
+  background: var(--pm-surface);
+  color: var(--pm-text);
+  border: 1px solid var(--pm-border);
+}
+
+.pm-btn-secondary:hover:not(:disabled) {
+  background: var(--pm-gray-light);
+}
+
+.pm-btn-success {
+  background: var(--pm-green);
+  color: #fff;
+  border: none;
+}
+
+.pm-btn-danger {
+  background: var(--pm-red);
+  color: #fff;
+  border: none;
+}
+
+.pm-btn-sm {
+  font-size: 12px;
+  padding: 4px 10px;
+  height: 28px;
+}
+
+/* ─── Connector dots ──────────────────────────────────────────────── */
+.pm-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.pm-dot-connected { background: var(--pm-green); }
+.pm-dot-disconnected { background: var(--pm-gray); }
+
+/* ─── Scrollbar styling for dashboard ─────────────────────────────── */
+.dashboard-root ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.dashboard-root ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dashboard-root ::-webkit-scrollbar-thumb {
+  background: #d0d4dc;
+  border-radius: 3px;
+}
+
+.dashboard-root ::-webkit-scrollbar-thumb:hover {
+  background: #b0b4bc;
 }

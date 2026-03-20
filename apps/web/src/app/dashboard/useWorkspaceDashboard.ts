@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActionCardViewModel,
@@ -114,7 +115,8 @@ function buildTaskGroups(tasks: BoardTaskRow[]): TaskGroup[] {
   ];
 }
 
-export function useWorkspaceDashboard() {
+export function useWorkspaceDashboard(projectIdFromUrl: string) {
+  const router = useRouter();
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot>(EMPTY_SNAPSHOT);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -142,9 +144,6 @@ export function useWorkspaceDashboard() {
   const [larryIntent, setLarryIntent] = useState<LarryIntent>("freeform");
   const [larryBusy, setLarryBusy] = useState(false);
   const [lastLarryResponse, setLastLarryResponse] = useState("");
-
-  const [meetingTranscript, setMeetingTranscript] = useState("");
-  const [meetingBusy, setMeetingBusy] = useState(false);
 
   const [actionBusyId, setActionBusyId] = useState<string | null>(null);
   const [correctionBusyId, setCorrectionBusyId] = useState<string | null>(null);
@@ -196,16 +195,20 @@ export function useWorkspaceDashboard() {
   }, []);
 
   useEffect(() => {
-    void loadSnapshot();
-  }, [loadSnapshot]);
+    setSelectedProjectId(projectIdFromUrl);
+  }, [projectIdFromUrl]);
 
   useEffect(() => {
-    if (!selectedProjectId && snapshot.projects.length > 0) {
-      const first = snapshot.selectedProjectId ?? snapshot.projects[0].id;
-      setSelectedProjectId(first);
-      void loadSnapshot(first);
-    }
-  }, [selectedProjectId, snapshot.projects, snapshot.selectedProjectId, loadSnapshot]);
+    void loadSnapshot(projectIdFromUrl);
+  }, [projectIdFromUrl, loadSnapshot]);
+
+  useEffect(() => {
+    const handler = () => {
+      void loadSnapshot(projectIdFromUrl);
+    };
+    window.addEventListener("larry:refresh-snapshot", handler);
+    return () => window.removeEventListener("larry:refresh-snapshot", handler);
+  }, [loadSnapshot, projectIdFromUrl]);
 
   const boardTasks: BoardTaskRow[] = useMemo(() => {
     const fromTimeline = snapshot.timeline?.gantt ?? [];
@@ -285,13 +288,17 @@ export function useWorkspaceDashboard() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name }),
         });
-        const body = await readJson<{ error?: string }>(response);
+        const body = await readJson<{ error?: string; id?: string }>(response);
         if (!response.ok) {
           setError(body.error ?? "Failed to create project.");
           return;
         }
         setProjectName("");
-        await loadSnapshot(selectedProjectId || undefined);
+        const createdId = body.id ? String(body.id) : "";
+        if (createdId) {
+          router.push(`/workspace/projects/${createdId}`);
+        }
+        await loadSnapshot(createdId || selectedProjectId || projectIdFromUrl);
         setNotice("Project created.");
       } catch {
         setError("Create project network error.");
@@ -299,7 +306,7 @@ export function useWorkspaceDashboard() {
         setProjectBusy(false);
       }
     },
-    [projectName, selectedProjectId, loadSnapshot]
+    [projectName, selectedProjectId, projectIdFromUrl, loadSnapshot, router]
   );
 
   const handleCreateTask = useCallback(
@@ -506,41 +513,6 @@ export function useWorkspaceDashboard() {
     [larryPrompt, larryIntent, selectedProjectId, loadSnapshot]
   );
 
-  const handleMeetingTranscriptSubmit = useCallback(async () => {
-    const transcript = meetingTranscript.trim();
-    if (transcript.length < 20) return;
-
-    setMeetingBusy(true);
-    setError("");
-    setNotice("");
-    try {
-      const response = await fetch("/api/workspace/meetings/transcript", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transcript,
-          projectId: selectedProjectId || undefined,
-        }),
-      });
-      const body = await readJson<{ error?: string; runId?: string; pendingApprovals?: number }>(response);
-      if (!response.ok) {
-        setError(body.error ?? "Meeting transcript processing failed.");
-        return;
-      }
-      setMeetingTranscript("");
-      setNotice(
-        body.runId
-          ? `Meeting processed. Run ${body.runId.slice(0, 8)}... created.`
-          : "Meeting transcript accepted."
-      );
-      await loadSnapshot(selectedProjectId || undefined);
-    } catch {
-      setError("Meeting ingestion network error.");
-    } finally {
-      setMeetingBusy(false);
-    }
-  }, [meetingTranscript, selectedProjectId, loadSnapshot]);
-
   const refreshConnectors = useCallback(async () => {
     try {
       const response = await fetch("/api/workspace/connectors/summary", {
@@ -631,16 +603,16 @@ export function useWorkspaceDashboard() {
 
   const selectProject = useCallback(
     (projectId: string) => {
-      setSelectedProjectId(projectId);
-      void loadSnapshot(projectId);
+      router.push(`/workspace/projects/${projectId}`);
     },
-    [loadSnapshot]
+    [router]
   );
 
   return {
     loading,
     error,
     notice,
+    setNotice,
     snapshot,
     connectors,
     selectedProjectId,
@@ -664,8 +636,6 @@ export function useWorkspaceDashboard() {
     larryIntent,
     larryBusy,
     lastLarryResponse,
-    meetingTranscript,
-    meetingBusy,
     actionBusyId,
     correctionBusyId,
     draftBusyId,
@@ -675,7 +645,6 @@ export function useWorkspaceDashboard() {
     setSearchQuery,
     setLarryPrompt,
     setLarryIntent,
-    setMeetingTranscript,
     setRightPanelOpen,
     toggleGroupCollapse,
     selectProject,
@@ -686,7 +655,6 @@ export function useWorkspaceDashboard() {
     handleActionDecision,
     handleActionCorrect,
     handleLarryRun,
-    handleMeetingTranscriptSubmit,
     refreshConnectors,
     openConnectorInstall,
     sendEmailDraft,

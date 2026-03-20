@@ -50,7 +50,8 @@ const EASE = [0.22, 1, 0.36, 1] as const;
  */
 export function CustomCursor() {
   const pathname = usePathname();
-  const isDashboardRoute = pathname?.startsWith("/dashboard") ?? false;
+  const isDashboardRoute =
+    (pathname?.startsWith("/dashboard") ?? false) || (pathname?.startsWith("/workspace") ?? false);
   const [isVisible, setIsVisible] = useState(false);
   const [isGenericHover, setIsGenericHover] = useState(false);
   const [hoverTarget, setHoverTarget] = useState<HoverTarget | null>(null);

@@ -43,7 +43,7 @@ export default function SignupPage() {
         return;
       }
 
-      router.push("/dashboard");
+      router.push("/workspace");
     } catch {
       setError("Network error. Please check your connection.");
     } finally {
@@ -61,7 +61,7 @@ export default function SignupPage() {
         setError(data.error ?? "Dev bypass failed.");
         return;
       }
-      router.push("/dashboard");
+      router.push("/workspace");
     } catch {
       setError("Dev bypass failed. Please try again.");
     } finally {

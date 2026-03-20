@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Mail, RefreshCw, Send, ShieldAlert, X } from "lucide-react";
+import { Check, Clock, RefreshCw, Send, ShieldCheck, X } from "lucide-react";
 import { ActionCardViewModel, ConnectorStatus, EmailDraft, WorkspaceActivityItem, WorkspaceOutcomes } from "./types";
 
 interface RightPanelProps {
@@ -25,36 +25,34 @@ interface RightPanelProps {
   onSendDraft: (draftId: string) => Promise<void> | void;
 }
 
-function impactClass(impact: ActionCardViewModel["impact"]): string {
-  if (impact === "high") return "border-l-[#E2445C]";
-  if (impact === "medium") return "border-l-[#FDAB3D]";
-  return "border-l-[#00C875]";
+function impactBadge(impact: ActionCardViewModel["impact"]): { label: string; bg: string } {
+  if (impact === "high") return { label: "High impact", bg: "bg-[var(--pm-red-light)] text-[var(--pm-red)]" };
+  if (impact === "medium") return { label: "Medium", bg: "bg-[var(--pm-orange-light)] text-[#b87900]" };
+  return { label: "Low", bg: "bg-[#e6f0ff] text-[var(--pm-blue)]" };
 }
 
-function ConnectorRow({
-  label,
-  connected,
-  onConnect,
-}: {
-  label: string;
-  connected: boolean;
-  onConnect: () => void;
-}) {
+function ConnectorRow({ label, connected, onConnect }: { label: string; connected: boolean; onConnect: () => void }) {
   return (
-    <div className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-2 py-1.5">
+    <div className="flex items-center justify-between py-1.5">
       <div className="flex items-center gap-2">
-        <span className={`inline-block h-2.5 w-2.5 rounded-full ${connected ? "bg-[#00C875]" : "bg-slate-300"}`} />
-        <span className="text-xs text-slate-700">{label}</span>
+        <span className={`pm-dot ${connected ? "pm-dot-connected" : "pm-dot-disconnected"}`} />
+        <span className="text-[13px] text-[var(--pm-text)]">{label}</span>
       </div>
-      <button
-        type="button"
-        onClick={onConnect}
-        className="rounded border border-slate-300 px-2 py-0.5 text-[11px] text-slate-700 hover:bg-slate-50"
-      >
+      <button type="button" onClick={onConnect} className="text-[12px] text-[var(--pm-blue)] hover:underline font-medium">
         {connected ? "Reconnect" : "Connect"}
       </button>
     </div>
   );
+}
+
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
 }
 
 export function RightPanel({
@@ -74,176 +72,192 @@ export function RightPanel({
   onConnectorInstall,
   onSendDraft,
 }: RightPanelProps) {
-  const radius = 28;
+  const radius = 30;
   const circumference = 2 * Math.PI * radius;
   const normalized = Math.max(0, Math.min(100, completionRate));
-  const progress = circumference - (normalized / 100) * circumference;
+  const offset = circumference - (normalized / 100) * circumference;
+
+  const riskColor = avgRiskScore >= 70 ? "var(--pm-red)" : avgRiskScore >= 35 ? "var(--pm-orange)" : "var(--pm-green)";
+  const riskLabel = avgRiskScore >= 70 ? "High" : avgRiskScore >= 35 ? "Medium" : "Low";
 
   return (
-    <aside className="space-y-3">
-      <section className="rounded-lg border border-slate-200 bg-white p-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Health & Outcomes</p>
-        <div className="mt-3 flex items-center gap-3">
-          <svg width="72" height="72" viewBox="0 0 72 72" className="shrink-0">
-            <circle cx="36" cy="36" r={radius} fill="none" stroke="#E2E8F0" strokeWidth="8" />
-            <circle
-              cx="36"
-              cy="36"
-              r={radius}
-              fill="none"
-              stroke="#0073EA"
-              strokeWidth="8"
-              strokeLinecap="round"
-              strokeDasharray={circumference}
-              strokeDashoffset={progress}
-              transform="rotate(-90 36 36)"
-            />
-            <text x="36" y="40" textAnchor="middle" className="fill-slate-700 text-[11px] font-semibold">
+    <aside className="space-y-3 p-3">
+      {/* Health & Outcomes */}
+      <section className="rounded-xl border border-[var(--pm-border)] bg-[var(--pm-surface)] p-4">
+        <h3 className="text-[12px] font-semibold uppercase tracking-wider text-[var(--pm-text-muted)] mb-3">Health & Outcomes</h3>
+
+        <div className="flex items-center gap-4">
+          <div className="relative shrink-0">
+            <svg width="76" height="76" viewBox="0 0 76 76">
+              <circle cx="38" cy="38" r={radius} fill="none" stroke="var(--pm-gray-light)" strokeWidth="6" />
+              <circle
+                cx="38" cy="38" r={radius}
+                fill="none"
+                stroke="var(--pm-blue)"
+                strokeWidth="6"
+                strokeLinecap="round"
+                strokeDasharray={circumference}
+                strokeDashoffset={offset}
+                transform="rotate(-90 38 38)"
+                className="transition-all duration-500"
+              />
+            </svg>
+            <span className="absolute inset-0 flex items-center justify-center text-[15px] font-bold text-[var(--pm-text)]">
               {normalized.toFixed(0)}%
-            </text>
-          </svg>
-          <div className="text-sm text-slate-700">
-            <p>Avg risk: <span className="font-semibold">{avgRiskScore.toFixed(1)}</span></p>
-            <p>Blocked: <span className="font-semibold">{blockedCount}</span></p>
-            <p>Auto-executed: <span className="font-semibold">{outcomes?.metrics?.autoExecutedActions ?? 0}</span></p>
+            </span>
+          </div>
+
+          <div className="space-y-1.5 text-[13px]">
+            <div className="flex items-center gap-2">
+              <span className="text-[var(--pm-text-secondary)]">Risk</span>
+              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: riskColor + "18", color: riskColor }}>
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: riskColor }} />
+                {riskLabel} ({avgRiskScore.toFixed(0)})
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[var(--pm-text-secondary)]">Blocked</span>
+              <span className="font-semibold text-[var(--pm-text)]">{blockedCount}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[var(--pm-text-secondary)]">Auto-exec</span>
+              <span className="font-semibold text-[var(--pm-text)]">{outcomes?.metrics?.autoExecutedActions ?? 0}</span>
+            </div>
           </div>
         </div>
-        <p className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
-          {outcomes?.narrative ?? "Larry will generate investor-ready outcome narrative as execution data grows."}
+
+        {outcomes?.narrative && (
+          <p className="mt-3 text-[13px] text-[var(--pm-text-secondary)] leading-relaxed border-t border-[var(--pm-border)] pt-3">
+            {outcomes.narrative}
+          </p>
+        )}
+      </section>
+
+      {/* Connectors */}
+      <section className="rounded-xl border border-[var(--pm-border)] bg-[var(--pm-surface)] p-4">
+        <h3 className="text-[12px] font-semibold uppercase tracking-wider text-[var(--pm-text-muted)] mb-2">Connections</h3>
+        <ConnectorRow label="Slack" connected={Boolean(connectors.slack?.connected)} onConnect={() => void onConnectorInstall("slack")} />
+        <ConnectorRow label="Google Calendar" connected={Boolean(connectors.calendar?.connected)} onConnect={() => void onConnectorInstall("calendar")} />
+        <ConnectorRow label="Email" connected={Boolean(connectors.email?.connected)} onConnect={() => void onConnectorInstall("email")} />
+      </section>
+
+      {/* Action Center */}
+      <section className="rounded-xl border border-[var(--pm-border)] bg-[var(--pm-surface)] p-4">
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="text-[12px] font-semibold uppercase tracking-wider text-[var(--pm-text-muted)]">Action Center</h3>
+          {actionCards.length > 0 && (
+            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--pm-blue)] text-[10px] font-bold text-white px-1.5">
+              {actionCards.length}
+            </span>
+          )}
+        </div>
+        <p className="mb-3 text-[11px] leading-snug text-[var(--pm-text-muted)]">
+          Prepared for your approval: deadline, scope, ownership, or external impact—review signals, then approve or correct.
         </p>
-      </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-3">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Connections</p>
-        <div className="space-y-1.5">
-          <ConnectorRow
-            label="Slack"
-            connected={Boolean(connectors.slack?.connected)}
-            onConnect={() => void onConnectorInstall("slack")}
-          />
-          <ConnectorRow
-            label="Calendar"
-            connected={Boolean(connectors.calendar?.connected)}
-            onConnect={() => void onConnectorInstall("calendar")}
-          />
-          <ConnectorRow
-            label="Email"
-            connected={Boolean(connectors.email?.connected)}
-            onConnect={() => void onConnectorInstall("email")}
-          />
-        </div>
-      </section>
-
-      <section className="rounded-lg border border-slate-200 bg-white p-3">
-        <div className="mb-2 flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Action Center</p>
-          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{actionCards.length}</span>
-        </div>
-        <div className="max-h-[280px] space-y-2 overflow-y-auto">
-          {actionCards.map((action) => (
-            <article
-              key={action.id}
-              className={`rounded-md border border-slate-200 border-l-4 bg-slate-50 p-2.5 ${impactClass(action.impact)}`}
-            >
-              <div className="mb-1 flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">{action.title}</p>
-                <span className="text-[11px] text-slate-500">{action.impact}</span>
-              </div>
-              <p className="text-xs text-slate-800">{action.reason}</p>
-              <p className="mt-1 text-[11px] text-slate-500">Confidence {action.confidence} • {action.threshold}</p>
-              <div className="mt-2 flex gap-1.5">
-                <button
-                  type="button"
-                  disabled={actionBusyId === action.id}
-                  onClick={() => void onActionDecision(action.id, "approve")}
-                  className="inline-flex h-8 items-center gap-1 rounded bg-[#00C875] px-2.5 text-[11px] font-semibold text-white disabled:opacity-50"
-                >
-                  <Check size={12} />
-                  Approve
-                </button>
-                <button
-                  type="button"
-                  disabled={actionBusyId === action.id}
-                  onClick={() => void onActionDecision(action.id, "reject")}
-                  className="inline-flex h-8 items-center gap-1 rounded bg-[#E2445C] px-2.5 text-[11px] font-semibold text-white disabled:opacity-50"
-                >
-                  <X size={12} />
-                  Reject
-                </button>
-                <button
-                  type="button"
-                  disabled={correctionBusyId === action.id}
-                  onClick={() => void onActionCorrect(action.id)}
-                  className="inline-flex h-8 items-center gap-1 rounded border border-slate-300 bg-white px-2.5 text-[11px] font-semibold text-slate-700 disabled:opacity-50"
-                >
-                  <RefreshCw size={12} />
-                  Correct
-                </button>
-              </div>
-            </article>
-          ))}
+        <div className="space-y-2 max-h-[300px] overflow-y-auto">
+          {actionCards.map((action) => {
+            const badge = impactBadge(action.impact);
+            return (
+              <article key={action.id} className={`rounded-lg border border-[#e6e9ef] p-3 transition-shadow hover:shadow-sm ${
+                action.impact === "high" ? "border-l-4 border-l-[#E2445C]" :
+                action.impact === "medium" ? "border-l-4 border-l-[#FDAB3D]" :
+                "border-l-4 border-l-[#0073EA]"
+              }`}>
+                <div className="flex items-start justify-between gap-2 mb-1.5">
+                  <div>
+                    <span className="text-[13px] font-semibold text-[var(--pm-text)] capitalize">{action.title.replace(/_/g, " ")}</span>
+                    <span className={`ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${badge.bg}`}>
+                      {badge.label}
+                    </span>
+                  </div>
+                </div>
+                <p className="text-[13px] text-[var(--pm-text-secondary)] mb-1">{action.reason}</p>
+                <p className="text-[11px] text-[var(--pm-text-muted)]">Confidence {action.confidence} · {action.threshold}</p>
+                <div className="flex gap-1.5 mt-2.5">
+                  <button
+                    type="button"
+                    disabled={actionBusyId === action.id}
+                    onClick={() => void onActionDecision(action.id, "approve")}
+                    className="inline-flex h-7 items-center gap-1 rounded-md bg-[#00C875] px-2.5 text-[12px] font-semibold text-white disabled:opacity-50"
+                  >
+                    <Check size={13} /> Approve
+                  </button>
+                  <button
+                    type="button"
+                    disabled={actionBusyId === action.id}
+                    onClick={() => void onActionDecision(action.id, "reject")}
+                    className="inline-flex h-7 items-center gap-1 rounded-md bg-[#E2445C] px-2.5 text-[12px] font-semibold text-white disabled:opacity-50"
+                  >
+                    <X size={13} /> Reject
+                  </button>
+                  <button
+                    type="button"
+                    disabled={correctionBusyId === action.id}
+                    onClick={() => void onActionCorrect(action.id)}
+                    className="inline-flex h-7 items-center gap-1 rounded-md border border-[#e6e9ef] bg-white px-2.5 text-[12px] font-semibold text-[#323338] disabled:opacity-50"
+                  >
+                    <RefreshCw size={13} /> Correct
+                  </button>
+                </div>
+              </article>
+            );
+          })}
           {actionCards.length === 0 && (
-            <p className="rounded-md border border-dashed border-slate-300 p-2 text-xs text-slate-500">
-              No pending approvals.
-            </p>
+            <div className="flex flex-col items-center py-4 text-[var(--pm-text-muted)]">
+              <ShieldCheck size={24} className="mb-1.5 opacity-40" />
+              <p className="text-[13px]">No pending approvals</p>
+            </div>
           )}
         </div>
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-3">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Email Drafts</p>
-        <div className="max-h-[180px] space-y-2 overflow-y-auto">
-          {emailDrafts.map((draft) => (
-            <article key={draft.id} className="rounded-md border border-slate-200 bg-slate-50 p-2">
-              <p className="text-xs font-semibold text-slate-700">{draft.subject}</p>
-              <p className="text-[11px] text-slate-500">To: {draft.recipient}</p>
-              <button
-                type="button"
-                disabled={draftBusyId === draft.id}
-                onClick={() => void onSendDraft(draft.id)}
-                className="mt-1 inline-flex h-7 items-center gap-1 rounded bg-[#0073EA] px-2 text-[11px] font-semibold text-white disabled:opacity-50"
-              >
-                <Send size={11} />
-                Send
-              </button>
-            </article>
-          ))}
-          {emailDrafts.length === 0 && (
-            <p className="rounded-md border border-dashed border-slate-300 p-2 text-xs text-slate-500">
-              No email drafts awaiting action.
-            </p>
-          )}
-        </div>
-      </section>
-
-      <section className="rounded-lg border border-slate-200 bg-white p-3">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Activity</p>
-        <div className="max-h-[180px] space-y-2 overflow-y-auto">
-          {activityItems.map((item) => (
-            <div key={item.id} className="rounded-md border border-slate-200 bg-slate-50 p-2 text-xs">
-              <div className="flex items-center justify-between gap-2">
-                <p className="font-semibold text-slate-700">{item.title}</p>
-                <span className="text-[10px] uppercase tracking-wide text-slate-500">{item.type}</span>
+      {/* Email Drafts */}
+      {emailDrafts.length > 0 && (
+        <section className="rounded-xl border border-[var(--pm-border)] bg-[var(--pm-surface)] p-4">
+          <h3 className="text-[12px] font-semibold uppercase tracking-wider text-[var(--pm-text-muted)] mb-2">Email Drafts</h3>
+          <div className="space-y-2 max-h-[180px] overflow-y-auto">
+            {emailDrafts.map(draft => (
+              <div key={draft.id} className="rounded-lg border border-[var(--pm-border)] p-3">
+                <p className="text-[13px] font-medium text-[var(--pm-text)]">{draft.subject}</p>
+                <p className="text-[12px] text-[var(--pm-text-muted)] mt-0.5">To: {draft.recipient}</p>
+                <button
+                  type="button"
+                  disabled={draftBusyId === draft.id}
+                  onClick={() => void onSendDraft(draft.id)}
+                  className="inline-flex h-7 items-center gap-1 rounded-md bg-[#0073EA] px-2.5 text-[12px] font-semibold text-white disabled:opacity-50 mt-2"
+                >
+                  <Send size={12} /> Send
+                </button>
               </div>
-              {item.subtitle && <p className="mt-0.5 text-slate-600">{item.subtitle}</p>}
-              <p className="mt-1 text-[10px] text-slate-500">
-                <Mail size={10} className="mr-1 inline" />
-                {item.source ?? "system"} • {new Date(item.createdAt).toLocaleString()}
-              </p>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Activity Feed */}
+      <section className="rounded-xl border border-[var(--pm-border)] bg-[var(--pm-surface)] p-4">
+        <h3 className="text-[12px] font-semibold uppercase tracking-wider text-[var(--pm-text-muted)] mb-2">Activity</h3>
+        <div className="space-y-0 max-h-[200px] overflow-y-auto">
+          {activityItems.map(item => (
+            <div key={item.id} className="flex items-start gap-2.5 py-2 border-b border-[#f0f1f3] last:border-0">
+              <span className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--pm-gray-light)]">
+                <Clock size={12} className="text-[var(--pm-text-muted)]" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[13px] text-[var(--pm-text)]">{item.title}</p>
+                {item.subtitle && <p className="text-[12px] text-[var(--pm-text-muted)]">{item.subtitle}</p>}
+                <p className="text-[11px] text-[var(--pm-text-muted)] mt-0.5">
+                  {item.source ?? "system"} · {timeAgo(item.createdAt)}
+                </p>
+              </div>
             </div>
           ))}
           {activityItems.length === 0 && (
-            <p className="rounded-md border border-dashed border-slate-300 p-2 text-xs text-slate-500">
-              No recent activity yet.
-            </p>
+            <p className="text-[13px] text-[var(--pm-text-muted)] text-center py-3">No recent activity</p>
           )}
         </div>
       </section>
-      <div className="hidden items-center gap-1 rounded-md border border-amber-200 bg-amber-50 p-2 text-[11px] text-amber-700 lg:flex">
-        <ShieldAlert size={13} />
-        High-impact automation remains approval-gated.
-      </div>
     </aside>
   );
 }
-

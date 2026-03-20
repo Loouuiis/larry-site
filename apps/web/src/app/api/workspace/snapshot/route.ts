@@ -44,8 +44,11 @@ export async function GET(request: NextRequest) {
   const activeSession = projectsResult.session ?? session;
   const projects = extractItems<{ id: string }>(projectsResult.body);
   const queryProjectId = request.nextUrl.searchParams.get("projectId");
-  const selectedProjectId =
-    queryProjectId || (projects.length > 0 && typeof projects[0].id === "string" ? projects[0].id : null);
+  const includeProjectContext = request.nextUrl.searchParams.get("includeProjectContext") !== "false";
+
+  const selectedProjectId = !includeProjectContext
+    ? null
+    : queryProjectId || (projects.length > 0 && typeof projects[0].id === "string" ? projects[0].id : null);
 
   const [tasksResult, actionsResult] = await Promise.all([
     proxyApiRequest(activeSession, "/v1/tasks"),
