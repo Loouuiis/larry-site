@@ -12,6 +12,7 @@ import {
   GanttChartSquare,
   BarChart2,
   Video,
+  Network,
   ChevronRight,
   Calendar,
   CheckCircle2,
@@ -31,7 +32,7 @@ const EASE = [0.22, 1, 0.36, 1] as const;
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 
-type TabId = "overview" | "timeline" | "analytics" | "meetings";
+type TabId = "overview" | "timeline" | "analytics" | "meetings" | "orgchart";
 type PhaseStatus = "done" | "active" | "upcoming";
 type TaskStatus = "done" | "pending" | "overdue";
 type Severity = "overdue" | "at-risk";
@@ -160,6 +161,84 @@ const WORKSPACE_DATA: Record<string, WorkspaceData> = {
     ],
     attentionItems: [],
     tasks: [],
+  },
+};
+
+/* ─── Org chart data ──────────────────────────────────────────────────────── */
+
+interface OrgNode {
+  id: string;
+  initials: string;
+  name: string;
+  role: string;
+  tasks: number;
+  children?: OrgNode[];
+}
+
+const ORG_DATA: Record<string, OrgNode> = {
+  alpha: {
+    id: "lp", initials: "LP", name: "Laura Park", role: "Programme Director", tasks: 2,
+    children: [
+      {
+        id: "tk", initials: "TK", name: "Tom Kim", role: "Tech Lead", tasks: 3,
+        children: [
+          { id: "me", initials: "ME", name: "Maya Evans", role: "Backend Engineer", tasks: 4 },
+          { id: "jr", initials: "JR", name: "Jack Reed", role: "Frontend Engineer", tasks: 2 },
+        ],
+      },
+      {
+        id: "jp", initials: "JP", name: "Jake Price", role: "Finance Lead", tasks: 2,
+        children: [
+          { id: "sr", initials: "SR", name: "Sam Russo", role: "Business Analyst", tasks: 3 },
+        ],
+      },
+    ],
+  },
+  q3: {
+    id: "lp", initials: "LP", name: "Laura Park", role: "Programme Director", tasks: 1,
+    children: [
+      {
+        id: "sr", initials: "SR", name: "Sam Russo", role: "Workstream 1 Lead", tasks: 3,
+        children: [
+          { id: "ak", initials: "AK", name: "Alex Khan", role: "Project Co-ordinator", tasks: 2 },
+        ],
+      },
+      {
+        id: "me", initials: "ME", name: "Maya Evans", role: "Workstream 2 Lead", tasks: 2,
+      },
+      {
+        id: "jp", initials: "JP", name: "Jake Price", role: "Workstream 3 Lead", tasks: 2,
+      },
+    ],
+  },
+  vendor: {
+    id: "jp", initials: "JP", name: "Jake Price", role: "Procurement Lead", tasks: 2,
+    children: [
+      {
+        id: "ak", initials: "AK", name: "Alex Khan", role: "Vendor Manager", tasks: 3,
+        children: [
+          { id: "sr", initials: "SR", name: "Sam Russo", role: "Contract Specialist", tasks: 1 },
+        ],
+      },
+    ],
+  },
+  platform: {
+    id: "me", initials: "ME", name: "Maya Evans", role: "Platform Lead", tasks: 3,
+    children: [
+      {
+        id: "tk", initials: "TK", name: "Tom Kim", role: "Security Architect", tasks: 2,
+        children: [
+          { id: "lp", initials: "LP", name: "Laura Park", role: "Infrastructure Eng.", tasks: 2 },
+        ],
+      },
+    ],
+  },
+  analytics: {
+    id: "ak", initials: "AK", name: "Alex Khan", role: "Analytics Lead", tasks: 0,
+    children: [
+      { id: "jr", initials: "JR", name: "Jack Reed", role: "Data Engineer", tasks: 0 },
+      { id: "me", initials: "ME", name: "Maya Evans", role: "BI Developer", tasks: 0 },
+    ],
   },
 };
 
@@ -866,6 +945,126 @@ function MeetingsTab() {
   );
 }
 
+/* ─── Org chart tab ───────────────────────────────────────────────────────── */
+
+const AVATAR_GRADIENTS = [
+  "from-[var(--color-accent-purple)] to-[var(--color-accent-blue)]",
+  "from-[var(--color-brand)] to-[var(--color-accent-mid)]",
+  "from-[var(--color-accent-mid)] to-[var(--color-accent-blue)]",
+  "from-[var(--color-accent-blue)] to-[var(--color-brand)]",
+];
+
+function OrgCard({ node, depth }: { node: OrgNode; depth: number }) {
+  const gradient = AVATAR_GRADIENTS[depth % AVATAR_GRADIENTS.length];
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: EASE, delay: depth * 0.07 }}
+      className="flex flex-col items-center"
+    >
+      <div className="w-36 rounded-2xl border border-[var(--color-border)] bg-white p-4 text-center shadow-sm">
+        {/* Avatar */}
+        <div
+          className={`mx-auto mb-2.5 flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br ${gradient} text-sm font-bold text-white shadow`}
+        >
+          {node.initials}
+        </div>
+        {/* Name */}
+        <p className="text-xs font-semibold leading-tight text-neutral-900">
+          {node.name}
+        </p>
+        {/* Role */}
+        <p className="mt-0.5 text-[10px] leading-tight text-neutral-500">
+          {node.role}
+        </p>
+        {/* Task chip */}
+        {node.tasks > 0 && (
+          <span className="mt-2 inline-flex items-center rounded-full bg-[var(--color-brand)]/8 px-2 py-0.5 text-[9px] font-semibold text-[var(--color-brand)]">
+            {node.tasks} task{node.tasks !== 1 ? "s" : ""}
+          </span>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+function OrgBranch({ node, depth = 0 }: { node: OrgNode; depth?: number }) {
+  const children = node.children ?? [];
+  const n = children.length;
+
+  return (
+    <div className="flex flex-col items-center gap-0">
+      <OrgCard node={node} depth={depth} />
+
+      {n > 0 && (
+        <>
+          {/* Vertical line down from parent */}
+          <div className="w-px bg-[var(--color-border)]" style={{ height: 28 }} />
+
+          {/* Horizontal connector spanning all children */}
+          <div className="relative flex w-full justify-center">
+            {n > 1 && (
+              <div
+                className="absolute top-0 h-px bg-[var(--color-border)]"
+                style={{
+                  left: `${100 / (2 * n)}%`,
+                  right: `${100 / (2 * n)}%`,
+                }}
+              />
+            )}
+            {/* Children */}
+            <div
+              className="flex gap-6"
+              style={{ paddingTop: n > 1 ? 1 : 0 }}
+            >
+              {children.map((child) => (
+                <div key={child.id} className="flex flex-col items-center">
+                  {/* Vertical line down from connector to child */}
+                  <div className="w-px bg-[var(--color-border)]" style={{ height: 28 }} />
+                  <OrgBranch node={child} depth={depth + 1} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function OrgChartTab({ projectId }: { projectId: string }) {
+  const root = ORG_DATA[projectId] ?? ORG_DATA["alpha"];
+  const totalMembers = countNodes(root);
+
+  function countNodes(n: OrgNode): number {
+    return 1 + (n.children ?? []).reduce((s, c) => s + countNodes(c), 0);
+  }
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-bold tracking-tight text-neutral-900">
+            Team Structure
+          </h2>
+          <p className="mt-0.5 text-xs text-neutral-500">
+            {totalMembers} member{totalMembers !== 1 ? "s" : ""} · project hierarchy
+          </p>
+        </div>
+      </div>
+
+      {/* Chart */}
+      <div className="overflow-x-auto pb-8">
+        <div className="inline-flex min-w-full justify-center">
+          <OrgBranch node={root} depth={0} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Tab definitions ─────────────────────────────────────────────────────── */
 
 const TABS: { id: TabId; label: string; Icon: React.FC<{ size?: number; className?: string }> }[] = [
@@ -873,6 +1072,7 @@ const TABS: { id: TabId; label: string; Icon: React.FC<{ size?: number; classNam
   { id: "timeline", label: "Timeline", Icon: GanttChartSquare },
   { id: "analytics", label: "Analytics", Icon: BarChart2 },
   { id: "meetings", label: "Meetings", Icon: Video },
+  { id: "orgchart", label: "Org Chart", Icon: Network },
 ];
 
 /* ─── Props ───────────────────────────────────────────────────────────────── */
@@ -986,9 +1186,13 @@ export function ProjectWorkspace({
                 <div className="mx-auto max-w-4xl">
                   <AnalyticsTab data={data} projectName={projectName} />
                 </div>
-              ) : (
+              ) : activeTab === "meetings" ? (
                 <div className="mx-auto max-w-4xl">
                   <MeetingsTab />
+                </div>
+              ) : (
+                <div className="mx-auto max-w-5xl">
+                  <OrgChartTab projectId={projectId} />
                 </div>
               )}
             </motion.div>
