@@ -1,10 +1,5 @@
-import { DashboardShell } from "@/app/dashboard/DashboardShell";
-import { DashboardOverview } from "@/app/dashboard/DashboardOverview";
+import { Layout } from "@/components/dashboard/Layout";
 
 export default function PreviewPage() {
-  return (
-    <DashboardShell>
-      <DashboardOverview />
-    </DashboardShell>
-  );
+  return <Layout />;
 }
