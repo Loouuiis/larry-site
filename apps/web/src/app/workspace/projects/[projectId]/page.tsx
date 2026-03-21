@@ -1,5 +1,5 @@
-import { WorkspaceDashboard } from "@/app/dashboard/WorkspaceDashboard";
 import { RecordProjectVisit } from "./RecordProjectVisit";
+import { ProjectPageClient } from "./ProjectPageClient";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +12,7 @@ export default async function WorkspaceProjectPage({
   return (
     <>
       <RecordProjectVisit projectId={projectId} />
-      <WorkspaceDashboard projectId={projectId} />
+      <ProjectPageClient projectId={projectId} />
     </>
   );
 }

@@ -211,6 +211,8 @@ function ProjectCard({
 interface ProjectSelectionScreenProps {
   onSelectProject: (id: string, name: string) => void;
   onNewProject: () => void;
+  /** When provided, overrides the built-in mock projects */
+  externalProjects?: Project[];
 }
 
 /* ─── Screen ─────────────────────────────────────────────────────────────── */
@@ -218,7 +220,9 @@ interface ProjectSelectionScreenProps {
 export function ProjectSelectionScreen({
   onSelectProject,
   onNewProject,
+  externalProjects,
 }: ProjectSelectionScreenProps) {
+  const projects = externalProjects ?? PROJECTS;
   return (
     <div className="flex min-h-screen flex-col">
       {/* Header */}
@@ -265,7 +269,7 @@ export function ProjectSelectionScreen({
           animate="visible"
           className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
         >
-          {PROJECTS.map((project) => (
+          {projects.map((project) => (
             <ProjectCard
               key={project.id}
               project={project}
