@@ -9,7 +9,7 @@ const SharedSchema = z.object({
   DATABASE_URL: z.string().min(1),
   REDIS_URL: z.string().min(1),
   OPENAI_API_KEY: z.string().optional(),
-  OPENAI_MODEL: z.string().default("gpt-5-mini"),
+  OPENAI_MODEL: z.string().default("gpt-4o-mini"),
 });
 
 const ApiSchema = SharedSchema.extend({

@@ -81,7 +81,7 @@ class OpenAiProvider implements LlmProvider {
 
     const prompt = `${instruction}\n\nProject: ${input.projectName ?? "Unknown"}\nTranscript:\n${input.transcript}`;
 
-    const response = await fetch("https://api.openai.com/v1/responses", {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
@@ -89,7 +89,7 @@ class OpenAiProvider implements LlmProvider {
       },
       body: JSON.stringify({
         model: this.model,
-        input: prompt,
+        messages: [{ role: "user", content: prompt }],
       }),
     });
 
@@ -99,14 +99,10 @@ class OpenAiProvider implements LlmProvider {
     }
 
     const payload = (await response.json()) as {
-      output_text?: string;
-      output?: Array<{ content?: Array<{ text?: string }> }>;
+      choices?: Array<{ message?: { content?: string } }>;
     };
 
-    const text =
-      payload.output_text ??
-      payload.output?.flatMap((item) => item.content ?? []).map((item) => item.text ?? "").join("\n") ??
-      "[]";
+    const text = payload.choices?.[0]?.message?.content ?? "[]";
 
     let parsed: unknown;
     try {
