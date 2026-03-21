@@ -30,6 +30,7 @@ interface LarryChatProps {
 
 function MessageBubble({ msg }: { msg: LarryMessage }) {
   const isLarry = msg.role === "larry";
+  const isProcessing = msg.id === "processing";
   return (
     <div className={`flex ${isLarry ? "justify-start" : "justify-end"} mb-2`}>
       <div
@@ -39,7 +40,15 @@ function MessageBubble({ msg }: { msg: LarryMessage }) {
             : "bg-[#6366f1] text-white"
         }`}
       >
-        <p>{msg.text}</p>
+        {isProcessing ? (
+          <span className="flex items-center gap-1 py-0.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#6366f1] animate-bounce" style={{ animationDelay: "0ms" }} />
+            <span className="h-1.5 w-1.5 rounded-full bg-[#6366f1] animate-bounce" style={{ animationDelay: "150ms" }} />
+            <span className="h-1.5 w-1.5 rounded-full bg-[#6366f1] animate-bounce" style={{ animationDelay: "300ms" }} />
+          </span>
+        ) : (
+          <p>{msg.text}</p>
+        )}
         {isLarry && msg.reasoning && (
           <details className="mt-1.5">
             <summary className="cursor-pointer text-[11px] text-[#6366f1] hover:underline">Why?</summary>
@@ -212,7 +221,7 @@ export function LarryChat({ projectId, pendingCount = 0, actionCount = 0 }: Larr
         />
         <button
           type="submit"
-          disabled={chat.busy || chat.input.trim().length < 2}
+          disabled={chat.busy || chat.input.trim().length < 3}
           className="h-9 rounded-lg bg-[#6366f1] px-3 text-[13px] font-medium text-white disabled:opacity-50 hover:bg-[#4f46e5]"
         >
           {chat.busy ? "…" : "Send"}

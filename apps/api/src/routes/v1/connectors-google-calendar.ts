@@ -274,11 +274,7 @@ export const googleCalendarConnectorRoutes: FastifyPluginAsync = async (fastify)
       details: { calendarId: rows[0].google_calendar_id },
     });
 
-    return reply.send({
-      connected: true,
-      tenantId: oauthState.tenantId,
-      calendarId: rows[0].google_calendar_id,
-    });
+    return reply.redirect(`${fastify.config.CORS_ORIGINS.split(",")[0]}/workspace/settings/connectors?connected=calendar`);
   });
 
   fastify.get(

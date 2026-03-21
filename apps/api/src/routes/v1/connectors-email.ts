@@ -198,11 +198,7 @@ export const emailConnectorRoutes: FastifyPluginAsync = async (fastify) => {
       details: { accountEmail: rows[0].account_email },
     });
 
-    return reply.send({
-      connected: true,
-      accountEmail: rows[0].account_email,
-      inboundSecret: rows[0].webhook_secret,
-    });
+    return reply.redirect(`${fastify.config.CORS_ORIGINS.split(",")[0]}/workspace/settings/connectors?connected=email`);
   });
 
   fastify.post("/inbound", async (request, reply) => {

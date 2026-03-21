@@ -92,7 +92,7 @@ export function useLarryChat(projectId?: string) {
         }>(res);
 
         const responseText = res.ok
-          ? (data.summary?.narrative ?? data.message ?? (data.runId ? `Processing… run ${data.runId.slice(0, 8)}` : "Done."))
+          ? (data.summary?.narrative ?? data.message ?? (data.runId ? "Got it — I've queued that. Head to the Action Center to review any proposed actions." : "Done."))
           : (data.error ?? "Something went wrong.");
 
         setMessages((prev) =>
@@ -131,7 +131,7 @@ export function useLarryChat(projectId?: string) {
     async (e?: React.FormEvent) => {
       e?.preventDefault();
       const text = input.trim();
-      if (!text || busy) return;
+      if (!text || text.length < 3 || busy) return;
       setInput("");
       await sendMessage(text, intent);
     },

@@ -64,8 +64,8 @@ export function ConnectorsPage() {
     setLoading(true);
     try {
       const res = await fetch("/api/workspace/connectors/summary");
-      const d = await readJson<ConnectorsData>(res);
-      setData(d);
+      const d = await readJson<{ connectors: ConnectorsData }>(res);
+      setData(d.connectors ?? {});
     } finally {
       setLoading(false);
     }

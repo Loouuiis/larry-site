@@ -207,12 +207,7 @@ export const slackConnectorRoutes: FastifyPluginAsync = async (fastify) => {
       },
     });
 
-    return reply.send({
-      connected: true,
-      tenantId: oauthState.tenantId,
-      teamId: oauthResult.teamId,
-      teamName: oauthResult.teamName ?? null,
-    });
+    return reply.redirect(`${fastify.config.CORS_ORIGINS.split(",")[0]}/workspace/settings/connectors?connected=slack`);
   });
 
   fastify.post("/events", async (request, reply) => {
