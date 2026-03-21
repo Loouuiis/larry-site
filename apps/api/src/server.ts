@@ -14,6 +14,7 @@ try {
   });
 
   app.log.info(`API server listening on port ${env.PORT}`);
+  app.log.info(`Database: ${new URL(env.DATABASE_URL).host}`);
 } catch (error) {
   app.log.error(error, "Failed to start API server");
   process.exit(1);

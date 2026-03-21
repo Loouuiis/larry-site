@@ -16,6 +16,9 @@ import { AgentRunState, EVENT_QUEUE_NAME, ExtractedAction, QueueMessage } from "
 const currentFile = fileURLToPath(import.meta.url);
 const currentDir = path.dirname(currentFile);
 
+// Cascading .env loader: tries apps/worker/.env first, falls back to apps/api/.env.
+// Both must point to the same DATABASE_URL. If they differ, the worker and API
+// write to different databases and extracted actions will not appear in the UI.
 const envCandidates = [
   path.resolve(process.cwd(), ".env"),
   path.resolve(process.cwd(), "../api/.env"),
@@ -38,6 +41,7 @@ for (const candidate of envCandidates) {
 
 const env = getWorkerEnv();
 const db = new Db(env.DATABASE_URL);
+console.log(`[worker] Database: ${new URL(env.DATABASE_URL).host}`);
 const llmProvider = createLlmProvider({
   openAiApiKey: env.OPENAI_API_KEY,
   openAiModel: env.OPENAI_MODEL,
