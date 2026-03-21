@@ -1,3 +1,4 @@
+import { CustomCursor } from "@/components/ui/CustomCursor";
 import { LiquidBackground } from "@/components/ui/LiquidBackground";
 import { MagneticFieldBackground } from "@/components/ui/MagneticFieldBackground";
 import { WelcomeSplash } from "@/components/ui/WelcomeSplash";
@@ -17,7 +18,8 @@ import { CTASection } from "@/components/sections/CTASection";
 
 export default function Home() {
   return (
-    <>
+    <div className="use-custom-cursor">
+      <CustomCursor />
       <OverlayManager />
       <WelcomeSplash />
       <LiquidBackground />
@@ -55,6 +57,6 @@ export default function Home() {
         <CTASection />
       </main>
       <Footer />
-    </>
+    </div>
   );
 }

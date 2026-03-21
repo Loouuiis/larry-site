@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Sidebar, type WorkspaceSidebarNav } from "@/app/dashboard/Sidebar";
+import { WorkspaceSidebar, type WorkspaceSidebarNav } from "@/components/dashboard/Sidebar";
 import type { WorkspaceSnapshot } from "@/app/dashboard/types";
 import { MeetingTranscriptModal } from "./MeetingTranscriptModal";
 import { WorkspaceChromeProvider } from "./WorkspaceChromeContext";
@@ -119,12 +119,11 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
           workspaceName={snapshot?.boardMeta?.workspaceName ?? "Larry Workspace"}
         />
         <div className="flex min-h-0 flex-1">
-          <Sidebar
-            workspaceName={snapshot?.boardMeta?.workspaceName ?? "Larry Workspace"}
+          <WorkspaceSidebar
             projects={projects}
-            selectedProjectId={projectIdFromPath}
-            connectorDots={connectorDots}
             activeNav={activeNav}
+            mobileOpen={false}
+            onMobileClose={() => {}}
           />
           <div className="flex min-w-0 flex-1 flex-col overflow-hidden">{children}</div>
         </div>

@@ -1,14 +1,44 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { AnimatePresence } from "framer-motion";
 import { ChevronDown } from "lucide-react";
 import { BoardToolbar } from "./BoardToolbar";
 import { RightPanel } from "./RightPanel";
 import { TaskTable } from "./TaskTable";
 import { useWorkspaceDashboard } from "./useWorkspaceDashboard";
 import { useWorkspaceChrome } from "@/app/workspace/WorkspaceChromeContext";
-import { BoardTaskRow, WorkspaceTask } from "./types";
-import { TaskDetailDrawer } from "@/app/workspace/projects/[projectId]/TaskDetailDrawer";
+import { BoardTaskRow, TaskStatus, WorkspaceTask } from "./types";
+import { TaskDetailPanel, type TaskPanelData } from "@/components/dashboard/TaskDetailPanel";
+
+function boardTaskToPanel(task: BoardTaskRow, projectName: string): TaskPanelData {
+  const now = new Date();
+  const isOverdue = task.dueDate
+    ? new Date(task.dueDate).getTime() < now.getTime() && task.status !== "completed"
+    : false;
+  const statusMap: Record<TaskStatus, TaskPanelData["status"]> = {
+    backlog:     "upcoming",
+    not_started: "upcoming",
+    in_progress: "on-track",
+    waiting:     "on-track",
+    blocked:     "at-risk",
+    completed:   "done",
+  };
+  const panelStatus: TaskPanelData["status"] = isOverdue ? "overdue" : (statusMap[task.status] ?? "upcoming");
+  const initials = (task.assigneeUserId ?? "PM").replace(/[^a-zA-Z0-9]/g, "").slice(0, 2).toUpperCase() || "PM";
+  return {
+    id:          task.id,
+    name:        task.title,
+    description: "",
+    status:      panelStatus,
+    priority:    task.priority,
+    assignee:    initials,
+    assigneeFull: initials,
+    project:     projectName,
+    deadline:    task.dueDate ?? "—",
+    progress:    task.progressPercent ?? 0,
+  };
+}
 
 type WorkspaceDashboardProps = {
   projectId: string;
@@ -180,7 +210,21 @@ export function WorkspaceDashboard({ projectId }: WorkspaceDashboardProps) {
             onAddTaskClick={() => taskInputRef.current?.focus()}
             onTaskClick={(task) => setSelectedTask(task)}
           />
-          <TaskDetailDrawer task={selectedTask} onClose={() => setSelectedTask(null)} />
+          {/* Backdrop */}
+          {selectedTask && (
+            <div className="fixed inset-0 z-40 bg-black/20" onClick={() => setSelectedTask(null)} />
+          )}
+          {/* Colleague's animated TaskDetailPanel */}
+          <div className="fixed right-0 top-0 z-50 h-full">
+            <AnimatePresence>
+              {selectedTask && (
+                <TaskDetailPanel
+                  task={boardTaskToPanel(selectedTask, selectedProjectName)}
+                  onClose={() => setSelectedTask(null)}
+                />
+              )}
+            </AnimatePresence>
+          </div>
 
           <div className="px-5 py-4">
             <form onSubmit={handleCreateProject} className="flex max-w-md items-center gap-2">

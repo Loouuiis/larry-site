@@ -58,7 +58,7 @@ function Cell({ value }: { value: CellValue }) {
       <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-label="Yes" role="img">
         <path
           d="M2.5 7.5L5.5 10.5L11.5 3.5"
-          stroke="#8b5cf6"
+          stroke="var(--color-brand)"
           strokeWidth="1.75"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -96,7 +96,7 @@ export function VibeSection() {
             className="md:hidden rounded-2xl border border-neutral-200 bg-white px-5 py-6"
             style={{ boxShadow: "var(--shadow-card)" }}
           >
-            <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-[#7C6BFF]">
+            <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-[var(--color-brand)]">
               What Larry does
             </p>
             <ul className="space-y-3" role="list">
@@ -104,7 +104,7 @@ export function VibeSection() {
                 <li key={label} className="flex items-start gap-3">
                   <span
                     aria-hidden="true"
-                    className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[#8b5cf6]/10 text-[#8b5cf6]"
+                    className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--color-brand)]/10 text-[var(--color-brand)]"
                   >
                     <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
                       <path d="M2 5.5L4 7.5L8 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -137,7 +137,7 @@ export function VibeSection() {
                   className={[
                     "py-4 text-center text-xs font-semibold px-2",
                     accent
-                      ? "border-l border-[#7C6BFF]/15 bg-[#7C6BFF]/[0.03] text-[#7C6BFF]"
+                      ? "border-l border-[var(--color-brand)]/15 bg-[var(--color-brand)]/[0.03] text-[var(--color-brand)]"
                       : "text-neutral-400",
                   ]
                     .join(" ")}
@@ -167,7 +167,7 @@ export function VibeSection() {
                 <div className="flex items-center justify-center py-3.5 px-2">
                   <Cell value={aiCopilots} />
                 </div>
-                <div className="flex items-center justify-center border-l border-[#7C6BFF]/15 bg-[#7C6BFF]/[0.03] py-3.5 px-2">
+                <div className="flex items-center justify-center border-l border-[var(--color-brand)]/15 bg-[var(--color-brand)]/[0.03] py-3.5 px-2">
                   <Cell value={larry} />
                 </div>
               </div>

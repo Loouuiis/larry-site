@@ -1,6 +1,6 @@
 "use client";
 
-import { FadeUp } from "@/components/ui/FadeUp";
+import { FadeUp, StaggerContainer, StaggerItem } from "@/components/ui/FadeUp";
 
 // A numbered process flow communicates sequence and causality.
 // Before/after cards with a downward arrow between them is boilerplate —
@@ -57,35 +57,36 @@ export function FeaturesSection() {
           </p>
         </FadeUp>
 
-        {/* 4-step flow — numbered, divided, scannable */}
-        <FadeUp className="mb-10 sm:mb-14">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-            {STEPS.map(({ n, title, detail }, i) => (
-              <div
-                key={n}
-                className={[
-                  "py-6 pr-0 sm:py-8 sm:pr-8",
-                  i > 0 && "lg:border-l lg:border-neutral-100 lg:pl-8 lg:pr-8",
-                  i > 0 && i < 2 && "sm:border-l sm:border-neutral-100 sm:pl-8",
-                  i < STEPS.length - 1 &&
-                    "border-b border-neutral-100 sm:border-b-0",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-              >
-                <span className="mb-4 block font-mono text-[10px] font-medium tracking-[0.15em] text-neutral-300">
-                  {n}
-                </span>
-                <h3 className="mb-2 text-base font-semibold text-neutral-900">
-                  {title}
-                </h3>
-                <p className="text-xs leading-relaxed text-neutral-500">
-                  {detail}
-                </p>
-              </div>
-            ))}
-          </div>
-        </FadeUp>
+        {/* 4-step flow — staggered entrance reinforces the sequential nature */}
+        <StaggerContainer
+          className="mb-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 sm:mb-14"
+          stagger={0.1}
+        >
+          {STEPS.map(({ n, title, detail }, i) => (
+            <StaggerItem
+              key={n}
+              className={[
+                "py-6 pr-0 sm:py-8 sm:pr-8",
+                i > 0 && "lg:border-l lg:border-neutral-100 lg:pl-8 lg:pr-8",
+                i > 0 && i < 2 && "sm:border-l sm:border-neutral-100 sm:pl-8",
+                i < STEPS.length - 1 &&
+                  "border-b border-neutral-100 sm:border-b-0",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            >
+              <span className="mb-4 block font-mono text-[10px] font-medium tracking-[0.15em] text-neutral-300">
+                {n}
+              </span>
+              <h3 className="mb-2 text-base font-semibold text-neutral-900">
+                {title}
+              </h3>
+              <p className="text-xs leading-relaxed text-neutral-500">
+                {detail}
+              </p>
+            </StaggerItem>
+          ))}
+        </StaggerContainer>
 
         {/* Capability list — in a contained panel */}
         <FadeUp>
@@ -101,7 +102,7 @@ export function FeaturesSection() {
                 <li key={cap} className="flex items-start gap-2.5">
                   <span
                     aria-hidden="true"
-                    className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[#8b5cf6]/10 text-[#8b5cf6]"
+                    className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--color-brand)]/10 text-[var(--color-brand)]"
                   >
                     <svg width="8" height="8" viewBox="0 0 10 10" fill="none">
                       <path

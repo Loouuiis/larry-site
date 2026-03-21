@@ -88,7 +88,8 @@ export function WhoItsForSection() {
           {SECONDARY_ROLES.map(({ id, title, description }) => (
             <div
               key={id}
-              className="rounded-xl border border-neutral-100 bg-neutral-50 p-5"
+              className="rounded-xl border border-neutral-200 bg-white p-5"
+              style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.03)" }}
             >
               <h3 className="mb-1.5 text-sm font-semibold text-neutral-800">
                 {title}

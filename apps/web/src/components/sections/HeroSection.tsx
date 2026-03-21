@@ -64,7 +64,10 @@ export function HeroSection() {
       {/* ── Headline + CTAs ────────────────────────────────────────── */}
       <div className="mx-auto max-w-3xl px-4 text-center sm:px-6">
         <BlurReveal delay={0}>
-          <h1 className="text-[1.75rem] font-bold text-neutral-900 sm:text-5xl md:text-6xl lg:text-[4.5rem]">
+          <h1
+            className="text-[1.75rem] font-bold text-neutral-900 sm:text-5xl md:text-6xl lg:text-[4.5rem]"
+            style={{ letterSpacing: "-0.03em", lineHeight: 1.06 }}
+          >
             The AI Project Manager That Actually <em>Runs</em> Execution
           </h1>
         </BlurReveal>
@@ -144,7 +147,7 @@ export function HeroSection() {
                 >
                   <span
                     className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                      i === 0 ? "bg-[#8b5cf6]" : "bg-neutral-200"
+                      i === 0 ? "bg-[var(--color-brand)]" : "bg-neutral-200"
                     }`}
                   />
                   {p}
@@ -166,12 +169,12 @@ export function HeroSection() {
                 </div>
 
                 {/* Active indicator */}
-                <div className="flex items-center gap-1 rounded-full border border-[#8b5cf6]/20 bg-[#8b5cf6]/5 px-2 py-0.5 sm:gap-1.5 sm:px-3 sm:py-1">
+                <div className="flex items-center gap-1 rounded-full border border-[var(--color-brand)]/20 bg-[var(--color-brand)]/5 px-2 py-0.5 sm:gap-1.5 sm:px-3 sm:py-1">
                   <span
-                    className="h-1.5 w-1.5 rounded-full bg-[#8b5cf6] live-pulse"
+                    className="h-1.5 w-1.5 rounded-full bg-[var(--color-brand)] live-pulse"
                     aria-hidden="true"
                   />
-                  <span className="text-[10px] font-medium text-[#8b5cf6] sm:text-[11px]">
+                  <span className="text-[10px] font-medium text-[var(--color-brand)] sm:text-[11px]">
                     Larry is active
                   </span>
                 </div>
@@ -202,14 +205,14 @@ export function HeroSection() {
 
               {/* ── Ambient feed — Larry working in the background ─── */}
               <div
-                className="mt-3 rounded-lg border border-[#8b5cf6]/12 px-3 py-2.5 sm:mt-4 sm:rounded-xl sm:px-3.5 sm:py-3"
-                style={{ background: "rgba(139,92,246,0.04)" }}
+                className="mt-3 rounded-lg border border-[var(--color-brand)]/12 px-3 py-2.5 sm:mt-4 sm:rounded-xl sm:px-3.5 sm:py-3"
+                style={{ background: "rgba(var(--color-brand-rgb,139,92,246),0.04)" }}
               >
                 <div className="mb-2 flex items-center gap-1.5 sm:mb-2.5 sm:gap-2">
-                  <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-[#8b5cf6] text-[7px] font-bold text-white select-none sm:h-4 sm:w-4 sm:text-[8px]">
+                  <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full bg-[var(--color-brand)] text-[7px] font-bold text-white select-none sm:h-4 sm:w-4 sm:text-[8px]">
                     L
                   </span>
-                  <span className="text-[9px] font-semibold uppercase tracking-widest text-[#8b5cf6]/60 sm:text-[10px]">
+                  <span className="text-[9px] font-semibold uppercase tracking-widest text-[var(--color-brand)]/60 sm:text-[10px]">
                     Larry
                   </span>
                 </div>
