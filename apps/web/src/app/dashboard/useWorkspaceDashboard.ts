@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActionCardViewModel,
   BoardTaskRow,
@@ -144,6 +144,8 @@ export function useWorkspaceDashboard(projectIdFromUrl: string) {
   const [larryIntent, setLarryIntent] = useState<LarryIntent>("freeform");
   const [larryBusy, setLarryBusy] = useState(false);
   const [lastLarryResponse, setLastLarryResponse] = useState("");
+  const [larryPolling, setLarryPolling] = useState(false);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [actionBusyId, setActionBusyId] = useState<string | null>(null);
   const [correctionBusyId, setCorrectionBusyId] = useState<string | null>(null);
@@ -209,6 +211,12 @@ export function useWorkspaceDashboard(projectIdFromUrl: string) {
     window.addEventListener("larry:refresh-snapshot", handler);
     return () => window.removeEventListener("larry:refresh-snapshot", handler);
   }, [loadSnapshot, projectIdFromUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (pollTimerRef.current !== null) clearInterval(pollTimerRef.current);
+    };
+  }, []);
 
   const boardTasks: BoardTaskRow[] = useMemo(() => {
     const fromTimeline = snapshot.timeline?.gantt ?? [];
@@ -504,6 +512,31 @@ export function useWorkspaceDashboard(projectIdFromUrl: string) {
         setNotice(responseMessage);
         setLastLarryResponse(responseMessage);
         await loadSnapshot(selectedProjectId || undefined);
+
+        // Poll /api/workspace/actions every 4s for up to 60s, stop on first result
+        if (pollTimerRef.current !== null) clearInterval(pollTimerRef.current);
+        setLarryPolling(true);
+        const pollStart = Date.now();
+        pollTimerRef.current = setInterval(() => {
+          void (async () => {
+            try {
+              const res = await fetch("/api/workspace/actions", { cache: "no-store" });
+              const data = await readJson<{ actions?: WorkspaceAction[] }>(res);
+              const actions = data.actions ?? [];
+              const timedOut = Date.now() - pollStart >= 60_000;
+              if (actions.length > 0 || timedOut) {
+                clearInterval(pollTimerRef.current!);
+                pollTimerRef.current = null;
+                setLarryPolling(false);
+                if (actions.length > 0) {
+                  setSnapshot((prev) => ({ ...prev, pendingActions: actions }));
+                }
+              }
+            } catch {
+              // ignore transient poll errors
+            }
+          })();
+        }, 4_000);
       } catch {
         setError("Larry network error.");
       } finally {
@@ -635,6 +668,7 @@ export function useWorkspaceDashboard(projectIdFromUrl: string) {
     larryPrompt,
     larryIntent,
     larryBusy,
+    larryPolling,
     lastLarryResponse,
     actionBusyId,
     correctionBusyId,
