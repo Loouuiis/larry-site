@@ -49,7 +49,7 @@ step "2/7" "Authenticate as ${EMAIL}"
 AUTH_RESPONSE=$(curl -s -X POST "${API_URL}/v1/auth/login" \
   -H "Content-Type: application/json" \
   -H "x-tenant-id: ${TENANT_ID}" \
-  -d "{\"email\":\"${EMAIL}\",\"password\":\"${PASSWORD}\"}")
+  --data-binary "{\"email\":\"${EMAIL}\",\"password\":\"${PASSWORD}\"}")
 
 ACCESS_TOKEN=$(echo "$AUTH_RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('accessToken',''))" 2>/dev/null || echo "")
 if [ -z "$ACCESS_TOKEN" ]; then
@@ -68,7 +68,7 @@ PROJECT_RESPONSE=$(curl -s -X POST "${API_URL}/v1/projects" \
   -H "Content-Type: application/json" \
   -H "$AUTH_HEADER" \
   -H "$TENANT_HEADER" \
-  -d '{"name":"Smoke Test Project — Larry Demo"}')
+  --data-binary '{"name":"Smoke Test Project — Larry Demo"}')
 
 PROJECT_ID=$(echo "$PROJECT_RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null || echo "")
 if [ -z "$PROJECT_ID" ]; then
@@ -93,7 +93,7 @@ COMMAND_RESPONSE=$(curl -s -X POST "${API_URL}/v1/larry/commands" \
   -H "Content-Type: application/json" \
   -H "$AUTH_HEADER" \
   -H "$TENANT_HEADER" \
-  -d "{\"intent\":\"freeform\",\"input\":$(python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))" <<< "$TRANSCRIPT"),\"projectId\":\"${PROJECT_ID}\",\"mode\":\"execute\"}")
+  --data-binary "{\"intent\":\"freeform\",\"input\":$(python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))" <<< "$TRANSCRIPT"),\"projectId\":\"${PROJECT_ID}\",\"mode\":\"execute\"}")
 
 RUN_ID=$(echo "$COMMAND_RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('runId',''))" 2>/dev/null || echo "")
 COMMAND_ACCEPTED=$(echo "$COMMAND_RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('commandAccepted',''))" 2>/dev/null || echo "")
@@ -144,7 +144,7 @@ APPROVE_RESPONSE=$(curl -s -X POST "${API_URL}/v1/actions/${ACTION_ID}/approve" 
   -H "Content-Type: application/json" \
   -H "$AUTH_HEADER" \
   -H "$TENANT_HEADER" \
-  -d '{"note":"Smoke test auto-approval"}')
+  --data-binary '{"note":"Smoke test auto-approval"}')
 
 APPROVE_STATE=$(echo "$APPROVE_RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('state',''))" 2>/dev/null || echo "")
 APPROVE_OK=$(echo "$APPROVE_RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('success',''))" 2>/dev/null || echo "")

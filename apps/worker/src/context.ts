@@ -33,6 +33,12 @@ for (const candidate of envCandidates) {
 }
 
 export const env = getWorkerEnv();
+
+if (!env.OPENAI_API_KEY) {
+  console.error("[worker] FATAL: OPENAI_API_KEY is not set. The worker cannot extract actions without it.");
+  process.exit(1);
+}
+
 export const db = new Db(env.DATABASE_URL);
 export const llmProvider = createLlmProvider({
   openAiApiKey: env.OPENAI_API_KEY,
