@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CalendarCheck2, ChevronDown, Clock, FileText, Upload } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { CalendarCheck2, ChevronDown, Clock, FileText, Upload, CheckCircle2, XCircle } from "lucide-react";
 
 interface MeetingNote {
   id: string;
@@ -65,12 +66,14 @@ function timeAgo(dateStr: string): string {
 }
 
 export function MeetingsPage() {
+  const router = useRouter();
   const [meetings, setMeetings] = useState<MeetingNote[]>([]);
   const [loading, setLoading] = useState(true);
   const [transcript, setTranscript] = useState("");
   const [processing, setProcessing] = useState(false);
   const [processingRunId, setProcessingRunId] = useState<string | null>(null);
   const [processingState, setProcessingState] = useState<AgentRunState | null>(null);
+  const [successState, setSuccessState] = useState<"complete" | "failed" | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedData, setExpandedData] = useState<Record<string, MeetingNote>>({});
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -93,14 +96,21 @@ export function MeetingsPage() {
     pollRef.current = setInterval(async () => {
       try {
         const res = await fetch(`/api/workspace/agent/runs/${runId}`);
-        const data = await readJson<{ state?: AgentRunState }>(res);
-        if (data.state) {
-          setProcessingState(data.state);
-          if (data.state === "VERIFIED" || data.state === "FAILED" || data.state === "APPROVAL_PENDING") {
+        const data = await readJson<{ run?: { state?: AgentRunState } }>(res);
+        const state = data.run?.state;
+        if (state) {
+          setProcessingState(state);
+          if (state === "VERIFIED" || state === "APPROVAL_PENDING") {
             clearInterval(pollRef.current!);
             setProcessing(false);
             setProcessingRunId(null);
-            void loadMeetings();
+            setSuccessState("complete");
+            setTimeout(() => void loadMeetings(), 1000);
+          } else if (state === "FAILED") {
+            clearInterval(pollRef.current!);
+            setProcessing(false);
+            setProcessingRunId(null);
+            setSuccessState("failed");
           }
         }
       } catch {
@@ -118,6 +128,7 @@ export function MeetingsPage() {
     if (t.length < 20) return;
     setProcessing(true);
     setProcessingState("INGESTED");
+    setSuccessState(null);
     try {
       const res = await fetch("/api/workspace/meetings/transcript", {
         method: "POST",
@@ -193,6 +204,33 @@ export function MeetingsPage() {
             <div className="mt-4 rounded-xl border border-[#e0e7ff] bg-[#f5f3ff] p-4">
               <p className="text-[13px] font-medium text-[#5b21b6]">Larry is processing your meeting…</p>
               <StateProgress state={processingState} />
+            </div>
+          )}
+
+          {/* Success / failure result */}
+          {!processing && successState === "complete" && (
+            <div className="mt-4 rounded-xl border border-[#bbf7d0] bg-[#f0fdf4] p-4 flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-[#16a34a]" />
+                <div>
+                  <p className="text-[13px] font-medium text-[#15803d]">Extraction complete</p>
+                  <p className="mt-0.5 text-[12px] text-[#166534]">Actions are ready for review in the Action Center.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => router.push("/workspace/actions")}
+                className="shrink-0 rounded-lg bg-[#16a34a] px-3 py-1.5 text-[12px] font-medium text-white hover:bg-[#15803d]"
+              >
+                Go to Action Center →
+              </button>
+            </div>
+          )}
+
+          {!processing && successState === "failed" && (
+            <div className="mt-4 rounded-xl border border-[#fecaca] bg-[#fef2f2] p-4 flex items-center gap-3">
+              <XCircle size={18} className="shrink-0 text-[#dc2626]" />
+              <p className="text-[13px] font-medium text-[#b91c1c]">Processing failed — please try again.</p>
             </div>
           )}
         </section>
