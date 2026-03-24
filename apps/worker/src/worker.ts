@@ -1,15 +1,39 @@
-import { QueueEvents, Worker } from "bullmq";
+import { Queue, QueueEvents, Worker } from "bullmq";
 import { EVENT_QUEUE_NAME } from "@larry/shared";
 import { db, env } from "./context.js";
-import { startEscalationScanner } from "./escalation.js";
 import { processQueueJob } from "./handlers.js";
 
+const connection = { url: env.REDIS_URL };
+
 const worker = new Worker(EVENT_QUEUE_NAME, processQueueJob, {
-  connection: { url: env.REDIS_URL },
+  connection,
   concurrency: env.WORKER_CONCURRENCY,
 });
 
-const queueEvents = new QueueEvents(EVENT_QUEUE_NAME, { connection: { url: env.REDIS_URL } });
+const queueEvents = new QueueEvents(EVENT_QUEUE_NAME, { connection });
+
+const queue = new Queue(EVENT_QUEUE_NAME, { connection });
+
+// Register the escalation scan as a BullMQ repeatable job (hourly).
+// Using a stable jobId ensures only one repeatable entry exists even on restart.
+await queue.add(
+  "escalation.scan",
+  {},
+  {
+    repeat: { every: 60 * 60 * 1000 },
+    jobId: "escalation-scan",
+  }
+);
+
+// Renew Google Calendar watch channels every 5 days (channels expire ~7 days).
+await queue.add(
+  "calendar.webhook.renew",
+  {},
+  {
+    repeat: { every: 5 * 24 * 60 * 60 * 1000 },
+    jobId: "calendar-webhook-renew",
+  }
+);
 
 worker.on("completed", (job) => {
   console.log(`[worker] completed job ${job?.id} (${job?.name})`);
@@ -26,6 +50,7 @@ queueEvents.on("waiting", ({ jobId }) => {
 async function shutdown(): Promise<void> {
   await worker.close();
   await queueEvents.close();
+  await queue.close();
   await db.close();
 }
 
@@ -38,7 +63,5 @@ process.on("SIGTERM", async () => {
   await shutdown();
   process.exit(0);
 });
-
-startEscalationScanner();
 
 console.log(`[worker] started queue=${EVENT_QUEUE_NAME} concurrency=${env.WORKER_CONCURRENCY}`);

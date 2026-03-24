@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import rateLimit from "@fastify/rate-limit";
 import sensible from "@fastify/sensible";
 import { getApiEnv } from "@larry/config";
 import { Db } from "@larry/db";
@@ -30,6 +31,10 @@ export async function createApp() {
   );
 
   await app.register(sensible);
+  await app.register(rateLimit, {
+    global: false, // opt-in per route
+    redis: undefined, // in-memory store is fine for MVP demo
+  });
   await app.register(cors, {
     origin: env.CORS_ORIGINS.split(",").map((origin) => origin.trim()),
     credentials: true,

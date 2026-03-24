@@ -7,6 +7,8 @@ import {
   loadCanonicalEvent,
   processAgentRunLifecycle,
 } from "./lifecycle.js";
+import { runEscalationScan } from "./escalation.js";
+import { runCalendarWebhookRenewal } from "./calendar-renewal.js";
 
 export async function handleAgentRunIngested(job: Job<QueueMessage>): Promise<void> {
   const runId = job.data.payload.runId;
@@ -57,6 +59,12 @@ export async function processQueueJob(job: Job<QueueMessage>): Promise<void> {
       break;
     case "canonical_event.created":
       await handleCanonicalEventCreated(job);
+      break;
+    case "escalation.scan":
+      await runEscalationScan();
+      break;
+    case "calendar.webhook.renew":
+      await runCalendarWebhookRenewal();
       break;
     case "agent_run.processed":
     default:

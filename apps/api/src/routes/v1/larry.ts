@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
+import { detectInjectionAttempt } from "@larry/ai";
 import { ingestCanonicalEvent } from "../../services/ingest/pipeline.js";
 import { writeAuditLog } from "../../lib/audit.js";
 
@@ -9,6 +10,7 @@ const LarryIntentSchema = z.enum([
   "update_scope",
   "request_summary",
   "draft_follow_up",
+  "create_project",
   "freeform",
 ]);
 
@@ -195,10 +197,26 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.post(
     "/commands",
-    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
+    {
+      config: { rateLimit: { max: 20, timeWindow: "1 minute", keyGenerator: (req: import("fastify").FastifyRequest) => (req.user as { tenantId?: string } | undefined)?.tenantId ?? req.ip } },
+      preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])],
+    },
     async (request, reply) => {
       const body = LarryCommandSchema.parse(request.body);
       const tenantId = request.user.tenantId;
+
+      // Detect and log prompt injection attempts at the API boundary
+      if (detectInjectionAttempt(body.input)) {
+        request.log.warn({ tenantId, userId: request.user.userId, intent: body.intent }, "Possible prompt injection attempt detected");
+        await writeAuditLog(fastify.db, {
+          tenantId,
+          actorUserId: request.user.userId,
+          actionType: "llm.injection_attempt",
+          objectType: "larry_command",
+          objectId: request.user.userId,
+          details: { intent: body.intent, inputLength: body.input.length },
+        });
+      }
 
       if (body.intent === "request_summary") {
         if (!body.projectId) {
@@ -221,6 +239,73 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           intent: body.intent,
           summary,
         };
+      }
+
+      if (body.intent === "create_project") {
+        const projectStructure = await fastify.llmProvider.extractProjectStructure({
+          description: body.input,
+        });
+
+        const runRows = await fastify.db.queryTenant<{ id: string }>(
+          tenantId,
+          `INSERT INTO agent_runs (tenant_id, project_id, source, source_ref_id, state, status_message, correlation_id, created_by_user_id)
+           VALUES ($1, $2, 'transcript', $3, 'APPROVAL_PENDING', $4, $5, $6)
+           RETURNING id`,
+          [
+            tenantId,
+            null,
+            `larry-create-project:${randomUUID()}`,
+            `Larry proposes new project: ${projectStructure.name}`,
+            `${tenantId}:create_project:${randomUUID()}`,
+            request.user.userId,
+          ]
+        );
+        const runId = runRows[0].id;
+
+        const actionRows = await fastify.db.queryTenant<{ id: string }>(
+          tenantId,
+          `INSERT INTO extracted_actions
+            (tenant_id, agent_run_id, project_id, action_type, impact, confidence, reason, signals, payload, reasoning, state, requires_approval)
+           VALUES ($1, $2, $3, 'project_create', 'high', 1.0, $4, $5::jsonb, $6::jsonb, $7::jsonb, 'pending', true)
+           RETURNING id`,
+          [
+            tenantId,
+            runId,
+            null,
+            `Larry proposes creating project: ${projectStructure.name}`,
+            JSON.stringify([`User requested: ${body.input.slice(0, 120)}`]),
+            JSON.stringify(projectStructure),
+            JSON.stringify({
+              what: projectStructure.name,
+              why: "User asked Larry to create a new project",
+              signals: [`${projectStructure.tasks.length} initial tasks proposed`],
+              threshold: "project_create",
+              decision: "approval_required",
+              override: "Approve in the Action Centre to create the project and its initial tasks.",
+            }),
+          ]
+        );
+        const actionId = actionRows[0].id;
+
+        await writeAuditLog(fastify.db, {
+          tenantId,
+          actorUserId: request.user.userId,
+          actionType: "larry.command.create_project",
+          objectType: "agent_run",
+          objectId: runId,
+          details: { projectName: projectStructure.name, taskCount: projectStructure.tasks.length },
+        });
+
+        return reply.code(202).send({
+          commandAccepted: true,
+          commandMode: body.mode,
+          intent: body.intent,
+          runId,
+          actionId,
+          projectName: projectStructure.name,
+          taskCount: projectStructure.tasks.length,
+          message: `Larry has drafted "${projectStructure.name}" with ${projectStructure.tasks.length} tasks. Review and approve it in the Action Centre.`,
+        });
       }
 
       if (body.mode === "preview") {

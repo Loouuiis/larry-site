@@ -400,16 +400,18 @@ export const googleCalendarConnectorRoutes: FastifyPluginAsync = async (fastify)
       return reply.send({ ok: true, ignored: true, reason: "unmapped_channel" });
     }
 
-    if (channelToken) {
-      try {
-        const decoded = verifySignedStateToken(channelToken, fastify.config.JWT_ACCESS_SECRET);
-        const parsed = GoogleChannelTokenSchema.parse(decoded);
-        if (parsed.i !== installation.id || parsed.t !== installation.tenant_id) {
-          throw new Error("channel_token_mismatch");
-        }
-      } catch {
-        throw fastify.httpErrors.unauthorized("Invalid Google channel token.");
+    // Token is always set when registering a watch channel — reject requests that omit it.
+    if (!channelToken) {
+      throw fastify.httpErrors.unauthorized("Missing Google channel token.");
+    }
+    try {
+      const decoded = verifySignedStateToken(channelToken, fastify.config.JWT_ACCESS_SECRET);
+      const parsed = GoogleChannelTokenSchema.parse(decoded);
+      if (parsed.i !== installation.id || parsed.t !== installation.tenant_id) {
+        throw new Error("channel_token_mismatch");
       }
+    } catch {
+      throw fastify.httpErrors.unauthorized("Invalid Google channel token.");
     }
 
     if (resourceState === "sync") {

@@ -119,8 +119,3 @@ export async function runEscalationScan(): Promise<void> {
   }
 }
 
-export function startEscalationScanner(): void {
-  // Run at startup then every hour
-  void runEscalationScan();
-  setInterval(() => { void runEscalationScan(); }, 60 * 60 * 1000);
-}

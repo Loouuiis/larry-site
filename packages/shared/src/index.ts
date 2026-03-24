@@ -39,6 +39,7 @@ export interface ExtractedAction {
   actionType?:
     | "status_update"
     | "task_create"
+    | "project_create"
     | "deadline_change"
     | "owner_change"
     | "scope_change"
@@ -140,7 +141,9 @@ export interface CorrectionFeedback {
 export type QueueJobType =
   | "canonical_event.created"
   | "agent_run.ingested"
-  | "agent_run.processed";
+  | "agent_run.processed"
+  | "escalation.scan"
+  | "calendar.webhook.renew";
 
 export const EVENT_QUEUE_NAME = "larry-events";
 

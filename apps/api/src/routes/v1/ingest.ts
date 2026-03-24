@@ -88,7 +88,10 @@ export const ingestRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.post(
     "/transcript",
-    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
+    {
+      config: { rateLimit: { max: 10, timeWindow: "1 minute", keyGenerator: (req: import("fastify").FastifyRequest) => (req.user as { tenantId?: string } | undefined)?.tenantId ?? req.ip } },
+      preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])],
+    },
     async (request, reply) => {
       const body = TranscriptIngestSchema.parse(request.body);
       const tenantId = request.user.tenantId;

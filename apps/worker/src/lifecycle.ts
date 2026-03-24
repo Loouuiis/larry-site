@@ -1,4 +1,4 @@
-import { buildActionReasoning, buildInterventionDecision, PolicyThresholds } from "@larry/ai";
+import { buildActionReasoning, buildInterventionDecision, detectInjectionAttempt, PolicyThresholds } from "@larry/ai";
 import { AgentRunState, ExtractedAction } from "@larry/shared";
 import { db, llmProvider } from "./context.js";
 import {
@@ -272,14 +272,47 @@ async function persistAction(
   return { id: actionId, requiresApproval: intervention.requiresApproval };
 }
 
-async function extractActions(transcript: string, projectId: string | null): Promise<ExtractedAction[]> {
+async function extractActions(
+  tenantId: string,
+  runId: string,
+  transcript: string,
+  projectId: string | null
+): Promise<ExtractedAction[]> {
   const trimmed = transcript.trim();
   if (trimmed.length === 0) return [];
 
-  return llmProvider.extractActionsFromTranscript({
+  const injectionDetected = detectInjectionAttempt(trimmed);
+  if (injectionDetected) {
+    console.warn(`[lifecycle] injection attempt detected tenantId=${tenantId} runId=${runId}`);
+  }
+
+  const actions = await llmProvider.extractActionsFromTranscript({
     transcript: trimmed,
     projectName: projectId ?? undefined,
   });
+
+  // Audit log the LLM call (input length + output count, not full content)
+  try {
+    await db.queryTenant(
+      tenantId,
+      `INSERT INTO audit_log (tenant_id, actor_user_id, action_type, object_type, object_id, details)
+       VALUES ($1, NULL, 'llm.call', 'agent_run', $2, $3::jsonb)`,
+      [
+        tenantId,
+        runId,
+        JSON.stringify({
+          model: "extractActionsFromTranscript",
+          inputLength: trimmed.length,
+          outputCount: actions.length,
+          injectionDetected,
+        }),
+      ]
+    );
+  } catch {
+    // Non-fatal — don't block action extraction if audit write fails
+  }
+
+  return actions;
 }
 
 export async function processAgentRunLifecycle(
@@ -300,7 +333,7 @@ export async function processAgentRunLifecycle(
   }
 
   if (currentState === "NORMALIZED") {
-    extracted = await extractActions(transcript, run.projectId);
+    extracted = await extractActions(tenantId, runId, transcript, run.projectId);
     currentState = await transitionRun(tenantId, runId, currentState, "EXTRACTED", "Action candidates extracted", {
       extractedCount: extracted.length,
       source,
@@ -315,7 +348,7 @@ export async function processAgentRunLifecycle(
     const thresholds = await loadTenantPolicyThresholds(tenantId);
 
     if (!extracted) {
-      extracted = await extractActions(transcript, run.projectId);
+      extracted = await extractActions(tenantId, runId, transcript, run.projectId);
     }
 
     await db.queryTenant(

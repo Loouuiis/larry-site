@@ -46,6 +46,9 @@ const ApiSchema = SharedSchema.extend({
 
 const WorkerSchema = SharedSchema.extend({
   WORKER_CONCURRENCY: z.coerce.number().int().positive().default(5),
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_CALENDAR_WEBHOOK_URL: z.string().url().optional(),
 });
 
 export type ApiEnv = z.infer<typeof ApiSchema>;
