@@ -79,14 +79,17 @@ function SourcePanel({ data }: { data: AgentRunDetail }) {
   );
 }
 
-type FilterTab = "all" | "email" | "deadline" | "scope" | "meeting";
-
-const FILTER_LABELS: Record<FilterTab, string> = {
-  all: "All",
-  email: "Email Drafts",
-  deadline: "Deadline Changes",
-  scope: "Scope Changes",
-  meeting: "Meeting Invites",
+const ACTION_TYPE_LABELS: Record<string, string> = {
+  task_create:     "Task Creates",
+  status_update:   "Status Updates",
+  deadline_change: "Deadline Changes",
+  owner_change:    "Owner Changes",
+  scope_change:    "Scope Changes",
+  risk_escalation: "Risk Escalations",
+  email_draft:     "Email Drafts",
+  meeting_invite:  "Meeting Invites",
+  follow_up:       "Follow Ups",
+  other:           "Other",
 };
 
 function impactBadge(impact: ActionCardViewModel["impact"]): { label: string; bg: string } {
@@ -110,7 +113,7 @@ export function ActionCenterPage() {
   const [loading, setLoading] = useState(true);
   const [rawActions, setRawActions] = useState<WorkspaceAction[]>([]);
   const [rawDrafts, setRawDrafts] = useState<EmailDraft[]>([]);
-  const [filter, setFilter] = useState<FilterTab>("all");
+  const [filter, setFilter] = useState("all");
   const [expandedSourceId, setExpandedSourceId] = useState<string | null>(null);
   const [sourceCache, setSourceCache] = useState<Record<string, AgentRunDetail>>({});
   const [sourceLoadingId, setSourceLoadingId] = useState<string | null>(null);
@@ -159,21 +162,22 @@ export function ActionCenterPage() {
   const { actionCards, drafts, actionBusyId, correctionBusyId, draftBusyId, handleActionDecision, handleActionCorrect, sendEmailDraft } =
     useActionCenter(rawActions, rawDrafts);
 
-  const filteredCards = filter === "all"
-    ? actionCards
-    : filter === "email"
-    ? []
-    : actionCards.filter((c) => {
-        if (filter === "deadline") return c.title.includes("deadline") || c.title.includes("extend");
-        if (filter === "scope") return c.title.includes("scope") || c.title.includes("plan");
-        if (filter === "meeting") return c.title.includes("meeting") || c.title.includes("invite");
-        return true;
-      });
+  // Build dynamic tabs from whatever action types are present in the data
+  const presentTypes = Array.from(new Set(rawActions.map((a) => a.actionType ?? "other")));
+  const hasDrafts = drafts.length > 0;
+  const dynamicTabs: string[] = [
+    "all",
+    ...presentTypes.filter((t) => t !== "email_draft"),
+    ...(presentTypes.includes("email_draft") || hasDrafts ? ["email_draft"] : []),
+  ];
 
-  const rawFilteredActions = rawActions.filter((a) => {
-    const card = actionCards.find((c) => c.id === a.id);
-    return card ? filteredCards.some((f) => f.id === card.id) : false;
-  });
+  const filteredRawActions = filter === "all"
+    ? rawActions
+    : rawActions.filter((a) => (a.actionType ?? "other") === filter);
+
+  const filteredCards = actionCards.filter((c) => filteredRawActions.some((a) => a.id === c.id));
+  const rawFilteredActions = filteredRawActions;
+  const showEmailDrafts = filter === "all" || filter === "email_draft";
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
@@ -191,24 +195,27 @@ export function ActionCenterPage() {
         </div>
 
         {/* Filter tabs */}
-        <div className="mt-4 flex items-center gap-0 border-b border-[var(--pm-border)]">
-          {(Object.entries(FILTER_LABELS) as [FilterTab, string][]).map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setFilter(key)}
-              className={`relative px-4 pb-2 pt-1 text-[14px] font-medium transition-colors ${
-                filter === key
-                  ? "text-[var(--pm-blue)]"
-                  : "text-[var(--pm-text-secondary)] hover:text-[var(--pm-text)]"
-              }`}
-            >
-              {label}
-              {filter === key && (
-                <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-t bg-[var(--pm-blue)]" />
-              )}
-            </button>
-          ))}
+        <div className="mt-4 flex items-center gap-0 border-b border-[var(--pm-border)] overflow-x-auto">
+          {dynamicTabs.map((key) => {
+            const label = key === "all" ? "All" : (ACTION_TYPE_LABELS[key] ?? key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()));
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setFilter(key)}
+                className={`relative shrink-0 px-4 pb-2 pt-1 text-[14px] font-medium transition-colors ${
+                  filter === key
+                    ? "text-[var(--pm-blue)]"
+                    : "text-[var(--pm-text-secondary)] hover:text-[var(--pm-text)]"
+                }`}
+              >
+                {label}
+                {filter === key && (
+                  <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-t bg-[var(--pm-blue)]" />
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -218,7 +225,7 @@ export function ActionCenterPage() {
         )}
 
         {/* Email drafts (shown in All and Email tabs) */}
-        {(filter === "all" || filter === "email") && drafts.map((draft) => (
+        {showEmailDrafts && drafts.map((draft) => (
           <article key={draft.id} className="rounded-xl border border-[var(--pm-border)] bg-white p-5 shadow-sm">
             <div className="flex items-start justify-between gap-3 mb-3">
               <div>
@@ -359,7 +366,7 @@ export function ActionCenterPage() {
           );
         })}
 
-        {!loading && filteredCards.length === 0 && drafts.length === 0 && (
+        {!loading && filteredCards.length === 0 && (!showEmailDrafts || drafts.length === 0) && (
           <div className="flex flex-col items-center rounded-xl border border-dashed border-[var(--pm-border)] bg-[var(--pm-surface)] py-16 text-center">
             <ShieldCheck size={32} className="mb-3 text-[var(--pm-text-muted)] opacity-40" />
             <p className="text-[15px] font-medium text-[var(--pm-text)]">All clear</p>
