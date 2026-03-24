@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import {
@@ -44,13 +45,7 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose }: WorkspaceSideba
       {/* Logo */}
       <div className="flex h-16 items-center justify-between px-5 border-b border-[var(--color-border)]">
         <Link href="/workspace" className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[var(--color-brand)] shadow-[0_2px_8px_rgba(139,92,246,0.35)]">
-            <span className="text-sm font-bold text-white select-none">L</span>
-          </div>
-          <div>
-            <p className="text-sm font-bold text-neutral-900 leading-none">Larry</p>
-            <p className="text-[10px] text-neutral-400 leading-none mt-0.5">PM</p>
-          </div>
+          <Image src="/Larry_logo.png" alt="Larry" width={120} height={40} className="rounded-xl object-contain" />
         </Link>
         {onClose && (
           <button

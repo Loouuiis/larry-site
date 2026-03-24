@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { Button } from "@/components/ui/Button";
@@ -132,10 +133,7 @@ export function Navbar() {
           className="flex items-center gap-2 text-sm font-semibold text-neutral-900"
           onClick={() => setMenuOpen(false)}
         >
-          <span className="flex h-6 w-6 items-center justify-center rounded bg-[#8b5cf6] text-white text-xs font-bold select-none">
-            L
-          </span>
-          Larry
+          <Image src="/Larry_logo.png" alt="Larry" width={90} height={30} className="object-contain" />
         </Link>
 
         {/* Nav links — hidden on mobile */}
