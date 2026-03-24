@@ -20,7 +20,8 @@
     "db:migrate": "npm run migrate -w @larry/db",
     "db:seed": "npm run seed -w @larry/db",
     "db:setup": "npm run db:migrate && npm run db:seed",
-    "db:reset": "docker compose down -v && docker compose up -d && sleep 3 && npm run db:setup"
+    "db:reset": "docker compose down -v && docker compose up -d && sleep 3 && npm run db:setup",
+    "vercel-build": "npm run build -w @larry/web"
   },
   "dependencies": {
     "pg": "^8.20.0"
