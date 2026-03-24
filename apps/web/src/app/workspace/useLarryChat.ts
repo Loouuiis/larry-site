@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export type LarryIntent = "freeform" | "create_plan" | "update_scope" | "draft_follow_up" | "request_summary";
 
@@ -31,16 +31,13 @@ async function readJson<T>(response: Response): Promise<T> {
   }
 }
 
-async function persistMessage(conversationId: string, role: "user" | "larry", content: string) {
-  try {
-    await fetch(`/api/workspace/larry/conversations/${conversationId}/messages`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role, content }),
-    });
-  } catch {
-    // best-effort — don't block the UI
-  }
+function saveMessage(conversationId: string, role: "user" | "larry", content: string): void {
+  // Fire-and-forget — persistence failures must not block the UI
+  void fetch(`/api/workspace/larry/conversations/${conversationId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role, content }),
+  }).catch(() => undefined);
 }
 
 export function useLarryChat(projectId?: string) {
@@ -51,6 +48,9 @@ export function useLarryChat(projectId?: string) {
   const [busy, setBusy] = useState(false);
   const [proactiveQueue, setProactiveQueue] = useState<ProactiveItem[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
+
+  // Track which projectId we've already initialised for to avoid re-running
+  const initializedForRef = useRef<string | undefined>(undefined);
 
   const open = useCallback(() => setIsOpen(true), []);
   const close = useCallback(() => setIsOpen(false), []);
@@ -66,20 +66,78 @@ export function useLarryChat(projectId?: string) {
     setProactiveQueue((q) => q.filter((i) => i.id !== id));
   }, []);
 
+  // Load or create a conversation and hydrate message history
+  useEffect(() => {
+    if (!isOpen) return;
+    if (initializedForRef.current === (projectId ?? "")) return;
+    initializedForRef.current = projectId ?? "";
+
+    void (async () => {
+      try {
+        // Find the most recent conversation for this project (or global if no projectId)
+        const listUrl = projectId
+          ? `/api/workspace/larry/conversations?projectId=${encodeURIComponent(projectId)}`
+          : "/api/workspace/larry/conversations";
+
+        const listRes = await fetch(listUrl);
+        const listData = await readJson<{ conversations?: { id: string }[] }>(listRes);
+        const existing = listData.conversations?.[0];
+
+        let convId: string;
+        if (existing) {
+          convId = existing.id;
+        } else {
+          // Create a fresh conversation
+          const createRes = await fetch("/api/workspace/larry/conversations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ projectId: projectId ?? undefined }),
+          });
+          const created = await readJson<{ id?: string }>(createRes);
+          if (!created.id) return;
+          convId = created.id;
+        }
+
+        setConversationId(convId);
+
+        // Load history
+        const msgRes = await fetch(`/api/workspace/larry/conversations/${convId}/messages`);
+        const msgData = await readJson<{ messages?: Array<{ id: string; role: string; content: string; reasoning: unknown; createdAt: string }> }>(msgRes);
+
+        if (msgData.messages && msgData.messages.length > 0) {
+          setMessages(
+            msgData.messages.map((m) => ({
+              id: m.id,
+              role: m.role as "user" | "larry",
+              text: m.content,
+              reasoning: (m.reasoning as LarryMessage["reasoning"]) ?? undefined,
+              createdAt: m.createdAt,
+            }))
+          );
+        }
+      } catch {
+        // Non-fatal — chat still works without persistence
+      }
+    })();
+  }, [isOpen, projectId]);
+
   const loadConversation = useCallback(async (id: string) => {
     setConversationId(id);
     setMessages([]);
     setIsOpen(true);
+    // Reset the auto-init ref so the effect doesn't clobber this explicit load
+    initializedForRef.current = undefined;
     try {
       const res = await fetch(`/api/workspace/larry/conversations/${id}/messages`);
       const data = await readJson<{
-        items?: Array<{ id: string; role: "user" | "larry"; content: string; createdAt: string }>;
+        messages?: Array<{ id: string; role: "user" | "larry"; content: string; reasoning: unknown; createdAt: string }>;
       }>(res);
       setMessages(
-        (data.items ?? []).map((m) => ({
+        (data.messages ?? []).map((m) => ({
           id: m.id,
           role: m.role,
           text: m.content,
+          reasoning: (m.reasoning as LarryMessage["reasoning"]) ?? undefined,
           createdAt: m.createdAt,
         }))
       );
@@ -125,8 +183,6 @@ export function useLarryChat(projectId?: string) {
         }
       }
 
-      if (convId) void persistMessage(convId, "user", text);
-
       try {
         const res = await fetch("/api/workspace/larry/commands", {
           method: "POST",
@@ -159,7 +215,10 @@ export function useLarryChat(projectId?: string) {
 
         setMessages((prev) => prev.filter((m) => m.id !== "processing").concat(larryMsg));
 
-        if (convId) void persistMessage(convId, "larry", responseText);
+        if (convId) {
+          saveMessage(convId, "user", text);
+          saveMessage(convId, "larry", responseText);
+        }
 
         if (res.ok && data.runId) {
           window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));

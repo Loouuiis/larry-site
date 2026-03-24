@@ -56,60 +56,86 @@ async function buildProjectSummary(
 }
 
 export const larryRoutes: FastifyPluginAsync = async (fastify) => {
-  // ── Conversation CRUD ────────────────────────────────────────────────────
+  // ── Conversations ────────────────────────────────────────────────────────
 
   fastify.get(
     "/conversations",
-    { preHandler: [fastify.authenticate] },
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
     async (request) => {
       const tenantId = request.user.tenantId;
-      const rows = await fastify.db.queryTenant(
+      const userId = request.user.userId;
+      const { projectId } = request.query as { projectId?: string };
+
+      const rows = await fastify.db.queryTenant<{
+        id: string;
+        projectId: string | null;
+        title: string | null;
+        createdAt: string;
+        updatedAt: string;
+      }>(
         tenantId,
-        `SELECT id, project_id as "projectId", title,
-                created_at as "createdAt", updated_at as "updatedAt"
+        `SELECT id, project_id as "projectId", title, created_at as "createdAt", updated_at as "updatedAt"
          FROM larry_conversations
-         WHERE tenant_id = $1 AND user_id = $2
-         ORDER BY updated_at DESC LIMIT 50`,
-        [tenantId, request.user.userId]
+         WHERE tenant_id = $1
+           AND user_id = $2
+           ${projectId ? 'AND project_id = $3' : ''}
+         ORDER BY updated_at DESC
+         LIMIT 50`,
+        projectId ? [tenantId, userId, projectId] : [tenantId, userId]
       );
-      return { items: rows };
+
+      return { conversations: rows };
     }
   );
 
   fastify.post(
     "/conversations",
-    { preHandler: [fastify.authenticate] },
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
     async (request, reply) => {
-      const body = z.object({
-        projectId: z.string().uuid().optional(),
-        title: z.string().max(200).optional(),
-      }).parse(request.body);
       const tenantId = request.user.tenantId;
-      const rows = await fastify.db.queryTenant<{ id: string }>(
+      const userId = request.user.userId;
+      const body = request.body as { projectId?: string; title?: string };
+
+      const rows = await fastify.db.queryTenant<{
+        id: string;
+        projectId: string | null;
+        title: string | null;
+        createdAt: string;
+      }>(
         tenantId,
-        `INSERT INTO larry_conversations (tenant_id, project_id, user_id, title)
+        `INSERT INTO larry_conversations (tenant_id, user_id, project_id, title)
          VALUES ($1, $2, $3, $4)
-         RETURNING id`,
-        [tenantId, body.projectId ?? null, request.user.userId, body.title ?? "New conversation"]
+         RETURNING id, project_id as "projectId", title, created_at as "createdAt"`,
+        [tenantId, userId, body.projectId ?? null, body.title ?? null]
       );
-      return reply.code(201).send({ id: rows[0].id });
+
+      return reply.code(201).send(rows[0]);
     }
   );
 
   fastify.get(
     "/conversations/:id/messages",
-    { preHandler: [fastify.authenticate] },
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
     async (request) => {
-      const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
       const tenantId = request.user.tenantId;
-      const conv = await fastify.db.queryTenant(
+      const userId = request.user.userId;
+      const { id } = request.params as { id: string };
+
+      // Verify ownership
+      const conv = await fastify.db.queryTenant<{ id: string }>(
         tenantId,
-        `SELECT id FROM larry_conversations
-         WHERE tenant_id = $1 AND id = $2 AND user_id = $3 LIMIT 1`,
-        [tenantId, id, request.user.userId]
+        `SELECT id FROM larry_conversations WHERE tenant_id = $1 AND id = $2 AND user_id = $3 LIMIT 1`,
+        [tenantId, id, userId]
       );
       if (!conv[0]) throw fastify.httpErrors.notFound("Conversation not found.");
-      const rows = await fastify.db.queryTenant(
+
+      const rows = await fastify.db.queryTenant<{
+        id: string;
+        role: string;
+        content: string;
+        reasoning: unknown;
+        createdAt: string;
+      }>(
         tenantId,
         `SELECT id, role, content, reasoning, created_at as "createdAt"
          FROM larry_messages
@@ -117,45 +143,55 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
          ORDER BY created_at ASC`,
         [tenantId, id]
       );
-      return { items: rows };
+
+      return { messages: rows };
     }
   );
 
   fastify.post(
     "/conversations/:id/messages",
-    { preHandler: [fastify.authenticate] },
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
     async (request, reply) => {
-      const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
-      const body = z.object({
-        role: z.enum(["user", "larry"]),
-        content: z.string().min(1).max(20_000),
-        reasoning: z.record(z.unknown()).optional(),
-      }).parse(request.body);
       const tenantId = request.user.tenantId;
-      const conv = await fastify.db.queryTenant(
+      const userId = request.user.userId;
+      const { id } = request.params as { id: string };
+      const body = request.body as { role: "user" | "larry"; content: string; reasoning?: unknown };
+
+      if (body.role !== "user" && body.role !== "larry") {
+        throw fastify.httpErrors.badRequest("role must be 'user' or 'larry'.");
+      }
+      if (!body.content?.trim()) {
+        throw fastify.httpErrors.badRequest("content is required.");
+      }
+
+      // Verify ownership
+      const conv = await fastify.db.queryTenant<{ id: string }>(
         tenantId,
-        `SELECT id FROM larry_conversations
-         WHERE tenant_id = $1 AND id = $2 AND user_id = $3 LIMIT 1`,
-        [tenantId, id, request.user.userId]
+        `SELECT id FROM larry_conversations WHERE tenant_id = $1 AND id = $2 AND user_id = $3 LIMIT 1`,
+        [tenantId, id, userId]
       );
       if (!conv[0]) throw fastify.httpErrors.notFound("Conversation not found.");
-      const rows = await fastify.db.queryTenant<{ id: string }>(
+
+      const rows = await fastify.db.queryTenant<{ id: string; createdAt: string }>(
         tenantId,
         `INSERT INTO larry_messages (tenant_id, conversation_id, role, content, reasoning)
          VALUES ($1, $2, $3, $4, $5::jsonb)
-         RETURNING id`,
-        [tenantId, id, body.role, body.content, body.reasoning ? JSON.stringify(body.reasoning) : null]
+         RETURNING id, created_at as "createdAt"`,
+        [tenantId, id, body.role, body.content.trim(), JSON.stringify(body.reasoning ?? null)]
       );
+
+      // Bump conversation updated_at
       await fastify.db.queryTenant(
         tenantId,
         `UPDATE larry_conversations SET updated_at = NOW() WHERE tenant_id = $1 AND id = $2`,
         [tenantId, id]
       );
-      return reply.code(201).send({ id: rows[0].id });
+
+      return reply.code(201).send(rows[0]);
     }
   );
 
-  // ── Larry commands ───────────────────────────────────────────────────────
+  // ── Commands ─────────────────────────────────────────────────────────────
 
   fastify.post(
     "/commands",
