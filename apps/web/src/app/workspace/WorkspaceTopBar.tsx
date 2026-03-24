@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { LogoutButton } from "@/app/dashboard/LogoutButton";
 import { NotificationBell } from "./NotificationBell";
@@ -16,12 +17,11 @@ type WorkspaceTopBarProps = {
 
 function Breadcrumb({ workspaceName }: { workspaceName: string }) {
   const pathname = usePathname();
-  const parts: { label: string; href?: string }[] = [
-    { label: workspaceName || "Larry Workspace", href: "/workspace" },
-  ];
+  const parts: { label: string; href?: string }[] = [];
 
   const projectMatch = pathname?.match(/^\/workspace\/projects\/([^/]+)(\/(.+))?/);
   if (projectMatch) {
+    parts.push({ label: workspaceName || "Larry Workspace", href: "/workspace" });
     parts.push({ label: "Project" });
     if (projectMatch[3]) {
       parts.push({ label: projectMatch[3].charAt(0).toUpperCase() + projectMatch[3].slice(1) });
@@ -40,17 +40,19 @@ function Breadcrumb({ workspaceName }: { workspaceName: string }) {
     parts.push({ label: "My Work" });
   }
 
+  if (parts.length === 0) return null;
+
   return (
-    <nav className="flex items-center gap-1 text-[13px]">
+    <nav className="flex items-center gap-1 text-[13px] min-w-0">
       {parts.map((part, i) => (
-        <span key={i} className="flex items-center gap-1">
-          {i > 0 && <span className="text-[var(--pm-text-muted)]">/</span>}
+        <span key={i} className="flex items-center gap-1 min-w-0">
+          <span className="text-[var(--pm-text-muted)]">/</span>
           {part.href ? (
-            <Link href={part.href} className="text-[var(--pm-text-secondary)] hover:text-[var(--pm-text)]">
+            <Link href={part.href} className="text-[var(--pm-text-secondary)] hover:text-[var(--pm-text)] truncate">
               {part.label}
             </Link>
           ) : (
-            <span className="font-medium text-[var(--pm-text)]">{part.label}</span>
+            <span className="font-medium text-[var(--pm-text)] truncate">{part.label}</span>
           )}
         </span>
       ))}
@@ -72,9 +74,11 @@ export function WorkspaceTopBar({ userEmail, workspaceName = "Larry Workspace" }
 
   return (
     <header className="flex h-12 shrink-0 items-center justify-between border-b border-[var(--pm-border)] bg-[var(--pm-surface)] px-4 gap-4">
-      {/* Left: breadcrumb */}
-      <div className="min-w-0 flex-1">
-        <Breadcrumb workspaceName={workspaceName} />
+      {/* Left: logo */}
+      <div className="shrink-0">
+        <Link href="/workspace">
+          <Image src="/Larry_logo.png" alt="Larry" width={120} height={38} className="rounded-lg object-contain" />
+        </Link>
       </div>
 
       {/* Center: global search */}

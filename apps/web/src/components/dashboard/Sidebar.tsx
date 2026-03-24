@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import {
@@ -42,25 +41,21 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose }: WorkspaceSideba
 
   return (
     <div className="flex h-full flex-col">
-      {/* Logo */}
-      <div className="flex h-16 items-center justify-between px-5 border-b border-[var(--color-border)]">
-        <Link href="/workspace" className="flex items-center gap-2.5">
-          <Image src="/Larry_logo.png" alt="Larry" width={120} height={40} className="rounded-xl object-contain" />
-        </Link>
-        {onClose && (
-          <button
-            onClick={onClose}
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600 transition-colors"
-          >
-            <X size={14} />
-          </button>
-        )}
-      </div>
-
       {/* Nav */}
       <nav className="flex-1 px-3 py-5 space-y-1 overflow-y-auto" aria-label="Main navigation">
-        <p className="mb-3 px-2 text-[10px] font-semibold uppercase tracking-widest text-neutral-400">
-          Workspace
+        <p className="mb-3 px-2 text-[10px] font-semibold uppercase tracking-widest text-neutral-400 flex items-center gap-1">
+          <span>Workspace</span>
+          {(() => {
+            const projectMatch = pathname?.match(/^\/workspace\/projects\/([^/]+)/);
+            if (projectMatch) return <><span>/</span><span>Project</span></>;
+            if (pathname?.startsWith("/workspace/meetings")) return <><span>/</span><span>Meetings</span></>;
+            if (pathname?.startsWith("/workspace/actions")) return <><span>/</span><span>Actions</span></>;
+            if (pathname?.startsWith("/workspace/documents")) return <><span>/</span><span>Documents</span></>;
+            if (pathname?.startsWith("/workspace/chats")) return <><span>/</span><span>Chats</span></>;
+            if (pathname?.startsWith("/workspace/settings")) return <><span>/</span><span>Settings</span></>;
+            if (pathname?.startsWith("/workspace/my-work")) return <><span>/</span><span>My Work</span></>;
+            return null;
+          })()}
         </p>
         <LayoutGroup id="workspace-sidebar">
           {WORKSPACE_NAV.map(({ id, label, icon: Icon, href }) => {

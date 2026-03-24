@@ -227,17 +227,7 @@ export function ProjectSelectionScreen({
   return (
     <div className="flex min-h-screen flex-col">
       {/* Header */}
-      <header className="flex h-14 shrink-0 items-center justify-between px-6">
-        {/* Logo */}
-        <div className="flex items-center gap-2.5">
-          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--color-brand)] text-[11px] font-bold text-white">
-            L
-          </span>
-          <span className="text-sm font-semibold tracking-tight text-neutral-900">
-            Larry
-          </span>
-        </div>
-
+      <header className="flex h-14 shrink-0 items-center justify-end px-6">
         {/* User avatar */}
         <div className="group relative">
           <button className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-900 text-[10px] font-bold text-white transition-colors hover:bg-neutral-700">
