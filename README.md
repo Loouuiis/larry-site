@@ -33,10 +33,13 @@ See [docs/backend/v1-standalone-rebaseline.md](docs/backend/v1-standalone-rebase
 docker compose up -d
 npm install
 npm run db:migrate
+npm run db:seed
 npm run api:dev
 npm run worker:dev
 npm run web:dev
 ```
+
+See [running_locally.md](running_locally.md) for the full setup guide.
 
 ## Commands (repo root)
 
