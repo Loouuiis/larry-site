@@ -34,7 +34,7 @@ function mapProject(p: WorkspaceProject) {
   return {
     id:          p.id,
     name:        p.name,
-    description: p.status === "completed" ? "Completed project" : "Active project",
+    description: p.description ?? (p.status === "completed" ? "Completed project" : "Active project"),
     health,
     progress:    p.completionRate != null ? Math.round(Number(p.completionRate) * 100) : 0,
     deadline:    p.targetDate
@@ -63,19 +63,22 @@ export function WorkspaceHome() {
     fetch("/api/workspace/snapshot?includeProjectContext=false", { cache: "no-store" })
       .then((r) => readJson<WorkspaceSnapshot>(r))
       .then((data) => { if (data.projects) setProjects(data.projects); })
-      .catch(() => {});
+      .catch((e) => { if (process.env.NODE_ENV !== "production") console.error("[WorkspaceHome] fetch failed", e); });
   }, []);
 
   return (
     <>
       <ProjectSelectionScreen
-        externalProjects={projects.length > 0 ? projects.map(mapProject) : undefined}
+        externalProjects={projects.map(mapProject)}
         onSelectProject={(id) => router.push(`/workspace/projects/${id}`)}
         onNewProject={() => setShowNewProject(true)}
       />
       <AnimatePresence>
         {showNewProject && (
-          <StartProjectFlow onClose={() => setShowNewProject(false)} />
+          <StartProjectFlow
+            onClose={() => setShowNewProject(false)}
+            onCreated={(id) => router.push(`/workspace/projects/${id}`)}
+          />
         )}
       </AnimatePresence>
     </>

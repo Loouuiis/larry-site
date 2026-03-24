@@ -11,6 +11,7 @@ export type TaskPriority = "low" | "medium" | "high" | "critical";
 export interface WorkspaceProject {
   id: string;
   name: string;
+  description?: string | null;
   status: string;
   riskLevel: string | null;
   startDate?: string | null;

@@ -557,6 +557,7 @@ EXCEPTION WHEN duplicate_object THEN null; END $$;
 -- Phase 5: add read_at to notifications
 ALTER TABLE notifications ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ;
 
+
 -- Phase 6: meeting notes table
 CREATE TABLE IF NOT EXISTS meeting_notes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

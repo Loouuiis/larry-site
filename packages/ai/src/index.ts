@@ -108,8 +108,12 @@ class OpenAiProvider implements LlmProvider {
     try {
       parsed = JSON.parse(text);
     } catch {
-      const extracted = text.match(/\[[\s\S]*\]/)?.[0] ?? "[]";
-      parsed = JSON.parse(extracted);
+      try {
+        const extracted = text.match(/\[[\s\S]*\]/)?.[0] ?? "[]";
+        parsed = JSON.parse(extracted);
+      } catch {
+        return [];
+      }
     }
 
     return ExtractedActionsSchema.parse(parsed);

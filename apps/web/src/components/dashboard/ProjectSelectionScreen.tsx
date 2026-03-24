@@ -223,6 +223,7 @@ export function ProjectSelectionScreen({
   externalProjects,
 }: ProjectSelectionScreenProps) {
   const projects = externalProjects ?? PROJECTS;
+  const isEmpty = externalProjects !== undefined && externalProjects.length === 0;
   return (
     <div className="flex min-h-screen flex-col">
       {/* Header */}
@@ -263,20 +264,30 @@ export function ProjectSelectionScreen({
         </div>
 
         {/* Grid */}
-        <motion.div
-          variants={container}
-          initial="hidden"
-          animate="visible"
-          className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
-        >
-          {projects.map((project) => (
-            <ProjectCard
-              key={project.id}
-              project={project}
-              onSelect={() => onSelectProject(project.id, project.name)}
-            />
-          ))}
-        </motion.div>
+        {isEmpty ? (
+          <div className="flex flex-col items-center justify-center py-24 text-center">
+            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+              <span className="text-2xl font-bold text-neutral-300">L</span>
+            </div>
+            <p className="text-base font-medium text-neutral-700">No projects yet</p>
+            <p className="mt-1 text-sm text-neutral-400">Create your first project to get started.</p>
+          </div>
+        ) : (
+          <motion.div
+            variants={container}
+            initial="hidden"
+            animate="visible"
+            className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
+          >
+            {projects.map((project) => (
+              <ProjectCard
+                key={project.id}
+                project={project}
+                onSelect={() => onSelectProject(project.id, project.name)}
+              />
+            ))}
+          </motion.div>
+        )}
 
         {/* New project button */}
         <div className="mt-8 flex justify-center">

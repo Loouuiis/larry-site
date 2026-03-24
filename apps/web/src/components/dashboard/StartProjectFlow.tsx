@@ -11,12 +11,14 @@ import {
   X,
   Mic,
   Check,
+  Loader2,
 } from "lucide-react";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
 interface StartProjectFlowProps {
   onClose: () => void;
+  onCreated?: (projectId: string) => void;
 }
 
 const container = {
@@ -169,19 +171,43 @@ function MeetingPreview() {
 }
 
 /* ─── Step 2 — Options ──────────────────────────────────────────────────── */
-function StepOptions({ onClose }: { onClose: () => void }) {
+function StepOptions({ onClose, onCreated }: { onClose: () => void; onCreated?: (id: string) => void }) {
   const [selected, setSelected] = useState<OptionId | null>(null);
+  const [name, setName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState(false);
 
   function handleSelect(id: OptionId) {
     setSelected(id);
+    setError(null);
   }
 
-  function handleConfirm() {
+  async function handleConfirm() {
     if (!selected) return;
-    setConfirmed(true);
-    // Simulate "project started" — close after brief success flash
-    setTimeout(onClose, 1200);
+    const projectName = name.trim() || `New Project`;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/workspace/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: projectName }),
+      });
+      const data = await res.json() as { id?: string; error?: string };
+      if (!res.ok || !data.id) {
+        setError(data.error ?? "Failed to create project. Please try again.");
+        return;
+      }
+      setConfirmed(true);
+      setTimeout(() => {
+        onCreated ? onCreated(data.id!) : onClose();
+      }, 800);
+    } catch {
+      setError("Network error — is the API running?");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -194,13 +220,23 @@ function StepOptions({ onClose }: { onClose: () => void }) {
       <motion.div variants={item} className="text-center mb-8">
         <h2
           className="text-2xl font-bold text-neutral-900 tracking-[-0.03em]"
-         
         >
           How would you like to start?
         </h2>
         <p className="mt-2 text-sm text-neutral-500">
           Choose the setup method that works best for you
         </p>
+      </motion.div>
+
+      {/* Project name input */}
+      <motion.div variants={item} className="w-full max-w-2xl mb-6">
+        <input
+          type="text"
+          placeholder="Project name (e.g. Q2 Launch, Client Portal…)"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="w-full rounded-xl border border-[var(--color-border)] bg-white px-4 py-2.5 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-[var(--color-brand)]/30 focus:border-[var(--color-brand)]"
+        />
       </motion.div>
 
       {/* Cards */}
@@ -260,6 +296,17 @@ function StepOptions({ onClose }: { onClose: () => void }) {
         })}
       </div>
 
+      {/* Error */}
+      {error && (
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="mt-4 text-sm text-red-500"
+        >
+          {error}
+        </motion.p>
+      )}
+
       {/* Confirm CTA */}
       <AnimatePresence>
         {selected && (
@@ -271,12 +318,13 @@ function StepOptions({ onClose }: { onClose: () => void }) {
             className="mt-8"
           >
             <motion.button
-              onClick={handleConfirm}
-              whileHover={!confirmed ? { scale: 1.03, y: -1 } : {}}
-              whileTap={!confirmed ? { scale: 0.97 } : {}}
+              onClick={() => void handleConfirm()}
+              disabled={loading || confirmed}
+              whileHover={!confirmed && !loading ? { scale: 1.03, y: -1 } : {}}
+              whileTap={!confirmed && !loading ? { scale: 0.97 } : {}}
               transition={{ duration: 0.18, ease: EASE }}
               className={[
-                "flex items-center gap-2 rounded-2xl px-8 py-3.5 text-sm font-semibold text-white transition-all",
+                "flex items-center gap-2 rounded-2xl px-8 py-3.5 text-sm font-semibold text-white transition-all disabled:opacity-70",
                 confirmed
                   ? "bg-emerald-500 shadow-[0_4px_16px_rgba(52,211,153,0.3)]"
                   : "bg-[var(--color-brand)] shadow-[0_4px_16px_rgba(139,92,246,0.35)] hover:bg-[var(--color-brand-dark)]",
@@ -285,11 +333,16 @@ function StepOptions({ onClose }: { onClose: () => void }) {
               {confirmed ? (
                 <>
                   <Check size={15} strokeWidth={2.5} />
-                  Project started!
+                  Project created!
+                </>
+              ) : loading ? (
+                <>
+                  <Loader2 size={15} className="animate-spin" />
+                  Creating…
                 </>
               ) : (
                 <>
-                  Continue
+                  Create Project
                   <ArrowRight size={15} />
                 </>
               )}
@@ -329,7 +382,7 @@ function StepIndicator({ step }: { step: number }) {
 }
 
 /* ─── Root component ────────────────────────────────────────────────────── */
-export function StartProjectFlow({ onClose }: StartProjectFlowProps) {
+export function StartProjectFlow({ onClose, onCreated }: StartProjectFlowProps) {
   const [step, setStep] = useState<1 | 2>(1);
 
   return (
@@ -382,7 +435,7 @@ export function StartProjectFlow({ onClose }: StartProjectFlowProps) {
               exit={{ opacity: 0, x: 16 }}
               transition={{ duration: 0.25, ease: EASE }}
             >
-              <StepOptions onClose={onClose} />
+              <StepOptions onClose={onClose} onCreated={onCreated} />
             </motion.div>
           )}
         </AnimatePresence>

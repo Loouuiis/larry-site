@@ -167,6 +167,27 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
 
       if (setClauses.length === 1) return { success: true };
 
+      // Recalculate risk score when due date or progress changes
+      if (body.dueDate !== undefined || body.progressPercent !== undefined) {
+        const existing = await fastify.db.queryTenant<{
+          due_date: string | null;
+          progress_percent: number;
+        }>(
+          tenantId,
+          "SELECT due_date, progress_percent FROM tasks WHERE tenant_id = $1 AND id = $2 LIMIT 1",
+          [tenantId, params.id]
+        );
+        if (existing[0]) {
+          const dueDate = body.dueDate ? new Date(body.dueDate) : (existing[0].due_date ? new Date(existing[0].due_date) : null);
+          const daysToDeadline = dueDate ? Math.ceil((dueDate.getTime() - Date.now()) / 86_400_000) : 30;
+          const progressPercent = body.progressPercent ?? existing[0].progress_percent;
+          const riskScore = computeRiskScore({ daysToDeadline, progressPercent, inactivityDays: 0, dependencyBlockedCount: 0 });
+          const riskLevel = classifyRiskLevel(riskScore);
+          setClauses.push(`risk_score = $${idx++}`); values.push(riskScore);
+          setClauses.push(`risk_level = $${idx++}`); values.push(riskLevel);
+        }
+      }
+
       await fastify.db.queryTenant(
         tenantId,
         `UPDATE tasks SET ${setClauses.join(", ")} WHERE tenant_id = $1 AND id = $2`,
@@ -236,6 +257,31 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
       const params = z.object({ id: z.string().uuid() }).parse(request.params);
       const body = AddDependencySchema.parse(request.body);
       const tenantId = request.user.tenantId;
+
+      // Self-dependency guard
+      if (params.id === body.dependsOnTaskId) {
+        throw fastify.httpErrors.conflict("A task cannot depend on itself.");
+      }
+
+      // Circular dependency guard: check if dependsOnTaskId already transitively depends on params.id
+      const cycleCheck = await fastify.db.queryTenant<{ cycle: boolean }>(
+        tenantId,
+        `WITH RECURSIVE chain(task_id, depends_on_task_id) AS (
+           SELECT task_id, depends_on_task_id FROM task_dependencies
+           WHERE tenant_id = $1 AND task_id = $2
+           UNION ALL
+           SELECT d.task_id, d.depends_on_task_id
+           FROM task_dependencies d
+           JOIN chain c ON c.depends_on_task_id = d.task_id
+           WHERE d.tenant_id = $1
+         )
+         SELECT EXISTS (SELECT 1 FROM chain WHERE depends_on_task_id = $3) AS cycle`,
+        [tenantId, body.dependsOnTaskId, params.id]
+      );
+
+      if (cycleCheck[0]?.cycle) {
+        throw fastify.httpErrors.conflict("Circular dependency detected.");
+      }
 
       await fastify.db.queryTenant(
         tenantId,

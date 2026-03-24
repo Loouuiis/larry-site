@@ -22,8 +22,23 @@ export const requestContextPlugin = fp(async (fastify) => {
     const user = request.user as AuthUser | undefined;
     const tenantId = resolveTenantId(request);
 
-    if (env.REQUIRE_TENANT_HEADER && !tenantId && !request.url.startsWith("/health")) {
+    const isProtected = !request.url.startsWith("/health");
+
+    // Always reject missing tenant context on protected routes — REQUIRE_TENANT_HEADER=false
+    // is only a dev escape hatch and must not allow empty-string tenant IDs to reach RLS queries.
+    if (isProtected && !tenantId && env.REQUIRE_TENANT_HEADER) {
       throw fastify.httpErrors.badRequest("Missing tenant context. Provide x-tenant-id or authenticated token.");
+    }
+
+    if (isProtected && !tenantId && !env.REQUIRE_TENANT_HEADER) {
+      // Dev mode without a tenant header: use a recognisable sentinel so RLS never
+      // matches real rows, rather than silently passing an empty string.
+      request.context = {
+        tenantId: "__dev_no_tenant__",
+        user: user ?? { userId: "anonymous", tenantId: "__dev_no_tenant__", role: "member" },
+        requestId: reply.request.id,
+      };
+      return;
     }
 
     request.context = {

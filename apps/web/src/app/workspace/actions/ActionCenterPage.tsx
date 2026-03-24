@@ -47,9 +47,9 @@ export function ActionCenterPage() {
         fetch("/api/workspace/email/drafts"),
       ]);
       const actData = await readJson<{ actions?: WorkspaceAction[] }>(actRes);
-      const draftData = await readJson<{ drafts?: EmailDraft[] }>(draftRes);
+      const draftData = await readJson<{ items?: EmailDraft[] }>(draftRes);
       setRawActions(actData.actions ?? []);
-      setRawDrafts(draftData.drafts ?? []);
+      setRawDrafts(draftData.items ?? []);
     } finally {
       setLoading(false);
     }

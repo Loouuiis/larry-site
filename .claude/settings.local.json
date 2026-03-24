@@ -3,7 +3,13 @@
     "allow": [
       "Bash(python -c \":*)",
       "Bash(pip install:*)",
-      "Bash(python -X utf8 -c \":*)"
+      "Bash(python -X utf8 -c \":*)",
+      "Bash(find /home/augustus/Work/larry/larry-site -name .env* -type f)",
+      "Bash(find /home/augustus/Work/larry/larry-site/apps/web/src/app/api/workspace -name \"route.ts\" -exec grep -l \"export async function\" {})",
+      "Bash(find /home/augustus/Work/larry/larry-site/apps/web/src/app/api/workspace -name route.ts -exec sh -c \"echo \"\"=== {} ===\"\" && head -50 \"\"$1\"\" | tail -20\" _ {})",
+      "Bash(2)",
+      "Bash(grep:*)",
+      "Bash(sudo docker:*)"
     ]
   }
 }

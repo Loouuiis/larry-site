@@ -279,15 +279,24 @@ async function transitionRun(
     throw new Error(`Invalid state transition from ${from} to ${to}`);
   }
 
-  await db.queryTenant(
+  // Optimistic locking: only update if the run is still in the expected `from` state.
+  // If another worker already transitioned it, rowCount will be 0 — return `from` so
+  // the caller knows the transition didn't happen and can skip further processing.
+  const result = await db.queryTenant<{ id: string }>(
     tenantId,
     `UPDATE agent_runs
      SET state = $3,
          status_message = $4,
          updated_at = NOW()
-     WHERE tenant_id = $1 AND id = $2`,
-    [tenantId, runId, to, reason]
+     WHERE tenant_id = $1 AND id = $2 AND state = $5
+     RETURNING id`,
+    [tenantId, runId, to, reason, from]
   );
+
+  if (!result[0]) {
+    // Transition was already made by another worker — skip silently.
+    return from;
+  }
 
   await db.queryTenant(
     tenantId,
@@ -437,8 +446,21 @@ async function processAgentRunLifecycle(
   if (currentState === "PROPOSED") {
     const thresholds = await loadTenantPolicyThresholds(tenantId);
 
+    // If we didn't extract in the NORMALIZED phase (i.e. the run resumed from PROPOSED),
+    // load any already-persisted actions from a prior pass rather than calling the LLM again.
     if (!extracted) {
-      extracted = await extractActions(transcript, run.projectId);
+      const existingRows = await db.queryTenant<{ payload: unknown }>(
+        tenantId,
+        `SELECT payload FROM extracted_actions
+         WHERE tenant_id = $1 AND agent_run_id = $2 AND state IN ('pending', 'executed')`,
+        [tenantId, runId]
+      );
+      if (existingRows.length > 0) {
+        // Reuse previously extracted actions — skip re-extraction.
+        extracted = [];
+      } else {
+        extracted = await extractActions(transcript, run.projectId);
+      }
     }
 
     await db.queryTenant(

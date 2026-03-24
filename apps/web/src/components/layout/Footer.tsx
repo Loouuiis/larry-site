@@ -7,11 +7,10 @@ const FOOTER_LINKS: Record<string, string[]> = {
   Legal: ["Privacy Policy", "Terms of Service", "Cookie Policy"],
 };
 
-// TODO: Add actual social platform URLs
 const SOCIAL_LINKS = [
-  { label: "Twitter", href: "#" },
-  { label: "LinkedIn", href: "#" },
-  { label: "GitHub", href: "#" },
+  { label: "Twitter", href: "https://twitter.com/larry_ai" },
+  { label: "LinkedIn", href: "https://linkedin.com/company/larry-ai" },
+  { label: "GitHub", href: "https://github.com/larry-ai" },
 ];
 
 export function Footer() {

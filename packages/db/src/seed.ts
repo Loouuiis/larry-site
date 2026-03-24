@@ -36,6 +36,14 @@ const U_SARAH     = "33333333-3333-4333-8333-333333333333"; // sarah@larry.local
 const U_MARCUS    = "44444444-4444-4444-8444-444444444444"; // marcus@larry.local
 
 const PROJECT_ID  = "55555555-5555-4555-8555-555555555555";
+const PROJECT2_ID = "66666666-6666-4666-8666-666666666666";
+
+const P2T1 = "a1000001-0000-4000-8000-000000000001"; // Map current onboarding UX
+const P2T2 = "a1000002-0000-4000-8000-000000000002"; // Design new flow in Figma
+const P2T3 = "a1000003-0000-4000-8000-000000000003"; // Write onboarding email sequence
+const P2T4 = "a1000004-0000-4000-8000-000000000004"; // Implement in-app tooltips
+const P2T5 = "a1000005-0000-4000-8000-000000000005"; // A/B test setup
+const P2T6 = "a1000006-0000-4000-8000-000000000006"; // Analytics instrumentation
 
 const T1 = "a0000001-0000-4000-8000-000000000001"; // Finalize pricing page copy
 const T2 = "a0000002-0000-4000-8000-000000000002"; // QA sign-off on checkout flow
@@ -444,6 +452,56 @@ We will send a further update once QA sign-off is confirmed.
   ]);
   console.log("✓  Risk snapshots recorded");
 
+  // ── 20. Second demo project: Customer Onboarding Redesign ──────────────────────
+  await q(`
+    INSERT INTO projects (id, tenant_id, name, description, owner_user_id, status, risk_score, risk_level, start_date, target_date)
+    VALUES ($1, $2, 'Customer Onboarding Redesign',
+      'Redesign the end-to-end onboarding flow to reduce time-to-value from 14 days to 3. Covers UX, email sequences, in-app tooltips, and A/B testing.',
+      $3, 'active', 14.0, 'low', $4, $5)
+    ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, risk_score = EXCLUDED.risk_score
+  `, [PROJECT2_ID, TENANT_ID, U_SARAH, daysAgo(14).slice(0, 10), daysFromNow(30)]);
+  console.log("✓  Project 2: Customer Onboarding Redesign");
+
+  const p2tasks = [
+    [P2T1, 'Map current onboarding UX',         'Document every step of the current onboarding flow, including drop-off points and time-on-step data from Amplitude.',         'completed',   'medium',   U_SARAH,  100,  0.0, 'low',    daysAgo(12).slice(0,10), daysAgo(7).slice(0,10)],
+    [P2T2, 'Design new flow in Figma',           'Create high-fidelity mockups for the revised onboarding. Focus on reducing steps from 11 to 5 and removing the mandatory credit card screen.', 'in_progress', 'high',     U_SARAH,   70,  8.0, 'low',    daysAgo(7).slice(0,10),  daysFromNow(5)],
+    [P2T3, 'Write onboarding email sequence',    'Draft a 5-email drip sequence (days 0, 1, 3, 7, 14). Tone: warm, helpful, milestone-driven. Sarah to review.',              'in_progress', 'medium',   U_ADMIN,   40, 10.0, 'low',    daysAgo(5).slice(0,10),  daysFromNow(8)],
+    [P2T4, 'Implement in-app tooltips',          'Build contextual tooltips for 6 key screens using Intercom. Triggered by user inactivity or first visit.',                  'not_started', 'medium',   U_MARCUS,   0,  5.0, 'low',    daysFromNow(6),          daysFromNow(16)],
+    [P2T5, 'A/B test setup',                    'Configure Optimizely split for old vs new onboarding. Target: 500 new signups per variant. Measure activation rate at day 3.','not_started', 'high',     U_ADMIN,    0,  3.0, 'low',    daysFromNow(10),         daysFromNow(24)],
+    [P2T6, 'Analytics instrumentation',         'Instrument new onboarding funnel in Amplitude. Define activation event: "first project created". Track each step as a funnel event.', 'not_started', 'medium', U_MARCUS,   0,  2.0, 'low',  daysFromNow(8),          daysFromNow(20)],
+  ];
+
+  for (const [id, title, desc, status, priority, assignee, progress, risk_score, risk_level, start_date, due_date] of p2tasks) {
+    await q(`
+      INSERT INTO tasks (id, tenant_id, project_id, title, description, status, priority, assignee_user_id,
+        created_by_user_id, progress_percent, risk_score, risk_level, start_date, due_date)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, progress_percent = EXCLUDED.progress_percent
+    `, [id, TENANT_ID, PROJECT2_ID, title, desc, status, priority, assignee, U_SARAH, progress, risk_score, risk_level, start_date, due_date]);
+  }
+  console.log("✓  Project 2 tasks: 6 tasks (1 completed, 2 in progress, 3 not started)");
+
+  // Task dependency: tooltips depend on Figma design being done
+  await q(`
+    INSERT INTO task_dependencies (tenant_id, task_id, depends_on_task_id, relation)
+    VALUES ($1, $2, $3, 'finish_to_start')
+    ON CONFLICT (tenant_id, task_id, depends_on_task_id) DO NOTHING
+  `, [TENANT_ID, P2T4, P2T2]);
+
+  // A few comments to make it feel alive
+  const p2comments = [
+    [TENANT_ID, PROJECT2_ID, P2T2, U_SARAH,  'Figma draft is at 70% — the simplified 5-step flow is looking really clean. Sharing with the team for async review tomorrow.',           daysAgo(1)],
+    [TENANT_ID, PROJECT2_ID, P2T2, U_ADMIN,  'Love the direction. One ask: can we remove the "invite teammates" step from the required path? We keep losing people there.',             daysAgo(0)],
+    [TENANT_ID, PROJECT2_ID, P2T3, U_ADMIN,  'Day 0 and day 1 emails are drafted. Day 3 is the trickiest — needs to nudge without being annoying. Will share a draft this week.',     daysAgo(2)],
+  ];
+  for (const [tid, pid, taskId, author, body, ts] of p2comments) {
+    await q(
+      `INSERT INTO task_comments (tenant_id, project_id, task_id, author_user_id, body, created_at) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING`,
+      [tid, pid, taskId, author, body, ts]
+    );
+  }
+  console.log("✓  Project 2 comments added");
+
   // ── Done ─────────────────────────────────────────────────────────────────────
   console.log(`
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -452,13 +510,18 @@ We will send a further update once QA sign-off is confirmed.
     Email:    dev@larry.local
     Password: DevPass123!
 
+  Projects:
+    • Q2 Product Launch          — medium risk, checkout blocked, 3 actions pending
+    • Customer Onboarding Redesign — low risk, on track, 30-day runway
+
   What to demo:
     1. Action Center  → 2 pending approvals from Slack + transcript
     2. Project board  → Q2 Product Launch with 8 tasks, blocked checkout
-    3. Meetings       → Standup note with AI summary + extracted actions
-    4. Larry Chat     → Ask for a summary or draft a follow-up
-    5. Settings       → Connect Slack / Calendar / Email via OAuth
-    6. Notifications  → 3 unread alerts (bell icon)
+    3. Project board  → Onboarding Redesign with 6 tasks, healthy progress
+    4. Meetings       → Standup note with AI summary + extracted actions
+    5. Larry Chat     → Ask for a summary or draft a follow-up
+    6. Settings       → Connect Slack / Calendar / Email via OAuth
+    7. Notifications  → 3 unread alerts (bell icon)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   `);
 }
