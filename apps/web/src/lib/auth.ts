@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 
 const SALT_ROUNDS = 12;
 const SESSION_COOKIE = "larry_session";
-const SESSION_DURATION_SECS = 7 * 24 * 60 * 60; // 7 days
+const SESSION_DURATION_SECS = 365 * 24 * 60 * 60; // 1 year
 const DEV_SESSION_SECRET = "larry-dev-session-secret-change-me-before-production-32+";
 
 export type SessionAuthMode = "api" | "legacy" | "dev";
