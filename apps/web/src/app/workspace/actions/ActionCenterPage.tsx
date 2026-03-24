@@ -1,10 +1,83 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Check, ChevronRight, RefreshCw, Send, ShieldCheck, X } from "lucide-react";
-import Link from "next/link";
+import React, { useCallback, useEffect, useState } from "react";
+import { CalendarDays, Check, ChevronRight, FileText, Hash, Mail, RefreshCw, Send, ShieldCheck, X } from "lucide-react";
 import { WorkspaceAction, EmailDraft, ActionCardViewModel } from "@/app/dashboard/types";
 import { useActionCenter } from "@/app/dashboard/useActionCenter";
+
+type SourceType = "slack" | "email" | "calendar" | "transcript";
+
+interface AgentRunDetail {
+  run: {
+    id: string;
+    source: SourceType;
+    sourceRefId: string | null;
+    state: string;
+    statusMessage: string | null;
+    createdAt: string;
+  };
+  transitions: Array<{
+    previousState: string | null;
+    nextState: string;
+    reason: string;
+    createdAt: string;
+  }>;
+}
+
+const SOURCE_CONFIG: Record<SourceType, { label: string; icon: React.ElementType; color: string; bg: string }> = {
+  slack:      { label: "Slack",             icon: Hash,         color: "#4f46e5", bg: "#f0f0ff" },
+  email:      { label: "Email",             icon: Mail,         color: "#0073EA", bg: "#e6f0ff" },
+  calendar:   { label: "Google Calendar",   icon: CalendarDays, color: "#059669", bg: "#e6faf0" },
+  transcript: { label: "Meeting Transcript",icon: FileText,     color: "#676879", bg: "#f5f6f8" },
+};
+
+function SourcePanel({ data }: { data: AgentRunDetail }) {
+  const config = SOURCE_CONFIG[data.run.source] ?? SOURCE_CONFIG.transcript;
+  const Icon = config.icon;
+  const trail = data.transitions.map((t) => t.nextState);
+
+  return (
+    <div className="mt-2 rounded-lg border border-[var(--pm-border)] bg-[var(--pm-gray-light)] p-3 space-y-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span
+          className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold"
+          style={{ background: config.bg, color: config.color }}
+        >
+          <Icon size={11} />
+          {config.label}
+        </span>
+        <span className="text-[11px] font-medium text-[var(--pm-text-muted)] uppercase tracking-wide">
+          {data.run.state}
+        </span>
+      </div>
+
+      {trail.length > 0 && (
+        <div className="flex items-center gap-1 flex-wrap">
+          {trail.map((step, i) => (
+            <span key={i} className="flex items-center gap-1">
+              <span className="rounded px-1.5 py-0.5 text-[10px] font-mono bg-white border border-[var(--pm-border)] text-[var(--pm-text-secondary)]">
+                {step}
+              </span>
+              {i < trail.length - 1 && (
+                <span className="text-[10px] text-[var(--pm-text-muted)]">→</span>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {data.run.sourceRefId && (
+        <p className="text-[11px] text-[var(--pm-text-muted)] font-mono truncate">
+          ref: {data.run.sourceRefId}
+        </p>
+      )}
+
+      {data.run.statusMessage && (
+        <p className="text-[12px] text-[var(--pm-text-secondary)]">{data.run.statusMessage}</p>
+      )}
+    </div>
+  );
+}
 
 type FilterTab = "all" | "email" | "deadline" | "scope" | "meeting";
 
@@ -38,6 +111,26 @@ export function ActionCenterPage() {
   const [rawActions, setRawActions] = useState<WorkspaceAction[]>([]);
   const [rawDrafts, setRawDrafts] = useState<EmailDraft[]>([]);
   const [filter, setFilter] = useState<FilterTab>("all");
+  const [expandedSourceId, setExpandedSourceId] = useState<string | null>(null);
+  const [sourceCache, setSourceCache] = useState<Record<string, AgentRunDetail>>({});
+  const [sourceLoadingId, setSourceLoadingId] = useState<string | null>(null);
+
+  const toggleSource = useCallback(async (actionId: string, agentRunId: string) => {
+    if (expandedSourceId === actionId) {
+      setExpandedSourceId(null);
+      return;
+    }
+    setExpandedSourceId(actionId);
+    if (sourceCache[actionId]) return;
+    setSourceLoadingId(actionId);
+    try {
+      const res = await fetch(`/api/workspace/agent/runs/${agentRunId}`);
+      const data = await res.json() as AgentRunDetail;
+      setSourceCache((prev) => ({ ...prev, [actionId]: data }));
+    } finally {
+      setSourceLoadingId(null);
+    }
+  }, [expandedSourceId, sourceCache]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -210,6 +303,30 @@ export function ActionCenterPage() {
 
                 <p className="text-[12px] text-[var(--pm-text-muted)]">Policy: {card.threshold}</p>
               </div>
+
+              {/* Source panel */}
+              {rawAction.agentRunId && (
+                <div className="mb-3 border-t border-[var(--pm-border)] pt-3">
+                  <button
+                    type="button"
+                    onClick={() => void toggleSource(card.id, rawAction.agentRunId!)}
+                    className="flex items-center gap-1.5 text-[12px] font-medium text-[var(--pm-text-secondary)] hover:text-[var(--pm-text)] transition-colors"
+                  >
+                    <ChevronRight
+                      size={13}
+                      className={`transition-transform duration-150 ${expandedSourceId === card.id ? "rotate-90" : ""}`}
+                    />
+                    Source
+                  </button>
+                  {expandedSourceId === card.id && (
+                    sourceLoadingId === card.id
+                      ? <p className="mt-2 text-[12px] text-[var(--pm-text-muted)]">Loading…</p>
+                      : sourceCache[card.id]
+                      ? <SourcePanel data={sourceCache[card.id]} />
+                      : null
+                  )}
+                </div>
+              )}
 
               {/* Actions */}
               <div className="flex gap-2 flex-wrap">

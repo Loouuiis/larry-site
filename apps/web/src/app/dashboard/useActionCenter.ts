@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ActionCardViewModel, EmailDraft, WorkspaceAction } from "./types";
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -41,6 +41,9 @@ export function useActionCenter(
   const [draftBusyId, setDraftBusyId] = useState<string | null>(null);
   const [actions, setActions] = useState<WorkspaceAction[]>(initialActions);
   const [drafts, setDrafts] = useState<EmailDraft[]>(initialDrafts);
+
+  useEffect(() => { setActions(initialActions); }, [initialActions]);
+  useEffect(() => { setDrafts(initialDrafts); }, [initialDrafts]);
 
   const actionCards: ActionCardViewModel[] = actions.map(mapAction);
 

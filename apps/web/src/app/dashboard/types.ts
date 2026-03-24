@@ -33,6 +33,7 @@ export interface WorkspaceTask {
 
 export interface WorkspaceAction {
   id: string;
+  agentRunId?: string;
   actionType?: string;
   impact: string;
   confidence: string | number;
