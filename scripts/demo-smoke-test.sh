@@ -68,7 +68,7 @@ PROJECT_RESPONSE=$(curl -s -X POST "${API_URL}/v1/projects" \
   -H "Content-Type: application/json" \
   -H "$AUTH_HEADER" \
   -H "$TENANT_HEADER" \
-  --data-binary '{"name":"Smoke Test Project — Larry Demo"}')
+  --data '{"name":"Smoke Test Project - Larry Demo"}')
 
 PROJECT_ID=$(echo "$PROJECT_RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('id',''))" 2>/dev/null || echo "")
 if [ -z "$PROJECT_ID" ]; then
@@ -162,7 +162,7 @@ if [ -n "$RUN_ID" ]; then
   RUN_RESPONSE=$(curl -s "${API_URL}/v1/agent/runs/${RUN_ID}" \
     -H "$AUTH_HEADER" \
     -H "$TENANT_HEADER" 2>/dev/null || echo "{}")
-  RUN_STATE=$(echo "$RUN_RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('state','UNKNOWN'))" 2>/dev/null || echo "UNKNOWN")
+  RUN_STATE=$(echo "$RUN_RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('run',d).get('state','UNKNOWN'))" 2>/dev/null || echo "UNKNOWN")
   info "Agent run ${RUN_ID} state: ${RUN_STATE}"
 fi
 
