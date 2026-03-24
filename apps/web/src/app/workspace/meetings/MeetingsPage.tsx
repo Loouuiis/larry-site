@@ -26,25 +26,43 @@ type AgentRunState =
   | "VERIFIED"
   | "FAILED";
 
-const STATE_STEPS: AgentRunState[] = ["INGESTED", "NORMALIZED", "EXTRACTED", "PROPOSED", "APPROVAL_PENDING", "VERIFIED"];
+const STATE_PROGRESS: Record<AgentRunState, number> = {
+  INGESTED: 10,
+  NORMALIZED: 28,
+  EXTRACTED: 55,
+  PROPOSED: 75,
+  APPROVAL_PENDING: 92,
+  EXECUTED: 96,
+  VERIFIED: 100,
+  FAILED: 100,
+};
 
-function StateProgress({ state }: { state: AgentRunState }) {
-  const idx = STATE_STEPS.indexOf(state);
+const STATE_LABEL: Record<AgentRunState, string> = {
+  INGESTED: "Ingesting transcript…",
+  NORMALIZED: "Normalising signals…",
+  EXTRACTED: "Extracting actions with AI…",
+  PROPOSED: "Proposing task changes…",
+  APPROVAL_PENDING: "Routing to Action Center…",
+  EXECUTED: "Executing actions…",
+  VERIFIED: "Complete",
+  FAILED: "Failed",
+};
+
+function ProcessingProgress({ state }: { state: AgentRunState }) {
+  const pct = STATE_PROGRESS[state] ?? 10;
+  const isExtracting = state === "EXTRACTED";
   return (
-    <div className="flex items-center gap-1 mt-2">
-      {STATE_STEPS.map((s, i) => (
-        <div key={s} className="flex items-center gap-1">
-          <div
-            className={`h-2 w-2 rounded-full ${
-              i < idx ? "bg-[#00C875]" : i === idx ? "bg-[#6366f1]" : "bg-[var(--pm-gray-light)]"
-            }`}
-          />
-          {i < STATE_STEPS.length - 1 && (
-            <div className={`h-0.5 w-4 ${i < idx ? "bg-[#00C875]" : "bg-[var(--pm-gray-light)]"}`} />
-          )}
-        </div>
-      ))}
-      <span className="ml-2 text-[11px] text-[var(--pm-text-muted)]">{state}</span>
+    <div className="mt-3 space-y-2">
+      <div className="flex items-center justify-between text-[12px]">
+        <span className="text-[#5b21b6] font-medium">{STATE_LABEL[state]}</span>
+        <span className="text-[#7c3aed] tabular-nums">{pct}%</span>
+      </div>
+      <div className="h-2 w-full rounded-full bg-[#e0e7ff] overflow-hidden">
+        <div
+          className={`h-full rounded-full bg-[#6366f1] transition-all duration-700 ${isExtracting ? "animate-pulse" : ""}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
     </div>
   );
 }
@@ -77,6 +95,7 @@ export function MeetingsPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedData, setExpandedData] = useState<Record<string, MeetingNote>>({});
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const simTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const loadMeetings = useCallback(async () => {
     setLoading(true);
@@ -121,6 +140,26 @@ export function MeetingsPage() {
   }, [loadMeetings]);
 
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
+
+  // Simulate state progression while the synchronous API call is running
+  useEffect(() => {
+    simTimersRef.current.forEach(clearTimeout);
+    simTimersRef.current = [];
+    if (!processing) return;
+    const steps: [AgentRunState, number][] = [
+      ["NORMALIZED", 1200],
+      ["EXTRACTED", 3500],
+      ["PROPOSED", 18000],
+    ];
+    simTimersRef.current = steps.map(([s, delay]) =>
+      setTimeout(() => setProcessingState((prev) => {
+        const prevIdx = prev ? ["INGESTED","NORMALIZED","EXTRACTED","PROPOSED","APPROVAL_PENDING","EXECUTED","VERIFIED","FAILED"].indexOf(prev) : -1;
+        const newIdx = ["INGESTED","NORMALIZED","EXTRACTED","PROPOSED","APPROVAL_PENDING","EXECUTED","VERIFIED","FAILED"].indexOf(s);
+        return newIdx > prevIdx ? s : prev;
+      }), delay)
+    );
+    return () => { simTimersRef.current.forEach(clearTimeout); };
+  }, [processing]);
 
   const handleProcess = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -203,7 +242,7 @@ export function MeetingsPage() {
           {processing && processingState && (
             <div className="mt-4 rounded-xl border border-[#e0e7ff] bg-[#f5f3ff] p-4">
               <p className="text-[13px] font-medium text-[#5b21b6]">Larry is processing your meeting…</p>
-              <StateProgress state={processingState} />
+              <ProcessingProgress state={processingState} />
             </div>
           )}
 

@@ -244,6 +244,24 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
         );
       }
 
+      if (body.source === "transcript" && body.transcript) {
+        await fastify.db.queryTenant(
+          tenantId,
+          `INSERT INTO meeting_notes
+            (tenant_id, project_id, agent_run_id, title, transcript, action_count, created_by_user_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            tenantId,
+            body.projectId ?? null,
+            runId,
+            null,
+            body.transcript,
+            savedActions.length,
+            request.user.userId,
+          ]
+        );
+      }
+
       await fastify.queue.publish({
         type: "agent_run.processed",
         tenantId,
