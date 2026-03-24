@@ -77,20 +77,26 @@ export function LarryChat({ projectId, pendingCount = 0, actionCount = 0 }: Larr
   const chrome = useWorkspaceChrome();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Listen for external open/push events from chrome context
+  // Listen for external open/push/load-conversation events
   useEffect(() => {
     function onOpen() { chat.open(); }
     function onPush(e: Event) {
       const msg = (e as CustomEvent<string>).detail;
       if (msg) chat.pushMessage(msg);
     }
+    function onLoadConversation(e: Event) {
+      const id = (e as CustomEvent<string>).detail;
+      if (id) void chat.loadConversation(id);
+    }
     window.addEventListener("larry:open", onOpen);
     window.addEventListener("larry:push", onPush);
+    window.addEventListener("larry:load-conversation", onLoadConversation);
     return () => {
       window.removeEventListener("larry:open", onOpen);
       window.removeEventListener("larry:push", onPush);
+      window.removeEventListener("larry:load-conversation", onLoadConversation);
     };
-  }, [chat.open, chat.pushMessage]);
+  }, [chat.open, chat.pushMessage, chat.loadConversation]);
 
   // Auto-scroll messages
   useEffect(() => {

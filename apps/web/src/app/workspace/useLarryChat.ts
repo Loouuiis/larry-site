@@ -31,6 +31,18 @@ async function readJson<T>(response: Response): Promise<T> {
   }
 }
 
+async function persistMessage(conversationId: string, role: "user" | "larry", content: string) {
+  try {
+    await fetch(`/api/workspace/larry/conversations/${conversationId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role, content }),
+    });
+  } catch {
+    // best-effort — don't block the UI
+  }
+}
+
 export function useLarryChat(projectId?: string) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<LarryMessage[]>([]);
@@ -38,6 +50,7 @@ export function useLarryChat(projectId?: string) {
   const [intent, setIntent] = useState<LarryIntent>("freeform");
   const [busy, setBusy] = useState(false);
   const [proactiveQueue, setProactiveQueue] = useState<ProactiveItem[]>([]);
+  const [conversationId, setConversationId] = useState<string | null>(null);
 
   const open = useCallback(() => setIsOpen(true), []);
   const close = useCallback(() => setIsOpen(false), []);
@@ -53,6 +66,28 @@ export function useLarryChat(projectId?: string) {
     setProactiveQueue((q) => q.filter((i) => i.id !== id));
   }, []);
 
+  const loadConversation = useCallback(async (id: string) => {
+    setConversationId(id);
+    setMessages([]);
+    setIsOpen(true);
+    try {
+      const res = await fetch(`/api/workspace/larry/conversations/${id}/messages`);
+      const data = await readJson<{
+        items?: Array<{ id: string; role: "user" | "larry"; content: string; createdAt: string }>;
+      }>(res);
+      setMessages(
+        (data.items ?? []).map((m) => ({
+          id: m.id,
+          role: m.role,
+          text: m.content,
+          createdAt: m.createdAt,
+        }))
+      );
+    } catch {
+      // ignore
+    }
+  }, []);
+
   const sendMessage = useCallback(
     async (text: string, selectedIntent: LarryIntent) => {
       const userMsg: LarryMessage = {
@@ -63,14 +98,34 @@ export function useLarryChat(projectId?: string) {
       };
       setMessages((prev) => [...prev, userMsg]);
       setBusy(true);
+      setMessages((prev) => [
+        ...prev,
+        { id: "processing", role: "larry", text: "Processing…", createdAt: new Date().toISOString() },
+      ]);
 
-      const processingMsg: LarryMessage = {
-        id: "processing",
-        role: "larry",
-        text: "Processing…",
-        createdAt: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, processingMsg]);
+      // Create a conversation on the first message if we don't have one yet
+      let convId = conversationId;
+      if (!convId) {
+        try {
+          const res = await fetch("/api/workspace/larry/conversations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              projectId: projectId || undefined,
+              title: text.slice(0, 80),
+            }),
+          });
+          const data = await readJson<{ id?: string }>(res);
+          if (data.id) {
+            convId = data.id;
+            setConversationId(data.id);
+          }
+        } catch {
+          // continue without persistence
+        }
+      }
+
+      if (convId) void persistMessage(convId, "user", text);
 
       try {
         const res = await fetch("/api/workspace/larry/commands", {
@@ -95,36 +150,34 @@ export function useLarryChat(projectId?: string) {
           ? (data.summary?.narrative ?? data.message ?? (data.runId ? "Got it — I've queued that. Head to the Action Center to review any proposed actions." : "Done."))
           : (data.error ?? "Something went wrong.");
 
-        setMessages((prev) =>
-          prev
-            .filter((m) => m.id !== "processing")
-            .concat({
-              id: crypto.randomUUID(),
-              role: "larry",
-              text: responseText,
-              createdAt: new Date().toISOString(),
-            })
-        );
+        const larryMsg: LarryMessage = {
+          id: crypto.randomUUID(),
+          role: "larry",
+          text: responseText,
+          createdAt: new Date().toISOString(),
+        };
+
+        setMessages((prev) => prev.filter((m) => m.id !== "processing").concat(larryMsg));
+
+        if (convId) void persistMessage(convId, "larry", responseText);
 
         if (res.ok && data.runId) {
           window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
         }
       } catch {
         setMessages((prev) =>
-          prev
-            .filter((m) => m.id !== "processing")
-            .concat({
-              id: crypto.randomUUID(),
-              role: "larry",
-              text: "Network error. Please try again.",
-              createdAt: new Date().toISOString(),
-            })
+          prev.filter((m) => m.id !== "processing").concat({
+            id: crypto.randomUUID(),
+            role: "larry",
+            text: "Network error. Please try again.",
+            createdAt: new Date().toISOString(),
+          })
         );
       } finally {
         setBusy(false);
       }
     },
-    [projectId]
+    [projectId, conversationId]
   );
 
   const handleSubmit = useCallback(
@@ -145,11 +198,13 @@ export function useLarryChat(projectId?: string) {
     intent,
     busy,
     proactiveQueue,
+    conversationId,
     open,
     close,
     toggle,
     pushMessage,
     dismissProactive,
+    loadConversation,
     setInput,
     setIntent,
     handleSubmit,
