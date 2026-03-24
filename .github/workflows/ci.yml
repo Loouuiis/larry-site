@@ -17,8 +17,6 @@ jobs:
           cache-dependency-path: package-lock.json
       - name: Install dependencies
         run: npm install
-      - name: Install rollup Linux native (cross-platform lockfile workaround)
-        run: npm install @rollup/rollup-linux-x64-gnu --no-save 2>/dev/null || true
       - name: Build shared packages + API
         run: npm run api:build
       - name: Type check worker
