@@ -1,0 +1,13 @@
+[build]
+dockerfilePath = "apps/api/Dockerfile"
+buildContext = "."
+
+[deploy]
+startCommand = "sh -c 'npx tsx packages/db/src/migrate.ts && node apps/api/dist/server.js'"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+
+[[services.healthcheck]]
+path = "/health"
+initialDelaySeconds = 10
+periodSeconds = 30
