@@ -51,6 +51,10 @@ export interface ExtractedAction {
   impact: "low" | "medium" | "high";
   reason: string;
   signals: string[];
+  workstream?: string;
+  blockerFlag?: boolean;
+  dependsOn?: string[];
+  followUpRequired?: boolean;
 }
 
 export interface TaskDeltaProposal {

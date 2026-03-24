@@ -9,7 +9,12 @@
       "Bash(find /home/augustus/Work/larry/larry-site/apps/web/src/app/api/workspace -name route.ts -exec sh -c \"echo \"\"=== {} ===\"\" && head -50 \"\"$1\"\" | tail -20\" _ {})",
       "Bash(2)",
       "Bash(grep:*)",
-      "Bash(sudo docker:*)"
+      "Bash(sudo docker:*)",
+      "Bash(docker --version)",
+      "Bash(snap list:*)",
+      "Bash(systemctl list-units:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(npm run:*)"
     ]
   }
 }

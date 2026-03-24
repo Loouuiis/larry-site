@@ -17,9 +17,9 @@ export interface LlmProvider {
 
 const ExtractedActionSchema = z.object({
   title: z.string().min(1),
-  owner: z.string().optional(),
-  dueDate: z.string().optional(),
-  description: z.string().optional(),
+  owner: z.string().nullable().optional().transform(v => v ?? undefined),
+  dueDate: z.string().nullable().optional().transform(v => v ?? undefined),
+  description: z.string().nullable().optional().transform(v => v ?? undefined),
   actionType: z
     .enum([
       "status_update",
@@ -33,11 +33,17 @@ const ExtractedActionSchema = z.object({
       "follow_up",
       "other",
     ])
-    .optional(),
+    .nullable()
+    .optional()
+    .transform(v => v ?? undefined),
   confidence: z.number().min(0).max(1),
   impact: z.enum(["low", "medium", "high"]),
   reason: z.string().min(1),
   signals: z.array(z.string()).default([]),
+  workstream: z.string().nullable().optional().transform(v => v ?? undefined),
+  blockerFlag: z.boolean().nullable().optional().transform(v => v ?? undefined),
+  dependsOn: z.array(z.string()).nullable().optional().transform(v => v ?? undefined),
+  followUpRequired: z.boolean().nullable().optional().transform(v => v ?? undefined),
 });
 
 const ExtractedActionsSchema = z.array(ExtractedActionSchema);
@@ -71,15 +77,34 @@ class OpenAiProvider implements LlmProvider {
   ) {}
 
   async extractActionsFromTranscript(input: ExtractFromTranscriptInput): Promise<ExtractedAction[]> {
-    const instruction = [
-      "You are an extraction engine for project execution tasks.",
-      "Extract actionable tasks from transcript text.",
-      "Output strict JSON array only.",
-      "Each item fields: title, owner(optional), dueDate(optional ISO date), description(optional), confidence(0-1), impact(low|medium|high), reason, signals(string[]).",
-      "Only include clear actions, deadlines, blockers, or follow-up commitments.",
-    ].join(" ");
+    const systemPrompt = [
+      "You are Larry, an AI project execution engine.",
+      "Extract every committed action, task, deadline, or follow-up from the transcript below.",
+      "Output a JSON array only — no explanation text outside the array. If nothing is found output [].",
+      "",
+      "Each item must have these fields:",
+      "  title (string): Imperative action title, e.g. 'Send API spec to client'",
+      "  owner (string|null): Person responsible, exactly as named in the text",
+      "  dueDate (string|null): ISO 8601 date (YYYY-MM-DD). Infer from relative terms like 'by Friday' if a reference date is available",
+      "  description (string|null): Optional extra context from the transcript",
+      "  workstream (string|null): Project area this belongs to, e.g. 'Frontend', 'Infrastructure', 'Client Relations'",
+      "  dependsOn (string[]): Titles or phrases of other tasks this depends on, as mentioned in the text. Empty array if none.",
+      "  blockerFlag (boolean): true if this action is currently blocked or is itself blocking other work",
+      "  followUpRequired (boolean): true if this needs a reply, check-in, or response monitoring",
+      "  actionType: one of task_create|status_update|deadline_change|owner_change|scope_change|risk_escalation|email_draft|meeting_invite|follow_up|other",
+      "  confidence (0-1): How certain you are this is a real committed action (not hypothetical or already done)",
+      "  impact: low|medium|high — impact on project delivery if this action is missed or delayed",
+      "  reason (string): One sentence explaining why you extracted this and what drove the confidence score",
+      "  signals (string[]): Direct quotes or key phrases from the transcript that evidence this action",
+      "",
+      "Rules:",
+      "- Only extract committed actions. Exclude hypotheticals, past completed work, and general discussion.",
+      "- Use names exactly as stated in the transcript. Do not normalise or guess full names.",
+      "- Confidence should reflect ambiguity in the commitment, not how important the task is.",
+      "- If a task is blocked, set blockerFlag true and describe the blocker in the reason field.",
+    ].join("\n");
 
-    const prompt = `${instruction}\n\nProject: ${input.projectName ?? "Unknown"}\nTranscript:\n${input.transcript}`;
+    const userPrompt = `Project: ${input.projectName ?? "Unknown"}\n\nTranscript:\n${input.transcript}`;
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -89,7 +114,10 @@ class OpenAiProvider implements LlmProvider {
       },
       body: JSON.stringify({
         model: this.model,
-        messages: [{ role: "user", content: prompt }],
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
       }),
     });
 
