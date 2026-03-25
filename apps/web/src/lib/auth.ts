@@ -2,11 +2,11 @@ import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import type { JWTPayload } from "jose";
 import { cookies } from "next/headers";
+import { getSessionSecret } from "./session-secret";
 
 const SALT_ROUNDS = 12;
 const SESSION_COOKIE = "larry_session";
-const SESSION_DURATION_SECS = 365 * 24 * 60 * 60; // 1 year
-const DEV_SESSION_SECRET = "larry-dev-session-secret-change-me-before-production-32+";
+const SESSION_DURATION_SECS = 24 * 60 * 60; // 24 hours — sliding refresh handled in middleware
 
 export type SessionAuthMode = "api" | "legacy" | "dev";
 
@@ -30,18 +30,7 @@ interface SessionJwtPayload extends JWTPayload {
   authMode?: SessionAuthMode;
 }
 
-function getSecret(): Uint8Array {
-  const secret = process.env.SESSION_SECRET;
-  if (secret && secret.length >= 32) {
-    return new TextEncoder().encode(secret);
-  }
-
-  if (process.env.NODE_ENV !== "production") {
-    return new TextEncoder().encode(DEV_SESSION_SECRET);
-  }
-
-  throw new Error("SESSION_SECRET env var must be set and at least 32 characters.");
-}
+const getSecret = getSessionSecret;
 
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();

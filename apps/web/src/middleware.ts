@@ -1,21 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { jwtVerify } from "jose";
+import { jwtVerify, SignJWT } from "jose";
+import { getSessionSecret } from "@/lib/session-secret";
 
 const SESSION_COOKIE = "larry_session";
-const DEV_SESSION_SECRET = "larry-dev-session-secret-change-me-before-production-32+";
-
-function getSecret(): Uint8Array {
-  const secret = process.env.SESSION_SECRET;
-  if (secret && secret.length >= 32) {
-    return new TextEncoder().encode(secret);
-  }
-
-  if (process.env.NODE_ENV !== "production") {
-    return new TextEncoder().encode(DEV_SESSION_SECRET);
-  }
-
-  return new TextEncoder().encode("");
-}
+const SESSION_DURATION_SECS = 24 * 60 * 60; // 24 hours
+const SLIDING_REFRESH_THRESHOLD_SECS = 12 * 60 * 60; // reissue if < 12h remaining
 
 export async function middleware(req: NextRequest) {
   const token = req.cookies.get(SESSION_COOKIE)?.value;
@@ -24,11 +13,44 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
+  let secret: Uint8Array;
   try {
-    await jwtVerify(token, getSecret());
-    return NextResponse.next();
+    secret = getSessionSecret();
   } catch {
-    // Token expired or invalid — clear cookie and redirect
+    // SESSION_SECRET misconfigured in production — fail closed
+    const res = NextResponse.redirect(new URL("/login", req.url));
+    res.cookies.set({ name: SESSION_COOKIE, value: "", maxAge: 0, path: "/" });
+    return res;
+  }
+
+  try {
+    const { payload } = await jwtVerify(token, secret);
+    const res = NextResponse.next();
+
+    // Sliding refresh: reissue the session JWT if less than 12 hours remain,
+    // so active users never get logged out unexpectedly.
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.exp && payload.exp - now < SLIDING_REFRESH_THRESHOLD_SECS) {
+      const { exp: _exp, iat: _iat, ...claims } = payload;
+      const refreshed = await new SignJWT(claims)
+        .setProtectedHeader({ alg: "HS256" })
+        .setIssuedAt()
+        .setExpirationTime(`${SESSION_DURATION_SECS}s`)
+        .sign(secret);
+      res.cookies.set({
+        name: SESSION_COOKIE,
+        value: refreshed,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: SESSION_DURATION_SECS,
+        path: "/",
+      });
+    }
+
+    return res;
+  } catch {
+    // Token expired or tampered — clear and redirect
     const res = NextResponse.redirect(new URL("/login", req.url));
     res.cookies.set({ name: SESSION_COOKIE, value: "", maxAge: 0, path: "/" });
     return res;

@@ -1,42 +1,64 @@
-import { getDb } from "./db";
+import Redis from "ioredis";
 
 const MAX_ATTEMPTS = 5;
 const WINDOW_SECS = 15 * 60; // 15 minutes
 
-function hasTursoConfig(): boolean {
-  return Boolean(process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN);
+// --- Redis client (Vercel Node.js serverless — not Edge) ---
+
+let _redis: Redis | null = null;
+
+function getRedis(): Redis | null {
+  if (!process.env.REDIS_URL) return null;
+  if (!_redis) {
+    _redis = new Redis(process.env.REDIS_URL, {
+      maxRetriesPerRequest: 1,
+      connectTimeout: 2_000,
+      lazyConnect: true,
+    });
+    // Suppress unhandled error events; errors surface through try/catch in callers
+    _redis.on("error", () => {});
+  }
+  return _redis;
 }
 
-export async function checkRateLimit(
-  ip: string
-): Promise<{ limited: boolean }> {
-  if (!hasTursoConfig()) return { limited: false };
+// --- In-memory fallback ---
+// WARNING: Vercel serverless functions are stateless — the in-memory store is NOT
+// shared across concurrent function invocations. This fallback is acceptable for
+// local dev and low-traffic deploys but does not enforce limits at scale.
+// Set REDIS_URL in Vercel env vars to enable distributed rate limiting.
 
-  const db = getDb();
-  const windowStart = new Date(Date.now() - WINDOW_SECS * 1000).toISOString();
+const memStore = new Map<string, { count: number; windowStart: number }>();
 
-  const result = await db.execute({
-    sql: "SELECT COUNT(*) as cnt FROM login_attempts WHERE ip = ? AND attempted_at > ?",
-    args: [ip, windowStart],
-  });
-
-  const count = Number(result.rows[0]?.cnt ?? 0);
-  return { limited: count >= MAX_ATTEMPTS };
+function checkMemory(ip: string): { limited: boolean } {
+  const now = Date.now();
+  const entry = memStore.get(ip);
+  if (!entry || now - entry.windowStart > WINDOW_SECS * 1000) {
+    memStore.set(ip, { count: 1, windowStart: now });
+    return { limited: false };
+  }
+  entry.count += 1;
+  return { limited: entry.count > MAX_ATTEMPTS };
 }
 
-export async function recordLoginAttempt(ip: string): Promise<void> {
-  if (!hasTursoConfig()) return;
+// --- Public API ---
 
-  const db = getDb();
-  await db.execute({
-    sql: "INSERT INTO login_attempts (ip, attempted_at) VALUES (?, ?)",
-    args: [ip, new Date().toISOString()],
-  });
+// checkRateLimit both checks AND records the attempt atomically.
+// The separate recordLoginAttempt export is kept for API compatibility but is a no-op.
 
-  // Prune stale rows so the table stays small
-  const cutoff = new Date(Date.now() - WINDOW_SECS * 1000).toISOString();
-  await db.execute({
-    sql: "DELETE FROM login_attempts WHERE attempted_at < ?",
-    args: [cutoff],
-  });
+export async function checkRateLimit(ip: string): Promise<{ limited: boolean }> {
+  const r = getRedis();
+  if (r) {
+    try {
+      const key = `ratelimit:login:${ip}`;
+      const count = await r.incr(key);
+      if (count === 1) await r.expire(key, WINDOW_SECS);
+      return { limited: count > MAX_ATTEMPTS };
+    } catch {
+      // Redis unavailable — fall through to in-memory
+    }
+  }
+  return checkMemory(ip);
 }
+
+// no-op: attempt counting is now handled atomically inside checkRateLimit
+export async function recordLoginAttempt(_ip: string): Promise<void> {}

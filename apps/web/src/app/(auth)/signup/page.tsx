@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
+const SHOW_DEV_LOGIN = process.env.NEXT_PUBLIC_SHOW_DEV_LOGIN === "true";
+
 export default function SignupPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -131,7 +133,7 @@ export default function SignupPage() {
               required
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="********"
+              placeholder="••••••••"
               className="min-h-[44px] w-full rounded-xl border border-neutral-200 bg-neutral-50/60 px-4 py-3 text-neutral-900 placeholder:text-neutral-400 outline-none transition-colors duration-150 focus:border-neutral-400 focus:bg-white"
               style={{ fontSize: "1rem" }}
             />
@@ -146,19 +148,22 @@ export default function SignupPage() {
           <button
             type="submit"
             disabled={loading}
+            aria-busy={loading}
             className="mt-1 inline-flex h-[2.75rem] w-full items-center justify-center rounded-full border border-neutral-900 bg-transparent px-7 text-[0.9375rem] font-medium tracking-[-0.01em] text-neutral-900 transition-colors duration-200 hover:bg-neutral-900 hover:text-white disabled:pointer-events-none disabled:opacity-50"
           >
-            {loading ? "Creating account..." : "Create account"}
+            {loading ? "Creating account…" : "Create account"}
           </button>
 
-          <button
-            type="button"
-            onClick={handleDevBypass}
-            disabled={devLoading}
-            className="inline-flex h-[2.5rem] w-full items-center justify-center rounded-full border border-neutral-300 bg-white px-6 text-sm font-medium text-neutral-700 transition-colors duration-200 hover:border-neutral-900 hover:text-neutral-900 disabled:pointer-events-none disabled:opacity-50"
-          >
-            {devLoading ? "Opening dashboard..." : "Enter Dashboard (Dev)"}
-          </button>
+          {SHOW_DEV_LOGIN && (
+            <button
+              type="button"
+              onClick={handleDevBypass}
+              disabled={devLoading}
+              className="inline-flex h-[2.5rem] w-full items-center justify-center rounded-full border border-neutral-300 bg-white px-6 text-sm font-medium text-neutral-700 transition-colors duration-200 hover:border-neutral-900 hover:text-neutral-900 disabled:pointer-events-none disabled:opacity-50"
+            >
+              {devLoading ? "Opening dashboard…" : "Enter Dashboard (Dev)"}
+            </button>
+          )}
         </form>
 
         <p className="mt-6 text-center text-sm text-neutral-400">

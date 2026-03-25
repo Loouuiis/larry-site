@@ -4,9 +4,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
+const SHOW_DEV_LOGIN = process.env.NEXT_PUBLIC_SHOW_DEV_LOGIN === "true";
+
 export default function LoginPage() {
   const router = useRouter();
-  const [tenantId, setTenantId] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -22,11 +23,7 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email,
-          password,
-          tenantId: tenantId.trim().length > 0 ? tenantId.trim() : undefined,
-        }),
+        body: JSON.stringify({ email, password }),
       });
 
       const data = await res.json();
@@ -80,20 +77,6 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} className="space-y-3" noValidate>
           <div>
-            <label htmlFor="tenantId" className="mb-1.5 block text-xs font-medium text-neutral-600">
-              Tenant ID (optional)
-            </label>
-            <input
-              id="tenantId"
-              value={tenantId}
-              onChange={(e) => setTenantId(e.target.value)}
-              placeholder="11111111-1111-4111-8111-111111111111"
-              className="min-h-[44px] w-full rounded-xl border border-neutral-200 bg-neutral-50/60 px-4 py-3 text-neutral-900 placeholder:text-neutral-400 outline-none transition-colors duration-150 focus:border-neutral-400 focus:bg-white"
-              style={{ fontSize: "1rem" }}
-            />
-          </div>
-
-          <div>
             <label htmlFor="email" className="mb-1.5 block text-xs font-medium text-neutral-600">
               Email
             </label>
@@ -121,7 +104,7 @@ export default function LoginPage() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="********"
+              placeholder="••••••••"
               className="min-h-[44px] w-full rounded-xl border border-neutral-200 bg-neutral-50/60 px-4 py-3 text-neutral-900 placeholder:text-neutral-400 outline-none transition-colors duration-150 focus:border-neutral-400 focus:bg-white"
               style={{ fontSize: "1rem" }}
             />
@@ -136,19 +119,22 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
+            aria-busy={loading}
             className="mt-1 inline-flex h-[2.75rem] w-full items-center justify-center rounded-full border border-neutral-900 bg-transparent px-7 text-[0.9375rem] font-medium tracking-[-0.01em] text-neutral-900 transition-colors duration-200 hover:bg-neutral-900 hover:text-white disabled:pointer-events-none disabled:opacity-50"
           >
-            {loading ? "Logging in..." : "Log in"}
+            {loading ? "Logging in…" : "Log in"}
           </button>
 
-          <button
-            type="button"
-            onClick={handleDevBypass}
-            disabled={devLoading}
-            className="inline-flex h-[2.5rem] w-full items-center justify-center rounded-full border border-neutral-300 bg-white px-6 text-sm font-medium text-neutral-700 transition-colors duration-200 hover:border-neutral-900 hover:text-neutral-900 disabled:pointer-events-none disabled:opacity-50"
-          >
-            {devLoading ? "Opening dashboard..." : "Enter Dashboard (Dev)"}
-          </button>
+          {SHOW_DEV_LOGIN && (
+            <button
+              type="button"
+              onClick={handleDevBypass}
+              disabled={devLoading}
+              className="inline-flex h-[2.5rem] w-full items-center justify-center rounded-full border border-neutral-300 bg-white px-6 text-sm font-medium text-neutral-700 transition-colors duration-200 hover:border-neutral-900 hover:text-neutral-900 disabled:pointer-events-none disabled:opacity-50"
+            >
+              {devLoading ? "Opening dashboard…" : "Enter Dashboard (Dev)"}
+            </button>
+          )}
         </form>
 
         <p className="mt-6 text-center text-sm text-neutral-400">
