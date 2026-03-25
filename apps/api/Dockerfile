@@ -50,4 +50,4 @@ COPY --from=builder /app/packages/ai/dist ./packages/ai/dist
 EXPOSE 8080
 
 # Run migrations then start the server
-CMD ["sh", "-c", "cd packages/db && npx tsx src/migrate.ts && cd /app && node apps/api/dist/server.js"]
+CMD ["sh", "-c", "cd packages/db && npx tsx src/migrate.ts && cd /app && node apps/api/dist/src/server.js"]
