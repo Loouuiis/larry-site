@@ -3,9 +3,15 @@ import { getDb } from "./db";
 const MAX_ATTEMPTS = 5;
 const WINDOW_SECS = 15 * 60; // 15 minutes
 
+function hasTursoConfig(): boolean {
+  return Boolean(process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN);
+}
+
 export async function checkRateLimit(
   ip: string
 ): Promise<{ limited: boolean }> {
+  if (!hasTursoConfig()) return { limited: false };
+
   const db = getDb();
   const windowStart = new Date(Date.now() - WINDOW_SECS * 1000).toISOString();
 
@@ -19,6 +25,8 @@ export async function checkRateLimit(
 }
 
 export async function recordLoginAttempt(ip: string): Promise<void> {
+  if (!hasTursoConfig()) return;
+
   const db = getDb();
   await db.execute({
     sql: "INSERT INTO login_attempts (ip, attempted_at) VALUES (?, ?)",
