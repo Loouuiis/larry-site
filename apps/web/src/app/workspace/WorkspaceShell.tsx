@@ -6,7 +6,6 @@ import { WorkspaceSidebar, type WorkspaceSidebarNav } from "@/components/dashboa
 import type { WorkspaceSnapshot } from "@/app/dashboard/types";
 import { MeetingTranscriptModal } from "./MeetingTranscriptModal";
 import { WorkspaceChromeProvider } from "./WorkspaceChromeContext";
-import { WorkspaceTopBar } from "./WorkspaceTopBar";
 import { LarryChat } from "./LarryChat";
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -113,20 +112,17 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
         pushLarryMessage: (msg) => window.dispatchEvent(new CustomEvent("larry:push", { detail: msg })),
       }}
     >
-      <div className="workspace-root dashboard-root flex h-screen flex-col overflow-hidden bg-[var(--pm-bg)] text-[var(--pm-text)]">
-        <WorkspaceTopBar
+      <div className="workspace-root dashboard-root flex h-screen overflow-hidden bg-[var(--pm-bg)] text-[var(--pm-text)]">
+        <WorkspaceSidebar
+          projects={projects}
+          activeNav={activeNav}
+          mobileOpen={false}
+          onMobileClose={() => {}}
           userEmail={userEmail}
-          workspaceName={snapshot?.boardMeta?.workspaceName ?? "Larry Workspace"}
+          pendingCount={pendingCount}
+          notifCount={notifCount}
         />
-        <div className="flex min-h-0 flex-1">
-          <WorkspaceSidebar
-            projects={projects}
-            activeNav={activeNav}
-            mobileOpen={false}
-            onMobileClose={() => {}}
-          />
-          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">{children}</div>
-        </div>
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">{children}</div>
       </div>
       <MeetingTranscriptModal
         open={meetingOpen}

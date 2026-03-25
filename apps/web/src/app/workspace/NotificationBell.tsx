@@ -76,9 +76,9 @@ export function NotificationBell({ count, onCountChange }: NotificationBellProps
           setOpen((o) => !o);
           if (!open) void loadNotifications();
         }}
-        className="relative inline-flex h-8 w-8 items-center justify-center rounded-md text-[var(--pm-text-muted)] hover:bg-[var(--pm-gray-light)]"
+        className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg text-[var(--pm-text-muted)] hover:bg-[var(--pm-gray-light)]"
       >
-        <Bell size={18} />
+        <Bell size={20} />
         {count > 0 && (
           <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-0.5 text-[10px] font-bold text-white">
             {count > 99 ? "99+" : count}
@@ -87,7 +87,7 @@ export function NotificationBell({ count, onCountChange }: NotificationBellProps
       </button>
 
       {open && (
-        <div className="absolute right-0 top-10 z-50 w-[320px] rounded-xl border border-[var(--pm-border)] bg-white shadow-lg">
+        <div className="absolute left-0 bottom-full mb-2 z-50 w-[320px] rounded-xl border border-[var(--pm-border)] bg-white shadow-lg">
           <div className="border-b border-[var(--pm-border)] px-4 py-3">
             <h3 className="text-[13px] font-semibold text-[var(--pm-text)]">Notifications</h3>
           </div>
