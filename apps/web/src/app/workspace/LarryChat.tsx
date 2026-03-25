@@ -7,6 +7,7 @@ import {
   FileText,
   LayoutGrid,
   ListChecks,
+  Mic,
   Sparkles,
   WandSparkles,
   X,
@@ -26,6 +27,7 @@ interface LarryChatProps {
   projectId?: string;
   pendingCount?: number;
   actionCount?: number;
+  onVoiceInput?: () => void;
 }
 
 function MessageBubble({ msg }: { msg: LarryMessage }) {
@@ -72,7 +74,7 @@ function MessageBubble({ msg }: { msg: LarryMessage }) {
   );
 }
 
-export function LarryChat({ projectId, pendingCount = 0, actionCount = 0 }: LarryChatProps) {
+export function LarryChat({ projectId, pendingCount = 0, actionCount = 0, onVoiceInput }: LarryChatProps) {
   const chat = useLarryChat(projectId);
   const chrome = useWorkspaceChrome();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -225,6 +227,14 @@ export function LarryChat({ projectId, pendingCount = 0, actionCount = 0 }: Larr
           disabled={chat.busy}
           className="flex-1 h-9 rounded-lg border border-[var(--pm-border)] bg-[var(--pm-gray-light)] px-3 text-[13px] outline-none focus:border-[#6366f1] focus:bg-white disabled:opacity-50"
         />
+        <button
+          type="button"
+          onClick={onVoiceInput}
+          aria-label="Voice input"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--pm-border)] bg-[var(--pm-gray-light)] text-[#6366f1] transition-colors hover:border-[#6366f1] hover:bg-[#ede9fe]"
+        >
+          <Mic size={15} />
+        </button>
         <button
           type="submit"
           disabled={chat.busy || chat.input.trim().length < 3}
