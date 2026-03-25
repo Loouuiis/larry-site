@@ -1,6 +1,6 @@
 import fp from "fastify-plugin";
 import jwt from "@fastify/jwt";
-import { FastifyReply, FastifyRequest } from "fastify";
+import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getApiEnv } from "@larry/config";
 import { AuthUser, Role } from "@larry/shared";
 
@@ -12,7 +12,7 @@ declare module "fastify" {
   }
 }
 
-export const securityPlugin = fp(async (fastify) => {
+export const securityPlugin = fp(async (fastify: FastifyInstance) => {
   const env = getApiEnv();
   fastify.decorate("config", env);
 

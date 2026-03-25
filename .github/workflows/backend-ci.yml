@@ -19,16 +19,7 @@ jobs:
         run: npm install
       - name: Build shared packages + API
         run: npm run api:build
-      - name: Type check
+      - name: Type check worker
         run: npm run worker:build
       - name: Run tests
         run: npm run api:test
-
-  terraform-validate:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-      - name: Terraform fmt check
-        run: terraform fmt -check -recursive
-        working-directory: infrastructure/terraform

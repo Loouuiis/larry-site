@@ -1,5 +1,5 @@
 import fp from "fastify-plugin";
-import { FastifyReply, FastifyRequest } from "fastify";
+import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getApiEnv } from "@larry/config";
 import { AuthUser } from "@larry/shared";
 
@@ -15,7 +15,7 @@ function resolveTenantId(request: FastifyRequest): string | null {
   return null;
 }
 
-export const requestContextPlugin = fp(async (fastify) => {
+export const requestContextPlugin = fp(async (fastify: FastifyInstance) => {
   const env = getApiEnv();
 
   fastify.addHook("preHandler", async (request: FastifyRequest, reply: FastifyReply) => {
