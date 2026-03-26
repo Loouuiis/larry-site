@@ -1,5 +1,7 @@
 import Fastify from "fastify";
 import sensible from "@fastify/sensible";
+import type { ApiEnv } from "@larry/config";
+import type { Db } from "@larry/db";
 import { afterEach, describe, expect, it } from "vitest";
 import { actionRoutes } from "../src/routes/v1/actions.js";
 
@@ -92,8 +94,8 @@ async function createTestApp(options: {
   const db = createDbMock(options);
   const app = Fastify({ logger: false });
 
-  app.decorate("db", db as unknown);
-  app.decorate("config", { RESEND_API_KEY: undefined });
+  app.decorate("db", db as unknown as Db);
+  app.decorate("config", { RESEND_API_KEY: undefined } as unknown as ApiEnv);
   app.decorate("authenticate", async (request) => {
     (request as typeof request & {
       user: { tenantId: string; userId: string; role: "pm"; email: string };
