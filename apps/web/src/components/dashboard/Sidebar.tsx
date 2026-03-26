@@ -3,12 +3,12 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import {
   FolderOpen, FileText, MessageSquare, ClipboardList,
   X, Bot, BarChart2, Home, ListTodo, Settings,
-  Search, BellRing, LogOut, User,
+  Search, BellRing, LogOut, User, FolderKanban, CheckSquare,
 } from "lucide-react";
 import { WorkspaceProject } from "@/app/dashboard/types";
 import { NotificationBell } from "@/app/workspace/NotificationBell";
@@ -43,17 +43,70 @@ interface WorkspaceSidebarInnerProps {
   notifCount?: number;
 }
 
+interface SearchTask { id: string; title: string; status: string; projectId?: string | null; }
+
 function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, pendingCount = 0, notifCount = 0 }: WorkspaceSidebarInnerProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [search, setSearch] = useState("");
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [tasks, setTasks] = useState<SearchTask[]>([]);
+  const [tasksLoaded, setTasksLoaded] = useState(false);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (search.trim()) {
-      router.push(`/workspace?q=${encodeURIComponent(search.trim())}`);
-      onClose?.();
+  const loadTasks = useCallback(async () => {
+    if (tasksLoaded) return;
+    try {
+      const res = await fetch("/api/workspace/snapshot?includeProjectContext=false");
+      const data = await res.json() as { tasks?: SearchTask[] };
+      setTasks(data.tasks ?? []);
+      setTasksLoaded(true);
+    } catch {
+      setTasksLoaded(true);
     }
+  }, [tasksLoaded]);
+
+  const dismiss = useCallback(() => {
+    setDropdownOpen(false);
+    setSearch("");
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") dismiss(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [dismiss]);
+
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, []);
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setSearch(val);
+    if (val.trim().length >= 1) {
+      setDropdownOpen(true);
+      void loadTasks();
+    } else {
+      setDropdownOpen(false);
+    }
+  };
+
+  const q = search.trim().toLowerCase();
+  const matchedProjects = q ? projects.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 5) : [];
+  const matchedTasks = q ? tasks.filter((t) => t.title.toLowerCase().includes(q)).slice(0, 5) : [];
+  const hasResults = matchedProjects.length > 0 || matchedTasks.length > 0;
+
+  const goTo = (href: string) => {
+    dismiss();
+    onClose?.();
+    router.push(href);
   };
 
   const handleLogout = async () => {
@@ -72,18 +125,61 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, pendin
       </div>
 
       {/* Search */}
-      <div className="shrink-0 px-3 pb-4">
-        <form onSubmit={handleSearch}>
-          <div className="relative">
-            <Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-muted)]" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search tasks, projects…"
-              className="h-8 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] pl-8 pr-3 text-[13px] text-neutral-700 placeholder:text-neutral-400 outline-none focus:border-[var(--color-brand)] focus:bg-white transition-all"
-            />
+      <div ref={searchContainerRef} className="shrink-0 px-3 pb-4 relative">
+        <div className="relative">
+          <Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-muted)]" />
+          <input
+            value={search}
+            onChange={handleSearchChange}
+            onFocus={() => { if (search.trim().length >= 1) setDropdownOpen(true); }}
+            placeholder="Search tasks, projects…"
+            className="h-8 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] pl-8 pr-3 text-[13px] text-neutral-700 placeholder:text-neutral-400 outline-none focus:border-[var(--color-brand)] focus:bg-white transition-all"
+          />
+        </div>
+
+        {dropdownOpen && (
+          <div className="absolute left-3 right-3 top-[calc(100%-4px)] rounded-xl border border-[var(--color-border)] bg-white shadow-lg z-50 overflow-hidden">
+            {!hasResults ? (
+              <p className="px-4 py-3 text-[13px] text-neutral-400">No results for &ldquo;{search}&rdquo;</p>
+            ) : (
+              <>
+                {matchedProjects.length > 0 && (
+                  <div>
+                    <p className="px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">Projects</p>
+                    {matchedProjects.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => goTo(`/workspace/projects/${p.id}/dashboard`)}
+                        className="flex w-full items-center gap-2.5 px-4 py-2 text-left hover:bg-neutral-50"
+                      >
+                        <FolderKanban size={13} className="shrink-0 text-[var(--color-brand)]" />
+                        <span className="text-[13px] text-neutral-700 truncate">{p.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {matchedTasks.length > 0 && (
+                  <div className={matchedProjects.length > 0 ? "border-t border-[var(--color-border)]" : ""}>
+                    <p className="px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">Tasks</p>
+                    {matchedTasks.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => goTo(t.projectId ? `/workspace/projects/${t.projectId}/dashboard` : "/workspace")}
+                        className="flex w-full items-center gap-2.5 px-4 py-2 text-left hover:bg-neutral-50"
+                      >
+                        <CheckSquare size={13} className="shrink-0 text-neutral-400" />
+                        <span className="text-[13px] text-neutral-700 truncate">{t.title}</span>
+                        <span className="ml-auto shrink-0 text-[11px] text-neutral-400 capitalize">{t.status?.replace(/_/g, " ")}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
           </div>
-        </form>
+        )}
       </div>
 
       {/* Nav */}
