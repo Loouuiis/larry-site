@@ -64,6 +64,7 @@ export interface ProjectStructure {
 export interface LlmProvider {
   extractActionsFromTranscript(input: ExtractFromTranscriptInput): Promise<ExtractedAction[]>;
   extractProjectStructure(input: { description: string }): Promise<ProjectStructure>;
+  summarizeTranscript(input: { transcript: string }): Promise<{ title: string; summary: string }>;
 }
 
 const ExtractedActionSchema = z.object({
@@ -100,6 +101,11 @@ const ExtractedActionSchema = z.object({
 
 const ExtractedActionsSchema = z.array(ExtractedActionSchema);
 
+const SummarySchema = z.object({
+  title: z.string().min(1).max(80),
+  summary: z.string().min(1),
+});
+
 class MockLlmProvider implements LlmProvider {
   async extractActionsFromTranscript(input: ExtractFromTranscriptInput): Promise<ExtractedAction[]> {
     const lines = input.transcript
@@ -130,6 +136,13 @@ class MockLlmProvider implements LlmProvider {
         { title: "Set up initial project structure", owner: undefined },
         { title: "Identify key stakeholders", owner: undefined },
       ],
+    };
+  }
+
+  async summarizeTranscript(input: { transcript: string }): Promise<{ title: string; summary: string }> {
+    return {
+      title: input.transcript.slice(0, 60).trim() || "Meeting",
+      summary: "Mock summary — no LLM key configured.",
     };
   }
 }
@@ -295,6 +308,39 @@ class OpenAiProvider implements LlmProvider {
 
     return ProjectStructureSchema.parse(parsed);
   }
+
+  async summarizeTranscript(input: { transcript: string }): Promise<{ title: string; summary: string }> {
+    const { sanitised } = sanitiseUserContent(input.transcript);
+    const systemPrompt = [
+      "You are Larry, an AI project execution engine.",
+      "Summarize the meeting transcript below. Output a JSON object only — no explanation text outside the object.",
+      ...INJECTION_GUARD_RULES,
+      "The object must have exactly these fields:",
+      "  title (string): A concise meeting name, max 80 characters",
+      "  summary (string): 2-3 sentences covering the key decisions, outcomes, and action items",
+    ].join("\n");
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: this.model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: wrapUserContent(sanitised) },
+        ],
+      }),
+    });
+    if (!response.ok) throw new Error(`OpenAI summarize failed: ${response.status}`);
+    const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    const text = payload.choices?.[0]?.message?.content ?? "{}";
+    try {
+      const parsed = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? text);
+      return SummarySchema.parse(parsed);
+    } catch {
+      return { title: sanitised.slice(0, 60).trim() || "Meeting", summary: text.slice(0, 300) };
+    }
+  }
 }
 
 class AnthropicProvider implements LlmProvider {
@@ -458,6 +504,38 @@ class AnthropicProvider implements LlmProvider {
 
     return ProjectStructureSchema.parse(parsed);
   }
+
+  async summarizeTranscript(input: { transcript: string }): Promise<{ title: string; summary: string }> {
+    const { sanitised } = sanitiseUserContent(input.transcript);
+    const systemPrompt = [
+      "You are Larry, an AI project execution engine.",
+      "Summarize the meeting transcript below. Output a JSON object only — no explanation text outside the object.",
+      ...INJECTION_GUARD_RULES,
+      "The object must have exactly these fields:",
+      "  title (string): A concise meeting name, max 80 characters",
+      "  summary (string): 2-3 sentences covering the key decisions, outcomes, and action items",
+    ].join("\n");
+
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": this.apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: this.model,
+        max_tokens: 512,
+        system: systemPrompt,
+        messages: [{ role: "user", content: wrapUserContent(sanitised) }],
+      }),
+    });
+    if (!response.ok) throw new Error(`Anthropic summarize failed: ${response.status}`);
+    const payload = (await response.json()) as { content?: Array<{ text?: string }> };
+    const text = payload.content?.[0]?.text ?? "{}";
+    try {
+      const parsed = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? text);
+      return SummarySchema.parse(parsed);
+    } catch {
+      return { title: sanitised.slice(0, 60).trim() || "Meeting", summary: text.slice(0, 300) };
+    }
+  }
 }
 
 class GeminiProvider implements LlmProvider {
@@ -610,6 +688,37 @@ class GeminiProvider implements LlmProvider {
     }
 
     return ProjectStructureSchema.parse(parsed);
+  }
+
+  async summarizeTranscript(input: { transcript: string }): Promise<{ title: string; summary: string }> {
+    const { sanitised } = sanitiseUserContent(input.transcript);
+    const systemPrompt = [
+      "You are Larry, an AI project execution engine.",
+      "Summarize the meeting transcript below. Output a JSON object only — no explanation text outside the object.",
+      ...INJECTION_GUARD_RULES,
+      "The object must have exactly these fields:",
+      "  title (string): A concise meeting name, max 80 characters",
+      "  summary (string): 2-3 sentences covering the key decisions, outcomes, and action items",
+    ].join("\n");
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: "user", parts: [{ text: wrapUserContent(sanitised) }] }],
+      }),
+    });
+    if (!response.ok) throw new Error(`Gemini summarize failed: ${response.status}`);
+    const payload = (await response.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+    const text = payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
+    try {
+      const parsed = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? text);
+      return SummarySchema.parse(parsed);
+    } catch {
+      return { title: sanitised.slice(0, 60).trim() || "Meeting", summary: text.slice(0, 300) };
+    }
   }
 }
 
