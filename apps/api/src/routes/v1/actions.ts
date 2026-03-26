@@ -15,6 +15,7 @@ async function loadActionOrThrow(
 ): Promise<{
   id: string;
   agentRunId: string | null;
+  projectId: string | null;
   state: "pending" | "approved" | "rejected" | "overridden" | "executed";
   actionType: string;
   payload: Record<string, unknown>;
@@ -22,12 +23,13 @@ async function loadActionOrThrow(
   const rows = await fastify.db.queryTenant<{
     id: string;
     agentRunId: string | null;
+    projectId: string | null;
     state: "pending" | "approved" | "rejected" | "overridden" | "executed";
     actionType: string;
     payload: Record<string, unknown>;
   }>(
     tenantId,
-    `SELECT id, agent_run_id as "agentRunId", state, action_type as "actionType", payload
+    `SELECT id, agent_run_id as "agentRunId", project_id as "projectId", state, action_type as "actionType", payload
      FROM extracted_actions
      WHERE tenant_id = $1 AND id = $2
      LIMIT 1`,
@@ -194,6 +196,37 @@ export const actionRoutes: FastifyPluginAsync = async (fastify) => {
       });
       await updateInterventionStatus(fastify, tenantId, params.id, "approved");
 
+      // Execute task_create actions immediately on approval
+      let createdTaskId: string | null = null;
+      if (action.actionType === "task_create" && action.projectId) {
+        const title = typeof action.payload.title === "string" && action.payload.title.trim()
+          ? action.payload.title.trim()
+          : "Untitled task";
+        const description = typeof action.payload.description === "string" ? action.payload.description : null;
+        const dueDate = typeof action.payload.dueDate === "string" ? action.payload.dueDate : null;
+        const priority = action.payload.impact === "high" ? "high"
+          : action.payload.impact === "low" ? "low"
+          : "medium";
+
+        const taskRows = await fastify.db.queryTenant<{ id: string }>(
+          tenantId,
+          `INSERT INTO tasks (tenant_id, project_id, title, description, status, priority, due_date, created_by_user_id)
+           VALUES ($1, $2, $3, $4, 'not_started', $5, $6, $7)
+           RETURNING id`,
+          [tenantId, action.projectId, title, description, priority, dueDate, request.user.userId]
+        );
+        createdTaskId = taskRows[0].id;
+
+        await fastify.db.queryTenant(
+          tenantId,
+          `UPDATE extracted_actions
+           SET state = 'executed', task_id = $3, executed_at = NOW(), updated_at = NOW()
+           WHERE tenant_id = $1 AND id = $2`,
+          [tenantId, params.id, createdTaskId]
+        );
+        await updateInterventionStatus(fastify, tenantId, params.id, "executed");
+      }
+
       // Phase 7.2 — Slack outbound: post message when a follow_up or email_draft action
       // with a slackChannelId in its payload is approved.
       if (
@@ -239,7 +272,7 @@ export const actionRoutes: FastifyPluginAsync = async (fastify) => {
         actorUserId: request.user.userId,
       });
 
-      return { success: true, state: "approved" };
+      return { success: true, state: createdTaskId ? "executed" : "approved", taskId: createdTaskId ?? undefined };
     }
   );
 
