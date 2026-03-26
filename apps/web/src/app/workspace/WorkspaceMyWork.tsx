@@ -31,11 +31,39 @@ function dueBucket(due: string | null, now: Date): string {
   return "Later";
 }
 
+function isOverdue(due: string | null, now: Date): boolean {
+  if (!due) return false;
+  const d = new Date(due + "T12:00:00");
+  if (Number.isNaN(d.getTime())) return false;
+  const t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const t1 = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  return t1 < t0;
+}
+
+const GROUP_STYLE: Record<string, React.CSSProperties> = {
+  "Past due": {
+    background: "#FFF0F0",
+    border: "1px solid #FECACA",
+    borderRadius: "8px",
+  },
+  Today: {
+    background: "#FFF7ED",
+    border: "1px solid #FED7AA",
+    borderRadius: "8px",
+  },
+};
+
+const BUCKET_ORDER = ["Past due", "Today", "This week", "Next week", "Later", "No date"];
+
+const GROUP_ACTIVE_OPTS = ["By project", "By status", "By due date"];
+
 export function WorkspaceMyWork() {
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [groupBy, setGroupBy] = useState("By due date");
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -100,60 +128,232 @@ export function WorkspaceMyWork() {
     return buckets;
   }, [filtered, now]);
 
-  const order = ["Past due", "Today", "This week", "Next week", "Later", "No date"];
+  function toggleCollapsed(label: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) {
+        next.delete(label);
+      } else {
+        next.add(label);
+      }
+      return next;
+    });
+  }
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="border-b border-[var(--pm-border)] bg-[var(--pm-surface)] px-8 py-6">
-        <h1 className="text-[22px] font-semibold text-[var(--pm-text)]">My work</h1>
-        <p className="mt-1 text-[14px] text-[var(--pm-text-secondary)]">
-          {userId
-            ? "Tasks assigned to you across projects. If none are assigned yet, we show all workspace tasks."
-            : "Cross-project tasks. Sign in with a full session to filter by assignee when available."}
-        </p>
+      {/* Header */}
+      <div
+        style={{
+          padding: "24px 32px",
+          borderBottom: "1px solid var(--border)",
+          background: "var(--surface)",
+        }}
+      >
+        <h1 className="text-h1">My Work</h1>
+        {/* Group toggle */}
+        <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
+          {GROUP_ACTIVE_OPTS.map((opt) => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => setGroupBy(opt)}
+              style={{
+                background: "none",
+                border: "none",
+                padding: "2px 0",
+                fontSize: "13px",
+                fontWeight: groupBy === opt ? 600 : 400,
+                color: groupBy === opt ? "var(--cta)" : "var(--text-muted)",
+                cursor: "pointer",
+                transition: "color 0.15s",
+              }}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="mx-auto max-w-4xl px-8 py-6">
+      <div style={{ maxWidth: "896px", margin: "0 auto", padding: "24px 32px" }}>
         {error && (
-          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-[13px] text-amber-900">
+          <div
+            style={{
+              marginBottom: "16px",
+              borderRadius: "var(--radius-btn)",
+              border: "1px solid #fde68a",
+              background: "#fffbeb",
+              padding: "10px 14px",
+              fontSize: "13px",
+              color: "#92400e",
+            }}
+          >
             {error}
           </div>
         )}
+
         {loading ? (
-          <p className="text-[14px] text-[var(--pm-text-muted)]">Loading…</p>
+          <p className="text-body-sm">Loading…</p>
         ) : (
-          <div className="space-y-6">
-            {order.map((label) => {
+          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+            {BUCKET_ORDER.map((label) => {
               const items = grouped[label] ?? [];
               if (items.length === 0) return null;
+              const isCollapsed = collapsed.has(label);
+              const groupStyle = GROUP_STYLE[label] ?? {};
+
               return (
                 <section key={label}>
-                  <h2 className="mb-2 text-[13px] font-semibold uppercase tracking-wide text-[var(--pm-text-muted)]">
-                    {label} ({items.length})
-                  </h2>
-                  <ul className="divide-y divide-[var(--pm-border)] rounded-xl border border-[var(--pm-border)] bg-white">
-                    {items.map((task) => (
-                      <li key={task.id} className="flex flex-wrap items-center gap-2 px-4 py-3 text-[14px]">
-                        <Link
-                          href={`/workspace/projects/${task.projectId}`}
-                          className="min-w-0 flex-1 font-medium text-[var(--pm-text)] hover:text-[#5b21b6]"
-                        >
-                          {task.title}
-                        </Link>
-                        <span className="text-[12px] text-[var(--pm-text-muted)]">
-                          {projectNameById.get(task.projectId) ?? "Project"}
-                        </span>
-                        <span className="rounded-full bg-[var(--pm-gray-light)] px-2 py-0.5 text-[11px] text-[var(--pm-text-secondary)]">
-                          {task.status.replace("_", " ")}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
+                  {/* Section header */}
+                  <button
+                    type="button"
+                    onClick={() => toggleCollapsed(label)}
+                    style={{
+                      width: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      background: "none",
+                      border: "none",
+                      padding: "6px 0",
+                      marginBottom: "6px",
+                      cursor: "pointer",
+                      textAlign: "left",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.08em",
+                        color: label === "Past due" ? "var(--pm-red)" : "var(--text-muted)",
+                      }}
+                    >
+                      {label}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: 500,
+                        color: "var(--text-disabled)",
+                        background: "var(--surface-2)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "var(--radius-badge)",
+                        padding: "1px 7px",
+                      }}
+                    >
+                      {items.length}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        color: "var(--text-disabled)",
+                        marginLeft: "auto",
+                      }}
+                    >
+                      {isCollapsed ? "Show" : "Hide"}
+                    </span>
+                  </button>
+
+                  {!isCollapsed && (
+                    <div
+                      style={{
+                        border: "1px solid var(--border)",
+                        borderRadius: "var(--radius-card)",
+                        overflow: "hidden",
+                        background: "var(--surface)",
+                        ...(label === "Past due" || label === "Today" ? groupStyle : {}),
+                      }}
+                    >
+                      {/* Table header */}
+                      <div
+                        className="pm-table-header"
+                        style={{ gridTemplateColumns: "minmax(0,1fr) 140px 120px 100px" }}
+                      >
+                        <span>Task</span>
+                        <span>Project</span>
+                        <span>Status</span>
+                        <span>Due</span>
+                      </div>
+
+                      {items.map((task) => {
+                        const overdue = isOverdue(task.dueDate, now);
+                        return (
+                          <div
+                            key={task.id}
+                            className="pm-table-row"
+                            style={{
+                              gridTemplateColumns: "minmax(0,1fr) 140px 120px 100px",
+                              borderLeft: overdue ? "3px solid var(--pm-red)" : "3px solid transparent",
+                            }}
+                          >
+                            {/* Task name */}
+                            <Link
+                              href={`/workspace/projects/${task.projectId}`}
+                              className="text-h3"
+                              style={{
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                color: "var(--text-1)",
+                                textDecoration: "none",
+                              }}
+                            >
+                              {task.title}
+                            </Link>
+
+                            {/* Project */}
+                            <span
+                              className="text-body-sm"
+                              style={{
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {projectNameById.get(task.projectId) ?? "Project"}
+                            </span>
+
+                            {/* Status */}
+                            <span>
+                              <span
+                                className="pm-pill"
+                                style={
+                                  task.status === "completed"
+                                    ? { background: "#e6f9f0", color: "#00854d" }
+                                    : task.status === "in_progress"
+                                    ? { background: "#EBF5FF", color: "var(--cta)" }
+                                    : {}
+                                }
+                              >
+                                {task.status.replace(/_/g, " ").toLowerCase()}
+                              </span>
+                            </span>
+
+                            {/* Due date */}
+                            <span
+                              className="text-body-sm"
+                              style={overdue ? { color: "var(--pm-red)", fontWeight: 500 } : {}}
+                            >
+                              {task.dueDate
+                                ? new Date(task.dueDate + "T12:00:00").toLocaleDateString("en-GB", {
+                                    day: "numeric",
+                                    month: "short",
+                                  })
+                                : "—"}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </section>
               );
             })}
+
             {filtered.length === 0 && (
-              <p className="text-[14px] text-[var(--pm-text-secondary)]">No tasks in this workspace yet.</p>
+              <p className="text-body-sm">No tasks in this workspace yet.</p>
             )}
           </div>
         )}

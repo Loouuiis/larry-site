@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarCheck2, ChevronDown, Clock, FileText, Upload, CheckCircle2, XCircle } from "lucide-react";
+import { CalendarCheck2, Clock, FileText, Upload, CheckCircle2, XCircle } from "lucide-react";
 
 interface MeetingNote {
   id: string;
@@ -38,9 +38,9 @@ const STATE_PROGRESS: Record<AgentRunState, number> = {
 };
 
 const STATE_LABEL: Record<AgentRunState, string> = {
-  INGESTED: "Ingesting transcript…",
-  NORMALIZED: "Normalising signals…",
-  EXTRACTED: "Extracting actions with AI…",
+  INGESTED: "Reading transcript…",
+  NORMALIZED: "Finding action items…",
+  EXTRACTED: "Preparing for your review…",
   PROPOSED: "Proposing task changes…",
   APPROVAL_PENDING: "Routing to Action Center…",
   EXECUTED: "Executing actions…",
@@ -52,15 +52,29 @@ function ProcessingProgress({ state }: { state: AgentRunState }) {
   const pct = STATE_PROGRESS[state] ?? 10;
   const isExtracting = state === "EXTRACTED";
   return (
-    <div className="mt-3 space-y-2">
-      <div className="flex items-center justify-between text-[12px]">
-        <span className="text-[#5b21b6] font-medium">{STATE_LABEL[state]}</span>
-        <span className="text-[#7c3aed] tabular-nums">{pct}%</span>
+    <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "6px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "12px" }}>
+        <span style={{ color: "var(--text-2)", fontWeight: 500 }}>{STATE_LABEL[state]}</span>
+        <span style={{ color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>{pct}%</span>
       </div>
-      <div className="h-2 w-full rounded-full bg-[#e0e7ff] overflow-hidden">
+      <div
+        style={{
+          height: "6px",
+          width: "100%",
+          borderRadius: "3px",
+          background: "var(--border)",
+          overflow: "hidden",
+        }}
+      >
         <div
-          className={`h-full rounded-full bg-[#6366f1] transition-all duration-700 ${isExtracting ? "animate-pulse" : ""}`}
-          style={{ width: `${pct}%` }}
+          className={isExtracting ? "pm-shimmer" : ""}
+          style={{
+            height: "100%",
+            borderRadius: "3px",
+            background: "var(--cta)",
+            transition: "width 0.7s ease",
+            width: `${pct}%`,
+          }}
         />
       </div>
     </div>
@@ -83,6 +97,14 @@ function timeAgo(dateStr: string): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
+function formatShortDate(dateStr: string | null | undefined): string {
+  const raw = dateStr;
+  if (!raw) return "—";
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
+
 interface Project { id: string; name: string; }
 
 export function MeetingsPage() {
@@ -98,6 +120,7 @@ export function MeetingsPage() {
   const [expandedData, setExpandedData] = useState<Record<string, MeetingNote>>({});
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const [search, setSearch] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const simTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -214,111 +237,282 @@ export function MeetingsPage() {
     }
   };
 
+  const filteredMeetings = meetings.filter((m) => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    return (m.title ?? "Meeting transcript").toLowerCase().includes(q);
+  });
+
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="border-b border-[var(--pm-border)] bg-[var(--pm-surface)] px-8 py-6">
-        <h1 className="text-[22px] font-semibold text-[var(--pm-text)]">Meetings</h1>
-        <p className="mt-1 text-[14px] text-[var(--pm-text-secondary)]">
+      {/* Page header */}
+      <div
+        style={{
+          borderBottom: "1px solid var(--border)",
+          background: "var(--surface)",
+          padding: "20px 32px",
+        }}
+      >
+        <h1 className="text-h1">Meetings</h1>
+        <p className="text-body-sm" style={{ marginTop: "4px" }}>
           Upload a transcript and Larry will extract tasks, decisions, and action items.
         </p>
       </div>
 
-      <div className="mx-auto max-w-4xl px-8 py-6 space-y-8">
-        {/* Upload zone */}
-        <section>
-          <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wide text-[var(--pm-text-muted)]">
-            New Meeting Transcript
-          </h2>
-          <form onSubmit={handleProcess} className="space-y-3">
-            <textarea
-              value={transcript}
-              onChange={(e) => setTranscript(e.target.value)}
-              placeholder="Paste meeting transcript here… (minimum 20 characters)"
-              rows={6}
-              disabled={processing}
-              className="w-full rounded-xl border border-[var(--pm-border)] bg-[var(--pm-surface)] px-4 py-3 text-[14px] outline-none focus:border-[#6366f1] resize-none disabled:opacity-50"
-            />
-            {projects.length > 0 && (
-              <select
-                value={selectedProjectId}
-                onChange={(e) => setSelectedProjectId(e.target.value)}
+      <div style={{ maxWidth: "896px", margin: "0 auto", padding: "24px 32px", display: "flex", flexDirection: "column", gap: "28px" }}>
+
+        {/* Upload card */}
+        <section
+          style={{
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius-card)",
+            padding: "20px",
+            background: "var(--surface)",
+          }}
+        >
+          <form onSubmit={handleProcess} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            {/* Textarea with char count overlay */}
+            <div style={{ position: "relative" }}>
+              <textarea
+                value={transcript}
+                onChange={(e) => setTranscript(e.target.value)}
+                placeholder="Paste meeting transcript here… (minimum 20 characters)"
                 disabled={processing}
-                className="w-full rounded-xl border border-[var(--pm-border)] bg-[var(--pm-surface)] px-4 py-2.5 text-[14px] outline-none focus:border-[#6366f1] disabled:opacity-50"
+                style={{
+                  width: "100%",
+                  minHeight: "120px",
+                  resize: "vertical",
+                  borderRadius: "var(--radius-btn)",
+                  border: "1px solid var(--border)",
+                  background: "var(--surface-2)",
+                  padding: "12px 14px 28px 14px",
+                  fontSize: "14px",
+                  color: "var(--text-1)",
+                  outline: "none",
+                  boxSizing: "border-box",
+                  opacity: processing ? 0.5 : 1,
+                }}
+              />
+              <span
+                style={{
+                  position: "absolute",
+                  bottom: "8px",
+                  right: "10px",
+                  fontSize: "11px",
+                  color: "var(--text-disabled)",
+                  pointerEvents: "none",
+                }}
               >
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            )}
-            <div className="flex items-center justify-between">
-              <p className="text-[12px] text-[var(--pm-text-muted)]">
-                {transcript.length} characters
-              </p>
+                {transcript.length} chars
+              </span>
+            </div>
+
+            {/* Project dropdown + submit in a flex row */}
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              {projects.length > 0 && (
+                <select
+                  value={selectedProjectId}
+                  onChange={(e) => setSelectedProjectId(e.target.value)}
+                  disabled={processing}
+                  style={{
+                    flex: 1,
+                    borderRadius: "var(--radius-btn)",
+                    border: "1px solid var(--border)",
+                    background: "var(--surface-2)",
+                    padding: "0 12px",
+                    height: "36px",
+                    fontSize: "14px",
+                    color: "var(--text-1)",
+                    outline: "none",
+                    opacity: processing ? 0.5 : 1,
+                  }}
+                >
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              )}
               <button
                 type="submit"
                 disabled={processing || transcript.trim().length < 20 || !selectedProjectId}
-                className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#6366f1] px-4 text-[13px] font-medium text-white hover:bg-[#4f46e5] disabled:opacity-50"
+                className="pm-btn pm-btn-primary"
+                style={{
+                  height: "36px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  borderRadius: "var(--radius-btn)",
+                  flexShrink: 0,
+                }}
               >
-                <Upload size={14} />
-                {processing ? "Processing…" : "Process transcript"}
+                <Upload size={13} />
+                {processing ? "Processing…" : "Process"}
               </button>
             </div>
           </form>
 
           {/* Processing progress */}
           {processing && processingState && (
-            <div className="mt-4 rounded-xl border border-[#e0e7ff] bg-[#f5f3ff] p-4">
-              <p className="text-[13px] font-medium text-[#5b21b6]">Larry is processing your meeting…</p>
+            <div
+              style={{
+                marginTop: "16px",
+                borderRadius: "var(--radius-btn)",
+                border: "1px solid var(--border)",
+                background: "var(--surface-2)",
+                padding: "14px 16px",
+              }}
+            >
+              <p style={{ fontSize: "13px", fontWeight: 500, color: "var(--text-2)" }}>
+                Larry is processing your meeting…
+              </p>
               <ProcessingProgress state={processingState} />
             </div>
           )}
 
-          {/* Success / failure result */}
+          {/* Success banner */}
           {!processing && successState === "complete" && (
-            <div className="mt-4 rounded-xl border border-[#bbf7d0] bg-[#f0fdf4] p-4 flex items-start justify-between gap-4">
-              <div className="flex items-start gap-3">
-                <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-[#16a34a]" />
+            <div
+              style={{
+                marginTop: "16px",
+                borderRadius: "var(--radius-btn)",
+                border: "1px solid #bbf7d0",
+                background: "#f0fdf4",
+                padding: "14px 16px",
+                display: "flex",
+                alignItems: "flex-start",
+                justifyContent: "space-between",
+                gap: "12px",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
+                <CheckCircle2 size={16} style={{ marginTop: "2px", flexShrink: 0, color: "#16a34a" }} />
                 <div>
-                  <p className="text-[13px] font-medium text-[#15803d]">Extraction complete</p>
-                  <p className="mt-0.5 text-[12px] text-[#166534]">Actions are ready for review in the Action Center.</p>
+                  <p style={{ fontSize: "13px", fontWeight: 500, color: "#15803d" }}>Extraction complete</p>
+                  <p style={{ marginTop: "2px", fontSize: "12px", color: "#166534" }}>
+                    Actions are ready for review in the Action Center.
+                  </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => router.push("/workspace/actions")}
-                className="shrink-0 rounded-lg bg-[#16a34a] px-3 py-1.5 text-[12px] font-medium text-white hover:bg-[#15803d]"
+                style={{
+                  flexShrink: 0,
+                  borderRadius: "var(--radius-btn)",
+                  background: "#16a34a",
+                  border: "none",
+                  padding: "4px 12px",
+                  fontSize: "12px",
+                  fontWeight: 500,
+                  color: "#fff",
+                  cursor: "pointer",
+                }}
               >
                 Go to Action Center →
               </button>
             </div>
           )}
 
+          {/* Failure banner */}
           {!processing && successState === "failed" && (
-            <div className="mt-4 rounded-xl border border-[#fecaca] bg-[#fef2f2] p-4 flex items-center gap-3">
-              <XCircle size={18} className="shrink-0 text-[#dc2626]" />
-              <p className="text-[13px] font-medium text-[#b91c1c]">Processing failed — please try again.</p>
+            <div
+              style={{
+                marginTop: "16px",
+                borderRadius: "var(--radius-btn)",
+                border: "1px solid #fecaca",
+                background: "#fef2f2",
+                padding: "14px 16px",
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+              }}
+            >
+              <XCircle size={16} style={{ flexShrink: 0, color: "#dc2626" }} />
+              <p style={{ fontSize: "13px", fontWeight: 500, color: "#b91c1c" }}>
+                Processing failed — please try again.
+              </p>
             </div>
           )}
         </section>
 
-        {/* Meetings list */}
+        {/* Meeting notes section */}
         <section>
-          <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wide text-[var(--pm-text-muted)]">
-            Meeting Notes
-          </h2>
+          <h2 className="text-h2" style={{ marginBottom: "12px" }}>Meeting Notes</h2>
+
+          {/* Search */}
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search meetings…"
+            style={{
+              width: "100%",
+              height: "36px",
+              borderRadius: "var(--radius-btn)",
+              border: "1px solid var(--border)",
+              background: "var(--surface-2)",
+              padding: "0 12px",
+              fontSize: "14px",
+              color: "var(--text-1)",
+              outline: "none",
+              marginBottom: "12px",
+              boxSizing: "border-box",
+            }}
+          />
+
           {loading ? (
-            <p className="text-[14px] text-[var(--pm-text-muted)]">Loading…</p>
+            <p className="text-body-sm">Loading…</p>
           ) : meetings.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-[var(--pm-border)] bg-[var(--pm-surface)] px-6 py-12 text-center">
-              <CalendarCheck2 size={28} className="mx-auto mb-3 text-[var(--pm-text-muted)] opacity-40" />
-              <p className="text-[14px] text-[var(--pm-text-secondary)]">No meetings yet. Process your first transcript above.</p>
+            <div
+              style={{
+                borderRadius: "var(--radius-card)",
+                border: "1px dashed var(--border)",
+                background: "var(--surface)",
+                padding: "48px 24px",
+                textAlign: "center",
+              }}
+            >
+              <CalendarCheck2
+                size={24}
+                style={{ margin: "0 auto 12px", color: "var(--text-disabled)" }}
+              />
+              <p className="text-body-sm">No meetings yet. Process your first transcript above.</p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {meetings.map((meeting) => (
-                <div key={meeting.id} className="rounded-xl border border-[var(--pm-border)] bg-white shadow-sm overflow-hidden">
-                  <button
-                    type="button"
+            /* Table */
+            <div
+              style={{
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius-card)",
+                overflow: "hidden",
+                background: "var(--surface)",
+              }}
+            >
+              {/* Table header */}
+              <div
+                className="pm-table-header"
+                style={{ gridTemplateColumns: "minmax(0,1fr) 120px 80px 100px" }}
+              >
+                <span>Title</span>
+                <span>Date</span>
+                <span>Actions</span>
+                <span>Status</span>
+              </div>
+
+              {filteredMeetings.length === 0 && (
+                <div style={{ padding: "24px", textAlign: "center" }}>
+                  <p className="text-body-sm">No meetings match your search.</p>
+                </div>
+              )}
+
+              {filteredMeetings.map((meeting) => (
+                <div key={meeting.id}>
+                  <div
+                    className="pm-table-row"
+                    style={{
+                      gridTemplateColumns: "minmax(0,1fr) 120px 80px 100px",
+                      cursor: "pointer",
+                    }}
                     onClick={() => {
                       if (expandedId === meeting.id) {
                         setExpandedId(null);
@@ -326,43 +520,104 @@ export function MeetingsPage() {
                         void loadExpanded(meeting.id);
                       }
                     }}
-                    className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-[#f8f9fb]"
                   >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#f5f3ff]">
-                        <FileText size={16} className="text-[#6366f1]" />
+                    {/* Title */}
+                    <span style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+                      <div
+                        style={{
+                          flexShrink: 0,
+                          display: "flex",
+                          height: "28px",
+                          width: "28px",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          borderRadius: "6px",
+                          background: "var(--surface-2)",
+                        }}
+                      >
+                        <FileText size={13} style={{ color: "var(--text-muted)" }} />
                       </div>
-                      <div className="min-w-0">
-                        <p className="font-medium text-[var(--pm-text)] truncate">
-                          {meeting.title ?? "Meeting transcript"}
-                        </p>
-                        <div className="flex items-center gap-3 mt-0.5 text-[12px] text-[var(--pm-text-muted)]">
-                          <span className="flex items-center gap-1">
-                            <Clock size={11} />
-                            {timeAgo(meeting.createdAt)}
-                          </span>
-                          <span>{meeting.actionCount} action{meeting.actionCount !== 1 ? "s" : ""} extracted</span>
-                        </div>
-                      </div>
-                    </div>
-                    <ChevronDown
-                      size={16}
-                      className={`shrink-0 text-[var(--pm-text-muted)] transition-transform ${expandedId === meeting.id ? "rotate-180" : ""}`}
-                    />
-                  </button>
+                      <span
+                        className="text-h3"
+                        style={{
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {meeting.title ?? "Meeting transcript"}
+                      </span>
+                    </span>
 
+                    {/* Date */}
+                    <span className="text-body-sm" style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                      <Clock size={11} />
+                      {timeAgo(meeting.createdAt)}
+                    </span>
+
+                    {/* Action count */}
+                    <span className="text-body-sm">
+                      {meeting.actionCount}
+                    </span>
+
+                    {/* Status */}
+                    <span>
+                      {meeting.agentRunState ? (
+                        <span
+                          className="pm-pill"
+                          style={
+                            meeting.agentRunState === "VERIFIED"
+                              ? { background: "#e6f9f0", color: "#00854d" }
+                              : meeting.agentRunState === "FAILED"
+                              ? { background: "#fff0f0", color: "var(--pm-red)" }
+                              : {}
+                          }
+                        >
+                          {meeting.agentRunState === "VERIFIED"
+                            ? "Done"
+                            : meeting.agentRunState === "FAILED"
+                            ? "Failed"
+                            : meeting.agentRunState}
+                        </span>
+                      ) : (
+                        <span className="text-body-sm">—</span>
+                      )}
+                    </span>
+                  </div>
+
+                  {/* Expanded detail */}
                   {expandedId === meeting.id && (
-                    <div className="border-t border-[var(--pm-border)] px-5 py-4 space-y-3">
+                    <div
+                      style={{
+                        borderTop: "1px solid var(--border)",
+                        padding: "16px 20px",
+                        background: "var(--surface-2)",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "10px",
+                      }}
+                    >
                       {expandedData[meeting.id]?.summary && (
                         <div>
-                          <h4 className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--pm-text-muted)]">Summary</h4>
-                          <p className="text-[13px] text-[var(--pm-text-secondary)] leading-relaxed">
+                          <p
+                            style={{
+                              fontSize: "11px",
+                              fontWeight: 600,
+                              textTransform: "uppercase",
+                              letterSpacing: "0.1em",
+                              color: "var(--text-muted)",
+                              marginBottom: "4px",
+                            }}
+                          >
+                            Summary
+                          </p>
+                          <p style={{ fontSize: "13px", color: "var(--text-2)", lineHeight: "1.5" }}>
                             {expandedData[meeting.id].summary}
                           </p>
                         </div>
                       )}
                       {meeting.agentRunId && (
-                        <p className="text-[11px] text-[var(--pm-text-muted)]">
+                        <p style={{ fontSize: "11px", color: "var(--text-disabled)" }}>
                           Run: {meeting.agentRunId.slice(0, 8)}… · State: {meeting.agentRunState ?? "—"}
                         </p>
                       )}

@@ -1,18 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { LogoutButton } from "@/app/dashboard/LogoutButton";
 import { NotificationBell } from "./NotificationBell";
 import { useWorkspaceChrome } from "./WorkspaceChromeContext";
-import { BellRing, Search } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { BellRing, Plus, Menu } from "lucide-react";
 import { useState } from "react";
+import { ProjectCreateSheet } from "./ProjectCreateSheet";
 
 type WorkspaceTopBarProps = {
   userEmail?: string | null;
   workspaceName?: string;
+  onMobileMenuOpen?: () => void;
 };
 
 function Breadcrumb({ workspaceName }: { workspaceName: string }) {
@@ -21,38 +20,57 @@ function Breadcrumb({ workspaceName }: { workspaceName: string }) {
 
   const projectMatch = pathname?.match(/^\/workspace\/projects\/([^/]+)(\/(.+))?/);
   if (projectMatch) {
-    parts.push({ label: workspaceName || "Larry Workspace", href: "/workspace" });
+    parts.push({ label: workspaceName || "Home", href: "/workspace" });
     parts.push({ label: "Project" });
     if (projectMatch[3]) {
-      parts.push({ label: projectMatch[3].charAt(0).toUpperCase() + projectMatch[3].slice(1) });
+      const section = projectMatch[3];
+      parts.push({ label: section.charAt(0).toUpperCase() + section.slice(1) });
     }
   } else if (pathname?.startsWith("/workspace/meetings")) {
+    parts.push({ label: workspaceName || "Home", href: "/workspace" });
     parts.push({ label: "Meetings" });
   } else if (pathname?.startsWith("/workspace/actions")) {
-    parts.push({ label: "Action Center" });
+    parts.push({ label: workspaceName || "Home", href: "/workspace" });
+    parts.push({ label: "Action Centre" });
   } else if (pathname?.startsWith("/workspace/documents")) {
+    parts.push({ label: workspaceName || "Home", href: "/workspace" });
     parts.push({ label: "Documents" });
   } else if (pathname?.startsWith("/workspace/chats")) {
+    parts.push({ label: workspaceName || "Home", href: "/workspace" });
     parts.push({ label: "Chats" });
   } else if (pathname?.startsWith("/workspace/settings")) {
+    parts.push({ label: workspaceName || "Home", href: "/workspace" });
     parts.push({ label: "Settings" });
   } else if (pathname?.startsWith("/workspace/my-work")) {
+    parts.push({ label: workspaceName || "Home", href: "/workspace" });
     parts.push({ label: "My Work" });
+  } else if (pathname === "/workspace") {
+    parts.push({ label: "Home" });
   }
 
   if (parts.length === 0) return null;
 
   return (
-    <nav className="flex items-center gap-1 text-[13px] min-w-0">
+    <nav className="flex items-center gap-1 min-w-0" aria-label="Breadcrumb">
       {parts.map((part, i) => (
         <span key={i} className="flex items-center gap-1 min-w-0">
-          <span className="text-[var(--pm-text-muted)]">/</span>
+          {i > 0 && (
+            <span className="text-[13px] select-none" style={{ color: "var(--text-disabled)" }}>
+              &gt;
+            </span>
+          )}
           {part.href ? (
-            <Link href={part.href} className="text-[var(--pm-text-secondary)] hover:text-[var(--pm-text)] truncate">
+            <Link
+              href={part.href}
+              className="text-[14px] truncate transition-colors hover:opacity-80"
+              style={{ color: "var(--text-muted)" }}
+            >
               {part.label}
             </Link>
           ) : (
-            <span className="font-medium text-[var(--pm-text)] truncate">{part.label}</span>
+            <span className="text-[14px] font-medium truncate" style={{ color: "var(--text-2)" }}>
+              {part.label}
+            </span>
           )}
         </span>
       ))}
@@ -60,69 +78,86 @@ function Breadcrumb({ workspaceName }: { workspaceName: string }) {
   );
 }
 
-export function WorkspaceTopBar({ userEmail, workspaceName = "Larry Workspace" }: WorkspaceTopBarProps) {
+export function WorkspaceTopBar({ userEmail: _userEmail, workspaceName = "Larry Workspace", onMobileMenuOpen }: WorkspaceTopBarProps) {
   const chrome = useWorkspaceChrome();
-  const router = useRouter();
-  const [search, setSearch] = useState("");
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (search.trim()) {
-      router.push(`/workspace?q=${encodeURIComponent(search.trim())}`);
-    }
-  };
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   return (
-    <header className="flex h-12 shrink-0 items-center justify-between border-b border-[var(--pm-border)] bg-[var(--pm-surface)] px-4 gap-4">
-      {/* Left: logo */}
-      <div className="shrink-0">
-        <Link href="/workspace">
-          <Image src="/Larry_logo.png" alt="Larry" width={120} height={38} className="rounded-lg object-contain" />
-        </Link>
-      </div>
-
-      {/* Center: global search */}
-      <form onSubmit={handleSearch} className="hidden md:flex items-center">
-        <div className="relative">
-          <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--pm-text-muted)]" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search tasks, projects…"
-            className="h-8 w-[220px] rounded-lg border border-[var(--pm-border)] bg-[var(--pm-gray-light)] pl-8 pr-3 text-[13px] outline-none focus:border-[#6366f1] focus:w-[280px] transition-all"
-          />
-        </div>
-      </form>
-
-      {/* Right: bells + user */}
-      <div className="flex items-center gap-1 shrink-0">
-        {/* Action Center bell */}
-        <Link
-          href="/workspace/actions"
-          className="relative inline-flex h-8 w-8 items-center justify-center rounded-md text-[var(--pm-text-muted)] hover:bg-[var(--pm-gray-light)]"
-          title="Action Center"
+    <>
+      <header
+        className="flex h-12 shrink-0 items-center justify-between px-4 gap-4"
+        style={{
+          height: "48px",
+          background: "var(--surface)",
+          borderBottom: "1px solid var(--border)",
+        }}
+      >
+        {/* Mobile: hamburger */}
+        <button
+          className="flex h-8 w-8 items-center justify-center rounded-lg md:hidden"
+          style={{ color: "var(--text-muted)" }}
+          onClick={onMobileMenuOpen}
+          aria-label="Open menu"
         >
-          <BellRing size={18} />
-          {(chrome?.pendingCount ?? 0) > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-0.5 text-[10px] font-bold text-white">
-              {(chrome?.pendingCount ?? 0) > 99 ? "99+" : chrome?.pendingCount}
-            </span>
-          )}
-        </Link>
+          <Menu size={18} />
+        </button>
 
-        {/* Notification bell */}
-        <NotificationBell
-          count={chrome?.notifCount ?? 0}
-          onCountChange={() => undefined}
-        />
+        {/* Left: breadcrumb */}
+        <div className="flex-1 min-w-0 hidden md:block">
+          <Breadcrumb workspaceName={workspaceName} />
+        </div>
 
-        {userEmail && (
-          <span className="hidden lg:inline max-w-[180px] truncate text-[12px] text-[var(--pm-text-muted)]">
-            {userEmail}
-          </span>
-        )}
-        <LogoutButton />
-      </div>
-    </header>
+        {/* Right cluster */}
+        <div className="flex items-center gap-3 shrink-0">
+          {/* Action Centre bell — red badge */}
+          <Link
+            href="/workspace/actions"
+            className="relative flex h-8 w-8 items-center justify-center rounded-lg transition-colors"
+            style={{ color: "var(--text-muted)" }}
+            title="Action Centre"
+            onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+          >
+            <BellRing size={18} />
+            {(chrome?.pendingCount ?? 0) > 0 && (
+              <span
+                className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-0.5 text-[10px] font-bold text-white"
+                style={{ background: "var(--pm-red)" }}
+              >
+                {(chrome?.pendingCount ?? 0) > 99 ? "99+" : chrome?.pendingCount}
+              </span>
+            )}
+          </Link>
+
+          {/* Notification bell */}
+          <NotificationBell count={chrome?.notifCount ?? 0} onCountChange={() => undefined} />
+
+          {/* + New Project */}
+          <button
+            type="button"
+            onClick={() => setSheetOpen(true)}
+            className="hidden sm:inline-flex items-center gap-1.5 text-[13px] font-medium text-white transition-opacity hover:opacity-90"
+            style={{
+              height: "32px",
+              padding: "0 12px",
+              borderRadius: "var(--radius-btn)",
+              background: "var(--cta)",
+            }}
+          >
+            <Plus size={14} />
+            New Project
+          </button>
+        </div>
+      </header>
+
+      <ProjectCreateSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        onCreated={() => {
+          setSheetOpen(false);
+          chrome?.refreshShell?.();
+        }}
+      />
+    </>
   );
 }

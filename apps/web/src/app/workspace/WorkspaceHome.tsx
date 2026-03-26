@@ -3,18 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  ArrowRight,
-  BellRing,
-  CalendarDays,
-  Plus,
-  ShieldCheck,
-  Sparkles,
-  TriangleAlert,
-} from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 import type { WorkspaceAction, WorkspaceProject, WorkspaceSnapshot, WorkspaceTask } from "@/app/dashboard/types";
-import { NotificationBell } from "./NotificationBell";
-import { ProjectCreateSheet } from "./ProjectCreateSheet";
 
 interface AuthMePayload {
   user?: {
@@ -48,14 +38,6 @@ async function readJson<T>(response: Response): Promise<T> {
   }
 }
 
-function formatShortDate(value: string | null | undefined): string {
-  if (!value) return "No target";
-  return new Date(value).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-  });
-}
-
 function formatRelativeTime(value: string | null | undefined): string {
   if (!value) return "just now";
   const delta = Date.now() - new Date(value).getTime();
@@ -86,19 +68,6 @@ function deriveGreetingName(user: AuthMePayload["user"] | null | undefined): str
     return titleCase(local);
   }
   return "there";
-}
-
-function statusTone(project: ProjectCardModel): string {
-  if (project.blockedTasks > 0 || project.riskLevel === "high") {
-    return "bg-[#ffe6ea] text-[#b42336]";
-  }
-  if (project.progress >= 100 || project.status === "completed") {
-    return "bg-[#e8f8ef] text-[#067647]";
-  }
-  if (project.progress > 0) {
-    return "bg-[#fff3df] text-[#9a6700]";
-  }
-  return "bg-[#e9eef5] text-[#465467]";
 }
 
 function buildProjectCard(
@@ -135,41 +104,13 @@ function buildProjectCard(
   };
 }
 
-function ConnectorRow({
-  label,
-  connected,
-  comingSoon = false,
-}: {
-  label: string;
-  connected: boolean;
-  comingSoon?: boolean;
-}) {
-  return (
-    <div className="flex items-center justify-between rounded-[18px] border border-[#d7e0ea] bg-white px-4 py-3">
-      <span className="text-[14px] font-medium text-[#1d2939]">{label}</span>
-      <span
-        className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${
-          comingSoon
-            ? "bg-[#eef2f6] text-[#637489]"
-            : connected
-              ? "bg-[#e8f8ef] text-[#067647]"
-              : "bg-[#fff3df] text-[#9a6700]"
-        }`}
-      >
-        {comingSoon ? "Coming soon" : connected ? "Connected" : "Not connected"}
-      </span>
-    </div>
-  );
-}
-
 export function WorkspaceHome() {
   const router = useRouter();
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
   const [viewer, setViewer] = useState<AuthMePayload["user"] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [notifCount, setNotifCount] = useState(0);
-  const [sheetOpen, setSheetOpen] = useState(false);
+  const [nudgeDismissed, setNudgeDismissed] = useState(false);
 
   const loadWorkspace = useCallback(async () => {
     try {
@@ -228,289 +169,201 @@ export function WorkspaceHome() {
   ].filter(Boolean).length;
 
   return (
-    <>
-      <div className="min-h-full overflow-y-auto bg-[linear-gradient(180deg,#f5f8fb_0%,#edf2f7_100%)] px-6 py-6">
-        <div className="mx-auto grid max-w-[1320px] gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="space-y-6">
-            <header className="rounded-[32px] border border-[#dbe4ed] bg-white/90 p-6 shadow-[0_24px_80px_rgba(9,23,41,0.06)]">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                  <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-[#73839a]">
-                    Workspace home
-                  </p>
-                  <h1 className="mt-3 text-[40px] font-semibold tracking-[-0.05em] text-[#101828]">
-                    Welcome back, {greetingName}.
-                  </h1>
-                  <p className="mt-3 max-w-[640px] text-[16px] leading-8 text-[#526276]">
-                    Keep the execution surface tight: review approvals, watch blockers, and jump straight into the projects that still need movement.
-                  </p>
-                </div>
+    <div
+      className="min-h-full overflow-y-auto"
+      style={{ background: "var(--page-bg)" }}
+    >
+      <div className="mx-auto max-w-[960px] px-6 py-8 space-y-6">
 
-                <div className="flex items-center gap-3 self-start">
-                  <div className="rounded-full border border-[#d6e0eb] bg-white">
-                    <NotificationBell count={notifCount} onCountChange={setNotifCount} />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setSheetOpen(true)}
-                    className="inline-flex h-11 items-center gap-2 rounded-full bg-[#0073EA] px-5 text-[14px] font-semibold text-white transition-transform hover:scale-[1.01]"
-                  >
-                    <Plus size={16} />
-                    New Project
-                  </button>
-                </div>
-              </div>
-            </header>
+        {/* Welcome header — no card wrapper */}
+        <header>
+          <h1 className="text-display" style={{ color: "var(--text-1)" }}>
+            Welcome back, {greetingName}.
+          </h1>
+          <p className="text-body-sm mt-1">
+            {projectCards.length} active project{projectCards.length !== 1 ? "s" : ""} · {pendingCount} pending approval{pendingCount !== 1 ? "s" : ""}
+          </p>
+        </header>
 
-            {error && (
-              <div className="flex items-start gap-3 rounded-[24px] border border-[#f0c7cd] bg-[#fff6f7] px-5 py-4 text-[#b42336]">
-                <TriangleAlert size={18} className="mt-0.5 shrink-0" />
-                <span className="text-[14px]">{error}</span>
-              </div>
-            )}
-
-            <section className="rounded-[32px] border border-[#dbe4ed] bg-white p-6 shadow-[0_18px_60px_rgba(9,23,41,0.05)]">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="max-w-[560px]">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#0073EA]">
-                    Action centre
-                  </p>
-                  <h2 className="mt-4 text-[28px] font-semibold tracking-[-0.04em] text-[#101828]">
-                    {pendingCount > 0
-                      ? `${pendingCount} approval${pendingCount === 1 ? "" : "s"} waiting for review`
-                      : "Action centre is clear right now"}
-                  </h2>
-                  <p className="mt-3 text-[15px] leading-7 text-[#526276]">
-                    Larry is already watching the signal. Keep approvals flowing so the board reflects what is actually happening, not what was last summarised.
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap gap-3">
-                  <Link
-                    href="/workspace/actions"
-                    className="inline-flex h-11 items-center gap-2 rounded-full bg-[#0073EA] px-5 text-[14px] font-semibold text-white transition-transform hover:scale-[1.01]"
-                  >
-                    Review actions
-                    <ArrowRight size={15} />
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={() => setSheetOpen(true)}
-                    className="inline-flex h-11 items-center gap-2 rounded-full border border-[#dbe4ed] bg-white px-5 text-[14px] font-semibold text-[#344054] transition-colors hover:bg-[#f8fafc]"
-                  >
-                    <Plus size={16} />
-                    New Project
-                  </button>
-                </div>
-              </div>
-
-              <div className="mt-6 grid gap-4 sm:grid-cols-3">
-                <div className="rounded-[20px] border border-[#e6edf3] bg-[#f5f8ff] p-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#73839a]">
-                    Pending approvals
-                  </p>
-                  <p className="mt-3 text-[28px] font-semibold tracking-[-0.04em] text-[#101828]">
-                    {pendingCount}
-                  </p>
-                </div>
-                <div className="rounded-[20px] border border-[#e6edf3] bg-[#f5f8ff] p-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#73839a]">
-                    Active projects
-                  </p>
-                  <p className="mt-3 text-[28px] font-semibold tracking-[-0.04em] text-[#101828]">
-                    {projectCards.length}
-                  </p>
-                </div>
-                <div className="rounded-[20px] border border-[#e6edf3] bg-[#f5f8ff] p-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#73839a]">
-                    Connected inputs
-                  </p>
-                  <p className="mt-3 text-[28px] font-semibold tracking-[-0.04em] text-[#101828]">
-                    {connectedCount}
-                  </p>
-                </div>
-              </div>
-            </section>
-
-            <section className="rounded-[32px] border border-[#dbe4ed] bg-white p-6 shadow-[0_18px_60px_rgba(9,23,41,0.05)]">
-              <div className="flex flex-wrap items-end justify-between gap-4">
-                <div>
-                  <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-[#73839a]">
-                    Projects
-                  </p>
-                  <h2 className="mt-3 text-[32px] font-semibold tracking-[-0.04em] text-[#101828]">
-                    Where delivery is moving
-                  </h2>
-                </div>
-                <p className="max-w-[360px] text-[14px] leading-7 text-[#526276]">
-                  Project cards are driven by the live snapshot, so progress and blocker counts update with the same data the rest of the workspace uses.
-                </p>
-              </div>
-
-              {loading ? (
-                <div className="mt-6 grid gap-4 md:grid-cols-2">
-                  {Array.from({ length: 4 }).map((_, index) => (
-                    <div
-                      key={index}
-                      className="h-[250px] animate-pulse rounded-[28px] border border-[#e6edf3] bg-[#f4f7fb]"
-                    />
-                  ))}
-                </div>
-              ) : projectCards.length === 0 ? (
-                <div className="mt-6 rounded-[28px] border border-dashed border-[#c7d4e2] bg-[#f7fafc] px-6 py-10 text-center">
-                  <p className="text-[24px] font-semibold tracking-[-0.03em] text-[#101828]">
-                    No projects yet
-                  </p>
-                  <p className="mx-auto mt-3 max-w-[520px] text-[15px] leading-7 text-[#526276]">
-                    Start with a live project so Larry can begin collecting task movement, meeting context, and approval-worthy actions in one place.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setSheetOpen(true)}
-                    className="mt-6 inline-flex h-11 items-center gap-2 rounded-full bg-[#0073EA] px-5 text-[14px] font-semibold text-white transition-transform hover:scale-[1.01]"
-                  >
-                    <Plus size={16} />
-                    Create the first project
-                  </button>
-                </div>
-              ) : (
-                <div className="mt-6 grid gap-4 md:grid-cols-2">
-                  {projectCards.map((project) => (
-                    <button
-                      key={project.id}
-                      type="button"
-                      onClick={() => router.push(`/workspace/projects/${project.id}`)}
-                      className="group rounded-[28px] border border-[#dbe4ed] bg-[linear-gradient(180deg,#ffffff_0%,#f7fafc_100%)] p-5 text-left shadow-[0_20px_70px_rgba(9,23,41,0.05)] transition-transform hover:-translate-y-0.5 hover:border-[#bfd0e0]"
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <p className="text-[24px] font-semibold tracking-[-0.04em] text-[#101828]">
-                            {project.name}
-                          </p>
-                          <p className="mt-3 text-[14px] leading-7 text-[#526276]">
-                            {project.description}
-                          </p>
-                        </div>
-                        <span className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] ${statusTone(project)}`}>
-                          {project.status}
-                        </span>
-                      </div>
-
-                      <div className="mt-6 grid grid-cols-3 gap-3">
-                        <div className="rounded-[20px] border border-[#e6edf3] bg-white px-4 py-3">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#73839a]">
-                            Progress
-                          </p>
-                          <p className="mt-3 text-[24px] font-semibold tracking-[-0.03em] text-[#101828]">
-                            {project.progress}%
-                          </p>
-                        </div>
-                        <div className="rounded-[20px] border border-[#e6edf3] bg-white px-4 py-3">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#73839a]">
-                            Open tasks
-                          </p>
-                          <p className="mt-3 text-[24px] font-semibold tracking-[-0.03em] text-[#101828]">
-                            {project.openTasks}
-                          </p>
-                        </div>
-                        <div className="rounded-[20px] border border-[#e6edf3] bg-white px-4 py-3">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#73839a]">
-                            Pending
-                          </p>
-                          <p className="mt-3 text-[24px] font-semibold tracking-[-0.03em] text-[#101828]">
-                            {project.pendingActions}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="mt-5 h-2 overflow-hidden rounded-full bg-[#dfe8f1]">
-                        <div
-                          className="h-full rounded-full bg-[linear-gradient(90deg,#0073EA_0%,#42A0FF_100%)]"
-                          style={{ width: `${Math.max(project.progress, 6)}%` }}
-                        />
-                      </div>
-
-                      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 text-[13px] text-[#526276]">
-                        <div className="flex items-center gap-2">
-                          <CalendarDays size={15} />
-                          Target {formatShortDate(project.targetDate)}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <ShieldCheck size={15} />
-                          {project.blockedTasks} blocked
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Sparkles size={15} />
-                          Updated {formatRelativeTime(project.updatedAt)}
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </section>
+        {/* Error banner */}
+        {error && (
+          <div
+            className="flex items-start gap-3 px-4 py-3 rounded-lg text-[14px]"
+            style={{
+              background: "var(--pm-red-light, #fff6f7)",
+              border: "1px solid var(--pm-red)",
+              color: "var(--pm-red)",
+              borderRadius: "var(--radius-btn)",
+            }}
+          >
+            <TriangleAlert size={16} className="mt-0.5 shrink-0" />
+            <span>{error}</span>
           </div>
+        )}
 
-          <aside className="space-y-6">
-            <section className="rounded-[32px] border border-[#dbe4ed] bg-white p-6 shadow-[0_18px_60px_rgba(9,23,41,0.05)]">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-[#73839a]">
-                    Notifications
-                  </p>
-                  <h2 className="mt-3 text-[28px] font-semibold tracking-[-0.04em] text-[#101828]">
-                    Inbox pulse
-                  </h2>
-                </div>
-                <div className="rounded-full border border-[#dbe4ed] bg-[#f8fafc] px-3 py-1 text-[12px] font-semibold text-[#344054]">
-                  {notifCount} unread
-                </div>
-              </div>
-              <p className="mt-4 text-[14px] leading-7 text-[#526276]">
-                Open the bell to review unread notifications and keep the workspace queue under control.
-              </p>
-              <div className="mt-5 rounded-[24px] border border-[#e6edf3] bg-[#f8fafc] p-4">
-                <div className="flex items-center gap-3 text-[#344054]">
-                  <BellRing size={18} />
-                  <span className="text-[14px] font-medium">
-                    The notification panel is live in the header.
-                  </span>
-                </div>
-              </div>
-            </section>
+        {/* Action centre banner — only when pendingCount > 0 */}
+        {pendingCount > 0 && (
+          <div
+            className="flex items-center px-4 gap-3"
+            style={{
+              height: "48px",
+              background: "#FFF7ED",
+              border: "1px solid #FDE68A",
+              borderRadius: "var(--radius-btn)",
+            }}
+          >
+            <TriangleAlert size={16} style={{ color: "#D97706", flexShrink: 0 }} />
+            <span className="flex-1 text-[14px]" style={{ color: "var(--text-2)" }}>
+              {pendingCount} action{pendingCount !== 1 ? "s" : ""} awaiting your review
+            </span>
+            <Link
+              href="/workspace/actions"
+              className="text-[14px] font-semibold ml-auto"
+              style={{ color: "var(--cta)" }}
+            >
+              Review →
+            </Link>
+          </div>
+        )}
 
-            <section className="rounded-[32px] border border-[#dbe4ed] bg-white p-6 shadow-[0_18px_60px_rgba(9,23,41,0.05)]">
-              <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-[#73839a]">
-                Connected inputs
-              </p>
-              <h2 className="mt-3 text-[28px] font-semibold tracking-[-0.04em] text-[#101828]">
-                Launch stack
-              </h2>
-              <div className="mt-5 space-y-3">
-                <ConnectorRow
-                  label="Slack"
-                  connected={Boolean(snapshot?.connectors?.slack?.connected)}
-                />
-                <ConnectorRow
-                  label="Calendar"
-                  connected={Boolean(snapshot?.connectors?.calendar?.connected)}
-                />
-                <ConnectorRow
-                  label="Email"
-                  connected={Boolean(snapshot?.connectors?.email?.connected)}
-                  comingSoon={!snapshot?.connectors?.email?.connected}
-                />
-              </div>
-            </section>
-          </aside>
-        </div>
+        {/* Project cards grid */}
+        {loading ? (
+          <div className="grid gap-4 md:grid-cols-2">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div
+                key={index}
+                className="pm-shimmer h-[180px]"
+                style={{ borderRadius: "var(--radius-card)" }}
+              />
+            ))}
+          </div>
+        ) : projectCards.length === 0 ? (
+          <div
+            className="border border-dashed px-6 py-10 text-center"
+            style={{
+              borderColor: "var(--border-2)",
+              borderRadius: "var(--radius-card)",
+              background: "var(--surface)",
+            }}
+          >
+            <p className="text-h1" style={{ color: "var(--text-1)" }}>
+              No projects yet
+            </p>
+            <p
+              className="mx-auto mt-2 max-w-[520px] text-[15px] leading-7"
+              style={{ color: "var(--text-muted)" }}
+            >
+              Start with a live project so Larry can begin collecting task movement, meeting context, and approval-worthy actions in one place.
+            </p>
+            <Link
+              href="/workspace/projects/new"
+              className="mt-5 inline-flex items-center justify-center gap-2 text-[14px] font-semibold text-white"
+              style={{
+                background: "var(--cta)",
+                borderRadius: "var(--radius-btn)",
+                height: "36px",
+                padding: "0 16px",
+              }}
+            >
+              Create the first project
+            </Link>
+          </div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2">
+            {projectCards.map((project) => (
+              <button
+                key={project.id}
+                type="button"
+                onClick={() => router.push(`/workspace/projects/${project.id}`)}
+                className="group text-left transition-shadow hover:shadow-[var(--shadow-1)]"
+                style={{
+                  borderRadius: "var(--radius-card)",
+                  border: "1px solid var(--border)",
+                  background: "var(--surface)",
+                  padding: "20px",
+                }}
+              >
+                {/* Project name */}
+                <p
+                  className="text-[16px] font-semibold leading-snug truncate"
+                  style={{ color: "var(--text-1)" }}
+                >
+                  {project.name}
+                </p>
+
+                {/* Description — 1 line truncated */}
+                <p
+                  className="text-body-sm mt-1 truncate"
+                >
+                  {project.description}
+                </p>
+
+                {/* Progress bar */}
+                <div
+                  className="mt-4 w-full overflow-hidden"
+                  style={{
+                    height: "4px",
+                    borderRadius: "9999px",
+                    background: "var(--surface-2)",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${Math.max(project.progress, 2)}%`,
+                      height: "100%",
+                      borderRadius: "9999px",
+                      background: "var(--cta)",
+                    }}
+                  />
+                </div>
+
+                {/* Footer row */}
+                <div
+                  className="mt-3 flex items-center justify-between text-body-sm"
+                >
+                  <span>{project.progress}%</span>
+                  <span>{project.openTasks} open tasks</span>
+                  <span>Updated {formatRelativeTime(project.updatedAt)}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Connected inputs nudge — only when all connectors are disconnected */}
+        {!nudgeDismissed && connectedCount === 0 && (
+          <div
+            className="flex items-center justify-between gap-4"
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-card)",
+              padding: "16px 20px",
+              background: "var(--surface)",
+            }}
+          >
+            <p className="text-[14px]" style={{ color: "var(--text-2)" }}>
+              Connect Slack or Calendar to let Larry monitor signals automatically.{" "}
+              <Link
+                href="/workspace/settings/connectors"
+                className="font-semibold"
+                style={{ color: "var(--cta)" }}
+              >
+                Set up →
+              </Link>
+            </p>
+            <button
+              type="button"
+              onClick={() => setNudgeDismissed(true)}
+              className="shrink-0 text-[13px]"
+              style={{ color: "var(--text-muted)" }}
+              aria-label="Dismiss connector nudge"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
       </div>
-
-      <ProjectCreateSheet
-        open={sheetOpen}
-        onClose={() => setSheetOpen(false)}
-        onCreated={(projectId) => router.push(`/workspace/projects/${projectId}`)}
-      />
-    </>
+    </div>
   );
 }

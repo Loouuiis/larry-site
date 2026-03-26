@@ -3,18 +3,61 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, Plus } from "lucide-react";
 import { BoardTaskRow, TaskGroup } from "@/app/dashboard/types";
-import { StatusChip } from "./StatusChip";
 
 interface TaskTableProps {
   groups: TaskGroup[];
   onTaskClick: (task: BoardTaskRow) => void;
   onOpenAddTask: (group: TaskGroup) => void;
   onAddGroup: () => void;
+  onStatusChange?: (taskId: string, newStatus: string) => void;
+}
+
+const ALL_STATUSES: Array<{ value: string; label: string; pillClass: string }> = [
+  { value: "not_started", label: "Not Started", pillClass: "pm-pill pm-pill-not-started" },
+  { value: "in_progress", label: "In Progress", pillClass: "pm-pill pm-pill-working" },
+  { value: "blocked", label: "Blocked", pillClass: "pm-pill pm-pill-stuck" },
+  { value: "completed", label: "Done", pillClass: "pm-pill pm-pill-done" },
+  { value: "waiting", label: "In Review", pillClass: "pm-pill pm-pill-review" },
+];
+
+function statusPillClass(status: string): string {
+  switch (status) {
+    case "completed": return "pm-pill pm-pill-done";
+    case "in_progress": return "pm-pill pm-pill-working";
+    case "blocked": return "pm-pill pm-pill-stuck";
+    case "waiting": return "pm-pill pm-pill-review";
+    default: return "pm-pill pm-pill-not-started";
+  }
+}
+
+function statusLabel(status: string): string {
+  switch (status) {
+    case "completed": return "Done";
+    case "in_progress": return "In Progress";
+    case "blocked": return "Blocked";
+    case "waiting": return "In Review";
+    case "not_started": return "Not Started";
+    default: return status;
+  }
+}
+
+function priorityDotStyle(priority: string | null | undefined): React.CSSProperties {
+  switch (priority) {
+    case "critical": return { background: "#E2445C" };
+    case "high": return { background: "#FDAB3D" };
+    case "medium": return { background: "#0073EA" };
+    default: return { background: "#98A2B3" };
+  }
 }
 
 function formatDueDate(value: string | null): string {
   if (!value) return "No date";
   return new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function isPastDue(value: string | null): boolean {
+  if (!value) return false;
+  return new Date(value) < new Date();
 }
 
 function getInitials(name?: string | null): string {
@@ -45,28 +88,35 @@ function getAvatarTone(name?: string | null): string {
   return palette[hash];
 }
 
+function groupAccentClass(key: TaskGroup["key"]): string {
+  switch (key) {
+    case "in_progress": return "pm-group-accent-progress";
+    case "blocked": return "pm-group-accent-blocked";
+    case "completed": return "pm-group-accent-done";
+    default: return "pm-group-accent-todo";
+  }
+}
+
 function GroupProgressStrip({ tasks }: { tasks: BoardTaskRow[] }) {
-  const counts = {
-    completed: tasks.filter((task) => task.status === "completed").length,
-    in_progress: tasks.filter((task) => task.status === "in_progress").length,
-    blocked: tasks.filter((task) => task.status === "blocked").length,
-    other: tasks.filter(
-      (task) => task.status !== "completed" && task.status !== "in_progress" && task.status !== "blocked"
-    ).length,
-  };
   const total = tasks.length || 1;
+  const completed = tasks.filter((t) => t.status === "completed").length;
+  const inProgress = tasks.filter((t) => t.status === "in_progress").length;
+  const blocked = tasks.filter((t) => t.status === "blocked").length;
+  const other = tasks.length - completed - inProgress - blocked;
 
   return (
-    <div className="flex h-1.5 overflow-hidden rounded-full bg-[var(--pm-border)]">
-      <span className="bg-[#00C875]" style={{ width: `${(counts.completed / total) * 100}%` }} />
-      <span className="bg-[#FDAB3D]" style={{ width: `${(counts.in_progress / total) * 100}%` }} />
-      <span className="bg-[#E2445C]" style={{ width: `${(counts.blocked / total) * 100}%` }} />
-      <span className="bg-[#676879]" style={{ width: `${(counts.other / total) * 100}%` }} />
+    <div className="pm-summary-bar">
+      <span style={{ width: `${(completed / total) * 100}%`, background: "var(--pm-green)" }} />
+      <span style={{ width: `${(inProgress / total) * 100}%`, background: "var(--pm-orange)" }} />
+      <span style={{ width: `${(blocked / total) * 100}%`, background: "var(--pm-red)" }} />
+      <span style={{ width: `${(other / total) * 100}%`, background: "var(--surface-2)" }} />
     </div>
   );
 }
 
-export function TaskTable({ groups, onTaskClick, onOpenAddTask, onAddGroup }: TaskTableProps) {
+const GRID_COLS = "grid-cols-[20px_minmax(0,1fr)_40px_48px_110px_90px_32px]";
+
+export function TaskTable({ groups, onTaskClick, onOpenAddTask, onAddGroup, onStatusChange }: TaskTableProps) {
   const defaultCollapsed = useMemo(
     () => Object.fromEntries(
       groups.map((group) => [group.key, group.key === "completed" && group.tasks.length > 3])
@@ -75,6 +125,7 @@ export function TaskTable({ groups, onTaskClick, onOpenAddTask, onAddGroup }: Ta
   );
 
   const [collapsed, setCollapsed] = useState<Record<TaskGroup["key"], boolean>>(defaultCollapsed);
+  const [statusOpen, setStatusOpen] = useState<string | null>(null);
 
   useEffect(() => {
     setCollapsed((previous) => ({
@@ -85,98 +136,238 @@ export function TaskTable({ groups, onTaskClick, onOpenAddTask, onAddGroup }: Ta
     }));
   }, [defaultCollapsed]);
 
+  // Close status dropdown on outside click
+  useEffect(() => {
+    if (!statusOpen) return;
+    function handleClick() { setStatusOpen(null); }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [statusOpen]);
+
   return (
-    <div className="space-y-5">
-      <div className="overflow-hidden rounded-[24px] border border-[var(--pm-border)] bg-white shadow-[0_20px_60px_rgba(5,10,20,0.35)]">
-        <div className="grid grid-cols-[minmax(0,1.8fr)_120px_140px_110px_40px] border-b border-[var(--pm-border)] px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">
-          <span>Task</span>
-          <span>Owner</span>
-          <span>Status</span>
-          <span>Due date</span>
-          <span />
-        </div>
-
-        <div className="space-y-4 p-4">
-          {groups.map((group) => {
-            const isCollapsed = collapsed[group.key] ?? false;
-
-            return (
-              <section key={group.key} className={`overflow-hidden rounded-[20px] border border-[var(--pm-border)] bg-white ${group.accentClass}`}>
-                <button
-                  type="button"
-                  onClick={() => setCollapsed((previous) => ({ ...previous, [group.key]: !isCollapsed }))}
-                  className="flex w-full items-center justify-between gap-3 border-b border-[var(--pm-border)] bg-[var(--pm-gray-light)] px-4 py-3 text-left"
-                >
-                  <div className="flex items-center gap-3">
-                    <ChevronDown
-                      size={16}
-                      className={`text-[var(--pm-text-muted)] transition-transform ${isCollapsed ? "-rotate-90" : "rotate-0"}`}
-                    />
-                    <div>
-                      <p className="text-[15px] font-semibold text-[var(--pm-text)]">{group.label}</p>
-                      <p className="text-[11px] text-[var(--pm-text-muted)]">{group.tasks.length} tasks</p>
-                    </div>
-                  </div>
-                </button>
-
-                {!isCollapsed && (
-                  <div>
-                    {group.tasks.map((task) => (
-                      <button
-                        key={task.id}
-                        type="button"
-                        onClick={() => onTaskClick(task)}
-                        className="grid w-full grid-cols-[minmax(0,1.8fr)_120px_140px_110px_40px] items-center gap-3 border-b border-[var(--pm-border)] px-5 py-3 text-left transition-colors hover:bg-[#f8f9fb]"
-                      >
-                        <div className="min-w-0">
-                          <p className="truncate text-[14px] font-medium text-[var(--pm-text)]">{task.title}</p>
-                          {task.description && (
-                            <p className="truncate text-[12px] text-[var(--pm-text-muted)]">{task.description}</p>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-semibold ${getAvatarTone(task.assigneeName)}`}>
-                            {getInitials(task.assigneeName)}
-                          </span>
-                          <span className="truncate text-[12px] text-[var(--pm-text-secondary)]">{task.assigneeName ?? "Unassigned"}</span>
-                        </div>
-                        <StatusChip status={task.status} />
-                        <span className="text-[12px] text-[var(--pm-text-secondary)]">{formatDueDate(task.dueDate)}</span>
-                        <span className="text-right text-[var(--pm-text-muted)]">+</span>
-                      </button>
-                    ))}
-
-                    <div className="border-b border-[var(--pm-border)] px-5 py-3">
-                      <button
-                        type="button"
-                        onClick={() => onOpenAddTask(group)}
-                        className="flex w-full items-center gap-2 rounded-xl border border-dashed border-[var(--pm-border)] bg-[var(--pm-gray-light)] px-3 py-2 text-[13px] text-[var(--pm-text-muted)] transition-colors hover:border-[var(--pm-border)] hover:text-[var(--pm-text-secondary)]"
-                      >
-                        <Plus size={14} />
-                        Add task
-                      </button>
-                    </div>
-
-                    <div className="px-5 py-3">
-                      <GroupProgressStrip tasks={group.tasks} />
-                    </div>
-                  </div>
-                )}
-              </section>
-            );
-          })}
-        </div>
+    <div
+      style={{
+        border: "1px solid var(--border)",
+        borderRadius: "var(--radius-card)",
+        overflow: "hidden",
+        background: "var(--surface)",
+      }}
+    >
+      {/* Column header */}
+      <div className={`pm-table-header grid ${GRID_COLS}`}>
+        <span />
+        <span>Task</span>
+        <span>Priority</span>
+        <span>Owner</span>
+        <span>Status</span>
+        <span>Due</span>
+        <span />
       </div>
 
-      <button
-        type="button"
-        onClick={onAddGroup}
-        className="flex w-full items-center justify-center gap-2 rounded-[18px] border border-dashed border-[var(--pm-border)] bg-[var(--pm-gray-light)] px-4 py-3 text-[13px] font-medium text-[var(--pm-text-muted)] transition-colors hover:border-[#4a5f83] hover:text-[var(--pm-text)]"
-      >
-        <Plus size={14} />
-        Add new group
-      </button>
+      {groups.map((group) => {
+        const isCollapsed = collapsed[group.key] ?? false;
+
+        return (
+          <section key={group.key}>
+            {/* Group header */}
+            <div
+              className={`pm-group-header ${groupAccentClass(group.key)}`}
+              style={{ cursor: "pointer" }}
+              onClick={() => setCollapsed((prev) => ({ ...prev, [group.key]: !isCollapsed }))}
+            >
+              <ChevronDown
+                size={14}
+                style={{
+                  color: "var(--text-muted)",
+                  transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)",
+                  transition: "transform 0.15s",
+                  flexShrink: 0,
+                }}
+              />
+              <span style={{ fontSize: "14px", fontWeight: 600, color: "var(--text-1)" }}>
+                {group.label}
+              </span>
+              <span
+                style={{
+                  fontSize: "12px",
+                  color: "var(--text-muted)",
+                  background: "var(--surface-2)",
+                  borderRadius: "var(--radius-badge)",
+                  padding: "1px 8px",
+                }}
+              >
+                {group.tasks.length} tasks
+              </span>
+            </div>
+
+            {!isCollapsed && (
+              <>
+                {group.tasks.map((task) => (
+                  <div
+                    key={task.id}
+                    className={`pm-table-row grid ${GRID_COLS}`}
+                    style={{ position: "relative" }}
+                  >
+                    {/* Checkbox */}
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+
+                    {/* Task name */}
+                    <button
+                      type="button"
+                      onClick={() => onTaskClick(task)}
+                      style={{
+                        fontSize: "14px",
+                        fontWeight: 400,
+                        color: "var(--text-1)",
+                        textAlign: "left",
+                        background: "none",
+                        border: "none",
+                        padding: 0,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {task.title}
+                    </button>
+
+                    {/* Priority dot */}
+                    <div style={{ display: "flex", alignItems: "center" }}>
+                      <span
+                        style={{
+                          width: "8px",
+                          height: "8px",
+                          borderRadius: "50%",
+                          flexShrink: 0,
+                          ...priorityDotStyle(task.priority),
+                        }}
+                        title={task.priority ?? "low"}
+                      />
+                    </div>
+
+                    {/* Owner avatar */}
+                    <div style={{ display: "flex", alignItems: "center" }}>
+                      <span
+                        className={`inline-flex items-center justify-center rounded-full text-[10px] font-semibold ${getAvatarTone(task.assigneeName)}`}
+                        style={{ width: "28px", height: "28px", flexShrink: 0 }}
+                        title={task.assigneeName ?? "Unassigned"}
+                      >
+                        {getInitials(task.assigneeName)}
+                      </span>
+                    </div>
+
+                    {/* Status pill — clickable */}
+                    <div style={{ position: "relative" }}>
+                      <button
+                        type="button"
+                        className={statusPillClass(task.status)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setStatusOpen((prev) => (prev === task.id ? null : task.id));
+                        }}
+                        style={{ cursor: "pointer" }}
+                      >
+                        {statusLabel(task.status)}
+                      </button>
+
+                      {statusOpen === task.id && (
+                        <div
+                          onMouseDown={(e) => e.stopPropagation()}
+                          style={{
+                            position: "absolute",
+                            top: "calc(100% + 4px)",
+                            left: 0,
+                            zIndex: 50,
+                            background: "var(--surface)",
+                            border: "1px solid var(--border)",
+                            borderRadius: "var(--radius-card)",
+                            boxShadow: "var(--shadow-2)",
+                            minWidth: "140px",
+                            overflow: "hidden",
+                          }}
+                        >
+                          {ALL_STATUSES.map((s) => (
+                            <button
+                              key={s.value}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onStatusChange?.(task.id, s.value);
+                                setStatusOpen(null);
+                              }}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                width: "100%",
+                                padding: "8px 12px",
+                                background: "none",
+                                border: "none",
+                                cursor: "pointer",
+                                textAlign: "left",
+                              }}
+                              className="hover:bg-[var(--surface-2)]"
+                            >
+                              <span className={s.pillClass}>{s.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Due date */}
+                    <span
+                      style={{
+                        fontSize: "14px",
+                        color: isPastDue(task.dueDate) ? "var(--pm-red)" : "var(--text-muted)",
+                      }}
+                    >
+                      {formatDueDate(task.dueDate)}
+                    </span>
+
+                    {/* Empty last col */}
+                    <span />
+                  </div>
+                ))}
+
+                {/* Inline add task row */}
+                <div
+                  className={`pm-table-row grid ${GRID_COLS}`}
+                  style={{ cursor: "pointer", color: "var(--text-muted)" }}
+                  onClick={() => onOpenAddTask(group)}
+                >
+                  <span />
+                  <span
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      fontSize: "13px",
+                    }}
+                  >
+                    <Plus size={13} />
+                    Add task
+                  </span>
+                  <span />
+                  <span />
+                  <span />
+                  <span />
+                  <span />
+                </div>
+
+                {/* Progress strip */}
+                <div style={{ padding: "6px 16px 8px" }}>
+                  <GroupProgressStrip tasks={group.tasks} />
+                </div>
+              </>
+            )}
+          </section>
+        );
+      })}
     </div>
   );
 }
-

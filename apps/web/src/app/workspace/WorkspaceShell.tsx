@@ -6,6 +6,7 @@ import { WorkspaceSidebar, type WorkspaceSidebarNav } from "@/components/dashboa
 import type { WorkspaceSnapshot } from "@/app/dashboard/types";
 import { MeetingTranscriptModal } from "./MeetingTranscriptModal";
 import { WorkspaceChromeProvider } from "./WorkspaceChromeContext";
+import { WorkspaceTopBar } from "./WorkspaceTopBar";
 
 async function readJson<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -30,6 +31,7 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
   const [transcript, setTranscript] = useState("");
   const [meetingBusy, setMeetingBusy] = useState(false);
   const [notifCount, setNotifCount] = useState(0);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const projectIdFromPath = pathname?.match(/^\/workspace\/projects\/([^/]+)/)?.[1] ?? "";
 
@@ -131,13 +133,19 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
         <WorkspaceSidebar
           projects={projects}
           activeNav={activeNav}
-          mobileOpen={false}
-          onMobileClose={() => {}}
+          mobileOpen={mobileOpen}
+          onMobileClose={() => setMobileOpen(false)}
           userEmail={userEmail}
           pendingCount={pendingCount}
           notifCount={notifCount}
         />
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">{children}</div>
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <WorkspaceTopBar
+            userEmail={userEmail}
+            onMobileMenuOpen={() => setMobileOpen(true)}
+          />
+          {children}
+        </div>
       </div>
       <MeetingTranscriptModal
         open={meetingOpen}

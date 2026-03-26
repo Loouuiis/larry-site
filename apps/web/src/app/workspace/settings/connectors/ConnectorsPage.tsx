@@ -78,7 +78,6 @@ export function ConnectorsPage() {
     if (info?.installUrl) {
       window.location.href = info.installUrl;
     } else {
-      // Trigger install flow via existing connector API
       void fetch(`/api/workspace/connectors/${connector}/install`).then(async (res) => {
         const d = await readJson<{ installUrl?: string }>(res);
         if (d.installUrl) window.location.href = d.installUrl;
@@ -88,85 +87,234 @@ export function ConnectorsPage() {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="border-b border-[var(--pm-border)] bg-[var(--pm-surface)] px-8 py-6">
-        <h1 className="text-[22px] font-semibold text-[var(--pm-text)]">Connectors</h1>
-        <p className="mt-1 text-[14px] text-[var(--pm-text-secondary)]">
-          Connect your tools so Larry can read signals and take action across your stack.
+      {/* Page header */}
+      <div
+        style={{
+          borderBottom: "1px solid var(--border)",
+          background: "var(--surface)",
+          padding: "20px 32px",
+        }}
+      >
+        <h1 className="text-h1">Settings</h1>
+        <p className="text-body-sm" style={{ marginTop: "4px" }}>
+          Manage your workspace preferences and integrations.
         </p>
       </div>
 
-      <div className="mx-auto max-w-3xl px-8 py-6 space-y-4">
-        {(Object.keys(CONNECTOR_INFO) as Array<keyof typeof CONNECTOR_INFO>).map((key) => {
-          const info = CONNECTOR_INFO[key];
-          const status = data[key];
-          const connected = Boolean(status?.connected);
-
-          return (
-            <div key={key} className="rounded-xl border border-[var(--pm-border)] bg-white p-6 shadow-sm">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">{info.icon}</span>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-[16px] font-semibold text-[var(--pm-text)]">{info.label}</h3>
-                      {connected ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-[#e6f9f0] px-2 py-0.5 text-[11px] font-semibold text-[#00854d]">
-                          <CheckCircle2 size={11} /> Connected
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-[#f0f1f5] px-2 py-0.5 text-[11px] font-semibold text-[#9699a8]">
-                          <Circle size={11} /> Not connected
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-1 text-[13px] text-[var(--pm-text-secondary)] max-w-lg leading-relaxed">
-                      {info.description}
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleConnect(key)}
-                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-4 py-2 text-[13px] font-medium transition ${
-                    connected
-                      ? "border border-[var(--pm-border)] bg-white text-[var(--pm-text-secondary)] hover:bg-[var(--pm-gray-light)]"
-                      : "bg-[#6366f1] text-white hover:bg-[#4f46e5]"
-                  }`}
-                >
-                  {connected ? (
-                    <><ExternalLink size={13} /> Reconnect</>
-                  ) : (
-                    <><Zap size={13} /> Connect</>
-                  )}
-                </button>
-              </div>
-
-              {/* Recent events */}
-              {status?.recentEvents && status.recentEvents.length > 0 && (
-                <div className="mt-4 border-t border-[var(--pm-border)] pt-4">
-                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--pm-text-muted)]">
-                    Recent signals
-                  </p>
-                  <div className="space-y-1">
-                    {status.recentEvents.slice(0, 3).map((ev) => (
-                      <div key={ev.id} className="flex items-center justify-between text-[12px]">
-                        <span className="text-[var(--pm-text-secondary)] truncate max-w-[280px]">{ev.title}</span>
-                        <span className="text-[var(--pm-text-muted)] shrink-0 ml-2">{timeAgo(ev.createdAt)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {connected && !status?.recentEvents?.length && (
-                <p className="mt-4 border-t border-[var(--pm-border)] pt-3 text-[12px] text-[var(--pm-text-muted)]">
-                  No recent events from this connector yet.
+      <div
+        style={{
+          maxWidth: "768px",
+          margin: "0 auto",
+          padding: "24px 32px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "24px",
+        }}
+      >
+        {/* Workspace Settings section */}
+        <section
+          style={{
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius-card)",
+            padding: "20px",
+            background: "var(--surface)",
+          }}
+        >
+          <h2 className="text-h2">Workspace Settings</h2>
+          <p className="text-body-sm" style={{ marginTop: "4px" }}>
+            Configure your workspace preferences.
+          </p>
+          <div style={{ marginTop: "16px", display: "flex", flexDirection: "column", gap: "10px" }}>
+            {/* Workspace name */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "12px",
+                border: "1px solid var(--border)",
+                borderRadius: "8px",
+                background: "var(--surface)",
+              }}
+            >
+              <div>
+                <p style={{ fontSize: "14px", fontWeight: 500, color: "var(--text-1)" }}>
+                  Workspace name
                 </p>
-              )}
+                <p className="text-body-sm">Larry Workspace</p>
+              </div>
+              <button className="pm-btn pm-btn-secondary pm-btn-sm">Edit</button>
             </div>
-          );
-        })}
+
+            {/* Timezone */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "12px",
+                border: "1px solid var(--border)",
+                borderRadius: "8px",
+                background: "var(--surface)",
+              }}
+            >
+              <div>
+                <p style={{ fontSize: "14px", fontWeight: 500, color: "var(--text-1)" }}>
+                  Timezone
+                </p>
+                <p className="text-body-sm">UTC (default)</p>
+              </div>
+              <button className="pm-btn pm-btn-secondary pm-btn-sm">Change</button>
+            </div>
+
+            {/* Notification preferences */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "12px",
+                border: "1px solid var(--border)",
+                borderRadius: "8px",
+                background: "var(--surface)",
+              }}
+            >
+              <div>
+                <p style={{ fontSize: "14px", fontWeight: 500, color: "var(--text-1)" }}>
+                  Notification preferences
+                </p>
+                <p className="text-body-sm">Email notifications for approvals</p>
+              </div>
+              <button className="pm-btn pm-btn-secondary pm-btn-sm">Configure</button>
+            </div>
+          </div>
+        </section>
+
+        {/* Connectors section */}
+        <section>
+          <h2 className="text-h2" style={{ marginBottom: "4px" }}>Connectors</h2>
+          <p className="text-body-sm" style={{ marginBottom: "16px" }}>
+            Connect your tools so Larry can read signals and take action across your stack.
+          </p>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            {(Object.keys(CONNECTOR_INFO) as Array<keyof typeof CONNECTOR_INFO>).map((key) => {
+              const info = CONNECTOR_INFO[key];
+              const status = data[key];
+              const connected = Boolean(status?.connected);
+
+              return (
+                <div
+                  key={key}
+                  style={{
+                    borderRadius: "var(--radius-card)",
+                    border: "1px solid var(--border)",
+                    background: "var(--surface)",
+                    padding: "20px",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "16px" }}>
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: "12px" }}>
+                      <span style={{ fontSize: "22px", lineHeight: 1 }}>{info.icon}</span>
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <h3 className="text-h2">{info.label}</h3>
+                          {connected ? (
+                            <span
+                              className="pm-pill"
+                              style={{ background: "#e6f9f0", color: "#00854d", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                            >
+                              <CheckCircle2 size={10} /> Connected
+                            </span>
+                          ) : (
+                            <span
+                              className="pm-pill"
+                              style={{ background: "var(--surface-2)", color: "var(--text-disabled)", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                            >
+                              <Circle size={10} /> Not connected
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-body-sm" style={{ marginTop: "4px", maxWidth: "440px" }}>
+                          {info.description}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleConnect(key)}
+                      className={`pm-btn pm-btn-sm ${connected ? "pm-btn-secondary" : "pm-btn-primary"}`}
+                      style={{ display: "inline-flex", alignItems: "center", gap: "6px", flexShrink: 0 }}
+                    >
+                      {connected ? (
+                        <><ExternalLink size={12} /> Reconnect</>
+                      ) : (
+                        <><Zap size={12} /> Connect</>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* Recent events */}
+                  {status?.recentEvents && status.recentEvents.length > 0 && (
+                    <div
+                      style={{
+                        marginTop: "14px",
+                        borderTop: "1px solid var(--border)",
+                        paddingTop: "14px",
+                      }}
+                    >
+                      <p
+                        style={{
+                          marginBottom: "8px",
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.1em",
+                          color: "var(--text-muted)",
+                        }}
+                      >
+                        Recent signals
+                      </p>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                        {status.recentEvents.slice(0, 3).map((ev) => (
+                          <div
+                            key={ev.id}
+                            style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "12px" }}
+                          >
+                            <span
+                              className="text-body-sm"
+                              style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "300px" }}
+                            >
+                              {ev.title}
+                            </span>
+                            <span style={{ flexShrink: 0, marginLeft: "8px", fontSize: "11px", color: "var(--text-disabled)" }}>
+                              {timeAgo(ev.createdAt)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {connected && !status?.recentEvents?.length && (
+                    <p
+                      style={{
+                        marginTop: "14px",
+                        borderTop: "1px solid var(--border)",
+                        paddingTop: "12px",
+                        fontSize: "12px",
+                        color: "var(--text-muted)",
+                      }}
+                    >
+                      No recent events from this connector yet.
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
       </div>
     </div>
   );

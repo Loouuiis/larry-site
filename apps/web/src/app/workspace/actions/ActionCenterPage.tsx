@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, RefreshCw, Send, ShieldCheck, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, RefreshCw, Send, ShieldCheck, X } from "lucide-react";
 import { ActionCardViewModel, EmailDraft, WorkspaceAction } from "@/app/dashboard/types";
 import { useActionCenter } from "@/app/dashboard/useActionCenter";
 import { SourceContextCard } from "./SourceContextCard";
@@ -12,16 +12,9 @@ interface EmailDraftEditState {
   body: string;
 }
 
-
-function impactBadge(impact: ActionCardViewModel["impact"]): { label: string; bg: string } {
-  if (impact === "high") return { label: "High impact", bg: "bg-[var(--pm-red-light)] text-[var(--pm-red)]" };
-  if (impact === "medium") return { label: "Medium", bg: "bg-[var(--pm-orange-light)] text-[#b87900]" };
-  return { label: "Low", bg: "bg-[#e6f0ff] text-[var(--pm-blue)]" };
-}
-
-function confidenceBar(confidence: string): number {
-  const value = parseFloat(confidence);
-  return Number.isNaN(value) ? 0 : Math.min(1, Math.max(0, value)) * 100;
+interface ProjectInfo {
+  id: string;
+  name: string;
 }
 
 function readPayloadString(payload: Record<string, unknown> | undefined, ...keys: string[]): string {
@@ -52,11 +45,6 @@ async function readJson<T>(response: Response): Promise<T> {
   } catch {
     return { error: text } as T;
   }
-}
-
-interface ProjectInfo {
-  id: string;
-  name: string;
 }
 
 function humanizeStr(value: string): string {
@@ -103,6 +91,40 @@ function buildActionTitle(action: WorkspaceAction): string {
   }
 }
 
+function buildSourceSummary(action: WorkspaceAction): string {
+  const p = action.payload ?? {};
+  const source = readPayloadString(p as Record<string, unknown>, "sourceType", "source", "channel", "platform");
+  const context = readPayloadString(p as Record<string, unknown>, "sourceContext", "context", "summary", "reason");
+  if (source && context) return `${humanizeStr(source)}: ${context}`;
+  if (context) return context;
+  if (source) return `Via ${humanizeStr(source)}`;
+  return action.reason ?? "No source context";
+}
+
+function relativeTime(value: unknown): string {
+  if (typeof value !== "string" || !value) return "";
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return "";
+  const diffMs = Date.now() - d.getTime();
+  const diffMins = Math.floor(diffMs / 60_000);
+  if (diffMins < 1) return "just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return fmtDate(value);
+}
+
+function confidenceNumber(confidence: string): number {
+  const value = parseFloat(confidence);
+  if (Number.isNaN(value)) return 0;
+  // Handle 0–1 range vs 0–100 range
+  return value <= 1 ? Math.round(value * 100) : Math.round(value);
+}
+
+type FilterTab = { id: string; name: string };
+
 export function ActionCenterPage() {
   const [loading, setLoading] = useState(true);
   const [rawActions, setRawActions] = useState<WorkspaceAction[]>([]);
@@ -110,6 +132,19 @@ export function ActionCenterPage() {
   const [projectFilter, setProjectFilter] = useState<string>("all");
   const [emailDraftEdits, setEmailDraftEdits] = useState<Record<string, EmailDraftEditState>>({});
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  const toggleExpanded = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -162,7 +197,9 @@ export function ActionCenterPage() {
       }
 
       for (const actionId of Object.keys(next)) {
-        const stillExists = rawActions.some((action) => action.id === actionId && action.actionType === "email_draft");
+        const stillExists = rawActions.some(
+          (action) => action.id === actionId && action.actionType === "email_draft"
+        );
         if (!stillExists) {
           delete next[actionId];
           changed = true;
@@ -184,276 +221,544 @@ export function ActionCenterPage() {
     sendEmailDraft,
   } = useActionCenter(rawActions, rawDrafts);
 
-  // Build project tabs from actions
   const projectsWithActions = useMemo(() => {
-    const ids = Array.from(new Set(rawActions.map((a) => a.projectId).filter(Boolean) as string[]));
+    const ids = Array.from(
+      new Set(rawActions.map((a) => a.projectId).filter(Boolean) as string[])
+    );
     return ids.map((id) => ({
       id,
       name: projects.find((p) => p.id === id)?.name ?? "Unknown project",
     }));
   }, [rawActions, projects]);
 
-  const filteredActions = projectFilter === "all"
-    ? rawActions
-    : rawActions.filter((a) => a.projectId === projectFilter);
+  const filterTabs: FilterTab[] = useMemo(
+    () => [
+      { id: "all", name: "All" },
+      { id: "__high__", name: "High Impact" },
+      ...projectsWithActions,
+    ],
+    [projectsWithActions]
+  );
 
-  // Group actions by project for the "All" view
-  const groupedByProject = useMemo(() => {
-    if (projectFilter !== "all") return null;
-    const map = new Map<string, { projectName: string; actions: WorkspaceAction[] }>();
-    for (const action of rawActions) {
-      const pid = action.projectId ?? "__none__";
-      const name = pid === "__none__"
-        ? "Unassigned project"
-        : (projects.find((p) => p.id === pid)?.name ?? "Unknown project");
-      if (!map.has(pid)) map.set(pid, { projectName: name, actions: [] });
-      map.get(pid)!.actions.push(action);
+  const filteredActions = useMemo(() => {
+    if (projectFilter === "all") return rawActions;
+    if (projectFilter === "__high__") {
+      // High impact across all projects, sorted by confidence ascending (lowest first)
+      return [...rawActions]
+        .filter((a) => {
+          const card = actionCards.find((c) => c.id === a.id);
+          return card?.impact === "high";
+        })
+        .sort((a, b) => {
+          const cardA = actionCards.find((c) => c.id === a.id);
+          const cardB = actionCards.find((c) => c.id === b.id);
+          const confA = confidenceNumber(cardA?.confidence ?? "0");
+          const confB = confidenceNumber(cardB?.confidence ?? "0");
+          return confA - confB;
+        });
     }
-    return Array.from(map.values());
-  }, [rawActions, projects, projectFilter]);
+    return rawActions.filter((a) => a.projectId === projectFilter);
+  }, [rawActions, actionCards, projectFilter]);
 
-  const showEmailDrafts = projectFilter === "all";
+  const totalCount = actionCards.length + drafts.length;
 
-  function renderActionCard(rawAction: WorkspaceAction) {
+  function renderActionRow(rawAction: WorkspaceAction) {
     const card = actionCards.find((item) => item.id === rawAction.id);
     if (!card) return null;
 
-    const badge = impactBadge(card.impact);
-    const confidenceWidth = confidenceBar(card.confidence);
+    const isExpanded = expandedIds.has(rawAction.id);
     const isEmailDraftAction = rawAction.actionType === "email_draft";
     const draftEditState = isEmailDraftAction
-      ? emailDraftEdits[card.id] ?? buildEmailDraftEditState(rawAction)
+      ? (emailDraftEdits[card.id] ?? buildEmailDraftEditState(rawAction))
       : null;
 
+    const confNum = confidenceNumber(card.confidence);
+    const sourceSummary = buildSourceSummary(rawAction);
+    const timestamp = relativeTime(
+      rawAction.createdAt ?? rawAction.payload?.createdAt ?? rawAction.payload?.timestamp
+    );
+
+    const impactRowClass =
+      card.impact === "high"
+        ? "pm-action-row pm-action-row-high"
+        : card.impact === "medium"
+        ? "pm-action-row pm-action-row-medium"
+        : "pm-action-row pm-action-row-low";
+
     return (
-      <article
-        key={card.id}
-        className={`rounded-xl border bg-white p-5 shadow-sm ${
-          card.impact === "high" ? "border-l-4 border-l-[#E2445C] border-[#e6e9ef]"
-            : card.impact === "medium" ? "border-l-4 border-l-[#FDAB3D] border-[#e6e9ef]"
-            : "border-l-4 border-l-[#0073EA] border-[#e6e9ef]"
-        }`}
-      >
-        <div className="mb-4 flex items-start justify-between gap-3">
-          <div>
-            <h3 className="text-[15px] font-semibold text-[var(--pm-text)]">
-              {buildActionTitle(rawAction)}
-            </h3>
-            <span className={`mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${badge.bg}`}>
-              {badge.label}
-            </span>
+      <div key={rawAction.id} className={impactRowClass}>
+        {/* Collapsed header — always visible, click to toggle */}
+        <button
+          type="button"
+          onClick={() => toggleExpanded(rawAction.id)}
+          className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left"
+          style={{ minHeight: 44 }}
+          aria-expanded={isExpanded}
+        >
+          {/* Left: title + source summary */}
+          <div className="min-w-0 flex-1">
+            <div className="text-h3 truncate">{buildActionTitle(rawAction)}</div>
+            <div className="text-body-sm mt-0.5 truncate" style={{ color: "var(--text-muted)" }}>
+              {sourceSummary}
+            </div>
           </div>
-        </div>
 
-        <div className="mb-4 space-y-3">
-          <SourceContextCard action={rawAction} />
+          {/* Confidence */}
+          <div
+            className="text-body-sm shrink-0"
+            style={{ color: "var(--text-muted)" }}
+          >
+            {confNum}% confidence
+          </div>
 
-          {rawAction.signals && rawAction.signals.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {rawAction.signals.map((signal, index) => (
-                <span
-                  key={`${rawAction.id}-signal-${index}`}
-                  className="rounded-full bg-[#f0f1f5] px-2 py-0.5 text-[11px] text-[var(--pm-text-secondary)]"
-                >
-                  {signal}
-                </span>
-              ))}
+          {/* Timestamp */}
+          {timestamp && (
+            <div
+              className="text-body-sm shrink-0"
+              style={{ color: "var(--text-muted)" }}
+            >
+              {timestamp}
             </div>
           )}
 
-          <div className="flex items-center gap-2">
-            <span className="w-20 shrink-0 text-[12px] text-[var(--pm-text-muted)]">Confidence</span>
-            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--pm-gray-light)]">
-              <div
-                className="h-full rounded-full bg-[#6366f1]"
-                style={{ width: `${confidenceWidth}%` }}
-              />
+          {/* Chevron */}
+          <span className="shrink-0 text-[var(--text-muted)]">
+            {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </span>
+        </button>
+
+        {/* Expanded details */}
+        {isExpanded && (
+          <div
+            className="px-4 pb-4"
+            style={{ borderTop: "1px solid var(--border)" }}
+          >
+            <div className="mt-4 space-y-3">
+              {/* Source context card */}
+              <SourceContextCard action={rawAction} />
+
+              {/* Signals pills */}
+              {rawAction.signals && rawAction.signals.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {rawAction.signals.map((signal, index) => (
+                    <span
+                      key={`${rawAction.id}-signal-${index}`}
+                      className="rounded-full px-2 py-0.5 text-[11px]"
+                      style={{
+                        background: "var(--surface-2)",
+                        color: "var(--text-muted)",
+                      }}
+                    >
+                      {signal}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Policy explanation */}
+              {card.threshold && (
+                <p className="text-caption" style={{ color: "var(--text-muted)" }}>
+                  Policy: {card.threshold}
+                </p>
+              )}
+
+              {/* Email draft editor */}
+              {isEmailDraftAction && draftEditState && (
+                <div
+                  className="mt-3 grid gap-3 rounded-[var(--radius-card)] p-4"
+                  style={{
+                    border: "1px solid var(--border)",
+                    background: "var(--surface-2)",
+                  }}
+                >
+                  <label
+                    className="grid gap-1"
+                    style={{ fontSize: 12, fontWeight: 500, color: "var(--text-2)" }}
+                  >
+                    To
+                    <input
+                      value={draftEditState.recipient}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setEmailDraftEdits((previous) => ({
+                          ...previous,
+                          [card.id]: {
+                            ...(previous[card.id] ?? draftEditState),
+                            recipient: value,
+                          },
+                        }));
+                      }}
+                      className="h-10 rounded-[var(--radius-btn)] px-3 outline-none"
+                      style={{
+                        border: "1px solid var(--border)",
+                        background: "var(--surface)",
+                        fontSize: 13,
+                        color: "var(--text-1)",
+                      }}
+                    />
+                  </label>
+                  <label
+                    className="grid gap-1"
+                    style={{ fontSize: 12, fontWeight: 500, color: "var(--text-2)" }}
+                  >
+                    Subject
+                    <input
+                      value={draftEditState.subject}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setEmailDraftEdits((previous) => ({
+                          ...previous,
+                          [card.id]: {
+                            ...(previous[card.id] ?? draftEditState),
+                            subject: value,
+                          },
+                        }));
+                      }}
+                      className="h-10 rounded-[var(--radius-btn)] px-3 outline-none"
+                      style={{
+                        border: "1px solid var(--border)",
+                        background: "var(--surface)",
+                        fontSize: 13,
+                        color: "var(--text-1)",
+                      }}
+                    />
+                  </label>
+                  <label
+                    className="grid gap-1"
+                    style={{ fontSize: 12, fontWeight: 500, color: "var(--text-2)" }}
+                  >
+                    Body
+                    <textarea
+                      value={draftEditState.body}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setEmailDraftEdits((previous) => ({
+                          ...previous,
+                          [card.id]: {
+                            ...(previous[card.id] ?? draftEditState),
+                            body: value,
+                          },
+                        }));
+                      }}
+                      rows={6}
+                      className="rounded-[var(--radius-btn)] px-3 py-2 outline-none"
+                      style={{
+                        border: "1px solid var(--border)",
+                        background: "var(--surface)",
+                        fontSize: 13,
+                        color: "var(--text-1)",
+                      }}
+                    />
+                  </label>
+                </div>
+              )}
             </div>
-            <span className="w-10 text-right text-[12px] text-[var(--pm-text-muted)]">{card.confidence}</span>
-          </div>
 
-          <p className="text-[12px] text-[var(--pm-text-muted)]">Policy: {card.threshold}</p>
-        </div>
-
-        {isEmailDraftAction && draftEditState && (
-          <div className="mb-4 grid gap-3 rounded-xl border border-[var(--pm-border)] bg-[var(--pm-gray-light)] p-4">
-            <label className="grid gap-1 text-[12px] font-medium text-[var(--pm-text-secondary)]">
-              To
-              <input
-                value={draftEditState.recipient}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  setEmailDraftEdits((previous) => ({
-                    ...previous,
-                    [card.id]: { ...(previous[card.id] ?? draftEditState), recipient: value },
-                  }));
-                }}
-                className="h-10 rounded-lg border border-[var(--pm-border)] bg-white px-3 text-[13px] text-[var(--pm-text)] outline-none focus:border-[var(--pm-blue)]"
-              />
-            </label>
-            <label className="grid gap-1 text-[12px] font-medium text-[var(--pm-text-secondary)]">
-              Subject
-              <input
-                value={draftEditState.subject}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  setEmailDraftEdits((previous) => ({
-                    ...previous,
-                    [card.id]: { ...(previous[card.id] ?? draftEditState), subject: value },
-                  }));
-                }}
-                className="h-10 rounded-lg border border-[var(--pm-border)] bg-white px-3 text-[13px] text-[var(--pm-text)] outline-none focus:border-[var(--pm-blue)]"
-              />
-            </label>
-            <label className="grid gap-1 text-[12px] font-medium text-[var(--pm-text-secondary)]">
-              Body
-              <textarea
-                value={draftEditState.body}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  setEmailDraftEdits((previous) => ({
-                    ...previous,
-                    [card.id]: { ...(previous[card.id] ?? draftEditState), body: value },
-                  }));
-                }}
-                rows={6}
-                className="rounded-lg border border-[var(--pm-border)] bg-white px-3 py-2 text-[13px] text-[var(--pm-text)] outline-none focus:border-[var(--pm-blue)]"
-              />
-            </label>
+            {/* Action buttons */}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={actionBusyId === card.id}
+                onClick={() =>
+                  void handleActionDecision(
+                    card.id,
+                    "approve",
+                    isEmailDraftAction && draftEditState
+                      ? {
+                          overridePayload: {
+                            to: draftEditState.recipient,
+                            recipient: draftEditState.recipient,
+                            subject: draftEditState.subject,
+                            body: draftEditState.body,
+                          },
+                        }
+                      : {}
+                  )
+                }
+                className="pm-btn pm-btn-sm pm-btn-success inline-flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <Check size={14} />
+                {isEmailDraftAction ? "Send draft" : "Approve"}
+              </button>
+              <button
+                type="button"
+                disabled={actionBusyId === card.id}
+                onClick={() => void handleActionDecision(card.id, "reject")}
+                className="pm-btn pm-btn-sm pm-btn-danger inline-flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <X size={14} />
+                Reject
+              </button>
+              <button
+                type="button"
+                disabled={correctionBusyId === card.id}
+                onClick={() => void handleActionCorrect(card.id)}
+                className="pm-btn pm-btn-sm pm-btn-secondary inline-flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <RefreshCw size={14} />
+                Correct
+              </button>
+            </div>
           </div>
         )}
-
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            disabled={actionBusyId === card.id}
-            onClick={() => void handleActionDecision(
-              card.id,
-              "approve",
-              isEmailDraftAction && draftEditState
-                ? { overridePayload: { to: draftEditState.recipient, recipient: draftEditState.recipient, subject: draftEditState.subject, body: draftEditState.body } }
-                : {}
-            )}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[#00C875] px-3 text-[13px] font-semibold text-white disabled:opacity-50"
-          >
-            <Check size={14} /> {isEmailDraftAction ? "Send draft" : "Approve"}
-          </button>
-          <button
-            type="button"
-            disabled={actionBusyId === card.id}
-            onClick={() => void handleActionDecision(card.id, "reject")}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[#E2445C] px-3 text-[13px] font-semibold text-white disabled:opacity-50"
-          >
-            <X size={14} /> Reject
-          </button>
-          <button
-            type="button"
-            disabled={correctionBusyId === card.id}
-            onClick={() => void handleActionCorrect(card.id)}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#e6e9ef] bg-white px-3 text-[13px] font-semibold text-[#323338] disabled:opacity-50"
-          >
-            <RefreshCw size={14} /> Correct
-          </button>
-        </div>
-      </article>
+      </div>
     );
   }
 
+  const showEmailDrafts = projectFilter === "all";
+  const hasContent =
+    filteredActions.length > 0 || (showEmailDrafts && drafts.length > 0);
+
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="border-b border-[var(--pm-border)] bg-[var(--pm-surface)] px-8 py-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-[22px] font-semibold text-[var(--pm-text)]">Action Center</h1>
-            <p className="mt-1 text-[14px] text-[var(--pm-text-secondary)]">
-              Review what Larry found, why it matters, and the source before you approve.
-            </p>
-          </div>
-          <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-full bg-[#6366f1] px-2 text-[13px] font-bold text-white">
-            {actionCards.length + drafts.length}
-          </span>
+    <div
+      className="min-h-full overflow-y-auto px-6 py-6"
+      style={{ background: "var(--page-bg)" }}
+    >
+      {/* Page header */}
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-h1" style={{ color: "var(--text-1)" }}>
+            Action Centre
+          </h1>
+          <p
+            className="text-body-sm mt-1"
+            style={{ color: "var(--text-muted)" }}
+          >
+            Review what Larry found, why it matters, and the source before you approve.
+          </p>
         </div>
 
-        <div className="mt-4 flex items-center gap-0 overflow-x-auto border-b border-[var(--pm-border)]">
-          {[{ id: "all", name: "All" }, ...projectsWithActions].map((tab) => (
+        {/* Total count badge */}
+        <span
+          className="inline-flex shrink-0 items-center justify-center rounded-full px-2.5 py-0.5 text-[12px] font-semibold"
+          style={{
+            background: "var(--surface-2)",
+            color: "var(--text-2)",
+            border: "1px solid var(--border)",
+            minWidth: 28,
+            height: 24,
+          }}
+        >
+          {totalCount}
+        </span>
+      </div>
+
+      {/* Filter tabs */}
+      <div
+        className="mb-5 flex items-center overflow-x-auto"
+        style={{ borderBottom: "1px solid var(--border)" }}
+      >
+        {filterTabs.map((tab) => {
+          const isActive = projectFilter === tab.id;
+          return (
             <button
               key={tab.id}
               type="button"
               onClick={() => setProjectFilter(tab.id)}
-              className={`relative shrink-0 px-4 pb-2 pt-1 text-[14px] font-medium transition-colors ${
-                projectFilter === tab.id
-                  ? "text-[var(--pm-blue)]"
-                  : "text-[var(--pm-text-secondary)] hover:text-[var(--pm-text)]"
-              }`}
+              className="relative shrink-0 px-4 pb-2 pt-1 transition-colors"
+              style={{
+                fontSize: 14,
+                fontWeight: 500,
+                color: isActive ? "var(--cta)" : "var(--text-muted)",
+                borderBottom: isActive
+                  ? "2px solid var(--cta)"
+                  : "2px solid transparent",
+                background: "none",
+                border: "none",
+                borderBottomWidth: 2,
+                borderBottomStyle: "solid",
+                borderBottomColor: isActive ? "var(--cta)" : "transparent",
+                cursor: "pointer",
+              }}
             >
               {tab.name}
-              {projectFilter === tab.id && (
-                <span className="absolute bottom-0 left-0 right-0 h-[2px] rounded-t bg-[var(--pm-blue)]" />
-              )}
             </button>
+          );
+        })}
+      </div>
+
+      {/* Skeleton loading */}
+      {loading && (
+        <div
+          className="overflow-hidden"
+          style={{
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius-card)",
+            background: "var(--surface)",
+          }}
+        >
+          {[1, 2, 3].map((n) => (
+            <div
+              key={n}
+              className="px-4 py-3"
+              style={{ borderBottom: n < 3 ? "1px solid var(--border)" : undefined }}
+            >
+              <div
+                className="pm-shimmer mb-2 h-4 rounded"
+                style={{ width: "55%" }}
+              />
+              <div
+                className="pm-shimmer h-3 rounded"
+                style={{ width: "35%" }}
+              />
+            </div>
           ))}
         </div>
-      </div>
+      )}
 
-      <div className="mx-auto max-w-4xl space-y-4 px-8 py-6">
-        {loading && (
-          <p className="text-[14px] text-[var(--pm-text-muted)]">Loading...</p>
-        )}
+      {/* Content */}
+      {!loading && hasContent && (
+        <div className="space-y-5">
+          {/* Email drafts — all view only */}
+          {showEmailDrafts && drafts.length > 0 && (
+            <div
+              className="overflow-hidden"
+              style={{
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius-card)",
+                background: "var(--surface)",
+              }}
+            >
+              {drafts.map((draft, index) => {
+                const isExpanded = expandedIds.has(`draft-${draft.id}`);
+                return (
+                  <div
+                    key={draft.id}
+                    style={{
+                      borderBottom:
+                        index < drafts.length - 1
+                          ? "1px solid var(--border)"
+                          : undefined,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => toggleExpanded(`draft-${draft.id}`)}
+                      className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left"
+                      style={{ minHeight: 44 }}
+                      aria-expanded={isExpanded}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="text-h3 truncate">{draft.subject}</div>
+                        <div
+                          className="text-body-sm mt-0.5 truncate"
+                          style={{ color: "var(--text-muted)" }}
+                        >
+                          To: {draft.recipient}
+                        </div>
+                      </div>
+                      <span
+                        className="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                        style={{
+                          background: "#e6f0ff",
+                          color: "var(--cta)",
+                        }}
+                      >
+                        Email Draft
+                      </span>
+                      <span style={{ color: "var(--text-muted)" }}>
+                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      </span>
+                    </button>
 
-        {/* Email drafts - only in All view */}
-        {showEmailDrafts && drafts.map((draft) => (
-          <article key={draft.id} className="rounded-xl border border-[var(--pm-border)] bg-white p-5 shadow-sm">
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <div>
-                <span className="mb-1 inline-flex items-center rounded-full bg-[#e6f0ff] px-2 py-0.5 text-[11px] font-semibold text-[var(--pm-blue)]">
-                  Email Draft
-                </span>
-                <h3 className="text-[15px] font-semibold text-[var(--pm-text)]">{draft.subject}</h3>
-                <p className="text-[13px] text-[var(--pm-text-muted)]">To: {draft.recipient}</p>
-              </div>
+                    {isExpanded && (
+                      <div
+                        className="px-4 pb-4"
+                        style={{ borderTop: "1px solid var(--border)" }}
+                      >
+                        <div
+                          className="mt-4 max-h-32 overflow-y-auto rounded-[var(--radius-btn)] p-3 text-[13px] whitespace-pre-wrap"
+                          style={{
+                            border: "1px solid var(--border)",
+                            background: "var(--surface-2)",
+                            color: "var(--text-2)",
+                          }}
+                        >
+                          {draft.body}
+                        </div>
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            type="button"
+                            disabled={draftBusyId === draft.id}
+                            onClick={() => void sendEmailDraft(draft.id)}
+                            className="pm-btn pm-btn-sm inline-flex items-center gap-1.5 disabled:opacity-50"
+                            style={{
+                              background: "var(--cta)",
+                              color: "#fff",
+                            }}
+                          >
+                            <Send size={13} />
+                            Send
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-            <div className="max-h-32 overflow-y-auto rounded-lg border border-[var(--pm-border)] bg-[var(--pm-gray-light)] p-3 text-[13px] text-[var(--pm-text-secondary)] whitespace-pre-wrap">
-              {draft.body}
-            </div>
-            <div className="mt-3 flex gap-2">
-              <button
-                type="button"
-                disabled={draftBusyId === draft.id}
-                onClick={() => void sendEmailDraft(draft.id)}
-                className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[#0073EA] px-3 text-[13px] font-medium text-white disabled:opacity-50"
-              >
-                <Send size={13} /> Send
-              </button>
-            </div>
-          </article>
-        ))}
+          )}
 
-        {/* Project-grouped action cards */}
-        {groupedByProject
-          ? groupedByProject.map(({ projectName, actions: projectActions }) => (
-              <div key={projectName}>
-                <div className="mb-3 mt-2 flex items-center gap-3">
-                  <h2 className="text-[13px] font-semibold uppercase tracking-[0.14em] text-[var(--pm-text-muted)]">
-                    {projectName}
-                  </h2>
-                  <span className="rounded-full bg-[#e6f0ff] px-2 py-0.5 text-[11px] font-semibold text-[var(--pm-blue)]">
-                    {projectActions.length}
-                  </span>
-                </div>
-                {projectActions.map((rawAction) => renderActionCard(rawAction))}
-              </div>
-            ))
-          : filteredActions.map((rawAction) => renderActionCard(rawAction))
-        }
+          {/* Action rows list */}
+          {filteredActions.length > 0 && (
+            <div
+              className="overflow-hidden"
+              style={{
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius-card)",
+                background: "var(--surface)",
+              }}
+            >
+              {filteredActions.map((rawAction, index) => {
+                const row = renderActionRow(rawAction);
+                if (!row) return null;
+                return (
+                  <div
+                    key={rawAction.id}
+                    style={{
+                      borderBottom:
+                        index < filteredActions.length - 1
+                          ? "1px solid var(--border)"
+                          : undefined,
+                    }}
+                  >
+                    {row}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
-        {!loading && filteredActions.length === 0 && (projectFilter !== "all" || drafts.length === 0) && (
-          <div className="flex flex-col items-center rounded-xl border border-dashed border-[var(--pm-border)] bg-[var(--pm-surface)] py-16 text-center">
-            <ShieldCheck size={32} className="mb-3 text-[var(--pm-text-muted)] opacity-40" />
-            <p className="text-[15px] font-medium text-[var(--pm-text)]">All clear</p>
-            <p className="mt-1 text-[13px] text-[var(--pm-text-muted)]">No pending actions in this category.</p>
-          </div>
-        )}
-      </div>
+      {/* Empty state */}
+      {!loading && !hasContent && (
+        <div
+          className="flex flex-col items-center rounded-[var(--radius-card)] border-dashed py-16 text-center"
+          style={{
+            border: "1px dashed var(--border)",
+            background: "var(--surface)",
+          }}
+        >
+          <ShieldCheck
+            size={32}
+            className="mb-3 opacity-40"
+            style={{ color: "var(--text-muted)" }}
+          />
+          <p
+            className="text-h3"
+            style={{ fontSize: 15, color: "var(--text-1)" }}
+          >
+            All clear
+          </p>
+          <p
+            className="text-body-sm mt-1"
+            style={{ color: "var(--text-muted)" }}
+          >
+            No pending actions in this category.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

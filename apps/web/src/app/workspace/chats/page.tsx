@@ -87,18 +87,40 @@ function MessageBubble({ message }: { message: LarryMessage }) {
   return (
     <div className={`flex ${isLarry ? "justify-start" : "justify-end"}`}>
       <div
-        className={[
-          "max-w-[85%] rounded-[22px] px-4 py-3 text-[13px] leading-relaxed shadow-sm",
-          isLarry
-            ? "rounded-tl-md border border-[#d9e3f5] bg-[#f4f8ff] text-[var(--pm-text)]"
-            : "rounded-tr-md bg-[#0f62fe] text-white",
-        ].join(" ")}
+        style={{
+          maxWidth: "75%",
+          borderRadius: "18px",
+          padding: "10px 14px",
+          fontSize: "14px",
+          lineHeight: "1.55",
+          ...(isLarry
+            ? {
+                background: "var(--surface-2)",
+                color: "var(--text-1)",
+                border: "1px solid var(--border)",
+                borderTopLeftRadius: "4px",
+              }
+            : {
+                background: "var(--cta)",
+                color: "#ffffff",
+                borderTopRightRadius: "4px",
+              }),
+        }}
       >
         {isProcessing ? (
           <span className="flex items-center gap-1 py-1">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#0f62fe] animate-bounce" style={{ animationDelay: "0ms" }} />
-            <span className="h-1.5 w-1.5 rounded-full bg-[#0f62fe] animate-bounce" style={{ animationDelay: "120ms" }} />
-            <span className="h-1.5 w-1.5 rounded-full bg-[#0f62fe] animate-bounce" style={{ animationDelay: "240ms" }} />
+            <span
+              className="h-1.5 w-1.5 rounded-full animate-bounce"
+              style={{ background: "var(--cta)", animationDelay: "0ms" }}
+            />
+            <span
+              className="h-1.5 w-1.5 rounded-full animate-bounce"
+              style={{ background: "var(--cta)", animationDelay: "120ms" }}
+            />
+            <span
+              className="h-1.5 w-1.5 rounded-full animate-bounce"
+              style={{ background: "var(--cta)", animationDelay: "240ms" }}
+            />
           </span>
         ) : (
           <p>{message.content}</p>
@@ -378,179 +400,351 @@ export default function ChatsPage() {
   }
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top_left,_rgba(15,98,254,0.08),_transparent_32%),linear-gradient(180deg,_#f8fbff_0%,_#f3f5f9_100%)] p-6 lg:p-8">
-      <div className="mx-auto flex min-h-full w-full max-w-[1440px] flex-col gap-6">
-        <div className="flex flex-col gap-3 rounded-[28px] border border-[#d7dfec] bg-white/85 p-6 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur md:flex-row md:items-end md:justify-between">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#0f62fe]">
-              Larry Chats
-            </p>
-            <h1 className="mt-2 text-[28px] font-semibold tracking-[-0.03em] text-[var(--pm-text)]">
-              Project-grouped chat history, plus a live thread whenever you need Larry.
-            </h1>
-            <p className="mt-2 max-w-3xl text-[14px] text-[var(--pm-text-secondary)]">
-              Conversations are grouped by project so recent context stays easy to find, while the active pane keeps message history and commands in one place.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => startNewChat(activeProjectId)}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-[#0f62fe] px-5 text-[13px] font-semibold text-white shadow-[0_12px_30px_rgba(15,98,254,0.24)] transition hover:bg-[#0043ce]"
-          >
-            <Plus size={14} />
-            New Chat
-          </button>
-        </div>
-
+    <div
+      className="min-h-0 flex-1 overflow-y-auto"
+      style={{ background: "var(--page-bg)", padding: "24px" }}
+    >
+      <div style={{ display: "flex", minHeight: "100%", width: "100%", maxWidth: "1440px", margin: "0 auto", flexDirection: "column", gap: "20px" }}>
         {error && (
-          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] text-rose-700">
+          <div
+            style={{
+              borderRadius: "var(--radius-card)",
+              border: "1px solid #fecaca",
+              background: "#fef2f2",
+              padding: "12px 16px",
+              fontSize: "13px",
+              color: "#b91c1c",
+            }}
+          >
             {error}
           </div>
         )}
 
-        <div className="grid min-h-[720px] gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-          <aside className="flex min-h-0 flex-col rounded-[28px] border border-[#d7dfec] bg-white/92 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.06)]">
-            <div className="flex items-center justify-between border-b border-[#e5ebf5] px-2 pb-4">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">
-                  History
-                </p>
-                <p className="mt-1 text-[13px] text-[var(--pm-text-secondary)]">
-                  {loading ? "Loading conversations..." : `${conversations.length} saved conversations`}
-                </p>
-              </div>
+        <div
+          style={{
+            display: "grid",
+            minHeight: "720px",
+            gap: "20px",
+            gridTemplateColumns: "300px minmax(0,1fr)",
+          }}
+        >
+          {/* Sidebar */}
+          <aside
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              minHeight: 0,
+              borderRadius: "var(--radius-card)",
+              border: "1px solid var(--border)",
+              background: "var(--surface)",
+              overflow: "hidden",
+            }}
+          >
+            {/* Sidebar header */}
+            <div
+              style={{
+                padding: "16px",
+                borderBottom: "1px solid var(--border)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "8px",
+              }}
+            >
+              <h2 className="text-h1">Chats</h2>
+              <button
+                type="button"
+                onClick={() => startNewChat(activeProjectId)}
+                className="pm-btn pm-btn-sm pm-btn-primary"
+                style={{ height: "28px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+              >
+                <Plus size={12} />
+                New Chat
+              </button>
             </div>
 
-            <div className="mt-4 min-h-0 flex-1 space-y-5 overflow-y-auto pr-1">
+            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "12px" }}>
               {!loading && conversations.length === 0 && (
-                <div className="rounded-[24px] border border-dashed border-[#d7dfec] bg-[#f8fbff] px-5 py-10 text-center">
-                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#e8f0ff] text-[#0f62fe]">
-                    <Sparkles size={20} />
+                <div
+                  style={{
+                    borderRadius: "var(--radius-card)",
+                    border: "1px dashed var(--border)",
+                    background: "var(--surface-2)",
+                    padding: "40px 20px",
+                    textAlign: "center",
+                  }}
+                >
+                  <div
+                    style={{
+                      margin: "0 auto",
+                      display: "flex",
+                      height: "40px",
+                      width: "40px",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      borderRadius: "10px",
+                      background: "#e8f0ff",
+                      color: "var(--cta)",
+                    }}
+                  >
+                    <Sparkles size={18} />
                   </div>
-                  <p className="mt-4 text-[15px] font-semibold text-[var(--pm-text)]">
+                  <p
+                    style={{
+                      marginTop: "12px",
+                      fontSize: "14px",
+                      fontWeight: 600,
+                      color: "var(--text-1)",
+                    }}
+                  >
                     No saved chats yet
                   </p>
-                  <p className="mt-2 text-[13px] leading-relaxed text-[var(--pm-text-secondary)]">
-                    Start a conversation here and Larry will keep it in the right project lane.
+                  <p
+                    style={{
+                      marginTop: "6px",
+                      fontSize: "12px",
+                      lineHeight: "1.5",
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    Start a conversation and Larry will keep it grouped by project.
                   </p>
                 </div>
               )}
 
-              {groupedConversations.map((group) => (
-                <div key={group.key}>
-                  <div className="mb-2 flex items-center gap-2 px-2">
-                    <span className="h-2 w-2 rounded-full bg-[#0f62fe]" />
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--pm-text-muted)]">
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                {groupedConversations.map((group) => (
+                  <div key={group.key}>
+                    {/* Group header — caption style */}
+                    <p
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.12em",
+                        color: "var(--text-disabled)",
+                        padding: "0 4px",
+                        marginBottom: "6px",
+                      }}
+                    >
                       {group.label}
                     </p>
-                  </div>
-                  <div className="space-y-2">
-                    {group.conversations.map((conversation) => {
-                      const active = conversation.id === selectedConversationId;
-                      return (
-                        <button
-                          key={conversation.id}
-                          type="button"
-                          onClick={() => selectConversation(conversation)}
-                          className={[
-                            "w-full rounded-[22px] border px-4 py-3 text-left transition",
-                            active
-                              ? "border-[#0f62fe] bg-[#edf4ff] shadow-[0_12px_24px_rgba(15,98,254,0.12)]"
-                              : "border-[#e1e8f3] bg-white hover:border-[#b8c9ea] hover:bg-[#f8fbff]",
-                          ].join(" ")}
-                        >
-                          <div className="flex items-start gap-3">
-                            <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#edf4ff] text-[#0f62fe]">
-                              <MessageSquare size={16} />
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                      {group.conversations.map((conversation) => {
+                        const active = conversation.id === selectedConversationId;
+                        return (
+                          <button
+                            key={conversation.id}
+                            type="button"
+                            onClick={() => selectConversation(conversation)}
+                            style={{
+                              width: "100%",
+                              borderRadius: "var(--radius-btn)",
+                              border: `1px solid ${active ? "var(--cta)" : "var(--border)"}`,
+                              background: active ? "#EBF5FF" : "var(--surface)",
+                              padding: "8px 10px",
+                              textAlign: "left",
+                              cursor: "pointer",
+                              height: "60px",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "8px",
+                              transition: "border-color 0.15s, background 0.15s",
+                            }}
+                          >
+                            <div
+                              style={{
+                                flexShrink: 0,
+                                display: "flex",
+                                height: "28px",
+                                width: "28px",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                borderRadius: "6px",
+                                background: active ? "var(--cta)" : "var(--surface-2)",
+                                color: active ? "#fff" : "var(--text-muted)",
+                              }}
+                            >
+                              <MessageSquare size={13} />
                             </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-start justify-between gap-3">
-                                <p className="truncate text-[14px] font-semibold text-[var(--pm-text)]">
+                            <div style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "6px" }}>
+                                <p
+                                  style={{
+                                    fontSize: "13px",
+                                    fontWeight: 600,
+                                    color: "var(--text-1)",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
                                   {getConversationTitle(conversation)}
                                 </p>
-                                <span className="shrink-0 text-[11px] text-[var(--pm-text-muted)]">
+                                <span
+                                  style={{
+                                    flexShrink: 0,
+                                    fontSize: "11px",
+                                    color: "var(--text-muted)",
+                                  }}
+                                >
                                   {formatDate(conversation.lastMessageAt ?? conversation.updatedAt)}
                                 </span>
                               </div>
-                              <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-[var(--pm-text-secondary)]">
+                              <p
+                                style={{
+                                  marginTop: "2px",
+                                  fontSize: "12px",
+                                  color: "var(--text-muted)",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
                                 {getConversationPreview(conversation)}
                               </p>
                             </div>
-                          </div>
-                        </button>
-                      );
-                    })}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </aside>
 
-          <section className="flex min-h-0 flex-col overflow-hidden rounded-[32px] border border-[#d7dfec] bg-white shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
-            <div className="border-b border-[#e5ebf5] bg-[linear-gradient(135deg,_#0f62fe_0%,_#4589ff_100%)] px-6 py-5 text-white">
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/16">
-                  <Sparkles size={18} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/75">
-                    {activeProjectLabel}
-                  </p>
-                  <h2 className="truncate text-[22px] font-semibold tracking-[-0.03em]">
-                    {activeConversation ? getConversationTitle(activeConversation) : "Fresh conversation"}
-                  </h2>
-                </div>
-                <div className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-medium text-white/85">
-                  {activeProjectId ? "Project context" : "General workspace"}
-                </div>
+          {/* Active thread */}
+          <section
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              minHeight: 0,
+              overflow: "hidden",
+              borderRadius: "var(--radius-card)",
+              border: "1px solid var(--border)",
+              background: "var(--surface)",
+            }}
+          >
+            {/* Thread header — flat white, no gradient */}
+            <div
+              style={{
+                borderBottom: "1px solid var(--border)",
+                background: "var(--surface)",
+                padding: "14px 20px",
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+              }}
+            >
+              <div
+                style={{
+                  flexShrink: 0,
+                  display: "flex",
+                  height: "32px",
+                  width: "32px",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: "8px",
+                  background: "var(--surface-2)",
+                  color: "var(--brand)",
+                }}
+              >
+                <Sparkles size={15} />
+              </div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                {/* Project name chip */}
+                <span
+                  style={{
+                    display: "inline-block",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.1em",
+                    color: "var(--text-muted)",
+                    background: "var(--surface-2)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--radius-badge)",
+                    padding: "1px 8px",
+                    marginBottom: "2px",
+                  }}
+                >
+                  {activeProjectId ? activeProjectLabel : "General workspace"}
+                </span>
+                <h2
+                  style={{
+                    fontSize: "16px",
+                    fontWeight: 600,
+                    color: "var(--text-1)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {activeConversation ? getConversationTitle(activeConversation) : "Fresh conversation"}
+                </h2>
               </div>
             </div>
 
-            <div className="flex min-h-0 flex-1 flex-col bg-[linear-gradient(180deg,_#f8fbff_0%,_#ffffff_24%)]">
-              <div className="flex flex-wrap gap-2 border-b border-[#e5ebf5] px-6 py-3">
-                {INTENT_OPTIONS.map((option) => {
-                  const Icon = option.icon;
-                  const active = intent === option.value;
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setIntent(option.value)}
-                      className={[
-                        "inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[11px] font-semibold transition",
-                        active
-                          ? "bg-[#0f62fe] text-white"
-                          : "bg-[#eef2f8] text-[var(--pm-text-secondary)] hover:bg-[#e1e8f3]",
-                      ].join(" ")}
-                    >
-                      <Icon size={12} />
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+            <div style={{ display: "flex", flex: 1, flexDirection: "column", minHeight: 0, background: "var(--page-bg)" }}>
+              {/* Messages */}
+              <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "20px 24px" }}>
                 {messageLoading && (
-                  <p className="text-[13px] text-[var(--pm-text-muted)]">Loading conversation...</p>
+                  <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>Loading conversation...</p>
                 )}
 
                 {!messageLoading && messages.length === 0 && (
-                  <div className="flex h-full flex-col items-center justify-center text-center">
-                    <div className="flex h-16 w-16 items-center justify-center rounded-[28px] bg-[#edf4ff] text-[#0f62fe]">
-                      <Sparkles size={28} />
+                  <div
+                    style={{
+                      display: "flex",
+                      height: "100%",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      textAlign: "center",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        height: "56px",
+                        width: "56px",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        borderRadius: "var(--radius-card)",
+                        background: "var(--surface-2)",
+                        color: "var(--brand)",
+                      }}
+                    >
+                      <Sparkles size={24} />
                     </div>
-                    <p className="mt-4 text-[18px] font-semibold text-[var(--pm-text)]">
+                    <p
+                      style={{
+                        marginTop: "16px",
+                        fontSize: "16px",
+                        fontWeight: 600,
+                        color: "var(--text-1)",
+                      }}
+                    >
                       Start a new Larry thread
                     </p>
-                    <p className="mt-2 max-w-md text-[13px] leading-relaxed text-[var(--pm-text-secondary)]">
-                      Ask for plans, scope changes, follow-up drafts, or a quick summary. Larry will keep the thread under {activeProjectLabel.toLowerCase()} so the context stays easy to revisit.
+                    <p
+                      style={{
+                        marginTop: "8px",
+                        maxWidth: "400px",
+                        fontSize: "13px",
+                        lineHeight: "1.5",
+                        color: "var(--text-2)",
+                      }}
+                    >
+                      Ask for plans, scope changes, follow-up drafts, or a quick summary. Larry will keep the thread under{" "}
+                      {activeProjectLabel.toLowerCase()} so the context stays easy to revisit.
                     </p>
                   </div>
                 )}
 
                 {!messageLoading && messages.length > 0 && (
-                  <div className="space-y-4">
+                  <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                     {messages.map((message) => (
                       <MessageBubble key={message.id} message={message} />
                     ))}
@@ -560,19 +754,57 @@ export default function ChatsPage() {
                 <div ref={messagesEndRef} />
               </div>
 
-              <div className="border-t border-[#e5ebf5] bg-white px-6 py-4">
-                <form onSubmit={handleSubmit} className="space-y-3">
-                  <div className="flex items-center justify-between gap-4">
-                    <p className="text-[12px] text-[var(--pm-text-secondary)]">
-                      {activeProjectId ? `Sending with ${activeProjectLabel} context.` : "Sending without project context."}
-                    </p>
-                    <div className="inline-flex items-center gap-1 text-[11px] text-[var(--pm-text-muted)]">
-                      <Clock3 size={12} />
-                      History persists automatically
-                    </div>
+              {/* Input area */}
+              <div
+                style={{
+                  borderTop: "1px solid var(--border)",
+                  background: "var(--surface)",
+                  padding: "16px 20px",
+                }}
+              >
+                <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                  {/* Intent chips — above the input, right-aligned */}
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px", flexWrap: "wrap" }}>
+                    {INTENT_OPTIONS.map((option) => {
+                      const Icon = option.icon;
+                      const active = intent === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setIntent(option.value)}
+                          style={{
+                            display: "inline-flex",
+                            height: "28px",
+                            alignItems: "center",
+                            gap: "5px",
+                            borderRadius: "var(--radius-badge)",
+                            padding: "0 10px",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            border: `1px solid ${active ? "var(--cta)" : "var(--border)"}`,
+                            background: active ? "var(--cta)" : "var(--surface-2)",
+                            color: active ? "#fff" : "var(--text-2)",
+                            cursor: "pointer",
+                            transition: "background 0.15s, border-color 0.15s",
+                          }}
+                        >
+                          <Icon size={11} />
+                          {option.label}
+                        </button>
+                      );
+                    })}
                   </div>
 
-                  <div className="rounded-[24px] border border-[#d7dfec] bg-[#f8fbff] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+                  {/* Textarea */}
+                  <div
+                    style={{
+                      borderRadius: "var(--radius-btn)",
+                      border: "1px solid var(--border-2)",
+                      background: "var(--surface-2)",
+                      padding: "10px 12px",
+                    }}
+                  >
                     <textarea
                       value={input}
                       onChange={(event) => setInput(event.target.value)}
@@ -580,27 +812,60 @@ export default function ChatsPage() {
                       disabled={busy}
                       aria-label="Message Larry"
                       rows={4}
-                      className="w-full resize-none border-0 bg-transparent text-[14px] text-[var(--pm-text)] outline-none placeholder:text-[var(--pm-text-muted)]"
+                      style={{
+                        width: "100%",
+                        resize: "none",
+                        border: 0,
+                        background: "transparent",
+                        fontSize: "14px",
+                        color: "var(--text-1)",
+                        outline: "none",
+                      }}
                     />
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <button
-                      type="button"
-                      onClick={() => startNewChat(activeProjectId)}
-                      className="inline-flex items-center gap-2 rounded-full border border-[#d7dfec] px-4 py-2 text-[12px] font-semibold text-[var(--pm-text-secondary)] transition hover:border-[#b8c9ea] hover:text-[var(--pm-text)]"
-                    >
-                      <Plus size={12} />
-                      Start fresh thread
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={busy || input.trim().length < 3}
-                      className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-[#0f62fe] px-5 text-[13px] font-semibold text-white shadow-[0_12px_28px_rgba(15,98,254,0.22)] transition disabled:cursor-not-allowed disabled:opacity-60 hover:bg-[#0043ce]"
-                    >
-                      <Sparkles size={14} />
-                      {busy ? "Sending..." : "Send to Larry"}
-                    </button>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+                    <p style={{ fontSize: "12px", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "4px" }}>
+                      <Clock3 size={11} />
+                      {activeProjectId ? `${activeProjectLabel} context` : "No project context"}
+                    </p>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <button
+                        type="button"
+                        onClick={() => startNewChat(activeProjectId)}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          borderRadius: "var(--radius-btn)",
+                          border: "1px solid var(--border)",
+                          background: "var(--surface)",
+                          padding: "0 12px",
+                          height: "34px",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          color: "var(--text-2)",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <Plus size={12} />
+                        New thread
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={busy || input.trim().length < 3}
+                        className="pm-btn pm-btn-primary"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          height: "34px",
+                        }}
+                      >
+                        <Sparkles size={13} />
+                        {busy ? "Sending..." : "Send to Larry"}
+                      </button>
+                    </div>
                   </div>
                 </form>
               </div>

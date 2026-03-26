@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { X, MessageSquare, Link2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { X, MessageSquare } from "lucide-react";
 import { BoardTaskRow, TaskStatus } from "@/app/dashboard/types";
 
 interface Comment {
@@ -21,6 +21,8 @@ interface TaskDetail {
   progressPercent: number;
   description: string | null;
   assigneeUserId: string | null;
+  sourceType?: string | null;
+  sourceRef?: string | null;
 }
 
 interface TaskDetailDrawerProps {
@@ -28,15 +30,13 @@ interface TaskDetailDrawerProps {
   onClose: () => void;
 }
 
-const STATUS_OPTIONS: TaskStatus[] = ["backlog", "not_started", "in_progress", "waiting", "blocked", "completed"];
-const STATUS_LABELS: Record<TaskStatus, string> = {
-  backlog: "Backlog",
-  not_started: "Not Started",
-  in_progress: "In Progress",
-  waiting: "Waiting",
-  blocked: "Blocked",
-  completed: "Done",
-};
+const STATUS_OPTIONS: { value: TaskStatus; label: string; pillClass: string }[] = [
+  { value: "not_started", label: "Not Started",  pillClass: "pm-pill-not-started" },
+  { value: "in_progress", label: "In Progress",  pillClass: "pm-pill-working"     },
+  { value: "waiting",     label: "Waiting",      pillClass: "pm-pill-not-started" },
+  { value: "blocked",     label: "Blocked",      pillClass: "pm-pill-stuck"       },
+  { value: "completed",   label: "Done",         pillClass: "pm-pill-done"        },
+];
 
 async function readJson<T>(res: Response): Promise<T> {
   const text = await res.text();
@@ -54,6 +54,16 @@ function timeAgo(dateStr: string): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
+function sourceLabel(type: string | null | undefined): string {
+  switch (type) {
+    case "meeting":     return "Meeting transcript";
+    case "slack":       return "Slack message";
+    case "manual":      return "Created manually";
+    case "larry":       return "Larry suggestion";
+    default:            return "Manual creation";
+  }
+}
+
 export function TaskDetailDrawer({ task, onClose }: TaskDetailDrawerProps) {
   const [detail, setDetail] = useState<TaskDetail | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -64,6 +74,7 @@ export function TaskDetailDrawer({ task, onClose }: TaskDetailDrawerProps) {
   const [editStatus, setEditStatus] = useState<TaskStatus>("not_started");
   const [editProgress, setEditProgress] = useState(0);
   const [editDescription, setEditDescription] = useState("");
+  const [statusOpen, setStatusOpen] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -71,6 +82,7 @@ export function TaskDetailDrawer({ task, onClose }: TaskDetailDrawerProps) {
     setEditTitle(task.title);
     setEditStatus(task.status);
     setEditProgress(task.progressPercent ?? 0);
+    setStatusOpen(false);
     setDetail(null);
     setComments([]);
 
@@ -112,6 +124,22 @@ export function TaskDetailDrawer({ task, onClose }: TaskDetailDrawerProps) {
     }
   };
 
+  const handleStatusSelect = async (newStatus: TaskStatus) => {
+    setEditStatus(newStatus);
+    setStatusOpen(false);
+    if (!task) return;
+    try {
+      await fetch(`/api/workspace/tasks/${task.id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
+    } catch {
+      // non-critical
+    }
+  };
+
   const handleComment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!task || !commentText.trim()) return;
@@ -134,145 +162,243 @@ export function TaskDetailDrawer({ task, onClose }: TaskDetailDrawerProps) {
 
   if (!task) return null;
 
-  return (
-    <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 z-40 bg-black/20"
-        onClick={onClose}
-      />
+  const currentStatus = STATUS_OPTIONS.find((s) => s.value === editStatus) ?? STATUS_OPTIONS[0];
 
-      {/* Drawer */}
+  return (
+    /* No backdrop overlay — drawer uses shadow-3 instead */
+    <div
+      ref={drawerRef}
+      className="fixed right-0 top-0 z-50 flex h-full flex-col"
+      style={{
+        width: "420px",
+        borderLeft: "1px solid var(--border)",
+        background: "var(--surface)",
+        boxShadow: "var(--shadow-3)",
+      }}
+    >
+      {/* Header */}
       <div
-        ref={drawerRef}
-        className="fixed right-0 top-0 z-50 flex h-full w-[480px] flex-col border-l border-[var(--pm-border)] bg-white shadow-2xl"
+        className="flex items-center justify-between px-5 py-3 shrink-0"
+        style={{ borderBottom: "1px solid var(--border)" }}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-[var(--pm-border)] px-5 py-4">
-          <h2 className="text-[15px] font-semibold text-[var(--pm-text)]">Task Detail</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[var(--pm-text-muted)] hover:bg-[var(--pm-gray-light)]"
-          >
-            <X size={16} />
-          </button>
+        <h2 className="text-h3">Task Detail</h2>
+        <button
+          type="button"
+          onClick={onClose}
+          className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors"
+          style={{ color: "var(--text-muted)" }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
+          onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+        >
+          <X size={16} />
+        </button>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 space-y-5">
+
+        {/* Title */}
+        <div>
+          <label className="text-caption block mb-1">Title</label>
+          <input
+            value={editTitle}
+            onChange={(e) => setEditTitle(e.target.value)}
+            className="w-full px-3 py-2 text-[15px] font-medium outline-none transition-colors"
+            style={{
+              borderRadius: "var(--radius-input)",
+              border: "1px solid var(--border)",
+              color: "var(--text-1)",
+            }}
+            onFocus={(e) => (e.currentTarget.style.borderColor = "var(--brand)")}
+            onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
+          />
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 space-y-4">
-          {/* Title */}
-          <div>
-            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-[var(--pm-text-muted)]">
-              Title
-            </label>
-            <input
-              value={editTitle}
-              onChange={(e) => setEditTitle(e.target.value)}
-              className="w-full rounded-lg border border-[var(--pm-border)] px-3 py-2 text-[15px] font-medium outline-none focus:border-[#6366f1]"
-            />
-          </div>
-
-          {/* Status + Progress */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-[var(--pm-text-muted)]">
-                Status
-              </label>
-              <select
-                value={editStatus}
-                onChange={(e) => setEditStatus(e.target.value as TaskStatus)}
-                className="w-full rounded-lg border border-[var(--pm-border)] px-3 py-2 text-[13px] outline-none focus:border-[#6366f1]"
-              >
-                {STATUS_OPTIONS.map((s) => (
-                  <option key={s} value={s}>{STATUS_LABELS[s]}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-[var(--pm-text-muted)]">
-                Progress: {editProgress}%
-              </label>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={editProgress}
-                onChange={(e) => setEditProgress(Number(e.target.value))}
-                className="w-full mt-2"
-              />
-            </div>
-          </div>
-
-          {/* Due date / Priority */}
-          <div className="grid grid-cols-2 gap-3 text-[13px]">
-            <div>
-              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--pm-text-muted)]">Due Date</p>
-              <p className="text-[var(--pm-text)]">{task.dueDate?.slice(0, 10) ?? "—"}</p>
-            </div>
-            <div>
-              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--pm-text-muted)]">Priority</p>
-              <p className="text-[var(--pm-text)] capitalize">{task.priority}</p>
-            </div>
-          </div>
-
-          {/* Description */}
-          <div>
-            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-[var(--pm-text-muted)]">
-              Description
-            </label>
-            <textarea
-              value={editDescription}
-              onChange={(e) => setEditDescription(e.target.value)}
-              rows={3}
-              placeholder="Add a description…"
-              className="w-full rounded-lg border border-[var(--pm-border)] px-3 py-2 text-[13px] outline-none focus:border-[#6366f1] resize-none"
-            />
-          </div>
-
-          {/* Save */}
+        {/* Status — coloured pill selector */}
+        <div className="relative">
+          <label className="text-caption block mb-2">Status</label>
           <button
             type="button"
-            onClick={() => void handleSave()}
-            disabled={saveBusy}
-            className="h-9 w-full rounded-lg bg-[#0073EA] text-[13px] font-medium text-white hover:bg-[#0060c2] disabled:opacity-50"
+            onClick={() => setStatusOpen((v) => !v)}
+            className={`pm-pill ${currentStatus.pillClass}`}
           >
-            {saveBusy ? "Saving…" : "Save changes"}
+            {currentStatus.label}
           </button>
 
-          {/* Comments */}
-          <div>
-            <h3 className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--pm-text-muted)]">
-              <MessageSquare size={12} /> Comments ({comments.length})
-            </h3>
-            <div className="space-y-2 max-h-[200px] overflow-y-auto mb-3">
-              {comments.map((c) => (
-                <div key={c.id} className="rounded-lg border border-[var(--pm-border)] bg-[var(--pm-gray-light)] px-3 py-2">
-                  <p className="text-[13px] text-[var(--pm-text)]">{c.body}</p>
-                  <p className="mt-0.5 text-[11px] text-[var(--pm-text-muted)]">{timeAgo(c.createdAt)}</p>
-                </div>
+          {statusOpen && (
+            <div
+              className="absolute left-0 top-full mt-1 z-50 overflow-hidden"
+              style={{
+                minWidth: "160px",
+                borderRadius: "var(--radius-dropdown)",
+                border: "1px solid var(--border)",
+                background: "var(--surface)",
+                boxShadow: "var(--shadow-2)",
+              }}
+            >
+              {STATUS_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => void handleStatusSelect(opt.value)}
+                  className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left transition-colors"
+                  style={{ borderBottom: "1px solid var(--border)" }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+                >
+                  <span className={`pm-pill ${opt.pillClass}`} style={{ fontSize: "10px", height: "18px", minWidth: "70px" }}>
+                    {opt.label}
+                  </span>
+                </button>
               ))}
-              {comments.length === 0 && (
-                <p className="text-[13px] text-[var(--pm-text-muted)]">No comments yet.</p>
-              )}
             </div>
-            <form onSubmit={handleComment} className="flex gap-2">
-              <input
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                placeholder="Add a comment…"
-                className="flex-1 h-8 rounded-lg border border-[var(--pm-border)] bg-[var(--pm-gray-light)] px-3 text-[13px] outline-none focus:border-[#6366f1] focus:bg-white"
-              />
-              <button
-                type="submit"
-                disabled={commentBusy || !commentText.trim()}
-                className="h-8 rounded-lg bg-[#6366f1] px-3 text-[12px] font-medium text-white disabled:opacity-50"
-              >
-                Post
-              </button>
-            </form>
+          )}
+        </div>
+
+        {/* Progress */}
+        <div>
+          <label className="text-caption block mb-1">Progress: {editProgress}%</label>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={editProgress}
+            onChange={(e) => setEditProgress(Number(e.target.value))}
+            className="w-full"
+          />
+        </div>
+
+        {/* Due date / Priority */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <p className="text-caption mb-1">Due Date</p>
+            <p className="text-[14px]" style={{ color: "var(--text-2)" }}>
+              {task.dueDate?.slice(0, 10) ?? "—"}
+            </p>
           </div>
+          <div>
+            <p className="text-caption mb-1">Priority</p>
+            <p className="text-[14px] capitalize" style={{ color: "var(--text-2)" }}>
+              {task.priority}
+            </p>
+          </div>
+        </div>
+
+        {/* Description */}
+        <div>
+          <label className="text-caption block mb-1">Description</label>
+          <textarea
+            value={editDescription}
+            onChange={(e) => setEditDescription(e.target.value)}
+            rows={3}
+            placeholder="Add a description…"
+            className="w-full px-3 py-2 text-[13px] outline-none resize-none transition-colors"
+            style={{
+              borderRadius: "var(--radius-input)",
+              border: "1px solid var(--border)",
+              color: "var(--text-2)",
+            }}
+            onFocus={(e) => (e.currentTarget.style.borderColor = "var(--brand)")}
+            onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
+          />
+        </div>
+
+        {/* Save */}
+        <button
+          type="button"
+          onClick={() => void handleSave()}
+          disabled={saveBusy}
+          className="pm-btn pm-btn-primary w-full"
+          style={{ borderRadius: "var(--radius-btn)" }}
+        >
+          {saveBusy ? "Saving…" : "Save changes"}
+        </button>
+
+        {/* Source section */}
+        <div style={{ borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
+          <p className="text-caption mb-2">Source</p>
+          <div
+            className="flex items-center gap-2 px-3 py-2"
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-card)",
+              background: "var(--surface-2)",
+            }}
+          >
+            <span className="text-[13px]" style={{ color: "var(--text-2)" }}>
+              {sourceLabel(detail?.sourceType)}
+            </span>
+          </div>
+        </div>
+
+        {/* Activity feed — comments + timeline */}
+        <div style={{ borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
+          <h3 className="text-caption mb-3 flex items-center gap-1.5">
+            <MessageSquare size={12} />
+            Activity ({comments.length})
+          </h3>
+
+          <div className="space-y-2 max-h-[220px] overflow-y-auto mb-3">
+            {comments.map((c) => (
+              <div key={c.id} className="flex gap-2">
+                {/* Timeline dot */}
+                <div className="flex flex-col items-center pt-1 shrink-0">
+                  <div className="h-2 w-2 rounded-full" style={{ background: "var(--border-2)" }} />
+                  <div className="mt-1 w-px flex-1" style={{ background: "var(--border)" }} />
+                </div>
+                <div
+                  className="flex-1 mb-2 px-3 py-2"
+                  style={{
+                    borderRadius: "var(--radius-card)",
+                    border: "1px solid var(--border)",
+                    background: "var(--surface-2)",
+                  }}
+                >
+                  <p className="text-[13px]" style={{ color: "var(--text-2)" }}>{c.body}</p>
+                  <p className="mt-0.5 text-[11px]" style={{ color: "var(--text-disabled)" }}>
+                    {timeAgo(c.createdAt)}
+                  </p>
+                </div>
+              </div>
+            ))}
+            {comments.length === 0 && (
+              <p className="text-[13px]" style={{ color: "var(--text-disabled)" }}>
+                No activity yet.
+              </p>
+            )}
+          </div>
+
+          {/* Comment form */}
+          <form onSubmit={(e) => void handleComment(e)} className="flex gap-2">
+            <input
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+              placeholder="Add a comment…"
+              className="flex-1 h-8 px-3 text-[13px] outline-none transition-colors"
+              style={{
+                borderRadius: "var(--radius-input)",
+                border: "1px solid var(--border)",
+                background: "var(--surface-2)",
+                color: "var(--text-2)",
+              }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = "var(--brand)"; e.currentTarget.style.background = "var(--surface)"; }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "var(--surface-2)"; }}
+            />
+            <button
+              type="submit"
+              disabled={commentBusy || !commentText.trim()}
+              className="pm-btn pm-btn-sm"
+              style={{
+                background: "var(--brand)",
+                color: "#fff",
+                borderRadius: "var(--radius-btn)",
+                border: "none",
+              }}
+            >
+              Post
+            </button>
+          </form>
         </div>
       </div>
-    </>
+    </div>
   );
 }

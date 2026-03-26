@@ -3,15 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import React from "react";
 import {
-  ArrowLeft,
-  BarChart3,
-  CalendarDays,
-  FileText,
-  FolderKanban,
-  Network,
   Plus,
   TriangleAlert,
-  Video,
   X,
 } from "lucide-react";
 import type { BoardTaskRow, TaskGroup, TaskStatus, WorkspaceTask } from "@/app/dashboard/types";
@@ -36,17 +29,13 @@ interface TimelineRow extends BoardTaskRow {
   spanDays: number;
 }
 
-const TAB_OPTIONS: Array<{
-  id: TabId;
-  label: string;
-  icon: typeof FolderKanban;
-}> = [
-  { id: "overview", label: "Overview", icon: FolderKanban },
-  { id: "timeline", label: "Timeline", icon: CalendarDays },
-  { id: "analytics", label: "Analytics", icon: BarChart3 },
-  { id: "meetings", label: "Meetings", icon: Video },
-  { id: "orgchart", label: "Org Chart", icon: Network },
-  { id: "documents", label: "Documents", icon: FileText },
+const TAB_OPTIONS: Array<{ id: TabId; label: string }> = [
+  { id: "overview", label: "Tasks" },
+  { id: "timeline", label: "Timeline" },
+  { id: "analytics", label: "Analytics" },
+  { id: "meetings", label: "Meetings" },
+  { id: "orgchart", label: "Team" },
+  { id: "documents", label: "Documents" },
 ];
 
 const GROUP_ORDER: TaskGroup["key"][] = ["in_progress", "todo", "blocked", "completed"];
@@ -228,6 +217,15 @@ function statusBarClass(status: TaskStatus): string {
       return "bg-[#0073EA] text-white";
     default:
       return "bg-[#5c6b82] text-white";
+  }
+}
+
+function projectStatusPillClass(status: string | undefined): string {
+  switch (status) {
+    case "completed": return "pm-pill-done";
+    case "blocked": return "pm-pill-stuck";
+    case "in_progress": return "pm-pill-working";
+    default: return "pm-pill-not-started";
   }
 }
 
@@ -419,34 +417,6 @@ function EmptyPanel({
   );
 }
 
-function MetricCard({
-  label,
-  value,
-  tone = "neutral",
-}: {
-  label: string;
-  value: string;
-  tone?: "neutral" | "warn" | "accent";
-}) {
-  const toneClass =
-    tone === "warn"
-      ? "border-[#f5c2cb] bg-[#fff3f5]"
-      : tone === "accent"
-        ? "border-[var(--pm-border)] bg-[#eef5ff]"
-        : "border-[var(--pm-border)] bg-white";
-
-  return (
-    <div className={`rounded-[20px] border p-4 ${toneClass}`}>
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">
-        {label}
-      </p>
-      <p className="mt-3 text-[28px] font-semibold tracking-[-0.03em] text-[var(--pm-text)]">
-        {value}
-      </p>
-    </div>
-  );
-}
-
 function LoadingSkeleton() {
   return (
     <div className="space-y-4">
@@ -454,11 +424,11 @@ function LoadingSkeleton() {
         {Array.from({ length: 4 }).map((_, index) => (
           <div
             key={index}
-            className="h-28 animate-pulse rounded-[20px] border border-[var(--pm-border)] bg-white"
+            className="h-28 pm-shimmer"
           />
         ))}
       </div>
-      <div className="h-[480px] animate-pulse rounded-[24px] border border-[var(--pm-border)] bg-white" />
+      <div className="h-[480px] pm-shimmer" />
     </div>
   );
 }
@@ -584,6 +554,15 @@ export function ProjectWorkspace({
     setInlineMessage("Custom groups are next up. For launch, tasks stay in the four live status lanes.");
   }
 
+  const handleStatusChange = async (taskId: string, newStatus: string) => {
+    await fetch(`/api/workspace/tasks/${taskId}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: newStatus }),
+    });
+    await refresh();
+  };
+
   const renderedBody = () => {
     if (loading && boardTasks.length === 0 && meetings.length === 0) {
       return <LoadingSkeleton />;
@@ -593,17 +572,50 @@ export function ProjectWorkspace({
       case "overview":
         return (
           <div className="space-y-5">
-            <div className="grid gap-4 md:grid-cols-4">
-              <MetricCard label="Open tasks" value={String(openCount)} tone="accent" />
-              <MetricCard label="Pending approvals" value={String(actions.length)} />
-              <MetricCard label="Blocked tasks" value={String(blockedCount)} tone={blockedCount > 0 ? "warn" : "neutral"} />
-              <MetricCard label="Completion" value={`${completionRate}%`} />
+            {/* Compact metric pills */}
+            <div className="flex items-center gap-6 mb-4">
+              {[
+                { label: "Open tasks", value: String(openCount) },
+                { label: "Pending approvals", value: String(actions.length) },
+                { label: "Blocked", value: String(blockedCount) },
+                { label: "Completion", value: `${completionRate}%` },
+              ].map(({ label, value }) => (
+                <div key={label} className="flex flex-col items-start">
+                  <span className="text-body-sm">{label}</span>
+                  <span style={{ fontSize: "20px", fontWeight: 700, color: "var(--text-1)", lineHeight: "1.2" }}>{value}</span>
+                </div>
+              ))}
             </div>
+
+            {/* Stacked progress bar */}
+            <div className="pm-summary-bar mb-4 w-full">
+              <span
+                style={{
+                  background: "var(--pm-green)",
+                  width: `${(boardTasks.filter((t) => t.status === "completed").length / Math.max(boardTasks.length, 1)) * 100}%`,
+                }}
+              />
+              <span
+                style={{
+                  background: "var(--pm-orange)",
+                  width: `${(boardTasks.filter((t) => t.status === "in_progress").length / Math.max(boardTasks.length, 1)) * 100}%`,
+                }}
+              />
+              <span
+                style={{
+                  background: "var(--pm-red)",
+                  width: `${(boardTasks.filter((t) => t.status === "blocked").length / Math.max(boardTasks.length, 1)) * 100}%`,
+                }}
+              />
+              <span style={{ flex: 1, background: "var(--surface-2)" }} />
+            </div>
+
             <TaskTable
               groups={groupedTasks}
               onTaskClick={setSelectedTask}
               onOpenAddTask={(group) => setAddingGroup(group)}
               onAddGroup={handleAddGroup}
+              onStatusChange={handleStatusChange}
             />
           </div>
         );
@@ -726,10 +738,22 @@ export function ProjectWorkspace({
                 Health snapshot
               </p>
               <div className="mt-5 grid gap-4 md:grid-cols-2">
-                <MetricCard label="Risk level" value={riskLabel} tone={riskLabel.includes("high") ? "warn" : "neutral"} />
-                <MetricCard label="Blocked count" value={String(health?.blockedCount ?? blockedCount)} />
-                <MetricCard label="Task count" value={String(health?.taskCount ?? boardTasks.length)} />
-                <MetricCard label="High-risk rate" value={`${Math.round(Number(outcomes?.metrics?.highRiskTaskRate ?? 0) * 100)}%`} />
+                <div className="rounded-[20px] border border-[var(--pm-border)] bg-white p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">Risk level</p>
+                  <p className="mt-3 text-[28px] font-semibold tracking-[-0.03em] text-[var(--pm-text)]">{riskLabel}</p>
+                </div>
+                <div className="rounded-[20px] border border-[var(--pm-border)] bg-white p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">Blocked count</p>
+                  <p className="mt-3 text-[28px] font-semibold tracking-[-0.03em] text-[var(--pm-text)]">{String(health?.blockedCount ?? blockedCount)}</p>
+                </div>
+                <div className="rounded-[20px] border border-[var(--pm-border)] bg-white p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">Task count</p>
+                  <p className="mt-3 text-[28px] font-semibold tracking-[-0.03em] text-[var(--pm-text)]">{String(health?.taskCount ?? boardTasks.length)}</p>
+                </div>
+                <div className="rounded-[20px] border border-[var(--pm-border)] bg-white p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">High-risk rate</p>
+                  <p className="mt-3 text-[28px] font-semibold tracking-[-0.03em] text-[var(--pm-text)]">{`${Math.round(Number(outcomes?.metrics?.highRiskTaskRate ?? 0) * 100)}%`}</p>
+                </div>
               </div>
             </div>
 
@@ -760,7 +784,12 @@ export function ProjectWorkspace({
             {meetings.map((meeting) => (
               <article
                 key={meeting.id}
-                className="rounded-[24px] border border-[var(--pm-border)] bg-white p-6"
+                style={{
+                  borderRadius: "var(--radius-card)",
+                  border: "1px solid var(--border)",
+                  background: "var(--surface)",
+                  padding: "16px 20px",
+                }}
               >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
@@ -794,35 +823,48 @@ export function ProjectWorkspace({
         }
 
         return (
-          <div className="grid gap-4 md:grid-cols-2">
+          <div
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-card)",
+              overflow: "hidden",
+              background: "var(--surface)",
+            }}
+          >
+            <div
+              className="pm-table-header"
+              style={{ gridTemplateColumns: "minmax(0,1fr) 100px 100px 140px" }}
+            >
+              <span>Member</span>
+              <span>Assigned</span>
+              <span>Blocked</span>
+              <span>Progress</span>
+            </div>
             {ownerRows.map((owner) => (
               <div
                 key={owner.name}
-                className="rounded-[24px] border border-[var(--pm-border)] bg-white p-6"
+                className="pm-table-row"
+                style={{ gridTemplateColumns: "minmax(0,1fr) 100px 100px 140px" }}
               >
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[18px] font-semibold tracking-[-0.03em] text-[var(--pm-text)]">
-                      {owner.name}
-                    </p>
-                    <p className="mt-2 text-[12px] uppercase tracking-[0.16em] text-[var(--pm-text-muted)]">
-                      Task ownership
-                    </p>
-                  </div>
-                  <span className="rounded-full border border-[var(--pm-border)] bg-white px-3 py-1 text-[12px] text-[var(--pm-text-secondary)]">
-                    {owner.count} tasks
-                  </span>
-                </div>
-                <div className="mt-5 flex items-center gap-3">
-                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--pm-border)]">
-                    <div
-                      className="h-full rounded-full bg-[#0073EA]"
-                      style={{ width: `${Math.max((owner.count / Math.max(boardTasks.length, 1)) * 100, 6)}%` }}
-                    />
-                  </div>
-                  <span className="text-[12px] text-[var(--pm-text-muted)]">
-                    {owner.blocked} blocked
-                  </span>
+                <span className="text-h3">{owner.name}</span>
+                <span className="text-body-sm">{owner.count}</span>
+                <span
+                  className="text-body-sm"
+                  style={{ color: owner.blocked > 0 ? "var(--pm-red)" : undefined }}
+                >
+                  {owner.blocked}
+                </span>
+                <div
+                  className="h-1.5 rounded-full overflow-hidden"
+                  style={{ background: "var(--surface-2)" }}
+                >
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      background: "var(--cta)",
+                      width: `${Math.max((owner.count / Math.max(boardTasks.length, 1)) * 100, 4)}%`,
+                    }}
+                  />
                 </div>
               </div>
             ))}
@@ -866,74 +908,79 @@ export function ProjectWorkspace({
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-[var(--pm-bg)]">
-      <header className="border-b border-[var(--pm-border)] bg-[var(--pm-surface)] px-6 py-5">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="flex items-start gap-4">
-            <button
-              type="button"
-              onClick={onBack}
-              className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[var(--pm-border)] bg-white text-[var(--pm-text-secondary)] transition-colors hover:border-[var(--pm-border)] hover:text-[var(--pm-text)]"
+      {/* Project header */}
+      <header style={{ borderBottom: "1px solid var(--border)", background: "var(--surface)", padding: "16px 24px" }}>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1
+              className="text-h1"
+              contentEditable={false}
+              suppressContentEditableWarning
             >
-              <ArrowLeft size={18} />
-            </button>
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--pm-text-muted)]">
-                Project workspace
-              </p>
-              <h1 className="mt-3 text-[32px] font-semibold tracking-[-0.04em] text-[var(--pm-text)]">
-                {surfaceName}
-              </h1>
-              <div className="mt-3 flex flex-wrap items-center gap-3 text-[13px] text-[var(--pm-text-muted)]">
-                <span>Updated {formatRelativeTime(project?.updatedAt)}</span>
-                <span className="h-1 w-1 rounded-full bg-[#334259]" />
-                <span className="capitalize">{project?.status ?? "active"}</span>
-                <span className="h-1 w-1 rounded-full bg-[#334259]" />
-                <span className="capitalize">Risk {riskLabel}</span>
-              </div>
+              {surfaceName}
+            </h1>
+            <div className="mt-2 flex items-center gap-2 flex-wrap">
+              <span className={`pm-pill ${projectStatusPillClass(project?.status)}`}>
+                {project?.status ?? "active"}
+              </span>
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 500,
+                  color: "var(--text-muted)",
+                  background: "var(--surface-2)",
+                  borderRadius: "20px",
+                  padding: "2px 8px",
+                }}
+              >
+                Risk: {riskLabel}
+              </span>
+              <span className="text-body-sm">Updated {formatRelativeTime(project?.updatedAt)}</span>
             </div>
           </div>
-
-          <div className="grid min-w-[220px] gap-3 rounded-[24px] border border-[var(--pm-border)] bg-white px-5 py-4">
-            <div className="flex items-center justify-between text-[12px] uppercase tracking-[0.16em] text-[var(--pm-text-muted)]">
-              <span>Target</span>
-              <span>{project?.targetDate ? formatShortDate(project.targetDate) : "Unset"}</span>
+          {project?.targetDate && (
+            <div className="text-body-sm shrink-0">
+              Target: {formatShortDate(project.targetDate)}
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-[var(--pm-border)]">
-              <div
-                className="h-full rounded-full bg-[linear-gradient(90deg,#0073EA_0%,#4AA3FF_50%,#8AC5FF_100%)]"
-                style={{ width: `${Math.max(completionRate, 6)}%` }}
-              />
-            </div>
-            <div className="flex items-center justify-between text-[13px] text-[var(--pm-text-secondary)]">
-              <span>{completionRate}% complete</span>
-              <span>{openCount} open tasks</span>
-            </div>
-          </div>
+          )}
         </div>
       </header>
 
-      <div className="border-b border-[var(--pm-border)] bg-[var(--pm-surface)] px-6 pb-4">
-        <div className="flex flex-wrap gap-2">
-          {TAB_OPTIONS.map((tab) => {
-            const Icon = tab.icon;
-            const active = tab.id === activeTab;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[13px] font-medium transition-colors ${
-                  active
-                    ? "border-[#2b8cff] bg-[#0073EA] text-white"
-                    : "border-[var(--pm-border)] bg-white text-[var(--pm-text-muted)] hover:border-[var(--pm-border)] hover:bg-[var(--pm-gray-light)] hover:text-[var(--pm-text)]"
-                }`}
-              >
-                <Icon size={15} />
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
+      {/* Tab bar */}
+      <div
+        style={{
+          borderBottom: "1px solid var(--border)",
+          background: "var(--surface)",
+          padding: "0 24px",
+          display: "flex",
+        }}
+      >
+        {TAB_OPTIONS.map((tab) => {
+          const active = tab.id === activeTab;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              style={{
+                fontSize: "14px",
+                fontWeight: 500,
+                color: active ? "var(--text-1)" : "var(--text-muted)",
+                borderBottom: active ? "2px solid var(--cta)" : "2px solid transparent",
+                padding: "8px 4px",
+                marginRight: "20px",
+                background: "none",
+                border: "none",
+                borderBottomWidth: "2px",
+                borderBottomStyle: "solid",
+                borderBottomColor: active ? "var(--cta)" : "transparent",
+                cursor: "pointer",
+              }}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
 
       <main className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
@@ -972,4 +1019,3 @@ export function ProjectWorkspace({
     </div>
   );
 }
-
