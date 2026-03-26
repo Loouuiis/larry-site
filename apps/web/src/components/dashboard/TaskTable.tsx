@@ -8,7 +8,7 @@ import { StatusChip } from "./StatusChip";
 interface TaskTableProps {
   groups: TaskGroup[];
   onTaskClick: (task: BoardTaskRow) => void;
-  onAddTask: (group: TaskGroup, title: string) => Promise<void> | void;
+  onOpenAddTask: (group: TaskGroup) => void;
   onAddGroup: () => void;
 }
 
@@ -66,7 +66,7 @@ function GroupProgressStrip({ tasks }: { tasks: BoardTaskRow[] }) {
   );
 }
 
-export function TaskTable({ groups, onTaskClick, onAddTask, onAddGroup }: TaskTableProps) {
+export function TaskTable({ groups, onTaskClick, onOpenAddTask, onAddGroup }: TaskTableProps) {
   const defaultCollapsed = useMemo(
     () => Object.fromEntries(
       groups.map((group) => [group.key, group.key === "completed" && group.tasks.length > 3])
@@ -75,9 +75,6 @@ export function TaskTable({ groups, onTaskClick, onAddTask, onAddGroup }: TaskTa
   );
 
   const [collapsed, setCollapsed] = useState<Record<TaskGroup["key"], boolean>>(defaultCollapsed);
-  const [addingGroupKey, setAddingGroupKey] = useState<TaskGroup["key"] | null>(null);
-  const [draftTitle, setDraftTitle] = useState("");
-  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     setCollapsed((previous) => ({
@@ -87,19 +84,6 @@ export function TaskTable({ groups, onTaskClick, onAddTask, onAddGroup }: TaskTa
       completed: previous.completed ?? defaultCollapsed.completed,
     }));
   }, [defaultCollapsed]);
-
-  async function handleSubmit(group: TaskGroup) {
-    const title = draftTitle.trim();
-    if (!title) return;
-    setSubmitting(true);
-    try {
-      await onAddTask(group, title);
-      setDraftTitle("");
-      setAddingGroupKey(null);
-    } finally {
-      setSubmitting(false);
-    }
-  }
 
   return (
     <div className="space-y-5">
@@ -163,47 +147,14 @@ export function TaskTable({ groups, onTaskClick, onAddTask, onAddGroup }: TaskTa
                     ))}
 
                     <div className="border-b border-[var(--pm-border)] px-5 py-3">
-                      {addingGroupKey === group.key ? (
-                        <div className="flex items-center gap-2">
-                          <input
-                            value={draftTitle}
-                            onChange={(event) => setDraftTitle(event.target.value)}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter") {
-                                event.preventDefault();
-                                void handleSubmit(group);
-                              }
-                              if (event.key === "Escape") {
-                                setAddingGroupKey(null);
-                                setDraftTitle("");
-                              }
-                            }}
-                            placeholder={`Add a task to ${group.label.toLowerCase()}`}
-                            className="h-10 flex-1 rounded-xl border border-[var(--pm-border)] bg-white px-3 text-[13px] text-[var(--pm-text)] outline-none focus:border-[#8B5CF6]"
-                            autoFocus
-                          />
-                          <button
-                            type="button"
-                            onClick={() => void handleSubmit(group)}
-                            disabled={submitting}
-                            className="rounded-xl bg-[#8B5CF6] px-3 py-2 text-[12px] font-semibold text-white disabled:opacity-50"
-                          >
-                            Save
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setAddingGroupKey(group.key);
-                            setDraftTitle("");
-                          }}
-                          className="flex w-full items-center gap-2 rounded-xl border border-dashed border-[var(--pm-border)] bg-[var(--pm-gray-light)] px-3 py-2 text-[13px] text-[var(--pm-text-muted)] transition-colors hover:border-[var(--pm-border)] hover:text-[var(--pm-text-secondary)]"
-                        >
-                          <Plus size={14} />
-                          Add task
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => onOpenAddTask(group)}
+                        className="flex w-full items-center gap-2 rounded-xl border border-dashed border-[var(--pm-border)] bg-[var(--pm-gray-light)] px-3 py-2 text-[13px] text-[var(--pm-text-muted)] transition-colors hover:border-[var(--pm-border)] hover:text-[var(--pm-text-secondary)]"
+                      >
+                        <Plus size={14} />
+                        Add task
+                      </button>
                     </div>
 
                     <div className="px-5 py-3">

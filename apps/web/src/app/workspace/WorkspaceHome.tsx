@@ -269,18 +269,18 @@ export function WorkspaceHome() {
               </div>
             )}
 
-            <section className="rounded-[32px] border border-[#dbe4ed] bg-[linear-gradient(135deg,#0b1723_0%,#132538_55%,#18314d_100%)] p-6 text-white shadow-[0_28px_90px_rgba(8,20,35,0.18)]">
+            <section className="rounded-[32px] border border-[#dbe4ed] bg-white p-6 shadow-[0_18px_60px_rgba(9,23,41,0.05)]">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="max-w-[560px]">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#8ebae0]">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#0073EA]">
                     Action centre
                   </p>
-                  <h2 className="mt-4 text-[34px] font-semibold tracking-[-0.05em] text-[#f7fbff]">
+                  <h2 className="mt-4 text-[28px] font-semibold tracking-[-0.04em] text-[#101828]">
                     {pendingCount > 0
                       ? `${pendingCount} approval${pendingCount === 1 ? "" : "s"} waiting for review`
                       : "Action centre is clear right now"}
                   </h2>
-                  <p className="mt-4 text-[15px] leading-7 text-[#b6c7d8]">
+                  <p className="mt-3 text-[15px] leading-7 text-[#526276]">
                     Larry is already watching the signal. Keep approvals flowing so the board reflects what is actually happening, not what was last summarised.
                   </p>
                 </div>
@@ -288,7 +288,7 @@ export function WorkspaceHome() {
                 <div className="flex flex-wrap gap-3">
                   <Link
                     href="/workspace/actions"
-                    className="inline-flex h-11 items-center gap-2 rounded-full bg-white px-5 text-[14px] font-semibold text-[#0f1b27] transition-transform hover:scale-[1.01]"
+                    className="inline-flex h-11 items-center gap-2 rounded-full bg-[#0073EA] px-5 text-[14px] font-semibold text-white transition-transform hover:scale-[1.01]"
                   >
                     Review actions
                     <ArrowRight size={15} />
@@ -296,7 +296,7 @@ export function WorkspaceHome() {
                   <button
                     type="button"
                     onClick={() => setSheetOpen(true)}
-                    className="inline-flex h-11 items-center gap-2 rounded-full border border-white/16 px-5 text-[14px] font-semibold text-white transition-colors hover:bg-white/8"
+                    className="inline-flex h-11 items-center gap-2 rounded-full border border-[#dbe4ed] bg-white px-5 text-[14px] font-semibold text-[#344054] transition-colors hover:bg-[#f8fafc]"
                   >
                     <Plus size={16} />
                     New Project
@@ -304,28 +304,28 @@ export function WorkspaceHome() {
                 </div>
               </div>
 
-              <div className="mt-8 grid gap-4 sm:grid-cols-3">
-                <div className="rounded-[24px] border border-white/10 bg-white/6 p-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8ebae0]">
+              <div className="mt-6 grid gap-4 sm:grid-cols-3">
+                <div className="rounded-[20px] border border-[#e6edf3] bg-[#f5f8ff] p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#73839a]">
                     Pending approvals
                   </p>
-                  <p className="mt-3 text-[30px] font-semibold tracking-[-0.04em] text-[#f7fbff]">
+                  <p className="mt-3 text-[28px] font-semibold tracking-[-0.04em] text-[#101828]">
                     {pendingCount}
                   </p>
                 </div>
-                <div className="rounded-[24px] border border-white/10 bg-white/6 p-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8ebae0]">
+                <div className="rounded-[20px] border border-[#e6edf3] bg-[#f5f8ff] p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#73839a]">
                     Active projects
                   </p>
-                  <p className="mt-3 text-[30px] font-semibold tracking-[-0.04em] text-[#f7fbff]">
+                  <p className="mt-3 text-[28px] font-semibold tracking-[-0.04em] text-[#101828]">
                     {projectCards.length}
                   </p>
                 </div>
-                <div className="rounded-[24px] border border-white/10 bg-white/6 p-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#8ebae0]">
+                <div className="rounded-[20px] border border-[#e6edf3] bg-[#f5f8ff] p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#73839a]">
                     Connected inputs
                   </p>
-                  <p className="mt-3 text-[30px] font-semibold tracking-[-0.04em] text-[#f7fbff]">
+                  <p className="mt-3 text-[28px] font-semibold tracking-[-0.04em] text-[#101828]">
                     {connectedCount}
                   </p>
                 </div>

@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import React from "react";
 import {
   ArrowLeft,
   BarChart3,
@@ -11,6 +12,7 @@ import {
   Plus,
   TriangleAlert,
   Video,
+  X,
 } from "lucide-react";
 import type { BoardTaskRow, TaskGroup, TaskStatus, WorkspaceTask } from "@/app/dashboard/types";
 import { TaskDetailDrawer } from "@/app/workspace/projects/[projectId]/TaskDetailDrawer";
@@ -229,6 +231,179 @@ function statusBarClass(status: TaskStatus): string {
   }
 }
 
+interface Member {
+  id: string;
+  name: string;
+  email: string;
+}
+
+interface AddTaskPayload {
+  title: string;
+  description: string;
+  dueDate: string;
+  priority: string;
+  assigneeUserId: string;
+}
+
+function AddTaskModal({
+  group,
+  onClose,
+  onSave,
+}: {
+  group: TaskGroup;
+  onClose: () => void;
+  onSave: (group: TaskGroup, payload: AddTaskPayload) => Promise<void>;
+}) {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [priority, setPriority] = useState("medium");
+  const [assigneeUserId, setAssigneeUserId] = useState("");
+  const [members, setMembers] = useState<Member[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/workspace/members")
+      .then((r) => r.json())
+      .then((data: { members?: Member[] }) => {
+        if (Array.isArray(data.members)) setMembers(data.members);
+      })
+      .catch(() => {});
+  }, []);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!title.trim()) { setError("Title is required."); return; }
+    setError(null);
+    setSubmitting(true);
+    try {
+      await onSave(group, {
+        title: title.trim(),
+        description: description.trim(),
+        dueDate,
+        priority,
+        assigneeUserId,
+      });
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not create task.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-black/30" onClick={onClose} />
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-md rounded-[24px] border border-[var(--pm-border)] bg-white shadow-2xl">
+          <div className="flex items-center justify-between border-b border-[var(--pm-border)] px-6 py-4">
+            <h2 className="text-[16px] font-semibold text-[var(--pm-text)]">
+              Add task — {group.label}
+            </h2>
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[var(--pm-text-muted)] hover:bg-[var(--pm-gray-light)]"
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4 px-6 py-5">
+            {error && (
+              <p className="rounded-lg bg-[#fff3f5] px-3 py-2 text-[13px] text-[#b42336]">{error}</p>
+            )}
+            <div>
+              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-[var(--pm-text-muted)]">
+                Task title <span className="text-[#E2445C]">*</span>
+              </label>
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="What needs to be done?"
+                autoFocus
+                className="w-full rounded-xl border border-[var(--pm-border)] bg-white px-3 py-2 text-[14px] text-[var(--pm-text)] outline-none focus:border-[#0073EA]"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-[var(--pm-text-muted)]">
+                Description
+              </label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Optional details…"
+                rows={2}
+                className="w-full resize-none rounded-xl border border-[var(--pm-border)] bg-white px-3 py-2 text-[13px] text-[var(--pm-text)] outline-none focus:border-[#0073EA]"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-[var(--pm-text-muted)]">
+                  Due date
+                </label>
+                <input
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  className="w-full rounded-xl border border-[var(--pm-border)] bg-white px-3 py-2 text-[13px] text-[var(--pm-text)] outline-none focus:border-[#0073EA]"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-[var(--pm-text-muted)]">
+                  Priority
+                </label>
+                <select
+                  value={priority}
+                  onChange={(e) => setPriority(e.target.value)}
+                  className="w-full rounded-xl border border-[var(--pm-border)] bg-white px-3 py-2 text-[13px] text-[var(--pm-text)] outline-none focus:border-[#0073EA]"
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="critical">Critical</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wider text-[var(--pm-text-muted)]">
+                Assign to
+              </label>
+              <select
+                value={assigneeUserId}
+                onChange={(e) => setAssigneeUserId(e.target.value)}
+                className="w-full rounded-xl border border-[var(--pm-border)] bg-white px-3 py-2 text-[13px] text-[var(--pm-text)] outline-none focus:border-[#0073EA]"
+              >
+                <option value="">Unassigned</option>
+                {members.map((m) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button
+                type="submit"
+                disabled={submitting}
+                className="flex-1 rounded-xl bg-[#0073EA] py-2 text-[13px] font-semibold text-white disabled:opacity-50 hover:bg-[#0060c2]"
+              >
+                {submitting ? "Creating…" : "Create task"}
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-xl border border-[var(--pm-border)] px-4 py-2 text-[13px] font-medium text-[var(--pm-text-secondary)] hover:bg-[var(--pm-gray-light)]"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </>
+  );
+}
+
 function EmptyPanel({
   title,
   description,
@@ -297,6 +472,7 @@ export function ProjectWorkspace({
   const [selectedTask, setSelectedTask] = useState<BoardTaskRow | null>(null);
   const [inlineMessage, setInlineMessage] = useState<string | null>(null);
   const [taskBusy, setTaskBusy] = useState(false);
+  const [addingGroup, setAddingGroup] = useState<TaskGroup | null>(null);
   const {
     project,
     tasks,
@@ -346,18 +522,30 @@ export function ProjectWorkspace({
       .sort((left, right) => right.count - left.count || left.name.localeCompare(right.name));
   }, [boardTasks]);
 
-  async function handleAddTask(group: TaskGroup, title: string) {
+  async function handleAddTask(group: TaskGroup, payload: {
+    title: string;
+    description: string;
+    dueDate: string;
+    priority: string;
+    assigneeUserId: string;
+  }) {
     setTaskBusy(true);
     setInlineMessage(null);
 
     try {
+      const body: Record<string, unknown> = {
+        projectId,
+        title: payload.title,
+        priority: payload.priority,
+      };
+      if (payload.description) body.description = payload.description;
+      if (payload.dueDate) body.dueDate = payload.dueDate;
+      if (payload.assigneeUserId) body.assigneeUserId = payload.assigneeUserId;
+
       const createResponse = await fetch("/api/workspace/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId,
-          title,
-        }),
+        body: JSON.stringify(body),
       });
 
       const createPayload = (await createResponse.json().catch(() => ({}))) as {
@@ -370,19 +558,15 @@ export function ProjectWorkspace({
       }
 
       if (group.targetStatus !== "not_started") {
-        const progressPercent = group.targetStatus === "completed" ? 100 : group.targetStatus === "in_progress" ? 35 : 0;
-        const statusResponse = await fetch(`/api/workspace/tasks/${createPayload.id}/status`, {
+        const progressPercent =
+          group.targetStatus === "completed" ? 100
+          : group.targetStatus === "in_progress" ? 35
+          : 0;
+        await fetch(`/api/workspace/tasks/${createPayload.id}/status`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            status: group.targetStatus,
-            progressPercent,
-          }),
+          body: JSON.stringify({ status: group.targetStatus, progressPercent }),
         });
-
-        if (!statusResponse.ok) {
-          throw new Error("Task was created but the status update did not stick.");
-        }
       }
 
       window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
@@ -418,7 +602,7 @@ export function ProjectWorkspace({
             <TaskTable
               groups={groupedTasks}
               onTaskClick={setSelectedTask}
-              onAddTask={handleAddTask}
+              onOpenAddTask={(group) => setAddingGroup(group)}
               onAddGroup={handleAddGroup}
             />
           </div>
@@ -775,6 +959,14 @@ export function ProjectWorkspace({
 
         {renderedBody()}
       </main>
+
+      {addingGroup && (
+        <AddTaskModal
+          group={addingGroup}
+          onClose={() => setAddingGroup(null)}
+          onSave={handleAddTask}
+        />
+      )}
 
       <TaskDetailDrawer task={selectedTask} onClose={() => setSelectedTask(null)} />
     </div>

@@ -25,6 +25,7 @@ const CreateTaskSchema = z.object({
   description: z.string().max(4000).optional(),
   priority: z.enum(["low", "medium", "high", "critical"]).default("medium"),
   dueDate: z.string().date().optional(),
+  assigneeUserId: z.string().uuid().optional(),
 });
 
 function shouldAutoAiTriage(): boolean {
@@ -62,46 +63,27 @@ export async function POST(request: NextRequest) {
     await persistSession(result.session);
   }
 
-  if (result.status >= 400 || !shouldAutoAiTriage()) {
-    return NextResponse.json(result.body, { status: result.status });
-  }
-
-  const createdTaskId = isRecord(result.body) && typeof result.body.id === "string" ? result.body.id : null;
-  if (!createdTaskId) {
-    return NextResponse.json(result.body, { status: result.status });
-  }
-
+  // Return task creation result immediately — do not block on triage
   const activeSession = result.session ?? session;
-  const triageResult = await proxyApiRequest(activeSession, "/v1/agent/runs", {
-      method: "POST",
-      body: JSON.stringify({
-        source: "transcript",
-        sourceRefId: `task:${createdTaskId}`,
-        projectId: payload.projectId,
-        trigger: "task_created_auto_triage",
-        transcript: buildTaskTriageTranscript(payload),
-      }),
-    },
-    { timeoutMs: 60_000 }
-  );
+  const createdTaskId = isRecord(result.body) && typeof result.body.id === "string" ? result.body.id : null;
 
-  if (triageResult.session) {
-    await persistSession(triageResult.session);
-  }
-
-  if (isRecord(result.body)) {
-    return NextResponse.json(
+  if (createdTaskId && shouldAutoAiTriage()) {
+    // Fire-and-forget: kick off triage without blocking the response
+    void proxyApiRequest(
+      activeSession,
+      "/v1/agent/runs",
       {
-        ...result.body,
-        aiTriage: {
-          requested: true,
-          success: triageResult.status < 400,
-          status: triageResult.status,
-          details: triageResult.body,
-        },
+        method: "POST",
+        body: JSON.stringify({
+          source: "transcript",
+          sourceRefId: `task:${createdTaskId}`,
+          projectId: payload.projectId,
+          trigger: "task_created_auto_triage",
+          transcript: buildTaskTriageTranscript(payload),
+        }),
       },
-      { status: result.status }
-    );
+      { timeoutMs: 30_000 }
+    ).catch(() => { /* triage failure is non-fatal */ });
   }
 
   return NextResponse.json(result.body, { status: result.status });

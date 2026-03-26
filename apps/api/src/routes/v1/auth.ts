@@ -172,6 +172,32 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
+  fastify.get(
+    "/members",
+    { preHandler: [fastify.authenticate] },
+    async (request) => {
+      const tenantId = request.user.tenantId;
+      const rows = await fastify.db.queryTenant<{
+        id: string;
+        name: string;
+        email: string;
+        role: string;
+      }>(
+        tenantId,
+        `SELECT u.id,
+                COALESCE(NULLIF(u.display_name, ''), split_part(u.email, '@', 1)) AS name,
+                u.email,
+                m.role
+         FROM users u
+         JOIN memberships m ON m.user_id = u.id
+         WHERE m.tenant_id = $1
+         ORDER BY name`,
+        [tenantId]
+      );
+      return { members: rows };
+    }
+  );
+
   fastify.post(
     "/logout",
     { preHandler: [fastify.authenticate] },
