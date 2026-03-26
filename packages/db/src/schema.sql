@@ -324,11 +324,13 @@ ALTER TABLE notifications ALTER COLUMN dedupe_user_key SET NOT NULL;
 ALTER TABLE notifications ALTER COLUMN dedupe_date SET NOT NULL;
 
 DO $$ BEGIN
-  ALTER TABLE notifications
-    ADD CONSTRAINT uq_notifications_dedup
-    UNIQUE (tenant_id, dedupe_scope, dedupe_user_key, channel, subject, dedupe_date);
-EXCEPTION
-  WHEN duplicate_object THEN null;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'uq_notifications_dedup'
+  ) THEN
+    ALTER TABLE notifications
+      ADD CONSTRAINT uq_notifications_dedup
+      UNIQUE (tenant_id, dedupe_scope, dedupe_user_key, channel, subject, dedupe_date);
+  END IF;
 END $$;
 
 CREATE TABLE IF NOT EXISTS slack_installations (

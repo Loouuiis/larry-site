@@ -6,7 +6,24 @@
 - Slack, Email, and Calendar are supported as connectors/channels, not the core data model.
 - Jira/Asana/ClickUp-style integrations are explicitly post-v1 (optional business decision later).
 
-See [docs/backend/v1-standalone-rebaseline.md](docs/backend/v1-standalone-rebaseline.md) for the scope baseline and [docs/backend/v1-execution-plan.md](docs/backend/v1-execution-plan.md) for sprint-level execution.
+See [docs/OVERVIEW.md](docs/OVERVIEW.md) for product overview, [docs/V1-SCOPE.md](docs/V1-SCOPE.md) for the v1 scope baseline, and [docs/SPRINT-4DAY.md](docs/SPRINT-4DAY.md) for the active sprint plan.
+
+## Documentation
+
+| Topic | File |
+|-------|------|
+| Product overview & vision | `docs/OVERVIEW.md` |
+| Monorepo structure & stack | `docs/ARCHITECTURE.md` |
+| API routes & conventions | `docs/BACKEND-API.md` |
+| Worker & agent lifecycle | `docs/BACKEND-WORKER.md` |
+| AI extraction & policy | `docs/AI-AGENT.md` |
+| Slack / Calendar / Email | `docs/CONNECTORS.md` |
+| Frontend & workspace UI | `docs/FRONTEND.md` |
+| Auth & security | `docs/AUTH-SECURITY.md` |
+| Database schema & RLS | `docs/DATABASE.md` |
+| V1 scope decisions | `docs/V1-SCOPE.md` |
+| Active sprint plan | `docs/SPRINT-4DAY.md` |
+| Deployment | `DEPLOYMENT.md` |
 
 ## Structure
 
