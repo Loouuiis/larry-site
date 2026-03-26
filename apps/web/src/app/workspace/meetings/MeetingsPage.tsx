@@ -83,6 +83,8 @@ function timeAgo(dateStr: string): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
+interface Project { id: string; name: string; }
+
 export function MeetingsPage() {
   const router = useRouter();
   const [meetings, setMeetings] = useState<MeetingNote[]>([]);
@@ -94,6 +96,8 @@ export function MeetingsPage() {
   const [successState, setSuccessState] = useState<"complete" | "failed" | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedData, setExpandedData] = useState<Record<string, MeetingNote>>({});
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const simTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -109,6 +113,17 @@ export function MeetingsPage() {
   }, []);
 
   useEffect(() => { void loadMeetings(); }, [loadMeetings]);
+
+  useEffect(() => {
+    fetch("/api/workspace/snapshot?includeProjectContext=false", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data: { projects?: Project[] }) => {
+        const list = data.projects ?? [];
+        setProjects(list);
+        if (list.length > 0) setSelectedProjectId(list[0].id);
+      })
+      .catch(() => {});
+  }, []);
 
   const pollRunState = useCallback((runId: string) => {
     if (pollRef.current) clearInterval(pollRef.current);
@@ -172,7 +187,7 @@ export function MeetingsPage() {
       const res = await fetch("/api/workspace/meetings/transcript", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript: t }),
+        body: JSON.stringify({ transcript: t, projectId: selectedProjectId || undefined }),
       });
       const data = await readJson<{ runId?: string }>(res);
       if (res.ok && data.runId) {
@@ -223,13 +238,25 @@ export function MeetingsPage() {
               disabled={processing}
               className="w-full rounded-xl border border-[var(--pm-border)] bg-[var(--pm-surface)] px-4 py-3 text-[14px] outline-none focus:border-[#6366f1] resize-none disabled:opacity-50"
             />
+            {projects.length > 0 && (
+              <select
+                value={selectedProjectId}
+                onChange={(e) => setSelectedProjectId(e.target.value)}
+                disabled={processing}
+                className="w-full rounded-xl border border-[var(--pm-border)] bg-[var(--pm-surface)] px-4 py-2.5 text-[14px] outline-none focus:border-[#6366f1] disabled:opacity-50"
+              >
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            )}
             <div className="flex items-center justify-between">
               <p className="text-[12px] text-[var(--pm-text-muted)]">
                 {transcript.length} characters
               </p>
               <button
                 type="submit"
-                disabled={processing || transcript.trim().length < 20}
+                disabled={processing || transcript.trim().length < 20 || !selectedProjectId}
                 className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#6366f1] px-4 text-[13px] font-medium text-white hover:bg-[#4f46e5] disabled:opacity-50"
               >
                 <Upload size={14} />

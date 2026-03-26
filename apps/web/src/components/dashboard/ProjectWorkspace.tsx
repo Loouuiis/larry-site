@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import {
   motion,
   AnimatePresence,
@@ -1314,6 +1314,45 @@ interface ProjectWorkspaceProps {
 
 /* ─── Component ───────────────────────────────────────────────────────────── */
 
+interface ApiTask {
+  id: string;
+  title: string;
+  status: "backlog" | "not_started" | "in_progress" | "waiting" | "completed" | "blocked";
+  dueDate: string | null;
+}
+
+function mapApiTasks(apiTasks: ApiTask[]): WorkspaceData {
+  const now = new Date();
+  const tasks: Task[] = apiTasks.map((t) => {
+    const due = t.dueDate ? new Date(t.dueDate) : null;
+    const isOverdue = due && due < now && t.status !== "completed";
+    let status: TaskStatus;
+    if (t.status === "completed") status = "done";
+    else if (isOverdue || t.status === "blocked") status = "overdue";
+    else status = "pending";
+    return {
+      id: t.id,
+      title: t.title,
+      owner: "—",
+      due: t.dueDate
+        ? new Date(t.dueDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+        : "—",
+      status,
+    };
+  });
+
+  const done = tasks.filter((t) => t.status === "done").length;
+  const progress = tasks.length > 0 ? Math.round((done / tasks.length) * 100) : 0;
+  const attentionItems: AttentionItem[] = tasks
+    .filter((t) => t.status === "overdue")
+    .slice(0, 5)
+    .map((t) => ({ id: t.id, title: t.title, owner: t.owner, due: t.due, severity: "overdue" as Severity }));
+
+  return { progress, phases: [], attentionItems, tasks };
+}
+
+const EMPTY_DATA: WorkspaceData = { progress: 0, phases: [], attentionItems: [], tasks: [] };
+
 export function ProjectWorkspace({
   projectId,
   projectName,
@@ -1321,9 +1360,24 @@ export function ProjectWorkspace({
 }: ProjectWorkspaceProps) {
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [selectedTask, setSelectedTask] = useState<TaskPanelData | null>(null);
+  const [data, setData] = useState<WorkspaceData>(EMPTY_DATA);
 
-  const data: WorkspaceData =
-    WORKSPACE_DATA[projectId] ?? WORKSPACE_DATA["alpha"];
+  const fetchTasks = useCallback(() => {
+    fetch(`/api/workspace/tasks?projectId=${encodeURIComponent(projectId)}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((body: { items?: ApiTask[] }) => {
+        if (Array.isArray(body.items)) {
+          setData(mapApiTasks(body.items));
+        }
+      })
+      .catch(() => {});
+  }, [projectId]);
+
+  useEffect(() => {
+    fetchTasks();
+    window.addEventListener("larry:refresh-snapshot", fetchTasks);
+    return () => window.removeEventListener("larry:refresh-snapshot", fetchTasks);
+  }, [fetchTasks]);
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
