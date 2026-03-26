@@ -237,9 +237,9 @@ function EmptyPanel({
   description: string;
 }) {
   return (
-    <div className="rounded-[24px] border border-[#182235] bg-[#0e1726] p-8 text-center">
-      <p className="text-[14px] font-semibold text-[#eef3ff]">{title}</p>
-      <p className="mx-auto mt-2 max-w-xl text-[13px] text-[#8a97ae]">{description}</p>
+    <div className="rounded-[24px] border border-[var(--pm-border)] bg-white p-8 text-center">
+      <p className="text-[14px] font-semibold text-[var(--pm-text)]">{title}</p>
+      <p className="mx-auto mt-2 max-w-xl text-[13px] text-[var(--pm-text-muted)]">{description}</p>
     </div>
   );
 }
@@ -255,17 +255,17 @@ function MetricCard({
 }) {
   const toneClass =
     tone === "warn"
-      ? "border-[#3a2230] bg-[#161019]"
+      ? "border-[#f5c2cb] bg-[#fff3f5]"
       : tone === "accent"
-        ? "border-[#1d3145] bg-[#0f1b2b]"
-        : "border-[#182235] bg-[#0d1523]";
+        ? "border-[var(--pm-border)] bg-[#eef5ff]"
+        : "border-[var(--pm-border)] bg-white";
 
   return (
     <div className={`rounded-[20px] border p-4 ${toneClass}`}>
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#74839d]">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">
         {label}
       </p>
-      <p className="mt-3 text-[28px] font-semibold tracking-[-0.03em] text-[#eef3ff]">
+      <p className="mt-3 text-[28px] font-semibold tracking-[-0.03em] text-[var(--pm-text)]">
         {value}
       </p>
     </div>
@@ -279,11 +279,11 @@ function LoadingSkeleton() {
         {Array.from({ length: 4 }).map((_, index) => (
           <div
             key={index}
-            className="h-28 animate-pulse rounded-[20px] border border-[#182235] bg-[#0d1523]"
+            className="h-28 animate-pulse rounded-[20px] border border-[var(--pm-border)] bg-white"
           />
         ))}
       </div>
-      <div className="h-[480px] animate-pulse rounded-[24px] border border-[#182235] bg-[#0d1523]" />
+      <div className="h-[480px] animate-pulse rounded-[24px] border border-[var(--pm-border)] bg-white" />
     </div>
   );
 }
@@ -436,14 +436,14 @@ export function ProjectWorkspace({
 
         return (
           <div className="space-y-5">
-            <div className="overflow-hidden rounded-[24px] border border-[#182235] bg-[#0d1523]">
-              <div className="grid grid-cols-[240px_minmax(0,1fr)] border-b border-[#182235] px-5 py-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#74839d]">
+            <div className="overflow-hidden rounded-[24px] border border-[var(--pm-border)] bg-white">
+              <div className="grid grid-cols-[240px_minmax(0,1fr)] border-b border-[var(--pm-border)] px-5 py-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">
                 <span>Task lane</span>
                 <div className="relative flex h-6 items-center">
                   {timeline.markers.map((marker) => (
                     <span
                       key={`${marker.label}-${marker.left}`}
-                      className="absolute -translate-x-1/2 text-[11px] text-[#8a97ae]"
+                      className="absolute -translate-x-1/2 text-[11px] text-[var(--pm-text-muted)]"
                       style={{ left: `${marker.left}%` }}
                     >
                       {marker.label}
@@ -461,23 +461,23 @@ export function ProjectWorkspace({
                     <button
                       type="button"
                       onClick={() => setSelectedTask(task)}
-                      className="rounded-[18px] border border-[#182235] bg-[#101a2b] p-4 text-left transition-colors hover:border-[#2b3951] hover:bg-[#131f33]"
+                      className="rounded-[18px] border border-[var(--pm-border)] bg-white p-4 text-left transition-colors hover:border-[var(--pm-border)] hover:bg-[var(--pm-gray-light)]"
                     >
-                      <p className="text-[14px] font-semibold text-[#eef3ff]">{task.title}</p>
+                      <p className="text-[14px] font-semibold text-[var(--pm-text)]">{task.title}</p>
                       <div className="mt-3 flex items-center gap-2">
                         <StatusChip status={task.status} />
                       </div>
-                      <p className="mt-3 text-[12px] text-[#8a97ae]">
+                      <p className="mt-3 text-[12px] text-[var(--pm-text-muted)]">
                         {formatLongDate(task.startDate)} to {formatLongDate(task.dueDate)}
                       </p>
                     </button>
 
-                    <div className="relative h-14 rounded-[18px] border border-[#182235] bg-[#0f1827]">
+                    <div className="relative h-14 rounded-[18px] border border-[var(--pm-border)] bg-[var(--pm-gray-light)]">
                       <div className="absolute inset-y-0 left-0 right-0 flex">
                         {timeline.markers.map((marker) => (
                           <span
                             key={`${task.id}-${marker.left}`}
-                            className="absolute inset-y-2 w-px bg-[#182235]"
+                            className="absolute inset-y-2 w-px bg-[var(--pm-border)]"
                             style={{ left: `${marker.left}%` }}
                           />
                         ))}
@@ -500,17 +500,17 @@ export function ProjectWorkspace({
             </div>
 
             {timeline.undated.length > 0 && (
-              <div className="rounded-[24px] border border-[#182235] bg-[#0d1523] p-5">
+              <div className="rounded-[24px] border border-[var(--pm-border)] bg-white p-5">
                 <div className="mb-4 flex items-center justify-between">
                   <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#74839d]">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">
                       No dates set
                     </p>
-                    <p className="mt-2 text-[14px] text-[#8a97ae]">
+                    <p className="mt-2 text-[14px] text-[var(--pm-text-muted)]">
                       These tasks are live, but they are not scheduled yet.
                     </p>
                   </div>
-                  <span className="rounded-full border border-[#223047] bg-[#101a2b] px-3 py-1 text-[12px] text-[#c5d0e0]">
+                  <span className="rounded-full border border-[var(--pm-border)] bg-white px-3 py-1 text-[12px] text-[var(--pm-text-secondary)]">
                     {timeline.undated.length} items
                   </span>
                 </div>
@@ -520,9 +520,9 @@ export function ProjectWorkspace({
                       key={task.id}
                       type="button"
                       onClick={() => setSelectedTask(task)}
-                      className="rounded-[18px] border border-[#182235] bg-[#101a2b] p-4 text-left transition-colors hover:border-[#2b3951] hover:bg-[#131f33]"
+                      className="rounded-[18px] border border-[var(--pm-border)] bg-white p-4 text-left transition-colors hover:border-[var(--pm-border)] hover:bg-[var(--pm-gray-light)]"
                     >
-                      <p className="text-[14px] font-semibold text-[#eef3ff]">{task.title}</p>
+                      <p className="text-[14px] font-semibold text-[var(--pm-text)]">{task.title}</p>
                       <div className="mt-3 flex items-center gap-2">
                         <StatusChip status={task.status} />
                       </div>
@@ -537,8 +537,8 @@ export function ProjectWorkspace({
       case "analytics":
         return (
           <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-            <div className="rounded-[24px] border border-[#182235] bg-[#0d1523] p-6">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#74839d]">
+            <div className="rounded-[24px] border border-[var(--pm-border)] bg-white p-6">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">
                 Health snapshot
               </p>
               <div className="mt-5 grid gap-4 md:grid-cols-2">
@@ -549,11 +549,11 @@ export function ProjectWorkspace({
               </div>
             </div>
 
-            <div className="rounded-[24px] border border-[#182235] bg-[#0d1523] p-6">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#74839d]">
+            <div className="rounded-[24px] border border-[var(--pm-border)] bg-white p-6">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">
                 Larry readout
               </p>
-              <p className="mt-4 text-[14px] leading-7 text-[#c5d0e0]">
+              <p className="mt-4 text-[14px] leading-7 text-[var(--pm-text-secondary)]">
                 {outcomes?.narrative ??
                   "Larry will surface a narrative once the project has enough task, risk, and approval history to summarise movement cleanly."}
               </p>
@@ -576,22 +576,22 @@ export function ProjectWorkspace({
             {meetings.map((meeting) => (
               <article
                 key={meeting.id}
-                className="rounded-[24px] border border-[#182235] bg-[#0d1523] p-6"
+                className="rounded-[24px] border border-[var(--pm-border)] bg-white p-6"
               >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-[18px] font-semibold tracking-[-0.03em] text-[#eef3ff]">
+                    <p className="text-[18px] font-semibold tracking-[-0.03em] text-[var(--pm-text)]">
                       {meeting.title ?? "Meeting note"}
                     </p>
-                    <p className="mt-2 text-[12px] uppercase tracking-[0.16em] text-[#74839d]">
+                    <p className="mt-2 text-[12px] uppercase tracking-[0.16em] text-[var(--pm-text-muted)]">
                       {meeting.meetingDate ? formatLongDate(meeting.meetingDate) : formatRelativeTime(meeting.createdAt)}
                     </p>
                   </div>
-                  <span className="rounded-full border border-[#223047] bg-[#101a2b] px-3 py-1 text-[12px] text-[#c5d0e0]">
+                  <span className="rounded-full border border-[var(--pm-border)] bg-white px-3 py-1 text-[12px] text-[var(--pm-text-secondary)]">
                     {meeting.actionCount} action{meeting.actionCount === 1 ? "" : "s"}
                   </span>
                 </div>
-                <p className="mt-4 text-[14px] leading-7 text-[#c5d0e0]">
+                <p className="mt-4 text-[14px] leading-7 text-[var(--pm-text-secondary)]">
                   {meeting.summary ?? "Transcript captured. Summary is still processing."}
                 </p>
               </article>
@@ -614,29 +614,29 @@ export function ProjectWorkspace({
             {ownerRows.map((owner) => (
               <div
                 key={owner.name}
-                className="rounded-[24px] border border-[#182235] bg-[#0d1523] p-6"
+                className="rounded-[24px] border border-[var(--pm-border)] bg-white p-6"
               >
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-[18px] font-semibold tracking-[-0.03em] text-[#eef3ff]">
+                    <p className="text-[18px] font-semibold tracking-[-0.03em] text-[var(--pm-text)]">
                       {owner.name}
                     </p>
-                    <p className="mt-2 text-[12px] uppercase tracking-[0.16em] text-[#74839d]">
+                    <p className="mt-2 text-[12px] uppercase tracking-[0.16em] text-[var(--pm-text-muted)]">
                       Task ownership
                     </p>
                   </div>
-                  <span className="rounded-full border border-[#223047] bg-[#101a2b] px-3 py-1 text-[12px] text-[#c5d0e0]">
+                  <span className="rounded-full border border-[var(--pm-border)] bg-white px-3 py-1 text-[12px] text-[var(--pm-text-secondary)]">
                     {owner.count} tasks
                   </span>
                 </div>
                 <div className="mt-5 flex items-center gap-3">
-                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-[#172132]">
+                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--pm-border)]">
                     <div
                       className="h-full rounded-full bg-[#0073EA]"
                       style={{ width: `${Math.max((owner.count / Math.max(boardTasks.length, 1)) * 100, 6)}%` }}
                     />
                   </div>
-                  <span className="text-[12px] text-[#8a97ae]">
+                  <span className="text-[12px] text-[var(--pm-text-muted)]">
                     {owner.blocked} blocked
                   </span>
                 </div>
@@ -648,30 +648,30 @@ export function ProjectWorkspace({
       case "documents":
         return (
           <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-            <div className="rounded-[24px] border border-[#182235] bg-[#0d1523] p-6">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#74839d]">
+            <div className="rounded-[24px] border border-[var(--pm-border)] bg-white p-6">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">
                 Current launch scope
               </p>
-              <p className="mt-4 text-[14px] leading-7 text-[#c5d0e0]">
+              <p className="mt-4 text-[14px] leading-7 text-[var(--pm-text-secondary)]">
                 The launch workspace is anchored on tasks, approvals, and meeting extraction. We are deliberately not showing synthetic file libraries here until document sync is connected for real.
               </p>
             </div>
-            <div className="rounded-[24px] border border-[#182235] bg-[#0d1523] p-6">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#74839d]">
+            <div className="rounded-[24px] border border-[var(--pm-border)] bg-white p-6">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">
                 Signals already available
               </p>
-              <div className="mt-5 space-y-3 text-[14px] text-[#c5d0e0]">
-                <div className="flex items-center justify-between rounded-[18px] border border-[#182235] bg-[#101a2b] px-4 py-3">
+              <div className="mt-5 space-y-3 text-[14px] text-[var(--pm-text-secondary)]">
+                <div className="flex items-center justify-between rounded-[18px] border border-[var(--pm-border)] bg-white px-4 py-3">
                   <span>Tasks indexed</span>
-                  <strong className="text-[#eef3ff]">{boardTasks.length}</strong>
+                  <strong className="text-[var(--pm-text)]">{boardTasks.length}</strong>
                 </div>
-                <div className="flex items-center justify-between rounded-[18px] border border-[#182235] bg-[#101a2b] px-4 py-3">
+                <div className="flex items-center justify-between rounded-[18px] border border-[var(--pm-border)] bg-white px-4 py-3">
                   <span>Meeting summaries</span>
-                  <strong className="text-[#eef3ff]">{meetings.length}</strong>
+                  <strong className="text-[var(--pm-text)]">{meetings.length}</strong>
                 </div>
-                <div className="flex items-center justify-between rounded-[18px] border border-[#182235] bg-[#101a2b] px-4 py-3">
+                <div className="flex items-center justify-between rounded-[18px] border border-[var(--pm-border)] bg-white px-4 py-3">
                   <span>Pending approvals</span>
-                  <strong className="text-[#eef3ff]">{actions.length}</strong>
+                  <strong className="text-[var(--pm-text)]">{actions.length}</strong>
                 </div>
               </div>
             </div>
@@ -681,25 +681,25 @@ export function ProjectWorkspace({
   };
 
   return (
-    <div className="flex h-full flex-col overflow-hidden bg-[#07111f]">
-      <header className="border-b border-[#122033] bg-[#091423] px-6 py-5">
+    <div className="flex h-full flex-col overflow-hidden bg-[var(--pm-bg)]">
+      <header className="border-b border-[var(--pm-border)] bg-[var(--pm-surface)] px-6 py-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-start gap-4">
             <button
               type="button"
               onClick={onBack}
-              className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[#182235] bg-[#0d1523] text-[#c5d0e0] transition-colors hover:border-[#2b3951] hover:text-white"
+              className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-[var(--pm-border)] bg-white text-[var(--pm-text-secondary)] transition-colors hover:border-[var(--pm-border)] hover:text-[var(--pm-text)]"
             >
               <ArrowLeft size={18} />
             </button>
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#74839d]">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--pm-text-muted)]">
                 Project workspace
               </p>
-              <h1 className="mt-3 text-[32px] font-semibold tracking-[-0.04em] text-[#f4f7ff]">
+              <h1 className="mt-3 text-[32px] font-semibold tracking-[-0.04em] text-[var(--pm-text)]">
                 {surfaceName}
               </h1>
-              <div className="mt-3 flex flex-wrap items-center gap-3 text-[13px] text-[#8a97ae]">
+              <div className="mt-3 flex flex-wrap items-center gap-3 text-[13px] text-[var(--pm-text-muted)]">
                 <span>Updated {formatRelativeTime(project?.updatedAt)}</span>
                 <span className="h-1 w-1 rounded-full bg-[#334259]" />
                 <span className="capitalize">{project?.status ?? "active"}</span>
@@ -709,18 +709,18 @@ export function ProjectWorkspace({
             </div>
           </div>
 
-          <div className="grid min-w-[220px] gap-3 rounded-[24px] border border-[#182235] bg-[#0d1523] px-5 py-4">
-            <div className="flex items-center justify-between text-[12px] uppercase tracking-[0.16em] text-[#74839d]">
+          <div className="grid min-w-[220px] gap-3 rounded-[24px] border border-[var(--pm-border)] bg-white px-5 py-4">
+            <div className="flex items-center justify-between text-[12px] uppercase tracking-[0.16em] text-[var(--pm-text-muted)]">
               <span>Target</span>
               <span>{project?.targetDate ? formatShortDate(project.targetDate) : "Unset"}</span>
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-[#182235]">
+            <div className="h-2 overflow-hidden rounded-full bg-[var(--pm-border)]">
               <div
                 className="h-full rounded-full bg-[linear-gradient(90deg,#0073EA_0%,#4AA3FF_50%,#8AC5FF_100%)]"
                 style={{ width: `${Math.max(completionRate, 6)}%` }}
               />
             </div>
-            <div className="flex items-center justify-between text-[13px] text-[#c5d0e0]">
+            <div className="flex items-center justify-between text-[13px] text-[var(--pm-text-secondary)]">
               <span>{completionRate}% complete</span>
               <span>{openCount} open tasks</span>
             </div>
@@ -728,7 +728,7 @@ export function ProjectWorkspace({
         </div>
       </header>
 
-      <div className="border-b border-[#122033] bg-[#091423] px-6 pb-4">
+      <div className="border-b border-[var(--pm-border)] bg-[var(--pm-surface)] px-6 pb-4">
         <div className="flex flex-wrap gap-2">
           {TAB_OPTIONS.map((tab) => {
             const Icon = tab.icon;
@@ -741,7 +741,7 @@ export function ProjectWorkspace({
                 className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[13px] font-medium transition-colors ${
                   active
                     ? "border-[#2b8cff] bg-[#0073EA] text-white"
-                    : "border-[#182235] bg-[#0d1523] text-[#9cabbe] hover:border-[#2b3951] hover:text-white"
+                    : "border-[var(--pm-border)] bg-white text-[var(--pm-text-muted)] hover:border-[var(--pm-border)] hover:bg-[var(--pm-gray-light)] hover:text-[var(--pm-text)]"
                 }`}
               >
                 <Icon size={15} />
@@ -754,21 +754,21 @@ export function ProjectWorkspace({
 
       <main className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
         {error && (
-          <div className="mb-4 flex items-start gap-3 rounded-[18px] border border-[#3b2433] bg-[#1a1018] px-4 py-3 text-[#f5cad7]">
+          <div className="mb-4 flex items-start gap-3 rounded-[18px] border border-[#f5c2cb] bg-[#fff3f5] px-4 py-3 text-[#9f1d35]">
             <TriangleAlert size={16} className="mt-0.5 shrink-0" />
             <span className="text-[13px]">{error}</span>
           </div>
         )}
 
         {inlineMessage && (
-          <div className="mb-4 flex items-start gap-3 rounded-[18px] border border-[#1f3248] bg-[#0e1b2c] px-4 py-3 text-[#d8e6f8]">
+          <div className="mb-4 flex items-start gap-3 rounded-[18px] border border-[var(--pm-border)] bg-[#eef5ff] px-4 py-3 text-[var(--pm-text-secondary)]">
             <Plus size={16} className="mt-0.5 shrink-0" />
             <span className="text-[13px]">{inlineMessage}</span>
           </div>
         )}
 
         {taskBusy && (
-          <div className="mb-4 rounded-[18px] border border-[#1f3248] bg-[#0e1b2c] px-4 py-3 text-[13px] text-[#d8e6f8]">
+          <div className="mb-4 rounded-[18px] border border-[var(--pm-border)] bg-[#eef5ff] px-4 py-3 text-[13px] text-[var(--pm-text-secondary)]">
             Updating workspace...
           </div>
         )}
@@ -780,3 +780,4 @@ export function ProjectWorkspace({
     </div>
   );
 }
+

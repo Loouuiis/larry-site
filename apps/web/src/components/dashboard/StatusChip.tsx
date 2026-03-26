@@ -12,7 +12,7 @@ const STATUS_LABELS: Record<TaskStatus, string> = {
 };
 
 const STATUS_STYLES: Record<TaskStatus, string> = {
-  backlog: "bg-[#3a4658] text-[#d5dbea]",
+  backlog: "bg-[var(--pm-gray-light)] text-[var(--pm-text-secondary)]",
   not_started: "bg-[#676879] text-white",
   in_progress: "bg-[#FDAB3D] text-[#241a00]",
   waiting: "bg-[#0073EA] text-white",
@@ -29,3 +29,4 @@ export function StatusChip({ status }: { status: TaskStatus }) {
     </span>
   );
 }
+

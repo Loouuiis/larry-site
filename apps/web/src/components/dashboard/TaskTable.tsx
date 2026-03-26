@@ -32,10 +32,10 @@ function getInitials(name?: string | null): string {
 
 function getAvatarTone(name?: string | null): string {
   const palette = [
-    "bg-[#21304a] text-[#b5c3d7]",
-    "bg-[#342154] text-[#d7c3ff]",
-    "bg-[#183d36] text-[#bbefe4]",
-    "bg-[#4a2c1d] text-[#ffd7ba]",
+    "bg-[#dbeafe] text-[#1e3a8a]",
+    "bg-[#ede9fe] text-[#5b21b6]",
+    "bg-[#dcfce7] text-[#166534]",
+    "bg-[#ffedd5] text-[#9a3412]",
   ];
   const key = name ?? "unassigned";
   let hash = 0;
@@ -57,7 +57,7 @@ function GroupProgressStrip({ tasks }: { tasks: BoardTaskRow[] }) {
   const total = tasks.length || 1;
 
   return (
-    <div className="flex h-1.5 overflow-hidden rounded-full bg-[#1a2332]">
+    <div className="flex h-1.5 overflow-hidden rounded-full bg-[var(--pm-border)]">
       <span className="bg-[#00C875]" style={{ width: `${(counts.completed / total) * 100}%` }} />
       <span className="bg-[#FDAB3D]" style={{ width: `${(counts.in_progress / total) * 100}%` }} />
       <span className="bg-[#E2445C]" style={{ width: `${(counts.blocked / total) * 100}%` }} />
@@ -103,8 +103,8 @@ export function TaskTable({ groups, onTaskClick, onAddTask, onAddGroup }: TaskTa
 
   return (
     <div className="space-y-5">
-      <div className="overflow-hidden rounded-[24px] border border-[#223047] bg-[#101827] shadow-[0_20px_60px_rgba(5,10,20,0.35)]">
-        <div className="grid grid-cols-[minmax(0,1.8fr)_120px_140px_110px_40px] border-b border-[#1d2738] px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#7f8ca3]">
+      <div className="overflow-hidden rounded-[24px] border border-[var(--pm-border)] bg-white shadow-[0_20px_60px_rgba(5,10,20,0.35)]">
+        <div className="grid grid-cols-[minmax(0,1.8fr)_120px_140px_110px_40px] border-b border-[var(--pm-border)] px-5 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">
           <span>Task</span>
           <span>Owner</span>
           <span>Status</span>
@@ -117,20 +117,20 @@ export function TaskTable({ groups, onTaskClick, onAddTask, onAddGroup }: TaskTa
             const isCollapsed = collapsed[group.key] ?? false;
 
             return (
-              <section key={group.key} className={`overflow-hidden rounded-[20px] border border-[#1d2738] bg-[#0d141f] ${group.accentClass}`}>
+              <section key={group.key} className={`overflow-hidden rounded-[20px] border border-[var(--pm-border)] bg-white ${group.accentClass}`}>
                 <button
                   type="button"
                   onClick={() => setCollapsed((previous) => ({ ...previous, [group.key]: !isCollapsed }))}
-                  className="flex w-full items-center justify-between gap-3 border-b border-[#162032] bg-[#111b2a] px-4 py-3 text-left"
+                  className="flex w-full items-center justify-between gap-3 border-b border-[var(--pm-border)] bg-[var(--pm-gray-light)] px-4 py-3 text-left"
                 >
                   <div className="flex items-center gap-3">
                     <ChevronDown
                       size={16}
-                      className={`text-[#8f9bb2] transition-transform ${isCollapsed ? "-rotate-90" : "rotate-0"}`}
+                      className={`text-[var(--pm-text-muted)] transition-transform ${isCollapsed ? "-rotate-90" : "rotate-0"}`}
                     />
                     <div>
-                      <p className="text-[15px] font-semibold text-[#eef3ff]">{group.label}</p>
-                      <p className="text-[11px] text-[#7f8ca3]">{group.tasks.length} tasks</p>
+                      <p className="text-[15px] font-semibold text-[var(--pm-text)]">{group.label}</p>
+                      <p className="text-[11px] text-[var(--pm-text-muted)]">{group.tasks.length} tasks</p>
                     </div>
                   </div>
                 </button>
@@ -142,27 +142,27 @@ export function TaskTable({ groups, onTaskClick, onAddTask, onAddGroup }: TaskTa
                         key={task.id}
                         type="button"
                         onClick={() => onTaskClick(task)}
-                        className="grid w-full grid-cols-[minmax(0,1.8fr)_120px_140px_110px_40px] items-center gap-3 border-b border-[#162032] px-5 py-3 text-left transition-colors hover:bg-[#121d2d]"
+                        className="grid w-full grid-cols-[minmax(0,1.8fr)_120px_140px_110px_40px] items-center gap-3 border-b border-[var(--pm-border)] px-5 py-3 text-left transition-colors hover:bg-[#f8f9fb]"
                       >
                         <div className="min-w-0">
-                          <p className="truncate text-[14px] font-medium text-[#eef3ff]">{task.title}</p>
+                          <p className="truncate text-[14px] font-medium text-[var(--pm-text)]">{task.title}</p>
                           {task.description && (
-                            <p className="truncate text-[12px] text-[#7f8ca3]">{task.description}</p>
+                            <p className="truncate text-[12px] text-[var(--pm-text-muted)]">{task.description}</p>
                           )}
                         </div>
                         <div className="flex items-center gap-2">
                           <span className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-semibold ${getAvatarTone(task.assigneeName)}`}>
                             {getInitials(task.assigneeName)}
                           </span>
-                          <span className="truncate text-[12px] text-[#c7d1e2]">{task.assigneeName ?? "Unassigned"}</span>
+                          <span className="truncate text-[12px] text-[var(--pm-text-secondary)]">{task.assigneeName ?? "Unassigned"}</span>
                         </div>
                         <StatusChip status={task.status} />
-                        <span className="text-[12px] text-[#d0d9e8]">{formatDueDate(task.dueDate)}</span>
-                        <span className="text-right text-[#4a5a77]">+</span>
+                        <span className="text-[12px] text-[var(--pm-text-secondary)]">{formatDueDate(task.dueDate)}</span>
+                        <span className="text-right text-[var(--pm-text-muted)]">+</span>
                       </button>
                     ))}
 
-                    <div className="border-b border-[#162032] px-5 py-3">
+                    <div className="border-b border-[var(--pm-border)] px-5 py-3">
                       {addingGroupKey === group.key ? (
                         <div className="flex items-center gap-2">
                           <input
@@ -179,7 +179,7 @@ export function TaskTable({ groups, onTaskClick, onAddTask, onAddGroup }: TaskTa
                               }
                             }}
                             placeholder={`Add a task to ${group.label.toLowerCase()}`}
-                            className="h-10 flex-1 rounded-xl border border-[#2d3b52] bg-[#101827] px-3 text-[13px] text-[#eef3ff] outline-none focus:border-[#8B5CF6]"
+                            className="h-10 flex-1 rounded-xl border border-[var(--pm-border)] bg-white px-3 text-[13px] text-[var(--pm-text)] outline-none focus:border-[#8B5CF6]"
                             autoFocus
                           />
                           <button
@@ -198,7 +198,7 @@ export function TaskTable({ groups, onTaskClick, onAddTask, onAddGroup }: TaskTa
                             setAddingGroupKey(group.key);
                             setDraftTitle("");
                           }}
-                          className="flex w-full items-center gap-2 rounded-xl border border-dashed border-[#2a3447] bg-[#0f1724] px-3 py-2 text-[13px] text-[#7f8ca3] transition-colors hover:border-[#3a4864] hover:text-[#d6deed]"
+                          className="flex w-full items-center gap-2 rounded-xl border border-dashed border-[var(--pm-border)] bg-[var(--pm-gray-light)] px-3 py-2 text-[13px] text-[var(--pm-text-muted)] transition-colors hover:border-[var(--pm-border)] hover:text-[var(--pm-text-secondary)]"
                         >
                           <Plus size={14} />
                           Add task
@@ -220,7 +220,7 @@ export function TaskTable({ groups, onTaskClick, onAddTask, onAddGroup }: TaskTa
       <button
         type="button"
         onClick={onAddGroup}
-        className="flex w-full items-center justify-center gap-2 rounded-[18px] border border-dashed border-[#31415d] bg-[#0f1724] px-4 py-3 text-[13px] font-medium text-[#9aa8c1] transition-colors hover:border-[#4a5f83] hover:text-[#eef3ff]"
+        className="flex w-full items-center justify-center gap-2 rounded-[18px] border border-dashed border-[var(--pm-border)] bg-[var(--pm-gray-light)] px-4 py-3 text-[13px] font-medium text-[var(--pm-text-muted)] transition-colors hover:border-[#4a5f83] hover:text-[var(--pm-text)]"
       >
         <Plus size={14} />
         Add new group
@@ -228,3 +228,4 @@ export function TaskTable({ groups, onTaskClick, onAddTask, onAddGroup }: TaskTa
     </div>
   );
 }
+
