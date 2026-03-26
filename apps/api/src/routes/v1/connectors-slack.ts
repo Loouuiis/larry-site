@@ -67,9 +67,10 @@ function requireSlackOauthConfig(
 }
 
 export const slackConnectorRoutes: FastifyPluginAsync = async (fastify) => {
-  // Slack signature verification requires exact raw request body bytes.
+  // Slack signature verification requires the exact raw request body bytes.
+  // Must use the string literal "application/json" to override Fastify's built-in parser.
   fastify.addContentTypeParser(
-    /^application\/json(?:;.*)?$/i,
+    "application/json",
     { parseAs: "string" },
     (_request, body, done) => done(null, body)
   );
