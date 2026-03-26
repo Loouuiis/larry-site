@@ -1,13 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import Image from "next/image";
+import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import {
   FolderOpen, FileText, MessageSquare, ClipboardList,
   X, Bot, BarChart2, Home, ListTodo, Settings,
+  Search, BellRing, LogOut, User, FolderKanban, CheckSquare,
 } from "lucide-react";
 import { WorkspaceProject } from "@/app/dashboard/types";
+import { NotificationBell } from "@/app/workspace/NotificationBell";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -34,28 +38,154 @@ interface WorkspaceSidebarInnerProps {
   projects: WorkspaceProject[];
   activeNav: WorkspaceSidebarNav;
   onClose?: () => void;
+  userEmail?: string | null;
+  pendingCount?: number;
+  notifCount?: number;
 }
 
-function WorkspaceSidebarInner({ projects, activeNav, onClose }: WorkspaceSidebarInnerProps) {
+interface SearchTask { id: string; title: string; status: string; projectId?: string | null; }
+
+function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, pendingCount = 0, notifCount = 0 }: WorkspaceSidebarInnerProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [search, setSearch] = useState("");
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [tasks, setTasks] = useState<SearchTask[]>([]);
+  const [tasksLoaded, setTasksLoaded] = useState(false);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+
+  const loadTasks = useCallback(async () => {
+    if (tasksLoaded) return;
+    try {
+      const res = await fetch("/api/workspace/snapshot?includeProjectContext=false");
+      const data = await res.json() as { tasks?: SearchTask[] };
+      setTasks(data.tasks ?? []);
+      setTasksLoaded(true);
+    } catch {
+      setTasksLoaded(true);
+    }
+  }, [tasksLoaded]);
+
+  const dismiss = useCallback(() => {
+    setDropdownOpen(false);
+    setSearch("");
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") dismiss(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [dismiss]);
+
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, []);
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setSearch(val);
+    if (val.trim().length >= 1) {
+      setDropdownOpen(true);
+      void loadTasks();
+    } else {
+      setDropdownOpen(false);
+    }
+  };
+
+  const q = search.trim().toLowerCase();
+  const matchedProjects = q ? projects.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 5) : [];
+  const matchedTasks = q ? tasks.filter((t) => t.title.toLowerCase().includes(q)).slice(0, 5) : [];
+  const hasResults = matchedProjects.length > 0 || matchedTasks.length > 0;
+
+  const goTo = (href: string) => {
+    dismiss();
+    onClose?.();
+    router.push(href);
+  };
+
+  const handleLogout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/");
+  };
 
   return (
     <div className="flex h-full flex-col">
+
+      {/* Logo */}
+      <div className="shrink-0 px-4 pt-5 pb-3">
+        <Link href="/workspace" onClick={onClose}>
+          <Image src="/Larry_logo.png" alt="Larry" width={110} height={34} className="object-contain" />
+        </Link>
+      </div>
+
+      {/* Search */}
+      <div ref={searchContainerRef} className="shrink-0 px-3 pb-4 relative">
+        <div className="relative">
+          <Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-muted)]" />
+          <input
+            value={search}
+            onChange={handleSearchChange}
+            onFocus={() => { if (search.trim().length >= 1) setDropdownOpen(true); }}
+            placeholder="Search tasks, projects…"
+            className="h-8 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] pl-8 pr-3 text-[13px] text-neutral-700 placeholder:text-neutral-400 outline-none focus:border-[var(--color-brand)] focus:bg-white transition-all"
+          />
+        </div>
+
+        {dropdownOpen && (
+          <div className="absolute left-3 right-3 top-[calc(100%-4px)] rounded-xl border border-[var(--color-border)] bg-white shadow-lg z-50 overflow-hidden">
+            {!hasResults ? (
+              <p className="px-4 py-3 text-[13px] text-neutral-400">No results for &ldquo;{search}&rdquo;</p>
+            ) : (
+              <>
+                {matchedProjects.length > 0 && (
+                  <div>
+                    <p className="px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">Projects</p>
+                    {matchedProjects.map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => goTo(`/workspace/projects/${p.id}/dashboard`)}
+                        className="flex w-full items-center gap-2.5 px-4 py-2 text-left hover:bg-neutral-50"
+                      >
+                        <FolderKanban size={13} className="shrink-0 text-[var(--color-brand)]" />
+                        <span className="text-[13px] text-neutral-700 truncate">{p.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {matchedTasks.length > 0 && (
+                  <div className={matchedProjects.length > 0 ? "border-t border-[var(--color-border)]" : ""}>
+                    <p className="px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">Tasks</p>
+                    {matchedTasks.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => goTo(t.projectId ? `/workspace/projects/${t.projectId}/dashboard` : "/workspace")}
+                        className="flex w-full items-center gap-2.5 px-4 py-2 text-left hover:bg-neutral-50"
+                      >
+                        <CheckSquare size={13} className="shrink-0 text-neutral-400" />
+                        <span className="text-[13px] text-neutral-700 truncate">{t.title}</span>
+                        <span className="ml-auto shrink-0 text-[11px] text-neutral-400 capitalize">{t.status?.replace(/_/g, " ")}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Nav */}
-      <nav className="flex-1 px-3 py-5 space-y-1 overflow-y-auto" aria-label="Main navigation">
-        <p className="mb-3 px-2 text-[10px] font-semibold uppercase tracking-widest text-neutral-400 flex items-center gap-1">
-          <span>Workspace</span>
-          {(() => {
-            const projectMatch = pathname?.match(/^\/workspace\/projects\/([^/]+)/);
-            if (projectMatch) return <><span>/</span><span>Project</span></>;
-            if (pathname?.startsWith("/workspace/meetings")) return <><span>/</span><span>Meetings</span></>;
-            if (pathname?.startsWith("/workspace/actions")) return <><span>/</span><span>Actions</span></>;
-            if (pathname?.startsWith("/workspace/documents")) return <><span>/</span><span>Documents</span></>;
-            if (pathname?.startsWith("/workspace/chats")) return <><span>/</span><span>Chats</span></>;
-            if (pathname?.startsWith("/workspace/settings")) return <><span>/</span><span>Settings</span></>;
-            if (pathname?.startsWith("/workspace/my-work")) return <><span>/</span><span>My Work</span></>;
-            return null;
-          })()}
+      <nav className="flex-1 px-3 space-y-1 overflow-y-auto" aria-label="Main navigation">
+        <p className="mb-3 px-2 text-[10px] font-semibold uppercase tracking-widest text-neutral-400">
+          Workspace
         </p>
         <LayoutGroup id="workspace-sidebar">
           {WORKSPACE_NAV.map(({ id, label, icon: Icon, href }) => {
@@ -161,17 +291,56 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose }: WorkspaceSideba
         )}
       </nav>
 
-      {/* Bottom — Larry badge */}
-      <div className="px-4 py-4 border-t border-[var(--color-border)]">
-        <div className="flex items-center gap-2.5 rounded-xl bg-[var(--color-brand)]/5 border border-[var(--color-brand)]/15 px-3 py-2.5">
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[var(--color-brand)] text-white">
-            <Bot size={13} />
-          </span>
-          <div>
-            <p className="text-xs font-medium text-neutral-800">Larry is active</p>
-            <p className="text-[10px] text-neutral-400">Monitoring {projects.length || 0} projects</p>
+      {/* Bottom section */}
+      <div className="shrink-0 border-t border-[var(--color-border)]">
+
+        {/* Action Center + Notifications */}
+        <div className="flex items-center gap-1 px-3 pt-3 pb-1">
+          <Link
+            href="/workspace/actions"
+            onClick={onClose}
+            className="relative flex h-9 w-9 items-center justify-center rounded-lg text-[var(--color-muted)] hover:bg-[var(--color-surface)] hover:text-neutral-700 transition-colors"
+            title="Action Center"
+          >
+            <BellRing size={20} />
+            {pendingCount > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-0.5 text-[10px] font-bold text-white">
+                {pendingCount > 99 ? "99+" : pendingCount}
+              </span>
+            )}
+          </Link>
+          <NotificationBell count={notifCount} onCountChange={() => undefined} />
+        </div>
+
+        {/* Account */}
+        <div className="flex items-center gap-2 px-3 py-2">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--color-surface)] border border-[var(--color-border)]">
+            <User size={18} className="text-[var(--color-muted)]" />
           </div>
-          <span className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0" aria-hidden="true" />
+          <span className="flex-1 truncate text-[12px] text-[var(--color-muted)]">
+            {userEmail ?? "Account"}
+          </span>
+          <button
+            onClick={handleLogout}
+            title="Log out"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[var(--color-muted)] hover:bg-[var(--color-surface)] hover:text-neutral-700 transition-colors"
+          >
+            <LogOut size={18} />
+          </button>
+        </div>
+
+        {/* Larry is active */}
+        <div className="px-3 pb-4">
+          <div className="flex items-center gap-2.5 rounded-xl bg-[var(--color-brand)]/5 border border-[var(--color-brand)]/15 px-3 py-2.5">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-[var(--color-brand)] text-white">
+              <Bot size={13} />
+            </span>
+            <div>
+              <p className="text-xs font-medium text-neutral-800">Larry is active</p>
+              <p className="text-[10px] text-neutral-400">Monitoring {projects.length || 0} projects</p>
+            </div>
+            <span className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0" aria-hidden="true" />
+          </div>
         </div>
       </div>
     </div>
@@ -185,14 +354,17 @@ interface WorkspaceSidebarProps {
   activeNav: WorkspaceSidebarNav;
   mobileOpen: boolean;
   onMobileClose: () => void;
+  userEmail?: string | null;
+  pendingCount?: number;
+  notifCount?: number;
 }
 
-export function WorkspaceSidebar({ projects, activeNav, mobileOpen, onMobileClose }: WorkspaceSidebarProps) {
+export function WorkspaceSidebar({ projects, activeNav, mobileOpen, onMobileClose, userEmail, pendingCount, notifCount }: WorkspaceSidebarProps) {
   return (
     <>
       {/* Desktop */}
-      <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-[var(--color-border)] bg-white">
-        <WorkspaceSidebarInner projects={projects} activeNav={activeNav} />
+      <aside className="hidden md:flex w-72 shrink-0 flex-col border-r border-[var(--color-border)] bg-white">
+        <WorkspaceSidebarInner projects={projects} activeNav={activeNav} userEmail={userEmail} pendingCount={pendingCount} notifCount={notifCount} />
       </aside>
 
       {/* Mobile drawer */}
@@ -214,9 +386,9 @@ export function WorkspaceSidebar({ projects, activeNav, mobileOpen, onMobileClos
               animate={{ x: 0 }}
               exit={{ x: "-100%" }}
               transition={{ duration: 0.26, ease: EASE }}
-              className="fixed inset-y-0 left-0 z-50 w-64 flex flex-col border-r border-[var(--color-border)] bg-white shadow-2xl md:hidden"
+              className="fixed inset-y-0 left-0 z-50 w-72 flex flex-col border-r border-[var(--color-border)] bg-white shadow-2xl md:hidden"
             >
-              <WorkspaceSidebarInner projects={projects} activeNav={activeNav} onClose={onMobileClose} />
+              <WorkspaceSidebarInner projects={projects} activeNav={activeNav} onClose={onMobileClose} userEmail={userEmail} pendingCount={pendingCount} notifCount={notifCount} />
             </motion.aside>
           </>
         )}

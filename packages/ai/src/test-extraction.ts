@@ -72,7 +72,7 @@ async function main() {
     process.exit(1);
   }
 
-  const provider = createLlmProvider({ openAiApiKey: OPENAI_API_KEY, openAiModel: OPENAI_MODEL });
+  const provider = createLlmProvider({ provider: "openai", openAiApiKey: OPENAI_API_KEY, openAiModel: OPENAI_MODEL, anthropicModel: "claude-haiku-4-5-20251001", geminiModel: "gemini-1.5-flash" });
 
   let passed = 0;
   let failed = 0;

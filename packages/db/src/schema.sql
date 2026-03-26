@@ -146,6 +146,7 @@ CREATE TABLE IF NOT EXISTS task_comments (
   body TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE INDEX IF NOT EXISTS idx_task_comments_tenant_task ON task_comments(tenant_id, task_id);
 
 CREATE TABLE IF NOT EXISTS activity_log (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

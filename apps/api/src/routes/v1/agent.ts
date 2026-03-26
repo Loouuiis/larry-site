@@ -260,6 +260,19 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
             request.user.userId,
           ]
         );
+
+        try {
+          const { title, summary } = await fastify.llmProvider.summarizeTranscript({
+            transcript: body.transcript,
+          });
+          await fastify.db.queryTenant(
+            tenantId,
+            `UPDATE meeting_notes SET title = $1, summary = $2 WHERE tenant_id = $3 AND agent_run_id = $4`,
+            [title, summary, tenantId, runId]
+          );
+        } catch (err) {
+          fastify.log.warn({ err, runId }, "Failed to generate meeting summary — meeting saved without summary");
+        }
       }
 
       await fastify.queue.publish({

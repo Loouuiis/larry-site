@@ -206,15 +206,18 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
       const tenantId = request.user.tenantId;
 
       const rows = await fastify.db.queryTenant<{
-        id: string; body: string; author_user_id: string; created_at: string;
+        id: string; body: string; author_user_id: string; author_email: string | null; created_at: string;
       }>(
         tenantId,
-        `SELECT id, body, author_user_id, created_at
-         FROM task_comments WHERE tenant_id = $1 AND task_id = $2 ORDER BY created_at ASC`,
+        `SELECT tc.id, tc.body, tc.author_user_id, tc.created_at, u.email AS author_email
+         FROM task_comments tc
+         LEFT JOIN users u ON u.id = tc.author_user_id
+         WHERE tc.tenant_id = $1 AND tc.task_id = $2
+         ORDER BY tc.created_at ASC`,
         [tenantId, params.id]
       );
 
-      return { items: rows.map((r) => ({ id: r.id, body: r.body, authorUserId: r.author_user_id, createdAt: r.created_at })) };
+      return { items: rows.map((r) => ({ id: r.id, body: r.body, authorUserId: r.author_user_id, authorEmail: r.author_email ?? null, createdAt: r.created_at })) };
     }
   );
 
@@ -240,6 +243,15 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
          VALUES ($1, $2, $3, $4, $5) RETURNING id, created_at`,
         [tenantId, taskRow[0].project_id, params.id, request.user.userId, body.body]
       );
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId: request.user.userId,
+        actionType: "task.comment.create",
+        objectType: "task_comment",
+        objectId: rows[0].id,
+        details: { taskId: params.id },
+      });
 
       return reply.code(201).send({
         id: rows[0].id,

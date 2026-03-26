@@ -34,15 +34,26 @@ for (const candidate of envCandidates) {
 
 export const env = getWorkerEnv();
 
-if (!env.OPENAI_API_KEY) {
-  console.error("[worker] FATAL: OPENAI_API_KEY is not set. The worker cannot extract actions without it.");
+const providerKeyMap: Record<string, string | undefined> = {
+  openai: env.OPENAI_API_KEY,
+  anthropic: env.ANTHROPIC_API_KEY,
+  gemini: env.GEMINI_API_KEY,
+};
+
+if (!providerKeyMap[env.MODEL_PROVIDER]) {
+  console.error(`[worker] FATAL: No API key set for MODEL_PROVIDER="${env.MODEL_PROVIDER}". Set the corresponding key or change MODEL_PROVIDER.`);
   process.exit(1);
 }
 
 export const db = new Db(env.DATABASE_URL);
 export const llmProvider = createLlmProvider({
+  provider: env.MODEL_PROVIDER,
   openAiApiKey: env.OPENAI_API_KEY,
   openAiModel: env.OPENAI_MODEL,
+  anthropicApiKey: env.ANTHROPIC_API_KEY,
+  anthropicModel: env.ANTHROPIC_MODEL,
+  geminiApiKey: env.GEMINI_API_KEY,
+  geminiModel: env.GEMINI_MODEL,
 });
 
 console.log(`[worker] Database: ${new URL(env.DATABASE_URL).host}`);
