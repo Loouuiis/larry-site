@@ -1,4 +1,4 @@
-import { db } from "./context.js";
+import { db, env } from "./context.js";
 
 // Phase 8: Escalation scan — runs hourly to detect overdue / at-risk tasks
 export async function runEscalationScan(): Promise<void> {
@@ -98,6 +98,45 @@ export async function runEscalationScan(): Promise<void> {
         }
       }
 
+      if (notifications.length === 0) continue;
+
+      // --- Delivery setup: look up user emails and Slack bot token once per tenant ---
+
+      const notifiedUserIds = [...new Set(notifications.map((n) => n.userId).filter(Boolean))] as string[];
+
+      // Users table has no tenant_id — query at system level
+      const userEmailMap: Record<string, string> = {};
+      if (notifiedUserIds.length > 0) {
+        try {
+          const userRows = await db.tx(async (client) => {
+            await client.query("SELECT set_config('app.tenant_id', $1, true)", ["__system__"]);
+            const r = await client.query<{ id: string; email: string }>(
+              "SELECT id, email FROM users WHERE id = ANY($1::uuid[])",
+              [notifiedUserIds]
+            );
+            return r.rows;
+          });
+          for (const u of userRows) userEmailMap[u.id] = u.email;
+        } catch (err) {
+          console.warn("[escalation-scan] failed to look up user emails", err);
+        }
+      }
+
+      // Slack bot token for this tenant (if any)
+      let slackBotToken: string | null = null;
+      try {
+        const slackRows = await db.queryTenant<{ bot_access_token: string }>(
+          tenantId,
+          "SELECT bot_access_token FROM slack_installations WHERE tenant_id = $1 LIMIT 1",
+          [tenantId]
+        );
+        slackBotToken = slackRows[0]?.bot_access_token ?? null;
+      } catch {
+        // no Slack installation — fine
+      }
+
+      // --- Insert notification records and deliver ---
+
       for (const notif of notifications) {
         try {
           await db.queryTenant(
@@ -110,6 +149,80 @@ export async function runEscalationScan(): Promise<void> {
         } catch {
           // ignore individual insert failures
         }
+
+        const userEmail = notif.userId ? userEmailMap[notif.userId] : null;
+
+        // Email delivery via Resend
+        if (env.RESEND_API_KEY && userEmail) {
+          try {
+            const res = await fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${env.RESEND_API_KEY}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                from: env.RESEND_FROM,
+                to: [userEmail],
+                subject: notif.subject,
+                text: notif.body,
+              }),
+            });
+            if (!res.ok) {
+              console.warn(`[escalation-scan] Resend delivery failed (${res.status}) for ${userEmail}`);
+            }
+          } catch (err) {
+            console.warn("[escalation-scan] Resend fetch error", err);
+          }
+        }
+
+        // Slack DM delivery
+        if (slackBotToken && userEmail) {
+          try {
+            // Resolve Slack user ID from email
+            const lookupRes = await fetch(
+              `https://slack.com/api/users.lookupByEmail?email=${encodeURIComponent(userEmail)}`,
+              { headers: { Authorization: `Bearer ${slackBotToken}` } }
+            );
+            const lookup = (await lookupRes.json()) as { ok: boolean; user?: { id: string } };
+            if (!lookup.ok || !lookup.user?.id) {
+              console.warn(`[escalation-scan] Slack lookupByEmail failed for ${userEmail}: ${JSON.stringify(lookup)}`);
+            } else {
+              // Open DM channel
+              const openRes = await fetch("https://slack.com/api/conversations.open", {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${slackBotToken}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ users: lookup.user.id }),
+              });
+              const open = (await openRes.json()) as { ok: boolean; channel?: { id: string } };
+              if (!open.ok || !open.channel?.id) {
+                console.warn(`[escalation-scan] Slack conversations.open failed: ${JSON.stringify(open)}`);
+              } else {
+                // Send DM
+                const msgRes = await fetch("https://slack.com/api/chat.postMessage", {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${slackBotToken}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    channel: open.channel.id,
+                    text: `*${notif.subject}*\n${notif.body}`,
+                  }),
+                });
+                const msg = (await msgRes.json()) as { ok: boolean; error?: string };
+                if (!msg.ok) {
+                  console.warn(`[escalation-scan] Slack postMessage failed: ${msg.error}`);
+                }
+              }
+            }
+          } catch (err) {
+            console.warn("[escalation-scan] Slack DM delivery error", err);
+          }
+        }
       }
     }
 
@@ -118,4 +231,3 @@ export async function runEscalationScan(): Promise<void> {
     console.error("[escalation-scan] error", err);
   }
 }
-
