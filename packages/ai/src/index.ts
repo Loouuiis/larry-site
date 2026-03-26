@@ -61,10 +61,19 @@ export interface ProjectStructure {
   tasks: ProjectTask[];
 }
 
+export interface ChatProjectContext {
+  totalTasks: number;
+  completed: number;
+  blocked: number;
+  highRisk: number;
+  completionRate: number;
+}
+
 export interface LlmProvider {
   extractActionsFromTranscript(input: ExtractFromTranscriptInput): Promise<ExtractedAction[]>;
   extractProjectStructure(input: { description: string }): Promise<ProjectStructure>;
   summarizeTranscript(input: { transcript: string }): Promise<{ title: string; summary: string }>;
+  generateResponse(input: { message: string; projectContext?: ChatProjectContext }): Promise<string>;
 }
 
 const ExtractedActionSchema = z.object({
@@ -144,6 +153,10 @@ class MockLlmProvider implements LlmProvider {
       title: input.transcript.slice(0, 60).trim() || "Meeting",
       summary: "Mock summary — no LLM key configured.",
     };
+  }
+
+  async generateResponse(input: { message: string }): Promise<string> {
+    return `Mock response to: "${input.message.slice(0, 60)}" — no LLM key configured.`;
   }
 }
 
@@ -341,6 +354,37 @@ class OpenAiProvider implements LlmProvider {
       return { title: sanitised.slice(0, 60).trim() || "Meeting", summary: text.slice(0, 300) };
     }
   }
+
+  async generateResponse(input: { message: string; projectContext?: ChatProjectContext }): Promise<string> {
+    const { sanitised } = sanitiseUserContent(input.message);
+    const contextBlock = input.projectContext
+      ? `Project context: ${input.projectContext.totalTasks} tasks total, ${input.projectContext.completed} completed (${input.projectContext.completionRate}%), ${input.projectContext.blocked} blocked, ${input.projectContext.highRisk} high-risk.`
+      : "";
+    const systemPrompt = [
+      "You are Larry, an AI project execution engine and assistant.",
+      "Respond to the user's message conversationally and helpfully. Be concise — 1 to 3 sentences unless detail is needed.",
+      "If the user is requesting an action, acknowledge it briefly and let them know it has been queued for processing.",
+      "If the user is asking a question about the project, answer using the context provided.",
+      "Do not output JSON. Respond in plain text only.",
+      ...INJECTION_GUARD_RULES,
+      contextBlock,
+    ].filter(Boolean).join("\n");
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${this.apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: this.model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: wrapUserContent(sanitised) },
+        ],
+      }),
+    });
+    if (!response.ok) throw new Error(`OpenAI chat failed: ${response.status}`);
+    const payload = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+    return payload.choices?.[0]?.message?.content?.trim() ?? "I received your message and have queued it for processing.";
+  }
 }
 
 class AnthropicProvider implements LlmProvider {
@@ -536,6 +580,36 @@ class AnthropicProvider implements LlmProvider {
       return { title: sanitised.slice(0, 60).trim() || "Meeting", summary: text.slice(0, 300) };
     }
   }
+
+  async generateResponse(input: { message: string; projectContext?: ChatProjectContext }): Promise<string> {
+    const { sanitised } = sanitiseUserContent(input.message);
+    const contextBlock = input.projectContext
+      ? `Project context: ${input.projectContext.totalTasks} tasks total, ${input.projectContext.completed} completed (${input.projectContext.completionRate}%), ${input.projectContext.blocked} blocked, ${input.projectContext.highRisk} high-risk.`
+      : "";
+    const systemPrompt = [
+      "You are Larry, an AI project execution engine and assistant.",
+      "Respond to the user's message conversationally and helpfully. Be concise — 1 to 3 sentences unless detail is needed.",
+      "If the user is requesting an action, acknowledge it briefly and let them know it has been queued for processing.",
+      "If the user is asking a question about the project, answer using the context provided.",
+      "Do not output JSON. Respond in plain text only.",
+      ...INJECTION_GUARD_RULES,
+      contextBlock,
+    ].filter(Boolean).join("\n");
+
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": this.apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({
+        model: this.model,
+        max_tokens: 512,
+        system: systemPrompt,
+        messages: [{ role: "user", content: wrapUserContent(sanitised) }],
+      }),
+    });
+    if (!response.ok) throw new Error(`Anthropic chat failed: ${response.status}`);
+    const payload = (await response.json()) as { content?: Array<{ text?: string }> };
+    return payload.content?.[0]?.text?.trim() ?? "I received your message and have queued it for processing.";
+  }
 }
 
 class GeminiProvider implements LlmProvider {
@@ -719,6 +793,35 @@ class GeminiProvider implements LlmProvider {
     } catch {
       return { title: sanitised.slice(0, 60).trim() || "Meeting", summary: text.slice(0, 300) };
     }
+  }
+
+  async generateResponse(input: { message: string; projectContext?: ChatProjectContext }): Promise<string> {
+    const { sanitised } = sanitiseUserContent(input.message);
+    const contextBlock = input.projectContext
+      ? `Project context: ${input.projectContext.totalTasks} tasks total, ${input.projectContext.completed} completed (${input.projectContext.completionRate}%), ${input.projectContext.blocked} blocked, ${input.projectContext.highRisk} high-risk.`
+      : "";
+    const systemPrompt = [
+      "You are Larry, an AI project execution engine and assistant.",
+      "Respond to the user's message conversationally and helpfully. Be concise — 1 to 3 sentences unless detail is needed.",
+      "If the user is requesting an action, acknowledge it briefly and let them know it has been queued for processing.",
+      "If the user is asking a question about the project, answer using the context provided.",
+      "Do not output JSON. Respond in plain text only.",
+      ...INJECTION_GUARD_RULES,
+      contextBlock,
+    ].filter(Boolean).join("\n");
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: "user", parts: [{ text: wrapUserContent(sanitised) }] }],
+      }),
+    });
+    if (!response.ok) throw new Error(`Gemini chat failed: ${response.status}`);
+    const payload = (await response.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+    return payload.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "I received your message and have queued it for processing.";
   }
 }
 

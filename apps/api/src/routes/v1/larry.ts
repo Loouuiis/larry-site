@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { detectInjectionAttempt } from "@larry/ai";
+import { detectInjectionAttempt, type ChatProjectContext } from "@larry/ai";
 import { ingestCanonicalEvent } from "../../services/ingest/pipeline.js";
 import { writeAuditLog } from "../../lib/audit.js";
 
@@ -388,13 +388,35 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         },
       });
 
+      // Generate a real conversational response via the LLM
+      let responseMessage = "I've received your message and queued it for processing. Check the Action Center for any proposed actions.";
+      try {
+        let projectContext: ChatProjectContext | undefined;
+        if (body.projectId) {
+          const summary = await buildProjectSummary(fastify, tenantId, body.projectId);
+          projectContext = {
+            totalTasks: summary.totals.tasks,
+            completed: summary.totals.completed,
+            blocked: summary.totals.blocked,
+            highRisk: summary.totals.highRisk,
+            completionRate: summary.totals.completionRate,
+          };
+        }
+        responseMessage = await fastify.llmProvider.generateResponse({
+          message: body.input,
+          projectContext,
+        });
+      } catch (err) {
+        request.log.warn({ err, runId }, "Failed to generate Larry chat response — using fallback");
+      }
+
       return reply.code(202).send({
         commandAccepted: true,
         commandMode: body.mode,
         intent: body.intent,
         runId,
         canonicalEventId: canonical.canonicalEventId,
-        message: "Larry accepted command. Review Action Center for approval-required actions.",
+        message: responseMessage,
       });
     }
   );
