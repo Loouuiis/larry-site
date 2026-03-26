@@ -16,6 +16,8 @@ export async function GET() {
 const CreateProjectSchema = z.object({
   name: z.string().min(1).max(200),
   description: z.string().max(4000).optional(),
+  startDate: z.string().date().optional(),
+  targetDate: z.string().date().optional(),
 });
 
 export async function POST(request: NextRequest) {

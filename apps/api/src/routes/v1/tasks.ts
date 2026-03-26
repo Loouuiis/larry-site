@@ -32,20 +32,31 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
       const tenantId = request.user.tenantId;
 
       const values: unknown[] = [tenantId];
-      let sql = `SELECT id, project_id as "projectId", title, description, status, priority,
-                        assignee_user_id as "assigneeUserId", progress_percent as "progressPercent",
-                        risk_score as "riskScore", risk_level as "riskLevel",
-                        start_date as "startDate", due_date as "dueDate",
-                        created_at as "createdAt", updated_at as "updatedAt"
+      let sql = `SELECT tasks.id,
+                        tasks.project_id as "projectId",
+                        tasks.title,
+                        tasks.description,
+                        tasks.status,
+                        tasks.priority,
+                        tasks.assignee_user_id as "assigneeUserId",
+                        tasks.progress_percent as "progressPercent",
+                        COALESCE(NULLIF(users.display_name, ''), split_part(users.email, '@', 1)) as "assigneeName",
+                        tasks.risk_score as "riskScore",
+                        tasks.risk_level as "riskLevel",
+                        tasks.start_date as "startDate",
+                        tasks.due_date as "dueDate",
+                        tasks.created_at as "createdAt",
+                        tasks.updated_at as "updatedAt"
                  FROM tasks
-                 WHERE tenant_id = $1`;
+                 LEFT JOIN users ON users.id = tasks.assignee_user_id
+                 WHERE tasks.tenant_id = $1`;
 
       if (query.projectId) {
         values.push(query.projectId);
-        sql += " AND project_id = $2";
+        sql += " AND tasks.project_id = $2";
       }
 
-      sql += " ORDER BY created_at DESC";
+      sql += " ORDER BY tasks.created_at DESC";
 
       const rows = await fastify.db.queryTenant(tenantId, sql, values);
       return { items: rows };

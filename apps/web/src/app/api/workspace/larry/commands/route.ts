@@ -5,7 +5,7 @@ import { persistSession, proxyApiRequest } from "@/lib/workspace-proxy";
 
 const LarryCommandSchema = z.object({
   intent: z
-    .enum(["create_plan", "update_scope", "request_summary", "draft_follow_up", "freeform"])
+    .enum(["create_plan", "update_scope", "request_summary", "draft_follow_up", "create_project", "freeform"])
     .default("freeform"),
   input: z.string().min(3).max(8000),
   projectId: z.string().uuid().optional(),

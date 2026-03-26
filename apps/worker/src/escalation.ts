@@ -141,10 +141,20 @@ export async function runEscalationScan(): Promise<void> {
         try {
           await db.queryTenant(
             tenantId,
-            `INSERT INTO notifications (tenant_id, user_id, channel, subject, body, metadata)
-             VALUES ($1, $2, $3, $4, $5, $6::jsonb)
-             ON CONFLICT DO NOTHING`,
-            [tenantId, notif.userId, notif.channel, notif.subject, notif.body, notif.metadata]
+            `INSERT INTO notifications
+              (tenant_id, user_id, channel, subject, body, metadata, dedupe_scope, dedupe_user_key, dedupe_date)
+             VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, CURRENT_DATE)
+             ON CONFLICT ON CONSTRAINT uq_notifications_dedup DO NOTHING`,
+            [
+              tenantId,
+              notif.userId,
+              notif.channel,
+              notif.subject,
+              notif.body,
+              notif.metadata,
+              "escalation",
+              notif.userId ?? "__broadcast__",
+            ]
           );
         } catch {
           // ignore individual insert failures

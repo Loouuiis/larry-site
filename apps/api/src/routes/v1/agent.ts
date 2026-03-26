@@ -30,6 +30,136 @@ const CorrectionBodySchema = z.object({
   tunePolicy: z.boolean().default(true),
 });
 
+type ActionSourceType = "slack" | "email" | "calendar" | "transcript" | "larry_chat";
+
+interface ActionListRow {
+  id: string;
+  agentRunId: string | null;
+  projectId: string | null;
+  actionType: string;
+  impact: string;
+  confidence: number;
+  reason: string;
+  signals: string[];
+  payload: Record<string, unknown>;
+  reasoning: Record<string, unknown> | null;
+  state: string;
+  requiresApproval: boolean;
+  createdAt: string;
+  runSource: string | null;
+  runSourceRefId: string | null;
+  runCreatedAt: string | null;
+  canonicalSource: string | null;
+  canonicalActor: string | null;
+  sourceOccurredAt: string | null;
+  canonicalPayload: Record<string, unknown> | null;
+  meetingTitle: string | null;
+  meetingSummary: string | null;
+  meetingTranscript: string | null;
+  meetingCreatedAt: string | null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readNonEmptyString(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function clipText(value: string, limit = 200): string {
+  if (value.length <= limit) return value;
+  return `${value.slice(0, limit - 3).trimEnd()}...`;
+}
+
+function resolveActionSourceType(row: ActionListRow): ActionSourceType | null {
+  if (row.runSource === "transcript" && typeof row.runSourceRefId === "string" && row.runSourceRefId.startsWith("larry-")) {
+    return "larry_chat";
+  }
+
+  const source = row.canonicalSource ?? row.runSource;
+  if (source === "slack" || source === "email" || source === "calendar" || source === "transcript") {
+    return source;
+  }
+
+  return null;
+}
+
+function buildSourceExcerpt(row: ActionListRow, sourceType: ActionSourceType): string | null {
+  const payload = isRecord(row.canonicalPayload) ? row.canonicalPayload : null;
+  const event = payload && isRecord(payload.event) ? payload.event : null;
+  const calendarBody = payload && isRecord(payload.body) ? payload.body : null;
+
+  if (sourceType === "larry_chat") {
+    const taskCount = Array.isArray(row.payload.tasks) ? row.payload.tasks.length : 0;
+    const projectName = readNonEmptyString(row.payload.name);
+    return clipText(
+      readNonEmptyString(
+        row.payload.description,
+        taskCount > 0 && projectName ? `${projectName} with ${taskCount} starter tasks.` : projectName,
+        row.reason
+      ) ?? "Larry prepared a project draft for review."
+    );
+  }
+
+  return clipText(
+    readNonEmptyString(
+      row.meetingSummary,
+      event?.text,
+      payload?.bodyText,
+      payload?.text,
+      calendarBody?.description,
+      calendarBody?.summary,
+      payload?.summary,
+      payload?.description,
+      payload?.title,
+      row.meetingTranscript,
+      row.reason
+    ) ?? row.reason
+  );
+}
+
+function buildSourceLabel(row: ActionListRow, sourceType: ActionSourceType): string | null {
+  const payload = isRecord(row.canonicalPayload) ? row.canonicalPayload : null;
+  const event = payload && isRecord(payload.event) ? payload.event : null;
+  const calendarBody = payload && isRecord(payload.body) ? payload.body : null;
+
+  if (sourceType === "slack") {
+    return readNonEmptyString(payload?.channelName, event?.channelName, payload?.channel, event?.channel, "Slack");
+  }
+  if (sourceType === "email") {
+    return readNonEmptyString(payload?.subject, payload?.accountEmail, "Email thread");
+  }
+  if (sourceType === "calendar") {
+    return readNonEmptyString(calendarBody?.summary, payload?.summary, payload?.calendarId, "Calendar event");
+  }
+  if (sourceType === "transcript") {
+    return readNonEmptyString(row.meetingTitle, payload?.meetingTitle, "Meeting transcript");
+  }
+  if (sourceType === "larry_chat") {
+    return "Larry project intake";
+  }
+  return null;
+}
+
+function buildActionSource(row: ActionListRow) {
+  const sourceType = resolveActionSourceType(row);
+  if (!sourceType) return undefined;
+
+  return {
+    type: sourceType,
+    excerpt: buildSourceExcerpt(row, sourceType),
+    timestamp: row.sourceOccurredAt ?? row.meetingCreatedAt ?? row.runCreatedAt ?? row.createdAt,
+    channelOrTitle: buildSourceLabel(row, sourceType),
+    actor: readNonEmptyString(row.canonicalActor),
+  };
+}
+
 async function transitionRun(
   fastify: Parameters<FastifyPluginAsync>[0],
   tenantId: string,
@@ -361,21 +491,79 @@ export const agentRoutes: FastifyPluginAsync = async (fastify) => {
       const tenantId = request.user.tenantId;
 
       const values: unknown[] = [tenantId];
-      let sql = `SELECT id, agent_run_id as "agentRunId", project_id as "projectId", action_type as "actionType",
-                        impact, confidence, reason, signals, payload, reasoning, state,
-                        requires_approval as "requiresApproval", created_at as "createdAt"
-                 FROM extracted_actions
-                 WHERE tenant_id = $1`;
+      let sql = `SELECT ea.id,
+                        ea.agent_run_id as "agentRunId",
+                        ea.project_id as "projectId",
+                        ea.action_type as "actionType",
+                        ea.impact,
+                        ea.confidence,
+                        ea.reason,
+                        ea.signals,
+                        ea.payload,
+                        ea.reasoning,
+                        ea.state,
+                        ea.requires_approval as "requiresApproval",
+                        ea.created_at as "createdAt",
+                        ar.source as "runSource",
+                        ar.source_ref_id as "runSourceRefId",
+                        ar.created_at as "runCreatedAt",
+                        ce.source as "canonicalSource",
+                        ce.actor as "canonicalActor",
+                        ce.occurred_at as "sourceOccurredAt",
+                        ce.payload as "canonicalPayload",
+                        mn.title as "meetingTitle",
+                        mn.summary as "meetingSummary",
+                        mn.transcript as "meetingTranscript",
+                        mn.created_at as "meetingCreatedAt"
+                 FROM extracted_actions ea
+                 LEFT JOIN agent_runs ar
+                   ON ar.tenant_id = ea.tenant_id
+                  AND ar.id = ea.agent_run_id
+                 LEFT JOIN LATERAL (
+                   SELECT source, actor, occurred_at, payload
+                   FROM canonical_events
+                   WHERE tenant_id = ea.tenant_id
+                     AND ar.source_ref_id IS NOT NULL
+                     AND (id::text = ar.source_ref_id OR source_event_id = ar.source_ref_id)
+                   ORDER BY created_at DESC
+                   LIMIT 1
+                 ) ce ON TRUE
+                 LEFT JOIN LATERAL (
+                   SELECT title, summary, transcript, created_at
+                   FROM meeting_notes
+                   WHERE tenant_id = ea.tenant_id
+                     AND agent_run_id = ea.agent_run_id
+                   ORDER BY created_at DESC
+                   LIMIT 1
+                 ) mn ON TRUE
+                 WHERE ea.tenant_id = $1`;
 
       if (query.state) {
         values.push(query.state);
-        sql += ` AND state = $${values.length}`;
+        sql += ` AND ea.state = $${values.length}`;
       }
 
-      sql += " ORDER BY created_at DESC LIMIT 100";
+      sql += " ORDER BY ea.created_at DESC LIMIT 100";
 
-      const rows = await fastify.db.queryTenant(tenantId, sql, values);
-      return { items: rows };
+      const rows = await fastify.db.queryTenant<ActionListRow>(tenantId, sql, values);
+      return {
+        items: rows.map((row) => ({
+          id: row.id,
+          agentRunId: row.agentRunId,
+          projectId: row.projectId,
+          actionType: row.actionType,
+          impact: row.impact,
+          confidence: row.confidence,
+          reason: row.reason,
+          signals: row.signals,
+          payload: row.payload,
+          reasoning: row.reasoning,
+          state: row.state,
+          requiresApproval: row.requiresApproval,
+          createdAt: row.createdAt,
+          source: buildActionSource(row),
+        })),
+      };
     }
   );
 

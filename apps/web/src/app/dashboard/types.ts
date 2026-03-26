@@ -25,22 +25,38 @@ export interface WorkspaceTask {
   id: string;
   projectId: string;
   title: string;
+  description?: string | null;
   status: TaskStatus;
   priority: TaskPriority;
   dueDate: string | null;
+  startDate?: string | null;
   assigneeUserId?: string | null;
+  assigneeName?: string | null;
+  progressPercent?: number;
+  riskLevel?: string;
+  updatedAt?: string | null;
 }
 
 export interface WorkspaceAction {
   id: string;
-  agentRunId?: string;
+  agentRunId?: string | null;
+  projectId?: string | null;
   actionType?: string;
   impact: string;
   confidence: string | number;
   reason: string;
+  createdAt?: string;
   state?: string;
+  requiresApproval?: boolean;
   signals?: string[];
   payload?: Record<string, unknown>;
+  source?: {
+    type: "slack" | "email" | "calendar" | "transcript" | "larry_chat";
+    excerpt?: string | null;
+    timestamp?: string | null;
+    channelOrTitle?: string | null;
+    actor?: string | null;
+  };
   reasoning?: {
     what?: string;
     why?: string;
@@ -143,12 +159,15 @@ export interface BoardTaskRow {
   id: string;
   projectId: string;
   title: string;
+  description?: string | null;
   status: TaskStatus;
   priority: TaskPriority;
   dueDate: string | null;
+  startDate?: string | null;
   riskLevel: string;
   progressPercent: number;
   assigneeUserId?: string | null;
+  assigneeName?: string | null;
 }
 
 export interface TaskGroup {

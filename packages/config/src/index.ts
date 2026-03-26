@@ -21,6 +21,7 @@ const ApiSchema = SharedSchema.extend({
   PORT: z.coerce.number().int().positive().default(8080),
   JWT_ACCESS_SECRET: z.string().min(32),
   JWT_REFRESH_SECRET: z.string().min(32),
+  ADMIN_SECRET: z.string().min(16).optional(),
   ACCESS_TOKEN_TTL: z.string().default("15m"),
   REFRESH_TOKEN_TTL: z.string().default("7d"),
   CORS_ORIGINS: z.string().default("http://localhost:3000"),
@@ -56,6 +57,7 @@ const WorkerSchema = SharedSchema.extend({
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_CALENDAR_WEBHOOK_URL: z.string().url().optional(),
+  JWT_ACCESS_SECRET: z.string().min(32).optional(),
 });
 
 export type ApiEnv = z.infer<typeof ApiSchema>;

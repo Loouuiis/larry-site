@@ -73,6 +73,30 @@ CREATE TABLE IF NOT EXISTS memberships (
   PRIMARY KEY (tenant_id, user_id)
 );
 
+CREATE TABLE IF NOT EXISTS org_invites (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_name TEXT NOT NULL,
+  slug_candidate TEXT NOT NULL,
+  requester_name TEXT NOT NULL,
+  requester_email TEXT NOT NULL,
+  team_size TEXT,
+  launch_context TEXT,
+  status TEXT NOT NULL DEFAULT 'requested',
+  tenant_id UUID REFERENCES tenants(id) ON DELETE SET NULL,
+  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  tenant_slug TEXT,
+  approved_at TIMESTAMPTZ,
+  approved_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_org_invites_status_created
+  ON org_invites (status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_org_invites_requester_email
+  ON org_invites (requester_email, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS refresh_tokens (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -262,6 +286,50 @@ CREATE TABLE IF NOT EXISTS notifications (
   sent_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS dedupe_scope TEXT;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS dedupe_user_key TEXT;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS dedupe_date DATE;
+ALTER TABLE notifications ALTER COLUMN dedupe_user_key SET DEFAULT '__broadcast__';
+ALTER TABLE notifications ALTER COLUMN dedupe_date SET DEFAULT CURRENT_DATE;
+
+UPDATE notifications
+SET dedupe_user_key = COALESCE(dedupe_user_key, COALESCE(user_id::text, '__broadcast__')),
+    dedupe_date = COALESCE(dedupe_date, created_at::date)
+WHERE dedupe_user_key IS NULL
+   OR dedupe_date IS NULL;
+
+WITH ranked_notifications AS (
+  SELECT id,
+         ROW_NUMBER() OVER (
+           PARTITION BY tenant_id, COALESCE(user_id::text, '__broadcast__'), channel, subject, created_at::date
+           ORDER BY created_at ASC, id ASC
+         ) AS row_number
+  FROM notifications
+)
+DELETE FROM notifications
+WHERE id IN (
+  SELECT id
+  FROM ranked_notifications
+  WHERE row_number > 1
+);
+
+UPDATE notifications
+SET dedupe_user_key = COALESCE(dedupe_user_key, COALESCE(user_id::text, '__broadcast__')),
+    dedupe_date = COALESCE(dedupe_date, created_at::date)
+WHERE dedupe_user_key IS NULL
+   OR dedupe_date IS NULL;
+
+ALTER TABLE notifications ALTER COLUMN dedupe_user_key SET NOT NULL;
+ALTER TABLE notifications ALTER COLUMN dedupe_date SET NOT NULL;
+
+DO $$ BEGIN
+  ALTER TABLE notifications
+    ADD CONSTRAINT uq_notifications_dedup
+    UNIQUE (tenant_id, dedupe_scope, dedupe_user_key, channel, subject, dedupe_date);
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 
 CREATE TABLE IF NOT EXISTS slack_installations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

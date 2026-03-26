@@ -74,14 +74,30 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         title: string | null;
         createdAt: string;
         updatedAt: string;
+        lastMessagePreview: string | null;
+        lastMessageAt: string | null;
       }>(
         tenantId,
-        `SELECT id, project_id as "projectId", title, created_at as "createdAt", updated_at as "updatedAt"
-         FROM larry_conversations
-         WHERE tenant_id = $1
-           AND user_id = $2
+        `SELECT c.id,
+                c.project_id as "projectId",
+                c.title,
+                c.created_at as "createdAt",
+                c.updated_at as "updatedAt",
+                last_message.preview as "lastMessagePreview",
+                COALESCE(last_message.created_at, c.updated_at) as "lastMessageAt"
+         FROM larry_conversations c
+         LEFT JOIN LATERAL (
+           SELECT LEFT(content, 160) as preview, created_at
+           FROM larry_messages
+           WHERE tenant_id = c.tenant_id
+             AND conversation_id = c.id
+           ORDER BY created_at DESC
+           LIMIT 1
+         ) last_message ON TRUE
+         WHERE c.tenant_id = $1
+           AND c.user_id = $2
            ${projectId ? 'AND project_id = $3' : ''}
-         ORDER BY updated_at DESC
+         ORDER BY COALESCE(last_message.created_at, c.updated_at) DESC, c.created_at DESC
          LIMIT 50`,
         projectId ? [tenantId, userId, projectId] : [tenantId, userId]
       );

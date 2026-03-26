@@ -5,6 +5,7 @@ import { persistSession, proxyApiRequest } from "@/lib/workspace-proxy";
 
 const NoteSchema = z.object({
   note: z.string().max(1000).optional(),
+  overridePayload: z.record(z.string(), z.unknown()).optional(),
 });
 
 export async function POST(

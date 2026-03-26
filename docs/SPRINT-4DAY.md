@@ -1,5 +1,6 @@
 # Larry — 4-Day MVP Sprint Plan
 # March 25–28, 2026
+# Revised: 2026-03-26
 
 ---
 
@@ -37,7 +38,7 @@ This document drives every Claude Code session until launch.
 - Action Centre with source context cards, approval-gated actions, transparency principles
 - Weekly summary / health / risk views (live data)
 - Email draft generation as an **output artifact** (outbound only — no inbound email OAuth)
-- Persistent Larry chat history
+- Persistent Larry chat history — grouped by project in the Chats sidebar
 - Org account approval flow (no self-serve; admin manually approves new organisations)
 - Beautiful, world-class landing page and workspace dashboard
 
@@ -57,6 +58,8 @@ This document drives every Claude Code session until launch.
 - Task comment thread UI — Issue #25
 - Mobile/responsive layout — Issue #27
 - Audit log coverage — Issue #31
+- **Floating Larry chat bubble** — removed entirely in Session 1. Larry is accessed only
+  through the Chats sidebar section. The bubble is unwanted and clutters the workspace.
 
 ---
 
@@ -96,706 +99,802 @@ Joint sessions noted as primary + secondary (e.g. `Fergus + Joel`).
 - **Status:** Fully live ✓
 - **Branch strategy:** feature branch per session → PR → merge to `master`
 
-### Pending before Session 1 starts
-- Anton's `dev` branch (sidebar design + mic button cosmetics) should be reviewed
-  and merged to `master` before any frontend sessions begin. Frontend sessions
-  marked with ⚠️ DEP:ANTON-DEV depend on this.
-- The 5 auth/rate-limit commits on local `master` should be pushed to
-  `origin/master` by whoever owns that branch.
+---
+
+## UI DESIGN DIRECTION — monday.com inspired
+
+All project workspace UI must be built with this aesthetic in mind.
+Reference: monday.com's main table view (dark theme, structured, data-dense but clean).
+
+**Key elements to replicate:**
+- **Dark navy background** for the workspace — deep blue-grey (#0D1117 or similar),
+  not black. The current sidebar is already dark; extend this to the main content area.
+- **Task table layout** — not cards. Tasks live in a proper table:
+  columns = Task name | Owner (avatar circle) | Status (full-width colored chip) | Due date
+- **Section groups** — tasks grouped by phase or status, each group with a colored
+  left-border accent, large section header text, and a collapse chevron
+- **Status chips** — pill-shaped, full-color background:
+  Not Started = grey | In Progress = blue/amber | Done = green | Blocked = red/coral
+- **Owner avatars** — small initials circles (2 letters, brand color background)
+- **Row interactions** — click any row → TaskDetailDrawer slide-over from the right
+- **Add row** — "+ Add task" as a subtle grey row at the bottom of each group
+- **Bottom of page** — "+ Add new group" dashed button
+- **Progress strip** — thin colored bar at bottom of each group showing status distribution
+
+**What to keep from Larry's existing design:**
+- Purple brand accent (#8B5CF6)
+- Framer Motion transitions
+- The sidebar structure (already dark, already good)
+- Topbar with notification bell and user avatar
+
+**What to remove from Larry's existing design:**
+- Floating Larry chat bubble (bottom-right) — gone entirely
+- Card-based task layout inside project workspace — replaced by table
+- Any mock/placeholder data visible to the user
 
 ---
 
-## PARALLEL EXECUTION MAP
-
-Sessions that can run simultaneously across the team:
+## PARALLEL EXECUTION MAP (revised)
 
 ```
-Day 1 (Mar 25)
-  Fergus + Joel ── Session 1 (security + calendar fix)
-  Joel          ── Session 2 starts after Session 1 done
-
-Day 2 (Mar 26)
-  Joel + Fergus ── Session 2 (project_create execution) [morning]
-  Anton         ── Session 4 (ProjectWorkspace Overview + Gantt) [morning, after dev branch merged]
-  Fergus + Anton── Session 3 (StartProjectFlow) [afternoon, after Session 2]
+Day 2 (Mar 26) — TODAY
+  Fergus        ── Session 1 (Remove bubble, fix chat history) [morning]
+  Anton         ── Session 2 (StartProjectFlow 3 modes) [morning]
+  Fergus + Joel ── Session 3 (project_create execution + no placeholders) [afternoon]
 
 Day 3 (Mar 27)
-  Anton         ── Sessions 5 → 6 → 10 (sequential frontend)
-  Joel          ── Sessions 9 → 12 (Calendar + AI model)
-  Joel + Fergus ── Session 8 (Slack validation, can interleave with above)
-  Anton + Fergus── Session 7 (Action Centre, after Anton finishes Session 6)
+  Anton         ── Session 4 (monday.com table view for ProjectWorkspace) [all day]
+  Joel          ── Session 5 (security fixes + task_update execution) [morning]
+  Fergus        ── Session 5 action centre source cards [afternoon]
+  Fergus + Anton── Session 6 (landing page + dashboard + org invite) [afternoon]
 
 Day 4 (Mar 28)
-  Anton + Fergus── Session 11 (Landing page + dashboard) [morning]
-  Fergus + Joel ── Session 13 (E2E + CI) [parallel with Session 11]
-  Fergus        ── Session 14 (Deploy + demo prep) [afternoon]
+  Anton + Fergus── Session 7 (Action Centre UX polish + notifications) [morning]
+  Joel + Fergus ── Session 8 (Slack + Calendar E2E validation) [morning]
+  Fergus        ── Session 9 (E2E test + CI) [afternoon]
+  Fergus        ── Session 10 (Final deploy + demo prep) [late afternoon]
 ```
 
 ---
 ---
 ---
 
-## SESSION 1 — SECURITY & IMMEDIATE FIXES
-**Day 1 — March 25 | Owner: Fergus + Joel | Est: 1.5h**
-**Branch: `feat/s1-security-fixes`**
+## SESSION 1 — REMOVE LARRY BUBBLE + FIX CHAT HISTORY (PROJECT-GROUPED)
+**Day 2 — March 26 | Owner: Fergus | Est: 1.5h**
+**Branch: `feat/s1-chat-history-no-bubble`**
 
-**Goal:** Fix the four immediate launch-blocking bugs that require no product decisions —
-health endpoint leakage, calendar renewal token, reporting idempotency, escalation spam.
+**Goal:** Remove the floating Larry chat bubble entirely. Rewrite the Chats sidebar section
+so it shows a real, persistent conversation history grouped by project — not a flat unordered list.
 
-### Issues Addressed
-- Readiness report blocker #5: Calendar renewal breaks webhook auth after renewal
-- Readiness report blocker #6: `/api/health` leaks `TURSO_DATABASE_URL` + raw errors publicly
-- Readiness report #9: Reporting endpoints insert snapshots on every read
-- Readiness report #10: Escalation notifications duplicate over time
+### Part A — Remove the Floating Larry Bubble
 
-### Files to Touch
+**File: `apps/web/src/app/workspace/WorkspaceShell.tsx` (or wherever the bubble is rendered)**
 
-#### 1. Health endpoint — remove config leakage
-`apps/web/src/app/api/health/route.ts`
-- Return only `{ ok: true }` on success, `{ ok: false }` on failure
-- Remove `url`, `hasToken`, and `error: String(err)` from response body
-- A public health check must not reveal infrastructure details
+- Find the floating Larry chat button (bottom-right, fixed position)
+- Delete it completely — the component, its imports, its state, its toggle logic
+- Larry is accessed exclusively through the `/workspace/chats` sidebar link
+- Do not replace it with anything else
 
-#### 2. Calendar renewal — add channelToken
-`apps/worker/src/calendar-renewal.ts`
-- The initial watch registration in `connectors-google-calendar.ts` sends a signed
-  `channelToken`. The renewal job must send the same token.
-- Read `webhook_channel_token` from the `google_calendar_installations` row (add
-  column to schema if not present, or use `webhook_channel_id` as the token value
-  if that's what the initial registration stored).
-- Add `token: channelToken` to the Google Calendar watch request body in the renewal.
+**File: `apps/web/src/components/dashboard/LarryChat.tsx` (if this is the bubble component)**
+- If this file exists solely to power the bubble, delete it
+- If it also powers the Chats page, keep it but strip any floating/fixed positioning
 
-#### 3. Reporting idempotency — no insert on every read
-`apps/api/src/routes/v1/reporting.ts`
-- `GET /projects/:id/health` — before inserting into `risk_snapshots`, check if a
-  row already exists for `(tenant_id, project_id, DATE(NOW()))`. Skip insert if so.
-- `GET /projects/:id/outcomes` and `GET /projects/:id/weekly-summary` — same
-  dedup pattern for `report_snapshots`. Check `(tenant_id, project_id, DATE(NOW()))`.
+### Part B — Chats Page: Project-Grouped Conversation History
 
-#### 4. Escalation dedup — add unique constraint
-`packages/db/src/schema.sql` + new migration
-- Add unique constraint on `notifications` table:
-  `UNIQUE (tenant_id, task_id, notification_type, DATE(created_at))`
-  or equivalent window key that prevents the same escalation firing twice in one day.
-- `apps/worker/src/escalation.ts` — verify the `ON CONFLICT DO NOTHING` target
-  matches the new unique key.
+**File: `apps/web/src/app/workspace/chats/page.tsx`**
+
+Current state: unordered list of conversations or placeholder.
+
+**New layout:**
+```
+Chats
+├── Alpha Relaunch Campaign        ← project name header (bold, larger)
+│   ├── "Define the campaign scope and KPIs"   (thread title, date, preview)
+│   └── "Review task priorities for week 2"
+├── Acme Corp — Q2 Launch
+│   └── "Extract action items from kickoff call"
+└── General                        ← conversations not linked to any project
+    └── "What can Larry help with?"
+```
+
+**Data source:**
+- `GET /api/workspace/larry/conversations` already returns conversations with `projectId`
+- Group by `projectId` on the frontend; fetch project names from
+  `GET /api/workspace/snapshot` or a lightweight `GET /api/workspace/projects`
+- "General" section = conversations where `projectId` is null
+
+**Each conversation row shows:**
+- Thread title (first user message, truncated to 60 chars) or a generated name
+- Date of last message (relative: "2 hours ago", "Yesterday")
+- 1-line preview of the last message content
+
+**Clicking a conversation** → opens that conversation's message thread inline
+(use the existing message detail view if one exists, or render messages in a right-side panel)
+
+**New conversation button** → "+ New chat" at top, opens a fresh Larry conversation
 
 ### Acceptance Criteria
-- [ ] `GET /api/health` returns `{ ok: true }` only — no URLs, tokens, or error strings
-- [ ] Calendar renewal function sends `channelToken` in the watch request body
-- [ ] `GET /projects/:id/health` does not insert a duplicate snapshot on the same day
-- [ ] Escalation job does not fire duplicate notifications for the same task on the same day
-- [ ] `npm run api:test` still passes after changes
+- [ ] Floating Larry bubble is completely gone from all workspace pages
+- [ ] Chats page groups conversations under project name headers
+- [ ] "General" section shows conversations not linked to a project
+- [ ] Clicking a conversation thread opens the message history
+- [ ] "+ New chat" starts a fresh conversation
+- [ ] No console errors
 
 ---
 
-## SESSION 2 — project_create EXECUTION + ORG INVITE FLOW
-**Day 1–2 — March 25–26 | Owner: Joel + Fergus | Est: 3h**
-**Branch: `feat/s2-project-create-execution`**
+## SESSION 2 — STARTPROJECTFLOW: 3 REAL MODES PROPERLY WIRED
+**Day 2 — March 26 | Owner: Anton + Fergus | Est: 2h**
+**Branch: `feat/s2-start-project-flow`**
 
-**Goal:** Wire the single most critical missing execution path: approving a `project_create`
-action must actually create a project and seed tasks in the DB. Also implement the org
-account approval flow so pilot customers can be onboarded without a self-serve signup.
+**Goal:** Rewrite `StartProjectFlow.tsx` so all 3 project-creation modes are real, wired,
+and demo-ready. No false-promise copy. No broken paths.
 
-### Issues Addressed
-- [P0] #1 Wire approvals → real task creation in DB
-- Readiness report blocker #3: "approving project_create delivers no artifact"
-- Readiness report blocker #7: "real workspace onboarding is not there yet"
+**⚠️ FRONTEND RULE: Invoke the `frontend-developer` subagent before touching any UI files.**
 
-### Part A — project_create Execution
+### Overview of the 3 modes
+
+The flow is: Step 1 (welcome screen with Larry avatar) → Step 2 (choose a mode) →
+Step 3 (mode-specific experience) → completion.
+
+Step 2 presents **3 large card tiles** — no voice, no external import.
+
+---
+
+### Mode 1 — Manual Creation
+
+**Step 3 UI: a clean form**
+- Project name (required)
+- Description / goal (optional textarea, 3 rows)
+- Start date (optional date picker)
+- Target end date (optional date picker)
+- Team (optional — search existing workspace members, add as chips)
+
+**API call:**
+```
+POST /api/workspace/projects
+{ mode: "manual", name, description, startDate, endDate }
+```
+
+**On success:** close modal → navigate to `/workspace/projects/:newProjectId`
+New project opens with no placeholder data — just empty sections ready for tasks.
+
+---
+
+### Mode 2 — Chat with Larry (Guided Project Setup)
+
+This is **not** a generic free-form chat. Larry leads the user through a structured
+intake conversation to understand the project, then proposes a `project_create` action.
+
+**Larry's guided questions (in sequence — ask one at a time):**
+1. "What's the name or goal of this project?"
+2. "Who's involved — is this a team project or just you?"
+3. "What's the target completion date, or is it ongoing?"
+4. "Any key milestones or phases you already have in mind?"
+5. "Got it. Want me to draft a project structure based on what you've told me?"
+
+On the final answer → Larry responds: "Great. I've put together a project structure.
+Review it in the Action Centre and approve to create the project."
+
+**API calls:**
+- Each user reply → `POST /api/workspace/larry/message` (or existing conversation endpoint)
+- Larry's structured intake ends with a `project_create` proposed action
+
+**On completion:** close modal → show toast:
+> "Your project structure is ready — review it in the Action Centre to create it."
+Toast links to `/workspace/actions`.
+
+**UX notes:**
+- The chat renders inside the modal at Step 3
+- Larry messages appear on the left, user replies on the right
+- The "Send" button is the only action — no other controls visible
+- Show typing indicator while waiting for Larry's response
+
+---
+
+### Mode 3 — Paste Meeting Transcript
+
+**Step 3 UI:**
+- Large textarea: placeholder "Paste your meeting transcript or notes here…"
+- Below: drag-and-drop zone for `.txt` or `.docx` files (optional, falls back to textarea)
+- "Extract actions" button (disabled until content > 50 chars)
+
+**API call:**
+```
+POST /api/workspace/ingestion/transcript
+{ content: transcriptText, projectId?: string }
+```
+
+**While processing:** show spinner with "Larry is reading your transcript…"
+
+**On success:** close modal → show toast:
+> "Larry found [N] actions — review them in the Action Centre."
+Toast links to `/workspace/actions`.
+
+**On error:** show inline error: "Something went wrong — paste failed. Try again."
+
+---
+
+### Copy Rules (applies to all 3 modes)
+- No mention of voice, PDF export, external import, or "set up in 2 minutes"
+- No "no credit card needed"
+- Mode 2 card title: "Chat with Larry" (not "AI-powered setup")
+- Mode 3 card title: "Paste a transcript" (not "Import from meeting")
+
+### Acceptance Criteria
+- [ ] Manual: project created in DB, workspace opens with real empty project
+- [ ] Chat: Larry asks guided questions one at a time, ends with project_create action pending
+- [ ] Transcript: extraction runs, toast shows action count, Action Centre populated
+- [ ] No false-promise copy in any step
+- [ ] Smooth Framer Motion transitions between steps
+- [ ] All 3 modes handle errors gracefully
+
+---
+
+## SESSION 3 — project_create EXECUTION + NO PLACEHOLDER CONTENT
+**Day 2 — March 26 | Owner: Joel + Fergus | Est: 2.5h**
+**Branch: `feat/s3-project-create-execution`**
+**⚠️ DEP:SESSION-2 — StartProjectFlow must exist to trigger project_create actions**
+
+**Goal:** Wire the two most critical missing execution paths. First: approving a
+`project_create` action must actually create the project and seed tasks in the DB.
+Second: ProjectWorkspace must show zero placeholder content — only real API data.
+
+### Part A — project_create Execution on Approval
 
 **File: `apps/api/src/routes/v1/actions.ts`**
 
-After the existing `approved` state update (around line 197 where Slack outbound fires),
-add an execution block for `project_create`:
+After the existing `task_create` execution block (around line 201), add the `project_create`
+handler:
 
 ```typescript
 if (action.actionType === "project_create") {
   const p = action.payload as {
     name: string;
     description?: string;
-    tasks?: Array<{ title: string; description?: string; dueDate?: string; assignee?: string }>;
+    tasks?: Array<{
+      title: string;
+      description?: string;
+      dueDate?: string;
+      assignee?: string;
+    }>;
   };
 
   // 1. Insert project
-  const [newProject] = await fastify.db.queryTenant(tenantId, `
-    INSERT INTO projects (tenant_id, name, description, status, created_by)
-    VALUES ($1, $2, $3, 'active', $4)
-    RETURNING id
-  `, [tenantId, p.name, p.description ?? "", userId]);
+  const [newProject] = await fastify.db.queryTenant<{ id: string }>(
+    tenantId,
+    `INSERT INTO projects (tenant_id, name, description, status, created_by)
+     VALUES ($1, $2, $3, 'active', $4)
+     RETURNING id`,
+    [tenantId, p.name, p.description ?? "", request.user.userId]
+  );
 
-  // 2. Seed starter tasks
+  // 2. Seed starter tasks if Larry extracted any
   if (p.tasks?.length) {
     for (const t of p.tasks) {
-      await fastify.db.queryTenant(tenantId, `
-        INSERT INTO tasks (tenant_id, project_id, title, description, status, priority, due_date)
-        VALUES ($1, $2, $3, $4, 'not_started', 'medium', $5)
-      `, [tenantId, newProject.id, t.title, t.description ?? "", t.dueDate ?? null]);
+      await fastify.db.queryTenant(
+        tenantId,
+        `INSERT INTO tasks (tenant_id, project_id, title, description, status, priority, due_date)
+         VALUES ($1, $2, $3, $4, 'not_started', 'medium', $5)`,
+        [tenantId, newProject.id, t.title, t.description ?? "", t.dueDate ?? null]
+      );
     }
   }
 
-  // 3. Return projectId in response so frontend can redirect
-  reply.send({ ok: true, state: "approved", projectId: newProject.id });
-  return;
+  // 3. Mark action as executed
+  await fastify.db.queryTenant(
+    tenantId,
+    `UPDATE extracted_actions
+     SET state = 'executed', executed_at = NOW(), updated_at = NOW()
+     WHERE tenant_id = $1 AND id = $2`,
+    [tenantId, params.id]
+  );
+
+  // 4. Return projectId so frontend can redirect
+  return { success: true, state: "executed", projectId: newProject.id };
 }
 ```
 
-**File: `apps/api/src/routes/v1/larry.ts`**
+Also add `task_update` execution (currently missing — approving a task_update does nothing):
+```typescript
+if (action.actionType === "task_update" && action.projectId) {
+  const p = action.payload as {
+    taskId?: string;
+    status?: string;
+    priority?: string;
+    dueDate?: string;
+    assigneeUserId?: string;
+  };
+  if (p.taskId && p.status) {
+    await fastify.db.queryTenant(
+      tenantId,
+      `UPDATE tasks
+       SET status = $3, updated_at = NOW()
+       WHERE tenant_id = $1 AND id = $2`,
+      [tenantId, p.taskId, p.status]
+    );
+  }
+}
+```
 
-Verify that `project_create` actions are created with a payload that includes
-`name`, `description`, and `tasks[]`. If the LLM prompt doesn't request this
-structure, update the system prompt in `packages/ai/src/index.ts` to include it.
-
-### Part B — Org Invite / Approval Flow
+### Part B — Org Invite Flow (for landing page CTA)
 
 **New file: `apps/api/src/routes/v1/orgs.ts`**
 
-Two public endpoints:
-- `POST /api/v1/orgs/request` — accepts `{ orgName, contactEmail, description }`,
-  inserts into a new `org_invites` table with `status = 'pending'`
+Three endpoints:
+- `POST /api/v1/orgs/request` — public, accepts `{ orgName, contactEmail, description }`,
+  inserts into `org_invites` with `status = 'pending'`, returns `{ ok: true }`
 - `GET /api/v1/admin/orgs/requests` — protected by `Authorization: Bearer ${ADMIN_SECRET}`,
-  returns all pending org invite requests
-- `POST /api/v1/admin/orgs/:id/approve` — protected same way, creates the tenant +
-  seeds an admin user with a temporary password, returns `{ tenantId, tempPassword }`
+  returns all pending requests
+- `POST /api/v1/admin/orgs/:id/approve` — protected same way, creates tenant + admin user
+  with temp password, returns `{ tenantId, tempPassword }`
 
-**New migration: `packages/db/src/migrations/003_org_invites.sql`**
+**New migration:** Add `org_invites` table to `packages/db/src/schema.sql`:
 ```sql
-CREATE TABLE org_invites (
+CREATE TABLE IF NOT EXISTS org_invites (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   org_name TEXT NOT NULL,
   contact_email TEXT NOT NULL,
   description TEXT,
-  status TEXT NOT NULL DEFAULT 'pending', -- pending | approved | rejected
+  status TEXT NOT NULL DEFAULT 'pending',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   reviewed_at TIMESTAMPTZ,
   reviewed_by TEXT
 );
 ```
 
-The existing dev-login + seeded credentials remain untouched for demos.
+### Part C — Remove All Placeholder Content from ProjectWorkspace
+
+**File: `apps/web/src/components/dashboard/ProjectWorkspace.tsx`**
+
+This is the biggest single technical debt in the frontend. The file contains:
+- `WORKSPACE_DATA` — a large hardcoded constant (~line 78)
+- `ORG_DATA` — a hardcoded org chart constant (~line 186)
+
+Both must be deleted entirely. Replace with real API calls.
+
+**Create hook: `apps/web/src/hooks/useProjectData.ts`**
+```typescript
+export function useProjectData(projectId: string) {
+  // Fetches /api/workspace/snapshot?projectId=:id
+  // Returns { project, tasks, health, actions, meetings, loading, error }
+  // Re-fetches every 30s
+}
+```
+
+Wire this hook into all tabs of ProjectWorkspace. For this session, focus on:
+- Overview tab: real project name, description, health status, task counts by status
+- The remaining tabs (Gantt, Analytics, Documents, Meetings, Org Chart) can show a clean
+  loading/empty state rather than mock data — that's acceptable for now. Session 4 finishes them.
+
+A new project must open to an empty workspace with no seeded fake tasks.
+If `tasks.length === 0`, show: "No tasks yet — add your first one below."
 
 ### Acceptance Criteria
-- [ ] Chat with Larry → describe a project → Action Centre shows `project_create` pending
-- [ ] Approve in Action Centre → project appears in workspace with starter tasks
-- [ ] Approval response includes `projectId` → frontend can redirect to new project
+- [ ] Chat with Larry → describe project → approve project_create → project appears in workspace
+- [ ] Approving a task_update action actually changes the task's status in DB
+- [ ] `WORKSPACE_DATA` constant is fully gone from `ProjectWorkspace.tsx`
+- [ ] `ORG_DATA` constant is fully gone from `ProjectWorkspace.tsx`
+- [ ] Overview tab shows real project name and task counts from API
+- [ ] New project has zero fake tasks — clean empty state only
 - [ ] `POST /api/v1/orgs/request` creates a pending invite record
-- [ ] `POST /api/v1/admin/orgs/:id/approve` creates tenant + admin user
-- [ ] Admin endpoints return 401 without valid `ADMIN_SECRET`
 - [ ] `npm run api:test` passes
 
 ---
 
-## SESSION 3 — STARTPROJECTFLOW: 3 REAL PATHS
-**Day 2 — March 26 | Owner: Fergus + Anton | Est: 2h**
-**Branch: `feat/s3-start-project-flow`**
-**⚠️ DEP:ANTON-DEV — merge Anton's `dev` branch first**
+## SESSION 4 — PROJECT WORKSPACE: monday.com-INSPIRED TABLE VIEW
+**Day 3 — March 27 | Owner: Anton | Est: 3h**
+**Branch: `feat/s4-workspace-table-view`**
+**⚠️ DEP:SESSION-3 — useProjectData hook must exist, WORKSPACE_DATA must be gone**
 
-**Goal:** Rewrite `StartProjectFlow.tsx` so all 3 project-start modes map to real backend
-paths, and the UI is demo-ready — premium card design, no false-promise copy.
+**Goal:** Transform the project workspace from card/mock UI into a structured,
+monday.com-inspired table view. This is the primary workspace surface — it must feel
+premium, data-dense, and polished. Reference the monday.com screenshot exactly.
 
 **⚠️ FRONTEND RULE: Invoke the `frontend-developer` subagent before touching any UI files.**
 
-### Issues Addressed
-- Readiness report blocker #2: "start-a-project flow does not match the promised product"
-- [P2] #24 Chat-based project creation UI
+### Design Reference
 
-### Files to Touch
-- `apps/web/src/components/dashboard/StartProjectFlow.tsx` — full rewrite of 3-mode flow
-- `apps/web/src/app/api/workspace/projects/route.ts` — accept richer payload per mode
+Study the monday.com screenshot carefully before writing a line of code:
+- Dark navy main content area (match the sidebar's colour — unify the dark theme)
+- Tasks in a proper table, not cards
+- Grouped sections with a colored left-border accent + collapse toggle
+- Columns: Task name, Owner (avatar), Status (colored full-pill chip), Due date, + icon
+- Status badges are the visual anchor of every row — they must be vivid and clear
+- "Not Started" = grey | "In Progress" = amber/blue | "Done" = green | "Blocked" = red
+- Row hover: subtle highlight, no clutter
+- Progress strip at the bottom of each group (coloured segments = status distribution)
+- "+ Add task" as the last row in each group, grey, subdued
+- "+ Add new group" at the very bottom of the task list
 
-### The 3 Modes
+### Files to Change
 
-**Mode 1 — Manual Creation**
-- Collect: project name, description, optional start/end date
-- `POST /api/workspace/projects` with `{ mode: "manual", name, description, startDate, endDate }`
-- On success: close modal + navigate to `/workspace/projects/:newProjectId`
+**`apps/web/src/components/dashboard/ProjectWorkspace.tsx`**
+- The Overview tab becomes this table view (not a stats dashboard)
+- The tab label can stay "Overview" — the table IS the overview
+- Remove any remaining card-based task rendering
 
-**Mode 2 — Chat with Larry**
-- Inline Larry chat within the modal — user describes the project
-- Sends to `POST /api/workspace/larry/message` → creates `project_create` pending action
-- On success: close modal + show toast: "Your project is in the Action Centre — review it to create."
-- Toast includes a link to `/workspace/actions`
+**New component: `apps/web/src/components/dashboard/TaskTable.tsx`**
+- Pure presentational component
+- Props: `{ groups: TaskGroup[], onTaskClick, onAddTask, onAddGroup }`
+- `TaskGroup = { label, color, tasks: Task[] }`
+- Renders the full table including headers, rows, status chips, add-task row
 
-**Mode 3 — Insert Meeting Transcript**
-- Textarea for transcript paste (or file upload for .txt/.docx)
-- `POST /api/workspace/ingestion/transcript` with `{ content: transcriptText }`
-- Show spinner: "Larry is reading your transcript…"
-- On success: close modal + show toast: "Larry found [N] actions — review them in the Action Centre."
+**New component: `apps/web/src/components/dashboard/StatusChip.tsx`**
+- Props: `{ status: TaskStatus }`
+- Returns a full-width colored pill with the status label
+- Used consistently across the entire app (Action Centre, My Work, etc.)
 
-### UX Notes
-- The 3 modes appear as **large card tiles** on step 2 of the flow
-  (step 1 is the existing welcome/Larry avatar screen)
-- Each card: icon + mode title + 1-line description
-- No mention of "voice", "external import", "no credit card", "set up in 2 minutes"
-- Framer Motion transitions between steps — keep existing animation constants
+### Grouping Logic
+
+Default grouping = by status. Groups (in order):
+1. **In Progress** — amber left border
+2. **Not Started** — grey left border
+3. **Blocked** — red left border
+4. **Done** — green left border (collapsed by default if > 3 items)
+
+If tasks have a `phase` or `category` field set, offer group-by-phase as an alternative.
+
+### Gantt / Timeline Tab
+
+Keep the Timeline tab. Wire it with real task dates:
+- Horizontal bars sized by `start_date` → `due_date`
+- Same colour coding as status chips
+- If a task has no dates, render it in a "No dates set" section at the bottom
+- Click a bar → `TaskDetailDrawer` slide-over
 
 ### Acceptance Criteria
-- [ ] Manual creation: project immediately appears in workspace
-- [ ] Chat path: `project_create` action appears in Action Centre
-- [ ] Transcript path: extracted actions appear in Action Centre within ~15s
-- [ ] No false-promise copy visible anywhere in the flow
-- [ ] Modal transitions are smooth and consistent with existing design
+- [ ] Project workspace shows a real task table (not cards, not mocks)
+- [ ] Tasks grouped by status with colored left-border section headers
+- [ ] Each row shows Task name, Owner avatar, Status chip, Due date
+- [ ] Status chips are vivid, pill-shaped, consistent
+- [ ] Collapse/expand toggles work on each group
+- [ ] "Done" group collapsed by default if it contains more than 3 tasks
+- [ ] "+ Add task" opens an inline input at the bottom of that group
+- [ ] Clicking a task row opens `TaskDetailDrawer`
+- [ ] Progress strip at bottom of each group
+- [ ] Timeline tab renders real tasks as horizontal bars
+- [ ] Dark theme applied to main content area (matches sidebar)
 
 ---
 
-## SESSION 4 — PROJECTWORKSPACE: OVERVIEW + GANTT (LIVE DATA)
-**Day 2 — March 26 | Owner: Anton + Fergus | Est: 3h**
-**Branch: `feat/s4-workspace-overview-gantt`**
-**⚠️ DEP:ANTON-DEV — merge Anton's `dev` branch first**
-**⚠️ DEP:SESSION-2 — needs project creation to work**
+## SESSION 5 — SECURITY FIXES + ACTION CENTRE SOURCE CARDS
+**Day 3 — March 27 | Owner: Joel + Fergus | Est: 2h**
+**Branch: `feat/s5-security-action-centre`**
 
-**Goal:** Remove every `WORKSPACE_DATA` and `ORG_DATA` mock object from
-`ProjectWorkspace.tsx`. Wire the Overview and Timeline (Gantt) tabs to live data.
+**Goal:** Fix four production security/correctness bugs from the readiness report,
+then add source context cards to every Action Centre item.
 
-**⚠️ FRONTEND RULE: Invoke the `frontend-developer` subagent before touching any UI files.**
+### Part A — Security & Correctness Fixes
 
-### Issues Addressed
-- [P1] #10 Gantt: expand/collapse hierarchy + task slide-over on bar click
-- Readiness report blocker #1: "active project workspace relies on mock-heavy legacy UI"
+#### 1. Health endpoint — remove config leakage
+`apps/web/src/app/api/health/route.ts`
+- Return ONLY `{ ok: true }` on success, `{ ok: false }` on failure
+- Remove `url`, `hasToken`, `error: String(err)` from all responses
+- Currently leaks `TURSO_DATABASE_URL` publicly — this is a production security bug
 
-### Core Change — Data Hook
+#### 2. Escalation dedup — fix the broken ON CONFLICT
+`packages/db/src/schema.sql`
+- The `notifications` table has NO unique constraint, so the existing
+  `ON CONFLICT DO NOTHING` in `escalation.ts` is a no-op — duplicates insert every hour
+- Add unique constraint:
+  ```sql
+  ALTER TABLE notifications
+    ADD CONSTRAINT uq_notifications_dedup
+    UNIQUE (tenant_id, user_id, channel, subject, DATE(created_at));
+  ```
+- This constraint targets the same columns used by the escalation insert
 
-Create `apps/web/src/hooks/useProjectData.ts`:
-```typescript
-export function useProjectData(projectId: string) {
-  // Fetches /api/workspace/snapshot?projectId=:id
-  // Returns { project, tasks, health, actions, meetings, outcomes, loading, error }
-  // Re-fetches every 30s (polling)
-}
-```
-This hook is used by all 6 tabs. Build it once here.
+`apps/worker/src/escalation.ts`
+- Change `ON CONFLICT DO NOTHING` to `ON CONFLICT ON CONSTRAINT uq_notifications_dedup DO NOTHING`
 
-### Overview Tab (live data)
-Source: `/api/workspace/snapshot?projectId=:id`
-- Project name + description (from `projects` table)
-- Health status chip: Green / Yellow / Red / Not Started
-- Task breakdown: counts by status (not_started / in_progress / completed / at_risk)
-- "Needs attention" section: tasks with `status = 'at_risk'` or past due_date
-- Recent activity list: latest entries from `agent_runs` or `audit_logs`
+#### 3. Reporting idempotency — no insert on every read
+`apps/api/src/routes/v1/reporting.ts`
+- Before inserting into `risk_snapshots`, check if a row already exists for
+  `(tenant_id, project_id, DATE(NOW()))` — skip insert if so
+- Same dedup check for any weekly-summary or report_snapshots inserts
 
-### Gantt / Timeline Tab (live data)
-Source: tasks array from snapshot
-- Render tasks as horizontal timeline bars using position + width from `start_date` / `due_date`
-- Task hierarchy: subtasks indented under parent tasks
-- Expand/collapse toggle on parent task rows
-- Click a bar → `TaskDetailDrawer` slide-over (component already exists at
-  `apps/web/src/app/workspace/projects/[projectId]/TaskDetailDrawer.tsx`)
-- Status colour coding: Green = completed, Yellow = at_risk, Red = overdue, Grey = not_started
-- If tasks have no dates, render them as a flat list with status chips instead of bars
+#### 4. Calendar renewal — add channelToken
+`apps/worker/src/calendar-renewal.ts`
+- `renewWatchChannel()` currently sends `{ id, type, address }` to Google's watch API
+- The initial registration in `connectors-google-calendar.ts` sends a signed `token` field
+- Add `token` to the renewal body matching what the initial registration sends:
+  use `webhook_channel_id` as the token value (or read `webhook_channel_token` column if
+  it has been added to the schema)
+- Without this, renewed channels fail webhook auth and calendar silently stops after 7 days
 
-### Acceptance Criteria
-- [ ] `WORKSPACE_DATA` constant is fully removed from `ProjectWorkspace.tsx`
-- [ ] `ORG_DATA` constant is fully removed from `ProjectWorkspace.tsx`
-- [ ] Overview tab shows real project name, health, and task counts
-- [ ] Gantt tab renders real tasks from the API
-- [ ] Clicking a task bar opens `TaskDetailDrawer` with live task data
-- [ ] `useProjectData` hook is used by the component (not inline fetch calls)
+### Part B — Action Centre Source Context Cards
 
----
+**File: `apps/api/src/routes/v1/actions.ts`** — `GET /actions`
 
-## SESSION 5 — PROJECTWORKSPACE: ANALYTICS + DOCUMENTS (LIVE DATA)
-**Day 2–3 — March 26–27 | Owner: Anton | Est: 2h**
-**Branch: `feat/s5-workspace-analytics-docs`**
-**⚠️ DEP:SESSION-4 — useProjectData hook must exist**
-
-**Goal:** Wire Analytics and Documents tabs to live data using the shared `useProjectData` hook.
-
-**⚠️ FRONTEND RULE: Invoke the `frontend-developer` subagent before touching any UI files.**
-
-### Issues Addressed
-- [P1] #11 Dashboard: stacked charts using Recharts
-- [P1] #13 Documents page: live content from meeting_notes and report_snapshots
-
-### Analytics Tab (live data)
-Sources: tasks from snapshot + `/api/workspace/reporting/projects/:id/outcomes`
-
-- **Donut chart** (already partially wired): task status breakdown — use Recharts `PieChart`
-- **NEW Stacked bar — by working area:** group tasks by `category` or `phase` field,
-  show each group as a stacked bar split by status. If tasks have no category, group by
-  assignee instead.
-- **NEW Stacked bar — by assignee:** group tasks by `assignee_id`, stacked by status.
-  Show assignee name/initials on axis.
-- Health score if present in outcomes response
-- "Generate Report" button: render it as disabled with a `title="Coming soon"` tooltip.
-  Do not remove the button — it stays visible but inert.
-
-### Documents Tab (live data)
-Sources:
-- `GET /api/workspace/meeting-notes?projectId=:id` (or from snapshot)
-- `GET /api/workspace/reporting/projects/:id/weekly-summary`
-
-- List of **meeting note cards**: title, date, attendee count, 2-line summary preview
-  → click to expand full notes
-- List of **report snapshot cards**: "Weekly summary — [date]", preview line
-  → click to expand
-- "Upload transcript" button → opens the transcript intake from `StartProjectFlow`
-  Mode 3 inline (not the full modal)
-- Polished empty state if no documents yet: Larry avatar + "No documents yet —
-  paste a meeting transcript to get started."
-
-### Acceptance Criteria
-- [ ] Analytics tab: donut chart + 2 stacked bars render with real task data
-- [ ] "Generate Report" button is visible but disabled with "Coming soon" tooltip
-- [ ] Documents tab: lists real meeting notes and report snapshots
-- [ ] Documents tab: "Upload transcript" triggers extraction
-- [ ] Empty states are polished, not raw text
-
----
-
-## SESSION 6 — PROJECTWORKSPACE: MEETINGS + ORG CHART (LIVE DATA)
-**Day 3 — March 27 | Owner: Anton | Est: 2h**
-**Branch: `feat/s6-workspace-meetings-orgchart`**
-**⚠️ DEP:SESSION-4 — useProjectData hook must exist**
-
-**Goal:** Wire Meetings and Org Chart tabs to live data. These are the last two mock tabs.
-
-**⚠️ FRONTEND RULE: Invoke the `frontend-developer` subagent before touching any UI files.**
-
-### Meetings Tab (live data)
-Source: `meeting_notes` for this project (via snapshot or dedicated endpoint)
-
-- Chronological list of meetings: title, date, attendee chips, summary preview
-- Click row → expand full meeting notes + AI summary
-- "Larry extracted [N] actions from this meeting" badge → click filters Action Centre
-  to show only actions from that `agent_run_id`
-- Inline "Upload transcript" button at the top of the list
-
-### Org Chart Tab (live data)
-Source: project members via tasks `assignee_id` + `memberships` table
-
-For MVP, this does **not** need to be a complex hierarchical org tree.
-Render as a clean grid of **assignee cards**:
-- Avatar (initials in brand-colour circle)
-- Full name + role (from `memberships`)
-- Tasks assigned: X total, Y completed
-- Current task: most recent in-progress task title
-
-If no members are assigned to any task: show "No team members assigned yet" empty state.
-
-### API needs (add if missing)
-- `GET /api/workspace/projects/:id/members` — returns `[{ userId, name, role, taskCount, completedCount, currentTask }]`
-  Built from a JOIN across `tasks` + `memberships` + `users`.
-
-### Acceptance Criteria
-- [ ] Meetings tab: lists real meeting notes for this project
-- [ ] Click meeting row → full notes visible, action count badge shows
-- [ ] Org Chart tab: shows real assignees with task stats (or clean empty state)
-- [ ] Zero mock meeting or org data remains in `ProjectWorkspace.tsx`
-
----
-
-## SESSION 7 — ACTION CENTRE: SOURCE CONTEXT CARDS + UX POLISH
-**Day 3 — March 27 | Owner: Anton + Fergus | Est: 2h**
-**Branch: `feat/s7-action-centre-source-cards`**
-
-**Goal:** Add source context cards to every action in the Action Centre, surfacing the
-"what / why / signals / override" transparency principles that define Larry's trust model.
-
-**⚠️ FRONTEND RULE: Invoke the `frontend-developer` subagent before touching any UI files.**
-
-### Issues Addressed
-- [P1] #7 Action Centre: source context cards
-
-### Backend — ensure source data is available
-`apps/api/src/routes/v1/actions.ts` — `GET /actions` and `GET /actions/:id` must return:
+Ensure the list response includes source data from the agent run:
 ```typescript
 {
   id, actionType, state, payload, confidence, reasoning,
   source: {
     type: "slack" | "transcript" | "calendar" | "larry_chat",
-    excerpt: string,      // e.g. first 200 chars of the Slack message
+    excerpt: string,       // first 200 chars of the originating message/event
     timestamp: string,
-    channelOrTitle: string
+    channelOrTitle: string // e.g. "#dev-updates" or "Monday standup transcript"
   }
 }
 ```
-Source data comes from `agent_run_details` JOIN on `agent_runs`. Add to the query if missing.
+Join `extracted_actions` → `agent_runs` → `canonical_events` to get the source excerpt.
 
-### Frontend — Source Context Card Component
-New component: `apps/web/src/app/workspace/actions/SourceContextCard.tsx`
+**New component: `apps/web/src/app/workspace/actions/SourceContextCard.tsx`**
 
 Renders inside each action card:
-- **What happened:** action title in bold (e.g. "Update task: Deploy backend by Friday")
-- **Why:** reasoning string from agent run (1–3 sentences, collapsible if long)
-- **Signals:** the raw source excerpt in a subtle code/quote block with source label
-  (e.g. "From Slack #dev-updates · 2 hours ago")
-- **Override:** `Reject` button always visible, `Edit payload` toggle if action is editable
+- **What happened:** action title bold (e.g. "Update task: Deploy backend by Friday")
+- **Why:** reasoning string (1–3 sentences, collapsible if long)
+- **Source:** the raw excerpt in a quote block with source label
+  ("From Slack #dev-updates · 2h ago" or "From transcript: Monday standup · Mar 25")
+- **Actions:** Reject always visible | Edit payload toggle if applicable
 
-### Action Type Rendering (for demo completeness)
-Ensure these render correctly in the Action Centre:
-- `project_create` — shows project name + task count preview
-- `task_update` — shows task title + old status → new status arrow
-- `email_draft` — shows full editable draft inline (textarea, not read-only)
-- `follow_up` — shows recipient + message preview
-- `meeting_invite` — shows meeting title, proposed time, attendees
+**Action type rendering — ensure these display correctly:**
+- `project_create` — project name + task count preview
+- `task_update` — task title + old status → new status arrow
+- `email_draft` — editable textarea (not read-only), approve sends draft
+- `follow_up` — recipient + message preview
+- `meeting_invite` — meeting title, proposed time, attendees
 
 ### Acceptance Criteria
-- [ ] Every action card shows what / why / signals / override
-- [ ] `email_draft` actions: draft text is editable inline before approval
-- [ ] `meeting_invite` actions: time + attendees visible
-- [ ] Source excerpt shows where the action came from
-- [ ] Approve / Reject / Edit all update DB state correctly
+- [ ] `GET /api/health` returns `{ ok: true }` only — no URLs, tokens, or error strings
+- [ ] Escalation job inserts no duplicate notifications for same task on same day
+- [ ] `GET /projects/:id/health` does not insert a duplicate snapshot on the same day
+- [ ] Calendar renewal sends the channel token in the watch request
+- [ ] Every action card shows what / why / source excerpt
+- [ ] `email_draft` actions: draft text is inline-editable before approval
+- [ ] `npm run api:test` passes
 
 ---
 
-## SESSION 8 — SLACK → TASKS END-TO-END VALIDATION
-**Day 3 — March 27 | Owner: Joel + Fergus | Est: 2h**
-**Branch: `feat/s8-slack-e2e-validation`**
-
-**Goal:** Validate and fix the full Slack → event → agent run → Action Centre →
-approve → task updated flow so it works reliably in production for the demo.
-
-### Issues Addressed
-- [P1] #17 Notification delivery — Slack DM on action approval
-- Readiness report: "validate a full live Slack workflow in dev/staging"
-
-### Validation Steps (run against production or ngrok local)
-1. Send a Slack message in the connected workspace referencing a task or project update
-2. Verify `POST /api/v1/connectors/slack/events` receives the event (check Railway logs)
-3. Verify Slack signature validation passes (not 401)
-4. Verify BullMQ job is enqueued (check Redis queue)
-5. Worker picks up → OpenAI extraction → `extracted_actions` row inserted as `pending`
-6. Action appears in Action Centre (`GET /api/v1/actions`)
-7. Approve → task status updates in DB
-8. Verify action state changes to `executed`
-
-### Fix list (only touch files where the above fails)
-- `apps/api/src/routes/v1/connectors-slack.ts` — event ingestion + signature
-- `apps/worker/src/worker.ts` — job processor + extraction
-- `apps/api/src/routes/v1/actions.ts` — `task_update` execution path (update task in DB)
-
-### Slack DM on approval (notification)
-The commit `da897ec` partially wired Slack notifications on approval.
-Verify:
-- When a `task_update` or `follow_up` action is approved, a Slack DM fires to the
-  assignee if they have a `slack_user_id` in the `users` table
-- If not wired: add a post-approval hook in `actions.ts` that calls `postSlackMessage`
-
-### Acceptance Criteria
-- [ ] Real Slack message → pending action in Action Centre within 60s
-- [ ] Approve task update → task status changes in the workspace view
-- [ ] Slack DM fires to assignee on approval (or is queued)
-- [ ] No silent failures — errors are logged clearly in Railway worker logs
-
----
-
-## SESSION 9 — GOOGLE CALENDAR END-TO-END VALIDATION
-**Day 3 — March 27 | Owner: Joel | Est: 1.5h**
-**Branch: `feat/s9-calendar-e2e-validation`**
-
-**Goal:** Verify the calendar renewal fix from Session 1 works in practice and validate
-the full calendar watch → event → action pipeline for the demo.
-
-### Issues Addressed
-- Readiness report blocker #5: Calendar renewal breaks webhook auth after renewal
-
-### Validation Steps
-1. Connect Google Calendar in workspace settings
-2. Confirm watch registration: `webhook_channel_id` and `webhook_expiration` stored in DB
-3. Create a calendar event in the connected Google Calendar
-4. Verify webhook fires to `POST /api/v1/connectors/google-calendar/webhook`
-5. Verify `x-goog-channel-token` is validated (not rejected)
-6. Verify event → `canonical_events` row → agent run → action in Action Centre
-7. **Manually trigger renewal job** (add a test endpoint or call directly):
-   confirm renewed channel still passes webhook auth
-
-### Files to Fix If Needed
-- `apps/worker/src/calendar-renewal.ts` — `channelToken` in renewal (should be done in Session 1)
-- `apps/api/src/routes/v1/connectors-google-calendar.ts` — webhook handler
-
-### Acceptance Criteria
-- [ ] Calendar connects, watch channel is registered
-- [ ] Calendar event → action appears in Action Centre
-- [ ] Renewal job fires without breaking webhook auth
-- [ ] `channelToken` present in both initial watch and renewal requests
-
----
-
-## SESSION 10 — NOTIFICATIONS + LARRY CHAT POLISH
-**Day 3 — March 27 | Owner: Anton | Est: 1.5h**
-**Branch: `feat/s10-notifications-chat`**
-
-**Goal:** Wire notification dismiss/read, fix the Larry chat polling indicator, and ensure
-the notification bell shows a live unread count for the demo.
-
-**⚠️ FRONTEND RULE: Invoke the `frontend-developer` subagent before touching any UI files.**
-
-### Issues Addressed
-- [P0] #5 Wire Larry polling indicator in chat UI
-- [P1] #12 Notification centre: dismiss and mark as read
-
-### Larry Chat Polling Indicator
-File: `apps/web/src/app/workspace/useLarryChat.ts`
-- While a response is pending (`isLoading = true`): show animated "Larry is thinking…"
-  with pulsing dots (3-dot bounce animation)
-- While a background agent run is in progress: show subtle "Larry is updating your
-  project…" status line below the chat input
-- Polling for new actions: already present — verify it doesn't freeze on error
-
-File: `apps/web/src/app/workspace/LarryChat.tsx` (or dashboard equivalent)
-- Wire the loading state to the visual indicator
-- Keep the existing chat history wiring intact
-
-### Notification Centre
-Files:
-- `apps/web/src/app/workspace/NotificationBell.tsx`
-- Backend: `GET /api/workspace/notifications` + `PATCH /api/workspace/notifications/:id`
-
-Frontend behaviour:
-- Bell icon shows red badge with unread count (from `GET /api/workspace/notifications?unread=true`)
-- Click bell → dropdown panel with notification list
-- Each notification: icon, message, timestamp, "Mark read" button (or click row to mark read)
-- "Mark all read" button at top of panel
-- Notifications auto-refresh every 30s (same polling interval as project data)
-
-Backend (if endpoint missing):
-- `GET /api/workspace/notifications` → list from `notifications` table for this tenant/user
-- `PATCH /api/workspace/notifications/:id` → `{ read: true }` updates `read_at`
-- `POST /api/workspace/notifications/read-all` → bulk update
-
-### Acceptance Criteria
-- [ ] Larry chat shows animated "thinking" indicator while response is loading
-- [ ] Notification bell shows live unread count badge
-- [ ] Clicking a notification marks it read and clears the badge
-- [ ] "Mark all read" works
-- [ ] No console errors from polling hooks
-
----
-
-## SESSION 11 — LANDING PAGE + DASHBOARD VISUAL OVERHAUL
-**Day 4 — March 28 | Owner: Anton + Fergus | Est: 3h**
-**Branch: `feat/s11-landing-dashboard-ui`**
+## SESSION 6 — LANDING PAGE + DASHBOARD + ORG INVITE FORM
+**Day 3–4 — March 27–28 | Owner: Anton + Fergus | Est: 3h**
+**Branch: `feat/s6-landing-dashboard`**
+**⚠️ DEP:SESSION-3 — org invite API endpoint must exist**
 
 **Goal:** Make the landing page and workspace dashboard world-class. This is the first
-surface pilot customers see. It must be beautiful, unique, and trust-building.
+surface a pilot customer sees. It must be beautiful, premium, and trust-building.
 
 **⚠️ FRONTEND RULE: Invoke the `frontend-developer` subagent before touching any UI files.**
-**⚠️ This is the highest-impact visual session. Take the time to get it right.**
 
 ### Design Direction
-- **Inspiration:** ossus.librarlabs.com, Stripe Sessions — effects-heavy but not noisy
-- **Palette:** white/light background, `#8B5CF6` purple accent, subtle gradients
+- Inspired by ossus.librarlabs.com, Stripe Sessions — effects-heavy but tasteful
+- **Palette:** white/light background on landing, `#8B5CF6` purple accent, subtle gradients
 - **Motion:** Framer Motion — entrance animations, scroll reveals, hover micro-interactions
-- **Tone:** premium B2B tool — serious, intelligent, tasteful
-- **Typography:** tight tracking, large weights for hero copy
+- **Tone:** serious, intelligent, premium B2B — not another colourful SaaS startup template
 
-### Landing Page
-Files: `apps/web/src/app/page.tsx` and any imported landing sections
+### Landing Page (`apps/web/src/app/page.tsx`)
 
 **Must have:**
-- Hero section: "The autonomous execution layer for project management."
-  Subheading: "Turn meetings, Slack, and calendar into tracked, approved action."
-  Full-bleed, animated background (subtle grid or gradient mesh)
-  Primary CTA: "Request Access" → smooth scroll to invite request form
-  Secondary CTA: "See it in action" → video embed placeholder or screenshot carousel
-- Stats bar: 70% of projects fail · $101M wasted per $1B · 20h/week lost to coordination
-- How it works: 3 steps — Connect your tools → Larry extracts actions → You approve
-- Features strip: Slack ingestion, Meeting transcripts, Action Centre, Google Calendar
-- Connector logos: Slack, Google Calendar (greyed out = Email "coming soon")
-- Footer: minimal — logo, copyright, "Request access" link
+
+Hero section:
+- Headline: "The autonomous execution layer for project management."
+- Subheadline: "Turn meetings, Slack, and calendar into tracked, approved action."
+- Full-bleed animated background (subtle grid mesh or gradient, not busy)
+- Primary CTA: "Request Access" → smooth scroll to invite form below
+- Secondary CTA: "See it in action" → video embed placeholder or screenshot carousel
+
+Stats bar (3 facts):
+- "70% of projects fail to meet their goals"
+- "$101M wasted per $1B spent on projects"
+- "20h/week lost to manual coordination"
+
+How it works (3 steps):
+1. Connect your tools (Slack, Calendar)
+2. Larry extracts and proposes actions
+3. You review and approve — Larry executes
+
+Features strip (4 pillars):
+- Slack ingestion
+- Meeting transcript extraction
+- Action Centre (approval-gated)
+- Google Calendar sync
+
+Connector logos row:
+- Slack (active)
+- Google Calendar (active)
+- Email (greyed out — "Coming soon" label)
+
+Invite request form (links to `POST /api/v1/orgs/request`):
+- Fields: Org name, Contact email, Brief description of your use case
+- Submit → replace form with: "Thanks — we'll review your request and be in touch."
+- Form must actually POST to the real endpoint (not a mailto or stub)
+
+Footer:
+- Logo, copyright 2026, "Request access" link, minimal
 
 **Must remove:**
 - "No credit card needed"
 - "Set up in under 2 minutes"
 - Any claim of voice input, external import, or PDF export
 
-**Invite request form** (links to `POST /api/v1/orgs/request` from Session 2):
-- Org name, contact email, description of use case
-- Submit → success message: "We'll review your request and be in touch."
-
-### Workspace Dashboard
-Files: `apps/web/src/app/workspace/page.tsx`, `WorkspaceHome.tsx`, `WorkspaceShell.tsx`
+### Workspace Dashboard (`apps/web/src/app/workspace/page.tsx`, `WorkspaceHome.tsx`)
 
 **Must have:**
-- Large, confident welcome: "Good morning, [name]. Here's what needs your attention."
-- Prominent "New Project" button — opens `StartProjectFlow` (Session 3)
-- Projects grid: real project cards from snapshot API — name, health chip, progress %, last updated
-- "Action Centre" summary strip: "[N] actions need your review" → link to `/workspace/actions`
-- Larry chat floating button bottom-right (already present — ensure it's polished)
-- Notification bell top-right with unread badge (Session 10)
+- Welcome header: "Good morning, [name]. Here's what needs your attention."
+- Prominent "New Project" button — primary purple, opens StartProjectFlow
+- Projects grid: real project cards from snapshot API
+  - Each card: project name, health chip (Green/Yellow/Red), progress %, "last updated" label
+  - Cards use subtle dark glassmorphism or soft shadow — not flat grey boxes
+  - Empty state: "No projects yet — start your first one" with large CTA button
+- Action Centre summary strip: "[N] actions need your review" → links to `/workspace/actions`
+  - If 0 pending: "You're up to date" in green
+- Notification bell top-right with live unread badge (from `GET /api/workspace/notifications`)
+- Skeleton loading states while data fetches — no blank screen, no spinner on white
 
-**Visual polish:**
-- Cards use subtle glassmorphism or soft shadows — not flat grey boxes
-- Health chips use the Green/Yellow/Red colour coding throughout
-- Skeleton loading states while data fetches (not blank screen)
-- Empty state: "No projects yet — create your first one" with large CTA
+**Must not have:**
+- Floating Larry bubble (already removed in Session 1)
+- Hardcoded project names or metrics
 
 ### Acceptance Criteria
-- [ ] Landing page: first impression is world-class — no placeholder or boilerplate copy
-- [ ] Invite request form submits to the real API endpoint
-- [ ] Email "Connect" button: visible but disabled, labelled "Coming soon"
-- [ ] Dashboard: "New Project" is prominent, opens 3-mode flow
-- [ ] Dashboard: real project cards with health status
-- [ ] Dashboard: Action Centre count strip shows live count
-- [ ] No "No credit card needed", "Set up in 2 minutes", voice/PDF/external-import claims
-- [ ] Page feels premium and unique — not like a generic SaaS template
+- [ ] Landing page: first impression is world-class — hero, stats, how-it-works, features
+- [ ] Invite form posts to real API, shows success message
+- [ ] Email "Connect": disabled, labelled "Coming soon"
+- [ ] No false-promise copy anywhere on the landing page
+- [ ] Dashboard welcome header shows real user's name
+- [ ] "New Project" is the most prominent action on the dashboard
+- [ ] Project cards show real health status from API
+- [ ] Action Centre strip shows real pending count
+- [ ] Notification bell badge is live
+- [ ] Skeleton loading instead of blank screen
+- [ ] Page feels premium — not a generic SaaS template
 
 ---
 
-## SESSION 12 — INTERCHANGEABLE AI MODEL CONFIG
-**Day 3–4 | Owner: Joel | Est: 1h**
-**Branch: `feat/s12-ai-model-config`**
+## SESSION 7 — ACTION CENTRE UX POLISH + NOTIFICATIONS
+**Day 4 — March 28 | Owner: Anton + Fergus | Est: 1.5h**
+**Branch: `feat/s7-action-centre-notifications`**
 
-**Goal:** Make the AI model swappable via env vars without code changes — so the team
-can switch between OpenAI / Anthropic / Gemini for cost or quality reasons.
+**Goal:** Polish the Action Centre UX and wire the notification dismiss/read flow.
 
-### Issues Addressed
-- [P2] #30 Interchangeable AI model config (MODEL_PROVIDER env var)
+**⚠️ FRONTEND RULE: Invoke the `frontend-developer` subagent before touching any UI files.**
 
-### Files to Touch
-- `packages/config/src/index.ts` — add `MODEL_PROVIDER` + `AI_MODEL` to env schema
-- `packages/ai/src/index.ts` — route request to correct API based on `MODEL_PROVIDER`
-- `apps/api/.env.example` + `apps/worker/.env.example` — document the new vars
-- `DEPLOYMENT.md` — add `MODEL_PROVIDER` and `AI_MODEL` to Railway env var table
+### Action Centre UX
 
-### Implementation
-```typescript
-// packages/config/src/index.ts
-MODEL_PROVIDER: z.enum(["openai", "anthropic", "gemini"]).default("openai"),
-AI_MODEL: z.string().default("gpt-4o-mini"),
-```
+**File: `apps/web/src/app/workspace/actions/page.tsx`**
 
-```typescript
-// packages/ai/src/index.ts
-switch (config.MODEL_PROVIDER) {
-  case "openai":    return callOpenAI(prompt, config.AI_MODEL);
-  case "anthropic": return callAnthropic(prompt, config.AI_MODEL);
-  case "gemini":    return callGemini(prompt, config.AI_MODEL);
-}
-```
+- Use the new `StatusChip` component from Session 4 throughout
+- Filter bar: "All | Pending | Approved | Rejected" tabs — real filtering, not cosmetic
+- `project_create` actions must show project name + extracted task count preview
+- Empty state: "No pending actions — Larry is watching your workspace."
+
+### Larry Chat Polling Indicator
+
+**File: `apps/web/src/app/workspace/useLarryChat.ts`**
+- While response is pending (`isLoading = true`): show animated "Larry is thinking…"
+  with 3-dot bounce animation
+- Polling for new actions: verify it doesn't freeze on error — add a try/catch fallback
+
+### Notification Centre
+
+**Files: `apps/web/src/app/workspace/NotificationBell.tsx`**
+
+- Bell icon shows red badge with unread count (`GET /api/workspace/notifications?unread=true`)
+- Click bell → dropdown panel with notification list
+- Each notification: icon, message, timestamp, mark-read on click
+- "Mark all read" button at top of panel
+- 30s auto-refresh
 
 ### Acceptance Criteria
-- [ ] Default (`MODEL_PROVIDER=openai`, `AI_MODEL=gpt-4o-mini`) still works
-- [ ] `MODEL_PROVIDER=anthropic` + `AI_MODEL=claude-3-5-sonnet-20241022` routes correctly
-- [ ] `.env.example` files document the new vars with comments
+- [ ] Action Centre filter tabs work correctly
+- [ ] Larry chat shows animated "thinking" indicator
+- [ ] Notification bell shows live unread count badge
+- [ ] Clicking a notification marks it read and clears from count
+- [ ] "Mark all read" works
 
 ---
 
-## SESSION 13 — E2E HAPPY PATH TEST + FRONTEND CI
+## SESSION 8 — SLACK + CALENDAR END-TO-END VALIDATION
+**Day 4 — March 28 | Owner: Joel + Fergus | Est: 2h**
+**Branch: `feat/s8-connectors-e2e`**
+
+**Goal:** Validate the full Slack and Calendar pipelines work reliably in production.
+Fix whatever breaks. These are the integration demo pillars.
+
+### Slack Validation Steps
+1. Send a Slack message referencing a task or project update in the connected workspace
+2. Verify `POST /api/v1/connectors/slack/events` receives the event (Railway logs)
+3. Verify Slack signature validation passes (not 401)
+4. Verify BullMQ job enqueued → worker processes → `extracted_actions` row inserted as pending
+5. Action appears in Action Centre
+6. Approve → task status updates in DB (requires Session 3's `task_update` execution fix)
+7. Slack DM fires to assignee if `slack_user_id` is in users table
+
+### Calendar Validation Steps
+1. Connect Google Calendar in workspace settings
+2. Confirm `webhook_channel_id` and `webhook_expiration` stored in DB
+3. Create a calendar event → verify webhook fires to calendar webhook endpoint
+4. Verify `x-goog-channel-token` is validated
+5. Event → canonical_event → agent run → action in Action Centre
+6. Manually trigger the renewal job — confirm renewed channel still passes webhook auth
+
+### Fix List (only touch files where validation above fails)
+- `apps/api/src/routes/v1/connectors-slack.ts`
+- `apps/worker/src/worker.ts`
+- `apps/api/src/routes/v1/connectors-google-calendar.ts`
+- `apps/worker/src/calendar-renewal.ts` (channelToken should be fixed in Session 5)
+
+### Acceptance Criteria
+- [ ] Real Slack message → pending action in Action Centre within 60s
+- [ ] Approve task update → task status visibly changes in workspace
+- [ ] Slack DM fires to assignee on approval
+- [ ] Calendar event → action appears in Action Centre
+- [ ] Calendar renewal does not break webhook auth
+- [ ] No silent failures — all errors logged in Railway worker logs
+
+---
+
+## SESSION 9 — ANALYTICS + DOCUMENTS + MEETINGS TABS (LIVE DATA)
+**Day 4 — March 28 | Owner: Anton | Est: 1.5h**
+**Branch: `feat/s9-workspace-analytics-docs`**
+**⚠️ DEP:SESSION-4 — useProjectData hook must exist**
+
+**Goal:** Wire the remaining ProjectWorkspace tabs to live data.
+
+**⚠️ FRONTEND RULE: Invoke the `frontend-developer` subagent before touching any UI files.**
+
+### Analytics Tab
+- Donut chart: task status breakdown (Recharts PieChart)
+- Stacked bar by assignee: group tasks by assignee_id, stacked by status
+- Health score if present from `/api/workspace/reporting/projects/:id/outcomes`
+- "Generate Report" button: visible but disabled, `title="Coming soon"` tooltip
+
+### Documents Tab
+- List of meeting note cards: title, date, 2-line summary preview → click to expand
+- List of report snapshot cards: "Weekly summary — [date]" → click to expand
+- "Upload transcript" button → opens transcript intake inline
+- Empty state: "No documents yet — paste a meeting transcript to get started."
+
+### Meetings Tab
+- Chronological list: title, date, attendee chips, summary preview
+- Click → expand full notes + AI summary
+- "Larry extracted [N] actions from this meeting" badge
+
+### Org Chart Tab
+- Clean assignee card grid (not a hierarchical tree)
+- Each card: initials avatar, name, role, tasks assigned, current task
+- Empty state: "No team members assigned yet"
+
+### Acceptance Criteria
+- [ ] Analytics tab: donut + stacked bar render with real data
+- [ ] Documents tab: lists real meeting notes and report snapshots
+- [ ] Meetings tab: lists real meetings for this project
+- [ ] Org Chart: shows real assignees or clean empty state
+- [ ] "Generate Report" disabled with tooltip
+- [ ] Zero mock data remains in ProjectWorkspace
+
+---
+
+<!-- ✅ SESSION 10 — COMPLETE (2026-03-25)
+## SESSION 10 (WAS 12) — INTERCHANGEABLE AI MODEL CONFIG
+**Status: Done — implemented before sprint started**
+
+MODEL_PROVIDER env var in packages/config/src/index.ts.
+Full OpenAI / Anthropic / Gemini provider switching in packages/ai/src/index.ts.
+Commit: "Add ability to switch between ai providers"
+-->
+
+---
+
+## SESSION 11 — E2E HAPPY PATH TEST + FRONTEND CI
 **Day 4 — March 28 | Owner: Fergus + Joel | Est: 1.5h**
-**Branch: `feat/s13-e2e-and-ci`**
+**Branch: `feat/s11-e2e-and-ci`**
 
-**Goal:** Add the one E2E happy-path test and a frontend CI job so the pipeline catches
-broken customer journeys before they reach production.
-
-### Issues Addressed
-- Readiness report: "test coverage and CI are too thin for launch confidence"
+**Goal:** Add the one E2E happy-path test and a frontend CI job.
 
 ### Happy Path E2E Test
 File: `apps/api/src/tests/e2e-happy-path.test.ts`
 
 **Scenario — Transcript → Project Created:**
 ```
-1. Seed a test tenant + user
+1. Seed test tenant + user
 2. POST /api/v1/larry with a project description message
-3. Poll GET /api/v1/actions until a project_create action is pending (timeout: 30s)
+3. Poll GET /api/v1/actions until project_create action is pending (timeout: 30s)
 4. POST /api/v1/actions/:id/approve
-5. GET /api/workspace/projects → assert new project exists with name from step 2
+5. GET /api/workspace/projects → assert new project exists
 6. Assert agent run state is VERIFIED
 ```
-
-This test covers: larry ingestion → worker extraction → action creation →
-approval execution → project materialised.
 
 ### Frontend CI Job
 File: `.github/workflows/frontend-ci.yml`
@@ -817,44 +916,47 @@ jobs:
 ### Acceptance Criteria
 - [ ] E2E happy path test passes locally and in CI
 - [ ] Frontend CI job runs on every PR and passes
-- [ ] Existing backend CI (`backend-ci.yml`) still passes
+- [ ] Existing backend CI still passes
 
 ---
 
-## SESSION 14 — FINAL DEPLOY, SMOKE TEST & DEMO PREP
+## SESSION 12 — FINAL DEPLOY, SMOKE TEST & DEMO PREP
 **Day 4 — March 28 | Owner: Fergus | Est: 1h**
 **Branch: directly on master (final deploy checklist — no new code)**
 
 **Goal:** All branches merged. Production verified. Demo data seeded. Secrets rotated.
-Larry is ready to show to a pilot customer.
 
 ### Pre-Deploy Checklist
 - [ ] All session branches merged to `master` and PRs closed
-- [ ] Railway auto-deploys API + Worker on push to `master` — verify both services healthy
+- [ ] Railway auto-deploys API + Worker — verify both services healthy
 - [ ] Vercel auto-deploys frontend — verify `larry-pm.com` loads correctly
-- [ ] `GET /api/health` returns `{ ok: true }` only — no config leakage
+- [ ] `GET /api/health` returns `{ ok: true }` only
 
 ### Secret Rotation
 - [ ] Rotate `JWT_ACCESS_SECRET` in Railway (new 32+ char random string)
 - [ ] Rotate `JWT_REFRESH_SECRET` in Railway (different new string)
-- [ ] Rotate `SESSION_SECRET` in Vercel (new 32+ char random string)
+- [ ] Rotate `SESSION_SECRET` in Vercel
 - [ ] Confirm `DEV_SESSION_SECRET` fallback does NOT fire in production
-  (verify `SESSION_SECRET` env var is set in Vercel)
 
 ### Demo Data Seed
-- [ ] Run `cd packages/db && npx tsx src/seed.ts` against production DB (if seed is safe to re-run)
+- [ ] Run seed script against production DB
 - [ ] Seed a demo project: "Acme Corp — Q2 Launch" with realistic tasks, phases, assignees
 - [ ] Add sample meeting notes + a Slack-extracted action to the demo project
-- [ ] Verify demo user `sarah@larry.local` / `DevPass123!` can sign in at `larry-pm.com`
+- [ ] Verify `sarah@larry.local` / `DevPass123!` can sign in at `larry-pm.com`
 
 ### Smoke Test (run through the demo story)
-- [ ] Sign in → dashboard loads with demo project
-- [ ] Open demo project → all 6 tabs load with real data
-- [ ] Paste a short transcript → actions appear in Action Centre within 15s
-- [ ] Approve an action → project updates visibly
-- [ ] Action Centre shows source context cards (what / why / signals)
+- [ ] Sign in → dashboard loads with demo project, no floating bubble visible
+- [ ] Chats sidebar: conversations grouped under project headers
+- [ ] "New Project" opens StartProjectFlow with 3 real modes
+- [ ] Paste transcript → actions appear in Action Centre within 15s
+- [ ] Approve project_create → project appears with real task table
+- [ ] Task table: grouped sections, status chips, no mock data
+- [ ] Action Centre: source context cards visible on each action
+- [ ] Approve task update → status changes visibly in the table
 - [ ] Notification bell shows badge, dismiss works
-- [ ] Email "Connect" shows "Coming soon" (not functional, not removed)
+- [ ] `GET /api/health` returns `{ ok: true }` only — no config strings
+- [ ] Email "Connect" shows "Coming soon" (disabled)
+- [ ] Landing page invite form submits and shows success message
 - [ ] No console errors on any core screen
 
 ### Launch Runbook (add to DEPLOYMENT.md)
@@ -863,14 +965,14 @@ Deploy:     git push origin master → Railway + Vercel auto-deploy
 Rollback:   Railway → Deployments → previous → Rollback
             Vercel → Deployments → previous → Promote to Production
 Seed:       cd packages/db && npx tsx src/seed.ts
-Add user:   POST /api/v1/admin/orgs/request → approve via admin endpoint
+Add user:   POST /api/v1/orgs/request → approve via admin endpoint
 Rotate key: Railway → Variables → update JWT_ACCESS_SECRET / JWT_REFRESH_SECRET
             Vercel → Settings → Env Vars → update SESSION_SECRET
 Inspect:    Railway logs → filter service "diplomatic-vitality" for worker errors
 ```
 
 ### Acceptance Criteria
-- [ ] All 14 sessions complete and branches merged
+- [ ] All 12 sessions complete and branches merged
 - [ ] Production smoke test passes all items above
 - [ ] Secrets rotated
 - [ ] Demo data is live and realistic
@@ -880,7 +982,7 @@ Inspect:    Railway logs → filter service "diplomatic-vitality" for worker err
 
 ## DEFERRED BACKLOG (post-launch)
 
-Do not build these in this sprint. Reference them by issue number when resuming.
+Do not build these in this sprint.
 
 | Issue | Title | Priority |
 |-------|-------|----------|
@@ -900,7 +1002,7 @@ Do not build these in this sprint. Reference them by issue number when resuming.
 
 ---
 
-*Sprint plan generated: 2026-03-25*
+*Sprint plan revised: 2026-03-26*
 *Deadline: 2026-03-28*
-*Sessions: 14 (1–14)*
+*Sessions: 12 (10 remaining + S10 already complete)*
 *Author: Fergus + Claude Code*

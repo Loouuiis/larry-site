@@ -1,9 +1,10 @@
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { db, env } from "./context.js";
 
 // Renew Google Calendar watch channels that expire within 5 days.
 // Google channels last ~7 days; we renew with 5 days headroom to avoid silent drops.
 const RENEWAL_HORIZON_MS = 5 * 24 * 60 * 60 * 1000;
+const GOOGLE_CHANNEL_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30;
 
 interface CalendarInstallationRow {
   id: string;
@@ -58,6 +59,7 @@ async function refreshGoogleAccessToken(input: {
 async function renewWatchChannel(input: {
   accessToken: string;
   calendarId: string;
+  channelToken: string;
   webhookUrl: string;
 }): Promise<{ channelId: string; resourceId: string; expiration?: string }> {
   const channelId = randomUUID();
@@ -75,6 +77,7 @@ async function renewWatchChannel(input: {
       id: channelId,
       type: "web_hook",
       address: input.webhookUrl,
+      token: input.channelToken,
     }),
   });
 
@@ -96,8 +99,27 @@ async function renewWatchChannel(input: {
   };
 }
 
+function createSignedStateToken(
+  payload: Record<string, unknown>,
+  secret: string,
+  ttlSeconds = 600
+): string {
+  const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
+  const encodedPayload = Buffer.from(JSON.stringify({ ...payload, exp })).toString("base64url");
+  const signature = createHmac("sha256", secret).update(encodedPayload).digest("base64url");
+  return `${encodedPayload}.${signature}`;
+}
+
+function createGoogleChannelToken(tenantId: string, installationId: string, secret: string): string {
+  return createSignedStateToken(
+    { k: "gcalch", t: tenantId, i: installationId },
+    secret,
+    GOOGLE_CHANNEL_TOKEN_TTL_SECONDS
+  );
+}
+
 export async function runCalendarWebhookRenewal(): Promise<void> {
-  const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_CALENDAR_WEBHOOK_URL } = env;
+  const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_CALENDAR_WEBHOOK_URL, JWT_ACCESS_SECRET } = env;
 
   if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
     console.log("[calendar-renewal] skipped — GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET not configured");
@@ -106,6 +128,11 @@ export async function runCalendarWebhookRenewal(): Promise<void> {
 
   if (!GOOGLE_CALENDAR_WEBHOOK_URL) {
     console.log("[calendar-renewal] skipped — GOOGLE_CALENDAR_WEBHOOK_URL not configured");
+    return;
+  }
+
+  if (!JWT_ACCESS_SECRET) {
+    console.log("[calendar-renewal] skipped — JWT_ACCESS_SECRET not configured");
     return;
   }
 
@@ -168,9 +195,11 @@ export async function runCalendarWebhookRenewal(): Promise<void> {
           );
         }
 
+        const channelToken = createGoogleChannelToken(row.tenant_id, row.id, JWT_ACCESS_SECRET);
         const watch = await renewWatchChannel({
           accessToken,
           calendarId: row.google_calendar_id,
+          channelToken,
           webhookUrl: GOOGLE_CALENDAR_WEBHOOK_URL,
         });
 

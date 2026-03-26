@@ -17,14 +17,15 @@ function resolveTenantId(request: FastifyRequest): string | null {
 
 export const requestContextPlugin = fp(async (fastify: FastifyInstance) => {
   const env = getApiEnv();
+  const publicPrefixes = ["/health", "/v1/orgs/request", "/v1/admin/orgs/"];
 
   fastify.addHook("preHandler", async (request: FastifyRequest, reply: FastifyReply) => {
     const user = request.user as AuthUser | undefined;
     const tenantId = resolveTenantId(request);
 
-    const isProtected = !request.url.startsWith("/health");
+    const isProtected = !publicPrefixes.some((prefix) => request.url.startsWith(prefix));
 
-    // Always reject missing tenant context on protected routes — REQUIRE_TENANT_HEADER=false
+    // Always reject missing tenant context on protected routes - REQUIRE_TENANT_HEADER=false
     // is only a dev escape hatch and must not allow empty-string tenant IDs to reach RLS queries.
     if (isProtected && !tenantId && env.REQUIRE_TENANT_HEADER) {
       throw fastify.httpErrors.badRequest("Missing tenant context. Provide x-tenant-id or authenticated token.");

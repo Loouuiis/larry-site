@@ -1,95 +1,28 @@
 "use client";
 
 import React, { useCallback, useEffect, useState } from "react";
-import { CalendarDays, Check, ChevronRight, FileText, Hash, Mail, RefreshCw, Send, ShieldCheck, X } from "lucide-react";
-import { WorkspaceAction, EmailDraft, ActionCardViewModel } from "@/app/dashboard/types";
+import { Check, RefreshCw, Send, ShieldCheck, X } from "lucide-react";
+import { ActionCardViewModel, EmailDraft, WorkspaceAction } from "@/app/dashboard/types";
 import { useActionCenter } from "@/app/dashboard/useActionCenter";
+import { SourceContextCard } from "./SourceContextCard";
 
-type SourceType = "slack" | "email" | "calendar" | "transcript";
-
-interface AgentRunDetail {
-  run: {
-    id: string;
-    source: SourceType;
-    sourceRefId: string | null;
-    state: string;
-    statusMessage: string | null;
-    createdAt: string;
-  };
-  transitions: Array<{
-    previousState: string | null;
-    nextState: string;
-    reason: string;
-    createdAt: string;
-  }>;
-}
-
-const SOURCE_CONFIG: Record<SourceType, { label: string; icon: React.ElementType; color: string; bg: string }> = {
-  slack:      { label: "Slack",             icon: Hash,         color: "#4f46e5", bg: "#f0f0ff" },
-  email:      { label: "Email",             icon: Mail,         color: "#0073EA", bg: "#e6f0ff" },
-  calendar:   { label: "Google Calendar",   icon: CalendarDays, color: "#059669", bg: "#e6faf0" },
-  transcript: { label: "Meeting Transcript",icon: FileText,     color: "#676879", bg: "#f5f6f8" },
-};
-
-function SourcePanel({ data }: { data: AgentRunDetail }) {
-  const config = SOURCE_CONFIG[data.run.source] ?? SOURCE_CONFIG.transcript;
-  const Icon = config.icon;
-  const trail = data.transitions.map((t) => t.nextState);
-
-  return (
-    <div className="mt-2 rounded-lg border border-[var(--pm-border)] bg-[var(--pm-gray-light)] p-3 space-y-2">
-      <div className="flex items-center gap-2 flex-wrap">
-        <span
-          className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold"
-          style={{ background: config.bg, color: config.color }}
-        >
-          <Icon size={11} />
-          {config.label}
-        </span>
-        <span className="text-[11px] font-medium text-[var(--pm-text-muted)] uppercase tracking-wide">
-          {data.run.state}
-        </span>
-      </div>
-
-      {trail.length > 0 && (
-        <div className="flex items-center gap-1 flex-wrap">
-          {trail.map((step, i) => (
-            <span key={i} className="flex items-center gap-1">
-              <span className="rounded px-1.5 py-0.5 text-[10px] font-mono bg-white border border-[var(--pm-border)] text-[var(--pm-text-secondary)]">
-                {step}
-              </span>
-              {i < trail.length - 1 && (
-                <span className="text-[10px] text-[var(--pm-text-muted)]">→</span>
-              )}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {data.run.sourceRefId && (
-        <p className="text-[11px] text-[var(--pm-text-muted)] font-mono truncate">
-          ref: {data.run.sourceRefId}
-        </p>
-      )}
-
-      {data.run.statusMessage && (
-        <p className="text-[12px] text-[var(--pm-text-secondary)]">{data.run.statusMessage}</p>
-      )}
-    </div>
-  );
+interface EmailDraftEditState {
+  recipient: string;
+  subject: string;
+  body: string;
 }
 
 const ACTION_TYPE_LABELS: Record<string, string> = {
-  task_create:     "Task Creates",
-  status_update:   "Status Updates",
+  task_create: "Task Creates",
+  status_update: "Status Updates",
   deadline_change: "Deadline Changes",
-  owner_change:    "Owner Changes",
-  scope_change:    "Scope Changes",
+  owner_change: "Owner Changes",
+  scope_change: "Scope Changes",
   risk_escalation: "Risk Escalations",
-  email_draft:     "Email Drafts",
-  meeting_invite:  "Meeting Invites",
-  follow_up:       "Follow Ups",
-  other:           "Other",
+  email_draft: "Email Drafts",
+  meeting_invite: "Meeting Invites",
+  follow_up: "Follow Ups",
+  other: "Other",
 };
 
 function impactBadge(impact: ActionCardViewModel["impact"]): { label: string; bg: string } {
@@ -98,15 +31,39 @@ function impactBadge(impact: ActionCardViewModel["impact"]): { label: string; bg
   return { label: "Low", bg: "bg-[#e6f0ff] text-[var(--pm-blue)]" };
 }
 
-function confidenceBar(conf: string): number {
-  const v = parseFloat(conf);
-  return Number.isNaN(v) ? 0 : Math.min(1, Math.max(0, v)) * 100;
+function confidenceBar(confidence: string): number {
+  const value = parseFloat(confidence);
+  return Number.isNaN(value) ? 0 : Math.min(1, Math.max(0, value)) * 100;
 }
 
-async function readJson<T>(res: Response): Promise<T> {
-  const text = await res.text();
+function readPayloadString(payload: Record<string, unknown> | undefined, ...keys: string[]): string {
+  if (!payload) return "";
+  for (const key of keys) {
+    const value = payload[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return "";
+}
+
+function buildEmailDraftEditState(action: WorkspaceAction): EmailDraftEditState | null {
+  if (action.actionType !== "email_draft") return null;
+  return {
+    recipient: readPayloadString(action.payload, "to", "recipient", "email"),
+    subject: readPayloadString(action.payload, "subject", "title"),
+    body: readPayloadString(action.payload, "body", "message", "slackMessage"),
+  };
+}
+
+async function readJson<T>(response: Response): Promise<T> {
+  const text = await response.text();
   if (!text) return {} as T;
-  try { return JSON.parse(text) as T; } catch { return { error: text } as T; }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return { error: text } as T;
+  }
 }
 
 export function ActionCenterPage() {
@@ -114,69 +71,85 @@ export function ActionCenterPage() {
   const [rawActions, setRawActions] = useState<WorkspaceAction[]>([]);
   const [rawDrafts, setRawDrafts] = useState<EmailDraft[]>([]);
   const [filter, setFilter] = useState("all");
-  const [expandedSourceId, setExpandedSourceId] = useState<string | null>(null);
-  const [sourceCache, setSourceCache] = useState<Record<string, AgentRunDetail>>({});
-  const [sourceLoadingId, setSourceLoadingId] = useState<string | null>(null);
-
-  const toggleSource = useCallback(async (actionId: string, agentRunId: string) => {
-    if (expandedSourceId === actionId) {
-      setExpandedSourceId(null);
-      return;
-    }
-    setExpandedSourceId(actionId);
-    if (sourceCache[actionId]) return;
-    setSourceLoadingId(actionId);
-    try {
-      const res = await fetch(`/api/workspace/agent/runs/${agentRunId}`);
-      const data = await res.json() as AgentRunDetail;
-      setSourceCache((prev) => ({ ...prev, [actionId]: data }));
-    } finally {
-      setSourceLoadingId(null);
-    }
-  }, [expandedSourceId, sourceCache]);
+  const [emailDraftEdits, setEmailDraftEdits] = useState<Record<string, EmailDraftEditState>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [actRes, draftRes] = await Promise.all([
+      const [actionsResponse, draftsResponse] = await Promise.all([
         fetch("/api/workspace/actions"),
-        fetch("/api/workspace/email/drafts"),
+        fetch("/api/workspace/email/drafts?state=draft"),
       ]);
-      const actData = await readJson<{ actions?: WorkspaceAction[] }>(actRes);
-      const draftData = await readJson<{ items?: EmailDraft[] }>(draftRes);
-      setRawActions(actData.actions ?? []);
+      const actionData = await readJson<{ actions?: WorkspaceAction[] }>(actionsResponse);
+      const draftData = await readJson<{ items?: EmailDraft[] }>(draftsResponse);
+      setRawActions(actionData.actions ?? []);
       setRawDrafts(draftData.items ?? []);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   useEffect(() => {
-    function onRefresh() { void load(); }
+    function onRefresh() {
+      void load();
+    }
     window.addEventListener("larry:refresh-snapshot", onRefresh);
     return () => window.removeEventListener("larry:refresh-snapshot", onRefresh);
   }, [load]);
 
-  const { actionCards, drafts, actionBusyId, correctionBusyId, draftBusyId, handleActionDecision, handleActionCorrect, sendEmailDraft } =
-    useActionCenter(rawActions, rawDrafts);
+  useEffect(() => {
+    setEmailDraftEdits((previous) => {
+      const next = { ...previous };
+      let changed = false;
 
-  // Build dynamic tabs from whatever action types are present in the data
-  const presentTypes = Array.from(new Set(rawActions.map((a) => a.actionType ?? "other")));
+      for (const action of rawActions) {
+        if (action.actionType !== "email_draft" || next[action.id]) continue;
+        const initialState = buildEmailDraftEditState(action);
+        if (!initialState) continue;
+        next[action.id] = initialState;
+        changed = true;
+      }
+
+      for (const actionId of Object.keys(next)) {
+        const stillExists = rawActions.some((action) => action.id === actionId && action.actionType === "email_draft");
+        if (!stillExists) {
+          delete next[actionId];
+          changed = true;
+        }
+      }
+
+      return changed ? next : previous;
+    });
+  }, [rawActions]);
+
+  const {
+    actionCards,
+    drafts,
+    actionBusyId,
+    correctionBusyId,
+    draftBusyId,
+    handleActionDecision,
+    handleActionCorrect,
+    sendEmailDraft,
+  } = useActionCenter(rawActions, rawDrafts);
+
+  const presentTypes = Array.from(new Set(rawActions.map((action) => action.actionType ?? "other")));
   const hasDrafts = drafts.length > 0;
   const dynamicTabs: string[] = [
     "all",
-    ...presentTypes.filter((t) => t !== "email_draft"),
+    ...presentTypes.filter((type) => type !== "email_draft"),
     ...(presentTypes.includes("email_draft") || hasDrafts ? ["email_draft"] : []),
   ];
 
   const filteredRawActions = filter === "all"
     ? rawActions
-    : rawActions.filter((a) => (a.actionType ?? "other") === filter);
+    : rawActions.filter((action) => (action.actionType ?? "other") === filter);
 
-  const filteredCards = actionCards.filter((c) => filteredRawActions.some((a) => a.id === c.id));
-  const rawFilteredActions = filteredRawActions;
+  const filteredCards = actionCards.filter((card) => filteredRawActions.some((action) => action.id === card.id));
   const showEmailDrafts = filter === "all" || filter === "email_draft";
 
   return (
@@ -186,7 +159,7 @@ export function ActionCenterPage() {
           <div>
             <h1 className="text-[22px] font-semibold text-[var(--pm-text)]">Action Center</h1>
             <p className="mt-1 text-[14px] text-[var(--pm-text-secondary)]">
-              Larry's proposed actions — review signals, then approve or correct.
+              Review what Larry found, why it matters, and the source before you approve.
             </p>
           </div>
           <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-full bg-[#6366f1] px-2 text-[13px] font-bold text-white">
@@ -194,10 +167,12 @@ export function ActionCenterPage() {
           </span>
         </div>
 
-        {/* Filter tabs */}
-        <div className="mt-4 flex items-center gap-0 border-b border-[var(--pm-border)] overflow-x-auto">
+        <div className="mt-4 flex items-center gap-0 overflow-x-auto border-b border-[var(--pm-border)]">
           {dynamicTabs.map((key) => {
-            const label = key === "all" ? "All" : (ACTION_TYPE_LABELS[key] ?? key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()));
+            const label = key === "all"
+              ? "All"
+              : ACTION_TYPE_LABELS[key] ?? key.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+
             return (
               <button
                 key={key}
@@ -219,27 +194,26 @@ export function ActionCenterPage() {
         </div>
       </div>
 
-      <div className="mx-auto max-w-4xl px-8 py-6 space-y-4">
+      <div className="mx-auto max-w-4xl space-y-4 px-8 py-6">
         {loading && (
-          <p className="text-[14px] text-[var(--pm-text-muted)]">Loading…</p>
+          <p className="text-[14px] text-[var(--pm-text-muted)]">Loading...</p>
         )}
 
-        {/* Email drafts (shown in All and Email tabs) */}
         {showEmailDrafts && drafts.map((draft) => (
           <article key={draft.id} className="rounded-xl border border-[var(--pm-border)] bg-white p-5 shadow-sm">
-            <div className="flex items-start justify-between gap-3 mb-3">
+            <div className="mb-3 flex items-start justify-between gap-3">
               <div>
-                <span className="inline-flex items-center rounded-full bg-[#e6f0ff] px-2 py-0.5 text-[11px] font-semibold text-[var(--pm-blue)] mb-1">
+                <span className="mb-1 inline-flex items-center rounded-full bg-[#e6f0ff] px-2 py-0.5 text-[11px] font-semibold text-[var(--pm-blue)]">
                   Email Draft
                 </span>
                 <h3 className="text-[15px] font-semibold text-[var(--pm-text)]">{draft.subject}</h3>
                 <p className="text-[13px] text-[var(--pm-text-muted)]">To: {draft.recipient}</p>
               </div>
             </div>
-            <div className="rounded-lg border border-[var(--pm-border)] bg-[var(--pm-gray-light)] p-3 text-[13px] text-[var(--pm-text-secondary)] whitespace-pre-wrap max-h-32 overflow-y-auto">
+            <div className="max-h-32 overflow-y-auto rounded-lg border border-[var(--pm-border)] bg-[var(--pm-gray-light)] p-3 text-[13px] text-[var(--pm-text-secondary)] whitespace-pre-wrap">
               {draft.body}
             </div>
-            <div className="flex gap-2 mt-3">
+            <div className="mt-3 flex gap-2">
               <button
                 type="button"
                 disabled={draftBusyId === draft.id}
@@ -252,98 +226,147 @@ export function ActionCenterPage() {
           </article>
         ))}
 
-        {/* Action cards */}
-        {rawFilteredActions.map((rawAction) => {
-          const card = actionCards.find((c) => c.id === rawAction.id);
+        {filteredRawActions.map((rawAction) => {
+          const card = actionCards.find((item) => item.id === rawAction.id);
           if (!card) return null;
+
           const badge = impactBadge(card.impact);
-          const confPct = confidenceBar(card.confidence);
+          const confidenceWidth = confidenceBar(card.confidence);
+          const isEmailDraftAction = rawAction.actionType === "email_draft";
+          const draftEditState = isEmailDraftAction
+            ? emailDraftEdits[card.id] ?? buildEmailDraftEditState(rawAction)
+            : null;
+
           return (
             <article
               key={card.id}
               className={`rounded-xl border bg-white p-5 shadow-sm ${
-                card.impact === "high" ? "border-l-4 border-l-[#E2445C] border-[#e6e9ef]" :
-                card.impact === "medium" ? "border-l-4 border-l-[#FDAB3D] border-[#e6e9ef]" :
-                "border-l-4 border-l-[#0073EA] border-[#e6e9ef]"
+                card.impact === "high" ? "border-l-4 border-l-[#E2445C] border-[#e6e9ef]"
+                  : card.impact === "medium" ? "border-l-4 border-l-[#FDAB3D] border-[#e6e9ef]"
+                  : "border-l-4 border-l-[#0073EA] border-[#e6e9ef]"
               }`}
             >
-              <div className="flex items-start justify-between gap-3 mb-3">
+              <div className="mb-4 flex items-start justify-between gap-3">
                 <div>
-                  <h3 className="text-[15px] font-semibold text-[var(--pm-text)] capitalize">
+                  <h3 className="text-[15px] font-semibold capitalize text-[var(--pm-text)]">
                     {card.title.replace(/_/g, " ")}
                   </h3>
-                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold mt-1 ${badge.bg}`}>
+                  <span className={`mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${badge.bg}`}>
                     {badge.label}
                   </span>
                 </div>
               </div>
 
-              {/* Reasoning */}
-              <div className="mb-3 space-y-2">
-                <p className="text-[14px] text-[var(--pm-text-secondary)]">{card.reason}</p>
-                {rawAction.reasoning?.why && rawAction.reasoning.why !== card.reason && (
-                  <p className="text-[13px] text-[var(--pm-text-muted)]">{rawAction.reasoning.why}</p>
-                )}
+              <div className="mb-4 space-y-3">
+                <SourceContextCard action={rawAction} />
 
-                {/* Signals */}
                 {rawAction.signals && rawAction.signals.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
-                    {rawAction.signals.map((s, i) => (
-                      <span key={i} className="rounded-full bg-[#f0f1f5] px-2 py-0.5 text-[11px] text-[var(--pm-text-secondary)]">
-                        {s}
+                    {rawAction.signals.map((signal, index) => (
+                      <span
+                        key={`${rawAction.id}-signal-${index}`}
+                        className="rounded-full bg-[#f0f1f5] px-2 py-0.5 text-[11px] text-[var(--pm-text-secondary)]"
+                      >
+                        {signal}
                       </span>
                     ))}
                   </div>
                 )}
 
-                {/* Confidence bar */}
                 <div className="flex items-center gap-2">
-                  <span className="text-[12px] text-[var(--pm-text-muted)] w-20 shrink-0">Confidence</span>
-                  <div className="flex-1 h-1.5 rounded-full bg-[var(--pm-gray-light)] overflow-hidden">
+                  <span className="w-20 shrink-0 text-[12px] text-[var(--pm-text-muted)]">Confidence</span>
+                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--pm-gray-light)]">
                     <div
                       className="h-full rounded-full bg-[#6366f1]"
-                      style={{ width: `${confPct}%` }}
+                      style={{ width: `${confidenceWidth}%` }}
                     />
                   </div>
-                  <span className="text-[12px] text-[var(--pm-text-muted)] w-10 text-right">{card.confidence}</span>
+                  <span className="w-10 text-right text-[12px] text-[var(--pm-text-muted)]">{card.confidence}</span>
                 </div>
 
                 <p className="text-[12px] text-[var(--pm-text-muted)]">Policy: {card.threshold}</p>
               </div>
 
-              {/* Source panel */}
-              {rawAction.agentRunId && (
-                <div className="mb-3 border-t border-[var(--pm-border)] pt-3">
-                  <button
-                    type="button"
-                    onClick={() => void toggleSource(card.id, rawAction.agentRunId!)}
-                    className="flex items-center gap-1.5 text-[12px] font-medium text-[var(--pm-text-secondary)] hover:text-[var(--pm-text)] transition-colors"
-                  >
-                    <ChevronRight
-                      size={13}
-                      className={`transition-transform duration-150 ${expandedSourceId === card.id ? "rotate-90" : ""}`}
+              {isEmailDraftAction && draftEditState && (
+                <div className="mb-4 grid gap-3 rounded-xl border border-[var(--pm-border)] bg-[var(--pm-gray-light)] p-4">
+                  <label className="grid gap-1 text-[12px] font-medium text-[var(--pm-text-secondary)]">
+                    To
+                    <input
+                      value={draftEditState.recipient}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setEmailDraftEdits((previous) => ({
+                          ...previous,
+                          [card.id]: {
+                            ...(previous[card.id] ?? draftEditState),
+                            recipient: value,
+                          },
+                        }));
+                      }}
+                      className="h-10 rounded-lg border border-[var(--pm-border)] bg-white px-3 text-[13px] text-[var(--pm-text)] outline-none focus:border-[var(--pm-blue)]"
                     />
-                    Source
-                  </button>
-                  {expandedSourceId === card.id && (
-                    sourceLoadingId === card.id
-                      ? <p className="mt-2 text-[12px] text-[var(--pm-text-muted)]">Loading…</p>
-                      : sourceCache[card.id]
-                      ? <SourcePanel data={sourceCache[card.id]} />
-                      : null
-                  )}
+                  </label>
+
+                  <label className="grid gap-1 text-[12px] font-medium text-[var(--pm-text-secondary)]">
+                    Subject
+                    <input
+                      value={draftEditState.subject}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setEmailDraftEdits((previous) => ({
+                          ...previous,
+                          [card.id]: {
+                            ...(previous[card.id] ?? draftEditState),
+                            subject: value,
+                          },
+                        }));
+                      }}
+                      className="h-10 rounded-lg border border-[var(--pm-border)] bg-white px-3 text-[13px] text-[var(--pm-text)] outline-none focus:border-[var(--pm-blue)]"
+                    />
+                  </label>
+
+                  <label className="grid gap-1 text-[12px] font-medium text-[var(--pm-text-secondary)]">
+                    Body
+                    <textarea
+                      value={draftEditState.body}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setEmailDraftEdits((previous) => ({
+                          ...previous,
+                          [card.id]: {
+                            ...(previous[card.id] ?? draftEditState),
+                            body: value,
+                          },
+                        }));
+                      }}
+                      rows={6}
+                      className="rounded-lg border border-[var(--pm-border)] bg-white px-3 py-2 text-[13px] text-[var(--pm-text)] outline-none focus:border-[var(--pm-blue)]"
+                    />
+                  </label>
                 </div>
               )}
 
-              {/* Actions */}
-              <div className="flex gap-2 flex-wrap">
+              <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
                   disabled={actionBusyId === card.id}
-                  onClick={() => void handleActionDecision(card.id, "approve")}
+                  onClick={() => void handleActionDecision(
+                    card.id,
+                    "approve",
+                    isEmailDraftAction && draftEditState
+                      ? {
+                          overridePayload: {
+                            to: draftEditState.recipient,
+                            recipient: draftEditState.recipient,
+                            subject: draftEditState.subject,
+                            body: draftEditState.body,
+                          },
+                        }
+                      : {}
+                  )}
                   className="inline-flex h-8 items-center gap-1.5 rounded-md bg-[#00C875] px-3 text-[13px] font-semibold text-white disabled:opacity-50"
                 >
-                  <Check size={14} /> Approve
+                  <Check size={14} /> {isEmailDraftAction ? "Send draft" : "Approve"}
                 </button>
                 <button
                   type="button"

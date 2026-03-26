@@ -13,6 +13,7 @@ import { emailConnectorRoutes } from "./connectors-email.js";
 import { activityRoutes } from "./activity.js";
 import { notificationRoutes } from "./notifications.js";
 import { meetingRoutes } from "./meetings.js";
+import { orgRoutes } from "./orgs.js";
 
 export const v1Routes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(authRoutes, { prefix: "/auth" });
@@ -29,4 +30,5 @@ export const v1Routes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(reportingRoutes);
   await fastify.register(notificationRoutes);
   await fastify.register(meetingRoutes);
+  await fastify.register(orgRoutes);
 };

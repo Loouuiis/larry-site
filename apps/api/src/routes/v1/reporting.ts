@@ -2,6 +2,54 @@ import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { classifyRiskLevel } from "@larry/ai";
 
+async function insertProjectRiskSnapshotOncePerDay(
+  fastify: Parameters<FastifyPluginAsync>[0],
+  tenantId: string,
+  projectId: string,
+  avgRiskScore: number,
+  riskLevel: "low" | "medium" | "high"
+): Promise<void> {
+  await fastify.db.queryTenant(
+    tenantId,
+    `INSERT INTO risk_snapshots (tenant_id, project_id, risk_score, risk_level, signals)
+     SELECT $1, $2, $3, $4, $5::jsonb
+     WHERE NOT EXISTS (
+       SELECT 1
+       FROM risk_snapshots
+       WHERE tenant_id = $1
+         AND project_id = $2
+         AND task_id IS NULL
+         AND created_at::date = CURRENT_DATE
+     )`,
+    [tenantId, projectId, avgRiskScore, riskLevel, JSON.stringify(["aggregated_task_risk"])]
+  );
+}
+
+async function insertReportSnapshotOncePerDay(
+  fastify: Parameters<FastifyPluginAsync>[0],
+  tenantId: string,
+  projectId: string,
+  reportType: "outcomes" | "weekly_summary",
+  summary: Record<string, unknown>,
+  createdByUserId: string
+): Promise<void> {
+  await fastify.db.queryTenant(
+    tenantId,
+    `INSERT INTO report_snapshots
+      (tenant_id, project_id, report_type, summary, created_by_user_id)
+     SELECT $1, $2, $3, $4::jsonb, $5
+     WHERE NOT EXISTS (
+       SELECT 1
+       FROM report_snapshots
+       WHERE tenant_id = $1
+         AND project_id = $2
+         AND report_type = $3
+         AND created_at::date = CURRENT_DATE
+     )`,
+    [tenantId, projectId, reportType, JSON.stringify(summary), createdByUserId]
+  );
+}
+
 export const reportingRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/projects/:id/health",
@@ -38,12 +86,7 @@ export const reportingRoutes: FastifyPluginAsync = async (fastify) => {
         generatedAt: new Date().toISOString(),
       };
 
-      await fastify.db.queryTenant(
-        tenantId,
-        `INSERT INTO risk_snapshots (tenant_id, project_id, risk_score, risk_level, signals)
-         VALUES ($1, $2, $3, $4, $5::jsonb)`,
-        [tenantId, params.id, avgRiskScore, riskLevel, JSON.stringify(["aggregated_task_risk"])]
-      );
+      await insertProjectRiskSnapshotOncePerDay(fastify, tenantId, params.id, avgRiskScore, riskLevel);
 
       return response;
     }
@@ -116,12 +159,13 @@ export const reportingRoutes: FastifyPluginAsync = async (fastify) => {
         narrative: `Completion ${totalTasks === 0 ? 0 : Number(((completedTasks / totalTasks) * 100).toFixed(0))}%, ${highRiskTasks} high-risk tasks, ${pendingApprovals} pending approvals, ${autoExecuted} actions auto-executed.`,
       };
 
-      await fastify.db.queryTenant(
+      await insertReportSnapshotOncePerDay(
+        fastify,
         tenantId,
-        `INSERT INTO report_snapshots
-         (tenant_id, project_id, report_type, summary, created_by_user_id)
-         VALUES ($1, $2, 'outcomes', $3::jsonb, $4)`,
-        [tenantId, params.id, JSON.stringify(outcome), request.user.userId]
+        params.id,
+        "outcomes",
+        outcome as Record<string, unknown>,
+        request.user.userId
       );
 
       return outcome;
@@ -179,12 +223,13 @@ export const reportingRoutes: FastifyPluginAsync = async (fastify) => {
         narrative: `Updated ${updatedThisWeek.length} tasks this week. ${highRisk.length} tasks are currently high risk and need intervention.`,
       };
 
-      await fastify.db.queryTenant(
+      await insertReportSnapshotOncePerDay(
+        fastify,
         tenantId,
-        `INSERT INTO report_snapshots
-         (tenant_id, project_id, report_type, summary, created_by_user_id)
-         VALUES ($1, $2, 'weekly_summary', $3::jsonb, $4)`,
-        [tenantId, params.id, JSON.stringify(summary), request.user.userId]
+        params.id,
+        "weekly_summary",
+        summary as Record<string, unknown>,
+        request.user.userId
       );
 
       return summary;

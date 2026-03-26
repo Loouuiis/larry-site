@@ -48,13 +48,21 @@ export function useActionCenter(
   const actionCards: ActionCardViewModel[] = actions.map(mapAction);
 
   const handleActionDecision = useCallback(
-    async (actionId: string, decision: "approve" | "reject") => {
+    async (
+      actionId: string,
+      decision: "approve" | "reject",
+      options: { note?: string; overridePayload?: Record<string, unknown> } = {}
+    ) => {
       setActionBusyId(actionId);
       try {
         const endpoint = decision === "approve"
           ? `/api/workspace/actions/${actionId}/approve`
           : `/api/workspace/actions/${actionId}/reject`;
-        const res = await fetch(endpoint, { method: "POST" });
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(options),
+        });
         if (res.ok) {
           setActions((prev) => prev.filter((a) => a.id !== actionId));
           window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
@@ -69,7 +77,15 @@ export function useActionCenter(
   const handleActionCorrect = useCallback(async (actionId: string) => {
     setCorrectionBusyId(actionId);
     try {
-      const res = await fetch(`/api/workspace/actions/${actionId}/correct`, { method: "POST" });
+      const res = await fetch(`/api/workspace/actions/${actionId}/correct`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          correctionType: "bad_reasoning",
+          correctionPayload: {},
+          tunePolicy: false,
+        }),
+      });
       if (res.ok) {
         setActions((prev) => prev.filter((a) => a.id !== actionId));
       }
@@ -81,18 +97,29 @@ export function useActionCenter(
   const sendEmailDraft = useCallback(async (draftId: string) => {
     setDraftBusyId(draftId);
     try {
+      const draft = drafts.find((item) => item.id === draftId);
+      if (!draft) return;
+
       const res = await fetch("/api/workspace/email/drafts/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ draftId }),
+        body: JSON.stringify({
+          projectId: draft.projectId ?? undefined,
+          actionId: draft.actionId ?? undefined,
+          to: draft.recipient,
+          subject: draft.subject,
+          body: draft.body,
+          sendNow: true,
+        }),
       });
       if (res.ok) {
         setDrafts((prev) => prev.filter((d) => d.id !== draftId));
+        window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
       }
     } finally {
       setDraftBusyId(null);
     }
-  }, []);
+  }, [drafts]);
 
   return {
     actionCards,
