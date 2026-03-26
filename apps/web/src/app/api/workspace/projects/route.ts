@@ -3,6 +3,16 @@ import { z } from "zod";
 import { getSession } from "@/lib/auth";
 import { persistSession, proxyApiRequest } from "@/lib/workspace-proxy";
 
+export async function GET() {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const result = await proxyApiRequest(session, "/v1/projects");
+  if (result.session) await persistSession(result.session);
+  return NextResponse.json(result.body, { status: result.status });
+}
+
 const CreateProjectSchema = z.object({
   name: z.string().min(1).max(200),
   description: z.string().max(4000).optional(),
