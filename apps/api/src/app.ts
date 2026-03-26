@@ -25,8 +25,13 @@ export async function createApp() {
   app.decorate(
     "llmProvider",
     createLlmProvider({
+      provider: env.MODEL_PROVIDER,
       openAiApiKey: env.OPENAI_API_KEY,
       openAiModel: env.OPENAI_MODEL,
+      anthropicApiKey: env.ANTHROPIC_API_KEY,
+      anthropicModel: env.ANTHROPIC_MODEL,
+      geminiApiKey: env.GEMINI_API_KEY,
+      geminiModel: env.GEMINI_MODEL,
     })
   );
 
