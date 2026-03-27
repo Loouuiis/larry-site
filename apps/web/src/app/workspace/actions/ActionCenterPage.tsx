@@ -63,6 +63,51 @@ function taskLabel(payload: Record<string, unknown> | undefined): string {
   return typeof t === "string" && t ? ` for "${t}"` : "";
 }
 
+function buildApproveCta(rawAction: WorkspaceAction): string {
+  const p = rawAction.payload ?? {};
+  switch (rawAction.actionType) {
+    case "task_create":
+      return "Create task";
+    case "status_update": {
+      const toStatus = p.status ?? p.toStatus;
+      return toStatus === "completed" ? "Mark complete" : "Update status";
+    }
+    case "project_create":
+      return "Create project";
+    case "email_draft":
+      return "Send draft";
+    case "follow_up":
+      return "Send follow-up";
+    case "deadline_change":
+      return "Update deadline";
+    case "owner_change":
+      return "Reassign";
+    default:
+      return "Approve";
+  }
+}
+
+function buildSuccessMessage(actionType: string, p: Record<string, unknown>): string {
+  switch (actionType) {
+    case "task_create": {
+      const title = readPayloadString(p, "title", "taskTitle");
+      return `Task "${title ?? "Untitled"}" created.`;
+    }
+    case "status_update": {
+      const taskTitle = readPayloadString(p, "taskTitle", "title");
+      return taskTitle ? `"${taskTitle}" updated.` : "Task updated.";
+    }
+    case "project_create": {
+      const name = readPayloadString(p, "name", "title");
+      return `Project "${name ?? "Untitled"}" created.`;
+    }
+    case "email_draft":
+      return "Email draft sent.";
+    default:
+      return "Done.";
+  }
+}
+
 function buildActionTitle(action: WorkspaceAction): string {
   const p = action.payload ?? {};
   switch (action.actionType) {
@@ -125,6 +170,51 @@ function confidenceNumber(confidence: string): number {
 
 type FilterTab = { id: string; name: string };
 
+function PayloadPreviewCard({ action }: { action: WorkspaceAction }) {
+  const p = action.payload ?? {};
+  const rows: Array<{ label: string; value: string }> = [];
+
+  if (action.actionType === "task_create") {
+    const title = readPayloadString(p as Record<string, unknown>, "title", "taskTitle");
+    const assignee = readPayloadString(p as Record<string, unknown>, "assignee");
+    const dueDate = typeof p.dueDate === "string" && p.dueDate ? fmtDate(p.dueDate) : null;
+    if (title)    rows.push({ label: "Task", value: title });
+    if (assignee) rows.push({ label: "Assignee", value: assignee });
+    if (dueDate)  rows.push({ label: "Due", value: dueDate });
+  } else if (action.actionType === "status_update") {
+    const taskTitle = readPayloadString(p as Record<string, unknown>, "taskTitle", "title");
+    const toStatus  = readPayloadString(p as Record<string, unknown>, "status", "toStatus");
+    if (taskTitle) rows.push({ label: "Task", value: taskTitle });
+    if (toStatus)  rows.push({ label: "New status", value: humanizeStr(toStatus) });
+  } else if (action.actionType === "project_create") {
+    const name = readPayloadString(p as Record<string, unknown>, "name", "title");
+    const taskCount = Array.isArray(p.tasks) ? String(p.tasks.length) : null;
+    if (name)      rows.push({ label: "Project", value: name });
+    if (taskCount) rows.push({ label: "Initial tasks", value: taskCount });
+  } else if (action.actionType === "deadline_change") {
+    const taskTitle = readPayloadString(p as Record<string, unknown>, "taskTitle", "title");
+    const newDate = p.newDate ?? p.dueDate ?? p.newDeadline;
+    if (taskTitle) rows.push({ label: "Task", value: taskTitle });
+    if (typeof newDate === "string" && newDate) rows.push({ label: "New deadline", value: fmtDate(newDate) });
+  }
+
+  if (rows.length === 0) return null;
+
+  return (
+    <dl
+      className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 rounded-lg p-3"
+      style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}
+    >
+      {rows.map(({ label, value }) => (
+        <div key={label}>
+          <dt className="text-caption" style={{ color: "var(--text-muted)" }}>{label}</dt>
+          <dd className="text-body-sm font-medium" style={{ color: "var(--text-1)" }}>{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 export function ActionCenterPage() {
   const [loading, setLoading] = useState(true);
   const [rawActions, setRawActions] = useState<WorkspaceAction[]>([]);
@@ -133,6 +223,7 @@ export function ActionCenterPage() {
   const [emailDraftEdits, setEmailDraftEdits] = useState<Record<string, EmailDraftEditState>>({});
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   const toggleExpanded = (id: string) => {
     setExpandedIds((prev) => {
@@ -220,6 +311,23 @@ export function ActionCenterPage() {
     handleActionCorrect,
     sendEmailDraft,
   } = useActionCenter(rawActions, rawDrafts);
+
+  const handleDecisionWithFeedback = useCallback(
+    async (
+      actionId: string,
+      decision: "approve" | "reject",
+      options: { note?: string; overridePayload?: Record<string, unknown> } = {}
+    ) => {
+      const action = rawActions.find((a) => a.id === actionId);
+      await handleActionDecision(actionId, decision, options);
+      if (decision === "approve" && action) {
+        const msg = buildSuccessMessage(action.actionType ?? "", action.payload ?? {});
+        setSuccessMsg(msg);
+        setTimeout(() => setSuccessMsg(null), 4000);
+      }
+    },
+    [rawActions, handleActionDecision]
+  );
 
   const projectsWithActions = useMemo(() => {
     const ids = Array.from(
@@ -336,6 +444,9 @@ export function ActionCenterPage() {
             <div className="mt-4 space-y-3">
               {/* Source context card */}
               <SourceContextCard action={rawAction} />
+
+              {/* Payload preview */}
+              <PayloadPreviewCard action={rawAction} />
 
               {/* Signals pills */}
               {rawAction.signals && rawAction.signals.length > 0 && (
@@ -460,7 +571,7 @@ export function ActionCenterPage() {
                 type="button"
                 disabled={actionBusyId === card.id}
                 onClick={() =>
-                  void handleActionDecision(
+                  void handleDecisionWithFeedback(
                     card.id,
                     "approve",
                     isEmailDraftAction && draftEditState
@@ -478,12 +589,12 @@ export function ActionCenterPage() {
                 className="pm-btn pm-btn-sm pm-btn-success inline-flex items-center gap-1.5 disabled:opacity-50"
               >
                 <Check size={14} />
-                {isEmailDraftAction ? "Send draft" : "Approve"}
+                {buildApproveCta(rawAction)}
               </button>
               <button
                 type="button"
                 disabled={actionBusyId === card.id}
-                onClick={() => void handleActionDecision(card.id, "reject")}
+                onClick={() => void handleDecisionWithFeedback(card.id, "reject")}
                 className="pm-btn pm-btn-sm pm-btn-danger inline-flex items-center gap-1.5 disabled:opacity-50"
               >
                 <X size={14} />
@@ -542,6 +653,17 @@ export function ActionCenterPage() {
           {totalCount}
         </span>
       </div>
+
+      {/* Success toast */}
+      {successMsg && (
+        <div
+          className="mb-4 flex items-center gap-2 rounded-lg px-4 py-2.5 text-[13px] font-medium"
+          style={{ background: "#d1fae5", color: "#065f46" }}
+        >
+          <Check size={14} />
+          {successMsg}
+        </div>
+      )}
 
       {/* Filter tabs */}
       <div

@@ -57,6 +57,26 @@ async function buildProjectSummary(
   };
 }
 
+async function buildProjectTaskList(
+  fastify: Parameters<FastifyPluginAsync>[0],
+  tenantId: string,
+  projectId: string
+): Promise<Array<{ id: string; title: string; status: string; assignee: string | null }>> {
+  return fastify.db.queryTenant<{ id: string; title: string; status: string; assignee: string | null }>(
+    tenantId,
+    `SELECT t.id, t.title, t.status,
+            u.display_name AS assignee
+     FROM tasks t
+     LEFT JOIN users u ON u.id = t.assignee_user_id AND u.tenant_id = t.tenant_id
+     WHERE t.tenant_id = $1
+       AND t.project_id = $2
+       AND t.status != 'completed'
+     ORDER BY t.created_at ASC
+     LIMIT 200`,
+    [tenantId, projectId]
+  );
+}
+
 export const larryRoutes: FastifyPluginAsync = async (fastify) => {
   // ── Conversations ────────────────────────────────────────────────────────
 
@@ -335,6 +355,123 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           intent: body.intent,
           preview: proposed,
         };
+      }
+
+      // Task-command fast path: classify and create action directly if task intent detected
+      if (body.projectId) {
+        try {
+          const tasks = await buildProjectTaskList(fastify, tenantId, body.projectId);
+          const taskResult = await fastify.llmProvider.classifyTaskCommand({ message: body.input, tasks });
+
+          if (taskResult.type !== "none") {
+            const sourceRef = `larry-task-cmd:${randomUUID()}`;
+            const correlationId = `${tenantId}:task-cmd:${randomUUID()}`;
+
+            const runRows = await fastify.db.queryTenant<{ id: string }>(
+              tenantId,
+              `INSERT INTO agent_runs (tenant_id, project_id, source, source_ref_id, state, status_message, correlation_id, created_by_user_id)
+               VALUES ($1, $2, 'transcript', $3, 'APPROVAL_PENDING', $4, $5, $6)
+               RETURNING id`,
+              [
+                tenantId, body.projectId, sourceRef,
+                taskResult.type === "task_create"
+                  ? `Larry proposes task: ${taskResult.title}`
+                  : `Larry proposes closing a task`,
+                correlationId, request.user.userId,
+              ]
+            );
+            const runId = runRows[0].id;
+
+            if (taskResult.type === "task_create") {
+              const payload = {
+                title: taskResult.title,
+                description: taskResult.description ?? null,
+                dueDate: taskResult.dueDate ?? null,
+                assignee: taskResult.assignee ?? null,
+              };
+              await fastify.db.queryTenant(
+                tenantId,
+                `INSERT INTO extracted_actions
+                  (tenant_id, agent_run_id, project_id, action_type, impact, confidence, reason, signals, payload, reasoning, state, requires_approval)
+                 VALUES ($1,$2,$3,'task_create','medium',0.9,$4,$5::jsonb,$6::jsonb,$7::jsonb,'pending',true)`,
+                [
+                  tenantId, runId, body.projectId,
+                  `Larry proposes creating task: ${taskResult.title}`,
+                  JSON.stringify([`User requested: ${body.input.slice(0, 120)}`]),
+                  JSON.stringify(payload),
+                  JSON.stringify({ what: taskResult.title, why: "User asked Larry to create a task", decision: "approval_required" }),
+                ]
+              );
+              await writeAuditLog(fastify.db, {
+                tenantId, actorUserId: request.user.userId,
+                actionType: "larry.command.task_create",
+                objectType: "agent_run", objectId: runId,
+                details: { taskTitle: taskResult.title },
+              });
+              return reply.code(202).send({
+                commandAccepted: true, commandMode: body.mode, intent: body.intent, runId,
+                message: `I've drafted a task: "${taskResult.title}". Review it in the Action Centre.`,
+              });
+            }
+
+            if (taskResult.type === "task_close") {
+              const payload = { taskId: taskResult.taskId, taskTitle: taskResult.taskTitle, status: "completed" };
+              await fastify.db.queryTenant(
+                tenantId,
+                `INSERT INTO extracted_actions
+                  (tenant_id, agent_run_id, project_id, action_type, impact, confidence, reason, signals, payload, reasoning, state, requires_approval)
+                 VALUES ($1,$2,$3,'status_update','low',$4,$5,$6::jsonb,$7::jsonb,$8::jsonb,'pending',true)`,
+                [
+                  tenantId, runId, body.projectId,
+                  taskResult.confidence,
+                  `Larry proposes closing: ${taskResult.taskTitle}`,
+                  JSON.stringify([`User requested: ${body.input.slice(0, 120)}`]),
+                  JSON.stringify(payload),
+                  JSON.stringify({ what: `Close "${taskResult.taskTitle}"`, decision: "approval_required" }),
+                ]
+              );
+              await writeAuditLog(fastify.db, {
+                tenantId, actorUserId: request.user.userId,
+                actionType: "larry.command.task_close",
+                objectType: "agent_run", objectId: runId,
+                details: { taskId: taskResult.taskId, taskTitle: taskResult.taskTitle },
+              });
+              return reply.code(202).send({
+                commandAccepted: true, commandMode: body.mode, intent: body.intent, runId,
+                message: `Got it — I've drafted closing "${taskResult.taskTitle}". Approve it in the Action Centre.`,
+              });
+            }
+
+            if (taskResult.type === "task_close_ambiguous") {
+              const payload = { taskTitle: taskResult.query, status: "completed", ambiguous: true };
+              await fastify.db.queryTenant(
+                tenantId,
+                `INSERT INTO extracted_actions
+                  (tenant_id, agent_run_id, project_id, action_type, impact, confidence, reason, signals, payload, reasoning, state, requires_approval)
+                 VALUES ($1,$2,$3,'status_update','low',0.3,$4,$5::jsonb,$6::jsonb,$7::jsonb,'pending',true)`,
+                [
+                  tenantId, runId, body.projectId,
+                  `Larry could not uniquely identify which task to close`,
+                  JSON.stringify([`User query: ${taskResult.query.slice(0, 120)}`]),
+                  JSON.stringify(payload),
+                  JSON.stringify({ what: "Close task (ambiguous)", decision: "approval_required", override: "Identify the correct task before approving." }),
+                ]
+              );
+              await writeAuditLog(fastify.db, {
+                tenantId, actorUserId: request.user.userId,
+                actionType: "larry.command.task_close_ambiguous",
+                objectType: "agent_run", objectId: runId,
+                details: { query: taskResult.query },
+              });
+              return reply.code(202).send({
+                commandAccepted: true, commandMode: body.mode, intent: body.intent, runId,
+                message: `I wasn't sure which task you meant. A draft is in the Action Centre — please identify the right task before approving.`,
+              });
+            }
+          }
+        } catch (err) {
+          request.log.warn({ err }, "classifyTaskCommand failed — falling through to queue pipeline");
+        }
       }
 
       const sourceEventId = `larry-cmd:${randomUUID()}`;
