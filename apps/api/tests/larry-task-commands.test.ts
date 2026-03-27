@@ -65,6 +65,7 @@ function createQueueMock() {
     async publish(msg: unknown) {
       published.push(msg);
     },
+    async close() {},
   };
 }
 
