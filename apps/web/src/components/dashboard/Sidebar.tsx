@@ -46,7 +46,6 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, pendin
   const pathname = usePathname();
   const router = useRouter();
   const [search, setSearch] = useState("");
-  const [dropdownOpen, setDropdownOpen] = useState(false);
   const [tasks, setTasks] = useState<SearchTask[]>([]);
   const [tasksLoaded, setTasksLoaded] = useState(false);
   const [projectsOpen, setProjectsOpen] = useState(true);
@@ -64,10 +63,7 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, pendin
     }
   }, [tasksLoaded]);
 
-  const dismiss = useCallback(() => {
-    setDropdownOpen(false);
-    setSearch("");
-  }, []);
+  const dismiss = useCallback(() => { setSearch(""); }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") dismiss(); };
@@ -75,30 +71,16 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, pendin
     return () => document.removeEventListener("keydown", onKey);
   }, [dismiss]);
 
-  useEffect(() => {
-    const onClick = (e: MouseEvent) => {
-      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
-        setDropdownOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, []);
-
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setSearch(val);
-    if (val.trim().length >= 1) {
-      setDropdownOpen(true);
-      void loadTasks();
-    } else {
-      setDropdownOpen(false);
-    }
+    if (val.trim().length >= 1) void loadTasks();
   };
 
   const q = search.trim().toLowerCase();
-  const matchedProjects = q ? projects.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 5) : [];
-  const matchedTasks = q ? tasks.filter((t) => t.title.toLowerCase().includes(q)).slice(0, 5) : [];
+  const isSearching = q.length >= 1;
+  const matchedProjects = isSearching ? projects.filter((p) => (p.name ?? "").toLowerCase().includes(q)).slice(0, 5) : [];
+  const matchedTasks = isSearching ? tasks.filter((t) => (t.title ?? "").toLowerCase().includes(q)).slice(0, 5) : [];
   const hasResults = matchedProjects.length > 0 || matchedTasks.length > 0;
 
   const goTo = (href: string) => {
@@ -131,7 +113,7 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, pendin
       </div>
 
       {/* Search */}
-      <div ref={searchContainerRef} className="shrink-0 px-3 pb-3 relative">
+      <div ref={searchContainerRef} className="shrink-0 px-3 pb-2">
         <div className="relative">
           <Search
             size={13}
@@ -141,7 +123,6 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, pendin
           <input
             value={search}
             onChange={handleSearchChange}
-            onFocus={() => { if (search.trim().length >= 1) setDropdownOpen(true); }}
             placeholder="Search…"
             className="h-9 w-full pl-8 pr-3 text-[13px] outline-none transition-all"
             style={{
@@ -151,71 +132,73 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, pendin
               color: "var(--text-2)",
             }}
           />
+          {isSearching && (
+            <button
+              onClick={dismiss}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2"
+              style={{ color: "var(--text-disabled)" }}
+            >
+              <X size={13} />
+            </button>
+          )}
         </div>
-
-        {dropdownOpen && (
-          <div
-            className="absolute left-3 right-3 top-[calc(100%-2px)] overflow-hidden z-50"
-            style={{
-              borderRadius: "var(--radius-dropdown)",
-              border: "1px solid var(--border)",
-              background: "var(--surface)",
-              boxShadow: "var(--shadow-2)",
-            }}
-          >
-            {!hasResults ? (
-              <p className="px-4 py-3 text-[13px]" style={{ color: "var(--text-disabled)" }}>
-                No results for &ldquo;{search}&rdquo;
-              </p>
-            ) : (
-              <>
-                {matchedProjects.length > 0 && (
-                  <div>
-                    <p className="text-caption px-4 pt-3 pb-1">Projects</p>
-                    {matchedProjects.map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => goTo(`/workspace/projects/${p.id}`)}
-                        className="flex w-full items-center gap-2.5 px-4 py-2 text-left"
-                        style={{ transition: "background 0.1s" }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = "")}
-                      >
-                        <FolderKanban size={13} className="shrink-0" style={{ color: "var(--brand)" }} />
-                        <span className="text-[13px] truncate" style={{ color: "var(--text-2)" }}>{p.name}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {matchedTasks.length > 0 && (
-                  <div style={matchedProjects.length > 0 ? { borderTop: "1px solid var(--border)" } : {}}>
-                    <p className="text-caption px-4 pt-3 pb-1">Tasks</p>
-                    {matchedTasks.map((t) => (
-                      <button
-                        key={t.id}
-                        type="button"
-                        onClick={() => goTo(t.projectId ? `/workspace/projects/${t.projectId}` : "/workspace")}
-                        className="flex w-full items-center gap-2.5 px-4 py-2 text-left"
-                        style={{ transition: "background 0.1s" }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = "")}
-                      >
-                        <CheckSquare size={13} className="shrink-0" style={{ color: "var(--text-disabled)" }} />
-                        <span className="text-[13px] truncate" style={{ color: "var(--text-2)" }}>{t.title}</span>
-                        <span className="ml-auto shrink-0 text-[11px] capitalize" style={{ color: "var(--text-disabled)" }}>
-                          {t.status?.replace(/_/g, " ")}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
       </div>
 
+      {/* Inline search results — replaces nav + projects when searching */}
+      {isSearching ? (
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1">
+          {!hasResults ? (
+            <p className="px-3 py-4 text-[13px]" style={{ color: "var(--text-disabled)" }}>
+              No results for &ldquo;{search}&rdquo;
+            </p>
+          ) : (
+            <>
+              {matchedProjects.length > 0 && (
+                <div className="mb-2">
+                  <p className="text-caption px-3 py-1.5">Projects</p>
+                  {matchedProjects.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => goTo(`/workspace/projects/${p.id}`)}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left"
+                      style={{ transition: "background 0.1s" }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+                    >
+                      <FolderKanban size={14} className="shrink-0" style={{ color: "var(--brand)" }} />
+                      <span className="text-[13px] truncate" style={{ color: "var(--text-1)" }}>{p.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {matchedTasks.length > 0 && (
+                <div>
+                  <p className="text-caption px-3 py-1.5">Tasks</p>
+                  {matchedTasks.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => goTo(t.projectId ? `/workspace/projects/${t.projectId}` : "/workspace")}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left"
+                      style={{ transition: "background 0.1s" }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+                    >
+                      <CheckSquare size={14} className="shrink-0" style={{ color: "var(--text-disabled)" }} />
+                      <span className="flex-1 text-[13px] truncate" style={{ color: "var(--text-2)" }}>{t.title}</span>
+                      <span className="shrink-0 text-[11px] capitalize" style={{ color: "var(--text-disabled)" }}>
+                        {t.status?.replace(/_/g, " ")}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      ) : (
+        <>
       {/* Primary nav — no section label, 6 items */}
       <nav className="shrink-0 px-2 space-y-0.5" aria-label="Main navigation">
         {WORKSPACE_NAV.map(({ id, label, icon: Icon, href }) => {
@@ -294,6 +277,8 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, pendin
           </div>
         )}
       </div>
+        </>
+      )}
 
       {/* Bottom bar — single row: avatar + email + logout */}
       <div className="shrink-0 px-3 py-3" style={{ borderTop: "1px solid var(--border)" }}>
