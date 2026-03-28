@@ -23,10 +23,8 @@ import {
   X,
 } from "lucide-react";
 import {
-  buildLarryResponseText,
   createLarryConversation,
   saveLarryMessage,
-  sendLarryCommand,
 } from "@/lib/larry";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
@@ -359,29 +357,39 @@ function ChatPane({
         return;
       }
 
-      setMessages((current) => current.concat({ id: "processing", role: "larry", text: "Drafting the project for review..." }));
-      const { response, data } = await sendLarryCommand({
-        intent: "create_project",
-        input: buildProjectIntake(nextAnswers),
-        mode: "execute",
+      setMessages((current) => current.concat({ id: "processing", role: "larry", text: "Creating the project..." }));
+      const projectName = nextAnswers[0]?.trim() || "New Project";
+      const description = buildProjectIntake(nextAnswers);
+
+      const response = await fetch("/api/workspace/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: projectName, description }),
       });
-      const replyText = buildLarryResponseText(response, data);
+      const data = await response.json() as { id?: string; error?: string };
+
+      if (!response.ok || !data.id) {
+        const replyText = data.error ?? "Failed to create project.";
+        setMessages((current) =>
+          current.filter((message) => message.id !== "processing").concat({ id: crypto.randomUUID(), role: "larry", text: replyText })
+        );
+        await saveLarryMessage(activeConversationId, "larry", replyText).catch(() => undefined);
+        setError(replyText);
+        return;
+      }
+
+      const replyText = `Done — "${projectName}" is created. Open it and tell Larry what to set up first.`;
       setMessages((current) =>
         current.filter((message) => message.id !== "processing").concat({ id: crypto.randomUUID(), role: "larry", text: replyText })
       );
       await saveLarryMessage(activeConversationId, "larry", replyText).catch(() => undefined);
 
-      if (!response.ok) {
-        setError(replyText);
-        return;
-      }
-
       setSuccess({
-        projectName: data.projectName ?? nextAnswers[0],
-        taskCount: data.taskCount ?? 0,
-        actionId: data.actionId,
+        projectName,
+        taskCount: 0,
+        actionId: undefined,
       });
-      showToast({ tone: "success", message: "Project draft created for review in the Action Center." });
+      showToast({ tone: "success", message: `"${projectName}" created.` });
       window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
     } catch {
       setMessages((current) =>
@@ -400,16 +408,16 @@ function ChatPane({
           <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-500 text-white">
             <Check size={18} />
           </div>
-          <h2 className="mt-4 text-2xl font-semibold tracking-[-0.03em] text-neutral-900">{success.projectName} is ready for review</h2>
+          <h2 className="mt-4 text-2xl font-semibold tracking-[-0.03em] text-neutral-900">{success.projectName} is ready</h2>
           <p className="mt-2 text-[14px] text-neutral-600">
-            Larry drafted the project with {success.taskCount} starter task{success.taskCount === 1 ? "" : "s"} and left it as a pending `project_create` action.
+            Open the project and tell Larry what tasks to set up — it will act immediately.
           </p>
           <button
             type="button"
             onClick={onReviewActions}
             className="mt-5 inline-flex h-11 items-center gap-2 rounded-2xl bg-[#0f62fe] px-5 text-sm font-semibold text-white transition hover:bg-[#0043ce]"
           >
-            Review in Action Center
+            Open Project
             <ArrowRight size={16} />
           </button>
         </div>
@@ -622,10 +630,10 @@ export function StartProjectFlow({ onClose, onCreated }: StartProjectFlowProps) 
       return <ManualPane onSuccess={handleProjectCreated} showToast={setToast} />;
     }
     if (selectedMode === "chat") {
-      return <ChatPane onReviewActions={() => router.push("/workspace/actions")} showToast={setToast} />;
+      return <ChatPane onReviewActions={() => router.push("/workspace")} showToast={setToast} />;
     }
     if (selectedMode === "transcript") {
-      return <TranscriptPane onReviewActions={() => router.push("/workspace/actions")} showToast={setToast} />;
+      return <TranscriptPane onReviewActions={() => router.push("/workspace")} showToast={setToast} />;
     }
     return null;
   }

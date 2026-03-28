@@ -2,17 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export type LarryIntent = "freeform" | "create_plan" | "update_scope" | "draft_follow_up" | "request_summary";
-
 export interface LarryMessage {
   id: string;
   role: "user" | "larry";
   text: string;
-  reasoning?: {
-    why?: string;
-    signals?: string[];
-    threshold?: string;
-  };
+  actionsExecuted?: number;
+  suggestionCount?: number;
   createdAt: string;
 }
 
@@ -44,7 +39,6 @@ export function useLarryChat(projectId?: string) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<LarryMessage[]>([]);
   const [input, setInput] = useState("");
-  const [intent, setIntent] = useState<LarryIntent>("freeform");
   const [busy, setBusy] = useState(false);
   const [proactiveQueue, setProactiveQueue] = useState<ProactiveItem[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -74,7 +68,6 @@ export function useLarryChat(projectId?: string) {
 
     void (async () => {
       try {
-        // Find the most recent conversation for this project (or global if no projectId)
         const listUrl = projectId
           ? `/api/workspace/larry/conversations?projectId=${encodeURIComponent(projectId)}`
           : "/api/workspace/larry/conversations";
@@ -87,7 +80,6 @@ export function useLarryChat(projectId?: string) {
         if (existing) {
           convId = existing.id;
         } else {
-          // Create a fresh conversation
           const createRes = await fetch("/api/workspace/larry/conversations", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -100,9 +92,10 @@ export function useLarryChat(projectId?: string) {
 
         setConversationId(convId);
 
-        // Load history
         const msgRes = await fetch(`/api/workspace/larry/conversations/${convId}/messages`);
-        const msgData = await readJson<{ messages?: Array<{ id: string; role: string; content: string; reasoning: unknown; createdAt: string }> }>(msgRes);
+        const msgData = await readJson<{
+          messages?: Array<{ id: string; role: string; content: string; createdAt: string }>;
+        }>(msgRes);
 
         if (msgData.messages && msgData.messages.length > 0) {
           setMessages(
@@ -110,7 +103,6 @@ export function useLarryChat(projectId?: string) {
               id: m.id,
               role: m.role as "user" | "larry",
               text: m.content,
-              reasoning: (m.reasoning as LarryMessage["reasoning"]) ?? undefined,
               createdAt: m.createdAt,
             }))
           );
@@ -125,19 +117,17 @@ export function useLarryChat(projectId?: string) {
     setConversationId(id);
     setMessages([]);
     setIsOpen(true);
-    // Reset the auto-init ref so the effect doesn't clobber this explicit load
     initializedForRef.current = undefined;
     try {
       const res = await fetch(`/api/workspace/larry/conversations/${id}/messages`);
       const data = await readJson<{
-        messages?: Array<{ id: string; role: "user" | "larry"; content: string; reasoning: unknown; createdAt: string }>;
+        messages?: Array<{ id: string; role: "user" | "larry"; content: string; createdAt: string }>;
       }>(res);
       setMessages(
         (data.messages ?? []).map((m) => ({
           id: m.id,
           role: m.role,
           text: m.content,
-          reasoning: (m.reasoning as LarryMessage["reasoning"]) ?? undefined,
           createdAt: m.createdAt,
         }))
       );
@@ -147,7 +137,19 @@ export function useLarryChat(projectId?: string) {
   }, []);
 
   const sendMessage = useCallback(
-    async (text: string, selectedIntent: LarryIntent) => {
+    async (text: string) => {
+      if (!projectId) {
+        // Without a projectId we can't run intelligence — show a prompt
+        const prompt: LarryMessage = {
+          id: crypto.randomUUID(),
+          role: "larry",
+          text: "Open a project to chat with Larry about it.",
+          createdAt: new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, prompt]);
+        return;
+      }
+
       const userMsg: LarryMessage = {
         id: crypto.randomUUID(),
         role: "user",
@@ -184,32 +186,29 @@ export function useLarryChat(projectId?: string) {
       }
 
       try {
-        const res = await fetch("/api/workspace/larry/commands", {
+        const res = await fetch("/api/workspace/larry/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            intent: selectedIntent,
-            projectId: projectId || undefined,
-            input: text,
-            mode: "execute",
-          }),
+          body: JSON.stringify({ projectId, message: text }),
         });
 
         const data = await readJson<{
-          summary?: { narrative?: string };
-          runId?: string;
           message?: string;
+          actionsExecuted?: number;
+          suggestionCount?: number;
           error?: string;
         }>(res);
 
         const responseText = res.ok
-          ? (data.summary?.narrative ?? data.message ?? (data.runId ? "Got it — I've queued that. Head to the Action Center to review any proposed actions." : "Done."))
+          ? (data.message ?? "Done.")
           : (data.error ?? "Something went wrong.");
 
         const larryMsg: LarryMessage = {
           id: crypto.randomUUID(),
           role: "larry",
           text: responseText,
+          actionsExecuted: data.actionsExecuted,
+          suggestionCount: data.suggestionCount,
           createdAt: new Date().toISOString(),
         };
 
@@ -220,7 +219,7 @@ export function useLarryChat(projectId?: string) {
           saveMessage(convId, "larry", responseText);
         }
 
-        if (res.ok && data.runId) {
+        if (res.ok && (data.actionsExecuted ?? 0) > 0) {
           window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
         }
       } catch {
@@ -243,18 +242,17 @@ export function useLarryChat(projectId?: string) {
     async (e?: React.FormEvent) => {
       e?.preventDefault();
       const text = input.trim();
-      if (!text || text.length < 3 || busy) return;
+      if (!text || text.length < 1 || busy) return;
       setInput("");
-      await sendMessage(text, intent);
+      await sendMessage(text);
     },
-    [input, intent, busy, sendMessage]
+    [input, busy, sendMessage]
   );
 
   return {
     isOpen,
     messages,
     input,
-    intent,
     busy,
     proactiveQueue,
     conversationId,
@@ -265,7 +263,6 @@ export function useLarryChat(projectId?: string) {
     dismissProactive,
     loadConversation,
     setInput,
-    setIntent,
     handleSubmit,
   };
 }

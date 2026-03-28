@@ -4,7 +4,23 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { TriangleAlert } from "lucide-react";
-import type { WorkspaceAction, WorkspaceProject, WorkspaceSnapshot, WorkspaceTask } from "@/app/dashboard/types";
+import type { WorkspaceProject, WorkspaceSnapshot, WorkspaceTask } from "@/app/dashboard/types";
+
+interface LarryBriefingProject {
+  projectId: string;
+  name: string;
+  statusLabel: "At Risk" | "Needs Attention" | "On Track";
+  summary: string;
+  actionsCount: number;
+  needsYou: boolean;
+  suggestionCount: number;
+}
+
+interface LarryBriefingContent {
+  greeting: string;
+  projects: LarryBriefingProject[];
+  totalNeedsYou: number;
+}
 
 interface AuthMePayload {
   user?: {
@@ -25,7 +41,6 @@ interface ProjectCardModel {
   totalTasks: number;
   openTasks: number;
   blockedTasks: number;
-  pendingActions: number;
 }
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -72,8 +87,7 @@ function deriveGreetingName(user: AuthMePayload["user"] | null | undefined): str
 
 function buildProjectCard(
   project: WorkspaceProject,
-  tasks: WorkspaceTask[],
-  actions: WorkspaceAction[]
+  tasks: WorkspaceTask[]
 ): ProjectCardModel {
   const projectTasks = tasks.filter((task) => task.projectId === project.id);
   const completedTasks = projectTasks.filter((task) => task.status === "completed").length;
@@ -100,7 +114,6 @@ function buildProjectCard(
     totalTasks: projectTasks.length,
     openTasks,
     blockedTasks,
-    pendingActions: actions.filter((action) => action.projectId === project.id).length,
   };
 }
 
@@ -111,6 +124,7 @@ export function WorkspaceHome() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [nudgeDismissed, setNudgeDismissed] = useState(false);
+  const [briefing, setBriefing] = useState<LarryBriefingContent | null>(null);
 
   const loadWorkspace = useCallback(async () => {
     try {
@@ -131,6 +145,12 @@ export function WorkspaceHome() {
 
       setSnapshot(snapshotPayload);
       setViewer(meResponse.ok ? mePayload.user ?? null : null);
+
+      // Fire-and-forget — briefing should not block the page render
+      fetch("/api/workspace/larry/briefing", { cache: "no-store" })
+        .then((r) => (r.ok ? readJson<{ briefing: LarryBriefingContent }>(r) : null))
+        .then((payload) => { if (payload?.briefing) setBriefing(payload.briefing); })
+        .catch(() => { /* non-critical, ignore */ });
     } catch (loadError) {
       setError(
         loadError instanceof Error ? loadError.message : "Could not load the workspace."
@@ -156,11 +176,9 @@ export function WorkspaceHome() {
   const projectCards = useMemo(() => {
     const projects = snapshot?.projects ?? [];
     const tasks = snapshot?.tasks ?? [];
-    const actions = snapshot?.pendingActions ?? [];
-    return projects.map((project) => buildProjectCard(project, tasks, actions));
+    return projects.map((project) => buildProjectCard(project, tasks));
   }, [snapshot]);
 
-  const pendingCount = snapshot?.pendingActions?.length ?? 0;
   const greetingName = deriveGreetingName(viewer);
   const connectedCount = [
     snapshot?.connectors?.slack?.connected,
@@ -178,12 +196,92 @@ export function WorkspaceHome() {
         {/* Welcome header — no card wrapper */}
         <header>
           <h1 className="text-display" style={{ color: "var(--text-1)" }}>
-            Welcome back, {greetingName}.
+            {briefing?.greeting ?? `Welcome back, ${greetingName}.`}
           </h1>
           <p className="text-body-sm mt-1">
-            {projectCards.length} active project{projectCards.length !== 1 ? "s" : ""} · {pendingCount} pending approval{pendingCount !== 1 ? "s" : ""}
+            {briefing
+              ? `${briefing.totalNeedsYou} project${briefing.totalNeedsYou !== 1 ? "s" : ""} need${briefing.totalNeedsYou === 1 ? "s" : ""} your attention · ${projectCards.length} active`
+              : `${projectCards.length} active project${projectCards.length !== 1 ? "s" : ""}`}
           </p>
         </header>
+
+        {/* Larry briefing — per-project summaries */}
+        {briefing && briefing.projects.length > 0 && (
+          <div
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-card)",
+              background: "var(--surface)",
+              overflow: "hidden",
+            }}
+          >
+            {briefing.projects.map((bp, i) => (
+              <div
+                key={bp.projectId}
+                style={{
+                  padding: "14px 20px",
+                  borderTop: i > 0 ? "1px solid var(--border)" : undefined,
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: "12px",
+                }}
+              >
+                {/* Status pill */}
+                <span
+                  className="shrink-0 text-[11px] font-semibold leading-none"
+                  style={{
+                    marginTop: "3px",
+                    padding: "3px 7px",
+                    borderRadius: "9999px",
+                    background:
+                      bp.statusLabel === "At Risk"
+                        ? "var(--pm-red-light, #fff6f7)"
+                        : bp.statusLabel === "Needs Attention"
+                          ? "#FFF7ED"
+                          : "var(--surface-2)",
+                    color:
+                      bp.statusLabel === "At Risk"
+                        ? "var(--pm-red)"
+                        : bp.statusLabel === "Needs Attention"
+                          ? "#D97706"
+                          : "var(--text-muted)",
+                  }}
+                >
+                  {bp.statusLabel}
+                </span>
+
+                {/* Summary */}
+                <div className="flex-1 min-w-0">
+                  <p
+                    className="text-[13px] font-semibold leading-snug truncate"
+                    style={{ color: "var(--text-1)" }}
+                  >
+                    {bp.name}
+                  </p>
+                  <p className="text-body-sm mt-0.5 line-clamp-2" style={{ color: "var(--text-2)" }}>
+                    {bp.summary}
+                  </p>
+                </div>
+
+                {/* Needs you badge */}
+                {bp.needsYou && (
+                  <span
+                    className="shrink-0 text-[11px] font-semibold leading-none"
+                    style={{
+                      marginTop: "3px",
+                      padding: "3px 7px",
+                      borderRadius: "9999px",
+                      background: "var(--cta)",
+                      color: "#fff",
+                    }}
+                  >
+                    Needs you
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Error banner */}
         {error && (
@@ -198,31 +296,6 @@ export function WorkspaceHome() {
           >
             <TriangleAlert size={16} className="mt-0.5 shrink-0" />
             <span>{error}</span>
-          </div>
-        )}
-
-        {/* Action centre banner — only when pendingCount > 0 */}
-        {pendingCount > 0 && (
-          <div
-            className="flex items-center px-4 gap-3"
-            style={{
-              height: "48px",
-              background: "#FFF7ED",
-              border: "1px solid #FDE68A",
-              borderRadius: "var(--radius-btn)",
-            }}
-          >
-            <TriangleAlert size={16} style={{ color: "#D97706", flexShrink: 0 }} />
-            <span className="flex-1 text-[14px]" style={{ color: "var(--text-2)" }}>
-              {pendingCount} action{pendingCount !== 1 ? "s" : ""} awaiting your review
-            </span>
-            <Link
-              href="/workspace/actions"
-              className="text-[14px] font-semibold ml-auto"
-              style={{ color: "var(--cta)" }}
-            >
-              Review →
-            </Link>
           </div>
         )}
 

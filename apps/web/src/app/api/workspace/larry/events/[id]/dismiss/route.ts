@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
 import { getSession } from "@/lib/auth";
 import { persistSession, proxyApiRequest } from "@/lib/workspace-proxy";
-
-const NoteSchema = z.object({
-  note: z.string().max(1000).optional(),
-});
 
 export async function POST(
   request: NextRequest,
@@ -17,17 +12,13 @@ export async function POST(
   }
 
   const { id } = await context.params;
-  let payload: z.infer<typeof NoteSchema>;
-  try {
-    payload = NoteSchema.parse(await request.json().catch(() => ({})));
-  } catch {
-    return NextResponse.json({ error: "Invalid reject payload." }, { status: 400 });
-  }
+  const body = await request.json().catch(() => ({})) as { reason?: string };
 
-  const result = await proxyApiRequest(session, `/v1/actions/${id}/reject`, {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  const result = await proxyApiRequest(
+    session,
+    `/v1/larry/events/${id}/dismiss`,
+    { method: "POST", body: JSON.stringify({ reason: body.reason ?? null }) }
+  );
 
   if (result.session) {
     await persistSession(result.session);

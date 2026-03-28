@@ -17,6 +17,7 @@
     "seed": "tsx src/seed.ts"
   },
   "dependencies": {
+    "@larry/shared": "file:../shared",
     "dotenv": "^17.2.3",
     "pg": "^8.16.3"
   },

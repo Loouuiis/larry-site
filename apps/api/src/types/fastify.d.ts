@@ -1,7 +1,6 @@
 import type { FastifyRequest } from "fastify";
 import { getApiEnv } from "@larry/config";
 import { Db } from "@larry/db";
-import { LlmProvider } from "@larry/ai";
 import { AuthUser, RequestContext } from "@larry/shared";
 import { QueuePublisher } from "../services/queue.js";
 
@@ -13,7 +12,6 @@ declare module "fastify" {
   interface FastifyInstance {
     db: Db;
     queue: QueuePublisher;
-    llmProvider: LlmProvider;
     authenticate: (request: FastifyRequest) => Promise<void>;
     config: ReturnType<typeof getApiEnv>;
     requireRole: (roles: AuthUser["role"][]) => (request: FastifyRequest) => Promise<void>;

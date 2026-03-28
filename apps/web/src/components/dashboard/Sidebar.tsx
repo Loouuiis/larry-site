@@ -36,13 +36,12 @@ interface WorkspaceSidebarInnerProps {
   activeNav: WorkspaceSidebarNav;
   onClose?: () => void;
   userEmail?: string | null;
-  pendingCount?: number;
   notifCount?: number;
 }
 
 interface SearchTask { id: string; title: string; status: string; projectId?: string | null; }
 
-function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, pendingCount = 0 }: WorkspaceSidebarInnerProps) {
+function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail }: WorkspaceSidebarInnerProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -231,14 +230,6 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, pendin
           >
             PROJECTS
           </button>
-          {projectsOpen && pendingCount > 0 && (
-            <span
-              className="flex h-4 min-w-4 items-center justify-center rounded-full px-0.5 text-[10px] font-bold text-white"
-              style={{ background: "var(--pm-red)" }}
-            >
-              {pendingCount > 99 ? "99+" : pendingCount}
-            </span>
-          )}
         </div>
 
         {projectsOpen && (
@@ -316,11 +307,10 @@ interface WorkspaceSidebarProps {
   mobileOpen: boolean;
   onMobileClose: () => void;
   userEmail?: string | null;
-  pendingCount?: number;
   notifCount?: number;
 }
 
-export function WorkspaceSidebar({ projects, activeNav, mobileOpen, onMobileClose, userEmail, pendingCount, notifCount }: WorkspaceSidebarProps) {
+export function WorkspaceSidebar({ projects, activeNav, mobileOpen, onMobileClose, userEmail, notifCount }: WorkspaceSidebarProps) {
   return (
     <>
       {/* Desktop */}
@@ -332,7 +322,6 @@ export function WorkspaceSidebar({ projects, activeNav, mobileOpen, onMobileClos
           projects={projects}
           activeNav={activeNav}
           userEmail={userEmail}
-          pendingCount={pendingCount}
           notifCount={notifCount}
         />
       </aside>
@@ -380,7 +369,6 @@ export function WorkspaceSidebar({ projects, activeNav, mobileOpen, onMobileClos
                 activeNav={activeNav}
                 onClose={onMobileClose}
                 userEmail={userEmail}
-                pendingCount={pendingCount}
                 notifCount={notifCount}
               />
             </motion.aside>

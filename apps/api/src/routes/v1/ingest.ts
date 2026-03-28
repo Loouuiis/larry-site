@@ -2,6 +2,20 @@ import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { ingestCanonicalEvent } from "../../services/ingest/pipeline.js";
 import { writeAuditLog } from "../../lib/audit.js";
+import { runIntelligence } from "@larry/ai";
+import { getProjectSnapshot, runAutoActions, storeSuggestions } from "@larry/db";
+import { getApiEnv } from "@larry/config";
+import type { IntelligenceConfig } from "@larry/shared";
+
+function buildIntelligenceConfig(config: ReturnType<typeof getApiEnv>): IntelligenceConfig {
+  if (config.MODEL_PROVIDER === "openai") {
+    return { provider: "openai", apiKey: config.OPENAI_API_KEY, model: config.OPENAI_MODEL };
+  }
+  if (config.MODEL_PROVIDER === "anthropic") {
+    return { provider: "anthropic", apiKey: config.ANTHROPIC_API_KEY, model: config.ANTHROPIC_MODEL };
+  }
+  return { provider: "mock", model: "mock" };
+}
 
 const BaseIngestSchema = z.object({
   sourceEventId: z.string().min(1),
@@ -96,6 +110,7 @@ export const ingestRoutes: FastifyPluginAsync = async (fastify) => {
       const body = TranscriptIngestSchema.parse(request.body);
       const tenantId = request.user.tenantId;
 
+      // 1. Create canonical event record
       const result = await ingestCanonicalEvent(fastify, tenantId, {
         source: "transcript",
         sourceEventId: body.sourceEventId,
@@ -108,69 +123,46 @@ export const ingestRoutes: FastifyPluginAsync = async (fastify) => {
         },
       });
 
-      const agentRunRows = await fastify.db.queryTenant<{ id: string }>(
-        tenantId,
-        `INSERT INTO agent_runs (tenant_id, project_id, source, source_ref_id, state, status_message, correlation_id, created_by_user_id)
-         VALUES ($1, $2, $3, $4, 'INGESTED', $5, $6, $7)
-         RETURNING id`,
-        [
-          tenantId,
-          body.projectId ?? null,
-          "transcript",
-          result.canonicalEventId,
-          "Transcript accepted for extraction pipeline",
-          result.idempotencyKey,
-          request.user.userId,
-        ]
-      );
-
-      const runId = agentRunRows[0].id;
-
-      await fastify.db.queryTenant(
-        tenantId,
-        `INSERT INTO agent_run_transitions
-         (tenant_id, agent_run_id, previous_state, next_state, reason)
-         VALUES ($1, $2, NULL, 'INGESTED', $3)`,
-        [tenantId, runId, "Initial transcript ingestion"]
-      );
-
-      await fastify.queue.publish({
-        type: "agent_run.ingested",
-        tenantId,
-        payload: {
-          runId,
-          canonicalEventId: result.canonicalEventId,
-          transcript: body.transcript,
-          projectId: body.projectId,
-        },
-        dedupeKey: `${tenantId}:${runId}:INGESTED`,
-      });
-
-      // Create meeting_notes row for this transcript
-      await fastify.db.queryTenant(
+      // 2. Store meeting notes (agent_run_id is nullable — old pipeline removed)
+      const meetingNoteRows = await fastify.db.queryTenant<{ id: string }>(
         tenantId,
         `INSERT INTO meeting_notes
           (tenant_id, project_id, agent_run_id, title, transcript, created_by_user_id)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [
-          tenantId,
-          body.projectId ?? null,
-          runId,
-          body.meetingTitle ?? null,
-          body.transcript,
-          request.user.userId,
-        ]
+         VALUES ($1, $2, NULL, $3, $4, $5)
+         RETURNING id`,
+        [tenantId, body.projectId ?? null, body.meetingTitle ?? null, body.transcript, request.user.userId]
       );
+      const meetingNoteId = meetingNoteRows[0]?.id;
+
+      // 3. Run intelligence on the transcript if a project is provided — best-effort
+      if (body.projectId) {
+        try {
+          const config = buildIntelligenceConfig(fastify.config);
+          const snapshot = await getProjectSnapshot(fastify.db, tenantId, body.projectId);
+          const intelligenceResult = await runIntelligence(
+            config,
+            snapshot,
+            `transcript: "${body.transcript.slice(0, 500)}"`
+          );
+          await Promise.all([
+            runAutoActions(fastify.db, tenantId, body.projectId, "signal", intelligenceResult.autoActions),
+            storeSuggestions(fastify.db, tenantId, body.projectId, "signal", intelligenceResult.suggestedActions),
+          ]);
+        } catch (err) {
+          // Don't fail the ingest — transcript is stored, intelligence is best-effort
+          request.log.warn({ err, tenantId, projectId: body.projectId }, "transcript intelligence failed");
+        }
+      }
 
       await writeAuditLog(fastify.db, {
         tenantId,
         actorUserId: request.user.userId,
         actionType: "ingest.transcript",
-        objectType: "agent_run",
-        objectId: runId,
+        objectType: "meeting_note",
+        objectId: meetingNoteId ?? result.canonicalEventId,
       });
 
-      return reply.code(202).send({ accepted: true, runId, ...result });
+      return reply.code(202).send({ accepted: true, ...result });
     }
   );
 };

@@ -2,14 +2,14 @@
 
 import { Clock } from "lucide-react";
 import Link from "next/link";
-import { ActionCardViewModel, ConnectorStatus, EmailDraft, WorkspaceActivityItem, WorkspaceOutcomes } from "./types";
+import { ConnectorStatus, EmailDraft, WorkspaceActivityItem, WorkspaceOutcomes } from "./types";
 
 interface RightPanelProps {
   completionRate: number;
   avgRiskScore: number;
   blockedCount: number;
   outcomes: WorkspaceOutcomes | null | undefined;
-  actionCards: ActionCardViewModel[];
+  actionCards: { id: string; title: string; reason: string }[];
   activityItems: WorkspaceActivityItem[];
   emailDrafts: EmailDraft[];
   actionBusyId: string | null;
@@ -123,10 +123,10 @@ export function RightPanel({
           <p className="text-[13px] text-[var(--pm-text-muted)] mb-3">No pending approvals.</p>
         )}
         <Link
-          href="/workspace/actions"
+          href="/workspace"
           className="inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-[var(--pm-border)] bg-white text-[13px] font-medium text-[var(--pm-text-secondary)] hover:bg-[var(--pm-gray-light)]"
         >
-          Open Action Center →
+          Open Workspace →
         </Link>
       </section>
 

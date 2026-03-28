@@ -3,14 +3,9 @@ import { z } from "zod";
 import { getSession } from "@/lib/auth";
 import { persistSession, proxyApiRequest } from "@/lib/workspace-proxy";
 
-const LarryCommandSchema = z.object({
-  intent: z
-    .enum(["create_plan", "update_scope", "request_summary", "draft_follow_up", "create_project", "freeform"])
-    .default("freeform"),
-  input: z.string().min(3).max(8000),
-  projectId: z.string().uuid().optional(),
-  context: z.record(z.string(), z.unknown()).optional(),
-  mode: z.enum(["execute", "preview"]).default("execute"),
+const ChatSchema = z.object({
+  projectId: z.string().uuid(),
+  message: z.string().min(1).max(8000),
 });
 
 export async function POST(request: NextRequest) {
@@ -19,16 +14,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let payload: z.infer<typeof LarryCommandSchema>;
+  let payload: z.infer<typeof ChatSchema>;
   try {
-    payload = LarryCommandSchema.parse(await request.json());
+    payload = ChatSchema.parse(await request.json());
   } catch {
-    return NextResponse.json({ error: "Invalid Larry command payload." }, { status: 400 });
+    return NextResponse.json({ error: "Invalid chat payload." }, { status: 400 });
   }
 
   const result = await proxyApiRequest(
     session,
-    "/v1/larry/commands",
+    "/v1/larry/chat",
     {
       method: "POST",
       body: JSON.stringify(payload),

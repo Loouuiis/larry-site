@@ -58,31 +58,6 @@ export interface ExtractedAction {
   followUpRequired?: boolean;
 }
 
-export interface TaskDeltaProposal {
-  taskId?: string;
-  operation: "create" | "update";
-  changes: Record<string, unknown>;
-  reason: string;
-  confidence: number;
-}
-
-export interface ApprovalDecision {
-  actionId: string;
-  decision: "approved" | "rejected" | "overridden";
-  byUserId: string;
-  note?: string;
-  decidedAt: string;
-}
-
-export type AgentRunState =
-  | "INGESTED"
-  | "NORMALIZED"
-  | "EXTRACTED"
-  | "PROPOSED"
-  | "APPROVAL_PENDING"
-  | "EXECUTED"
-  | "VERIFIED"
-  | "FAILED";
 
 export interface RiskScoreSnapshot {
   projectId: string;
@@ -124,26 +99,11 @@ export interface InterventionDecision {
   signals: string[];
 }
 
-export interface CorrectionFeedback {
-  actionId: string;
-  correctionType:
-    | "false_positive"
-    | "false_negative"
-    | "bad_reasoning"
-    | "payload_edit"
-    | "manual_override";
-  note?: string;
-  correctionPayload: Record<string, unknown>;
-  correctedByUserId: string;
-  createdAt: string;
-}
-
 export type QueueJobType =
   | "canonical_event.created"
-  | "agent_run.ingested"
-  | "agent_run.processed"
   | "escalation.scan"
-  | "calendar.webhook.renew";
+  | "calendar.webhook.renew"
+  | "larry.scan";
 
 export const EVENT_QUEUE_NAME = "larry-events";
 
@@ -152,4 +112,100 @@ export interface QueueMessage {
   tenantId: string;
   payload: Record<string, unknown>;
   dedupeKey?: string;
+}
+
+// ── Larry Intelligence types ──────────────────────────────────────────────────
+
+export type LarryActionType =
+  | "task_create"
+  | "status_update"
+  | "risk_flag"
+  | "reminder_send"
+  | "deadline_change"
+  | "owner_change"
+  | "scope_change"
+  | "email_draft"
+  | "project_create";
+
+export type LarryEventType = "auto_executed" | "suggested" | "accepted" | "dismissed";
+
+export interface LarryAction {
+  type: LarryActionType;
+  /** Plain English. Auto: past tense ("I moved X to At Risk"). Suggested: imperative ("Move X to At Risk"). */
+  displayText: string;
+  /** One sentence, specific signals. E.g. "7 days inactive, deadline Friday." */
+  reasoning: string;
+  payload: Record<string, unknown>;
+}
+
+export interface IntelligenceResult {
+  /** 2–4 sentence plain English summary of what is happening in this project. */
+  briefing: string;
+  /** Actions Larry will execute immediately — low-risk, reversible, operational. */
+  autoActions: LarryAction[];
+  /** Actions that need the project owner to approve — deadline/scope/ownership/external. */
+  suggestedActions: LarryAction[];
+}
+
+export interface ProjectTaskSnapshot {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  assigneeId: string | null;
+  assigneeName: string | null;
+  progressPercent: number;
+  riskScore: number;
+  riskLevel: string;
+  dueDate: string | null;
+  startDate: string | null;
+  /** ISO timestamp of last update — key signal for inactivity detection. */
+  lastActivityAt: string;
+  /** Titles of tasks this task depends on. */
+  dependsOnTitles: string[];
+}
+
+export interface ProjectTeamMember {
+  id: string;
+  name: string;
+  role: string;
+  activeTaskCount: number;
+}
+
+export interface ProjectActivityEntry {
+  description: string;
+  timestamp: string;
+}
+
+export interface ProjectSignal {
+  source: string;
+  content: string;
+  timestamp: string;
+}
+
+export interface ProjectSnapshot {
+  project: {
+    id: string;
+    tenantId: string;
+    name: string;
+    description: string | null;
+    status: string;
+    riskScore: number;
+    riskLevel: string;
+    startDate: string | null;
+    targetDate: string | null;
+  };
+  tasks: ProjectTaskSnapshot[];
+  team: ProjectTeamMember[];
+  recentActivity: ProjectActivityEntry[];
+  /** Optional signals from external integrations (Slack, Calendar, Email). */
+  signals: ProjectSignal[];
+  generatedAt: string;
+}
+
+export interface IntelligenceConfig {
+  provider: "openai" | "anthropic" | "mock";
+  apiKey?: string;
+  model: string;
 }

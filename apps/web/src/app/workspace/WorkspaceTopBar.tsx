@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NotificationBell } from "./NotificationBell";
 import { useWorkspaceChrome } from "./WorkspaceChromeContext";
-import { BellRing, Plus, Menu } from "lucide-react";
+import { Plus, Menu } from "lucide-react";
 import { useState } from "react";
 import { ProjectCreateSheet } from "./ProjectCreateSheet";
 
@@ -29,9 +29,6 @@ function Breadcrumb({ workspaceName }: { workspaceName: string }) {
   } else if (pathname?.startsWith("/workspace/meetings")) {
     parts.push({ label: workspaceName || "Home", href: "/workspace" });
     parts.push({ label: "Meetings" });
-  } else if (pathname?.startsWith("/workspace/actions")) {
-    parts.push({ label: workspaceName || "Home", href: "/workspace" });
-    parts.push({ label: "Action Centre" });
   } else if (pathname?.startsWith("/workspace/documents")) {
     parts.push({ label: workspaceName || "Home", href: "/workspace" });
     parts.push({ label: "Documents" });
@@ -109,26 +106,6 @@ export function WorkspaceTopBar({ userEmail: _userEmail, workspaceName = "Larry 
 
         {/* Right cluster */}
         <div className="flex items-center gap-3 shrink-0">
-          {/* Action Centre bell — red badge */}
-          <Link
-            href="/workspace/actions"
-            className="relative flex h-8 w-8 items-center justify-center rounded-lg transition-colors"
-            style={{ color: "var(--text-muted)" }}
-            title="Action Centre"
-            onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "")}
-          >
-            <BellRing size={18} />
-            {(chrome?.pendingCount ?? 0) > 0 && (
-              <span
-                className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-0.5 text-[10px] font-bold text-white"
-                style={{ background: "var(--pm-red)" }}
-              >
-                {(chrome?.pendingCount ?? 0) > 99 ? "99+" : chrome?.pendingCount}
-              </span>
-            )}
-          </Link>
-
           {/* Notification bell */}
           <NotificationBell count={chrome?.notifCount ?? 0} onCountChange={() => undefined} />
 

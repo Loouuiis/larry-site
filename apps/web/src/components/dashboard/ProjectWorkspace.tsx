@@ -10,8 +10,10 @@ import {
 import type { BoardTaskRow, TaskGroup, TaskStatus, WorkspaceTask } from "@/app/dashboard/types";
 import { TaskDetailDrawer } from "@/app/workspace/projects/[projectId]/TaskDetailDrawer";
 import { useProjectData } from "@/hooks/useProjectData";
+import { useLarryEvents } from "@/hooks/useLarryEvents";
 import { StatusChip } from "./StatusChip";
 import { TaskTable } from "./TaskTable";
+import { LarryActivityRail } from "./LarryActivityRail";
 
 type TabId = "overview" | "timeline" | "analytics" | "meetings" | "orgchart" | "documents";
 
@@ -447,13 +449,21 @@ export function ProjectWorkspace({
     project,
     tasks,
     health,
-    actions,
     meetings,
     outcomes,
     loading,
     error,
     refresh,
   } = useProjectData(projectId);
+
+  const {
+    suggested: larrySuggested,
+    activity: larryActivity,
+    accepting: larryAccepting,
+    dismissing: larryDismissing,
+    accept: acceptLarryEvent,
+    dismiss: dismissLarryEvent,
+  } = useLarryEvents(projectId, refresh);
 
   const boardTasks = useMemo(() => tasks.map(toBoardTask), [tasks]);
   const groupedTasks = useMemo<TaskGroup[]>(
@@ -576,7 +586,7 @@ export function ProjectWorkspace({
             <div className="flex items-center gap-6 mb-4">
               {[
                 { label: "Open tasks", value: String(openCount) },
-                { label: "Pending approvals", value: String(actions.length) },
+                { label: "Larry suggests", value: String(larrySuggested.length) },
                 { label: "Blocked", value: String(blockedCount) },
                 { label: "Completion", value: `${completionRate}%` },
               ].map(({ label, value }) => (
@@ -609,6 +619,15 @@ export function ProjectWorkspace({
               />
               <span style={{ flex: 1, background: "var(--surface-2)" }} />
             </div>
+
+            <LarryActivityRail
+              suggested={larrySuggested}
+              activity={larryActivity}
+              accepting={larryAccepting}
+              dismissing={larryDismissing}
+              onAccept={(id) => { void acceptLarryEvent(id); }}
+              onDismiss={(id) => { void dismissLarryEvent(id); }}
+            />
 
             <TaskTable
               groups={groupedTasks}
@@ -896,8 +915,8 @@ export function ProjectWorkspace({
                   <strong className="text-[var(--pm-text)]">{meetings.length}</strong>
                 </div>
                 <div className="flex items-center justify-between rounded-[18px] border border-[var(--pm-border)] bg-white px-4 py-3">
-                  <span>Pending approvals</span>
-                  <strong className="text-[var(--pm-text)]">{actions.length}</strong>
+                  <span>Larry suggests</span>
+                  <strong className="text-[var(--pm-text)]">{larrySuggested.length}</strong>
                 </div>
               </div>
             </div>

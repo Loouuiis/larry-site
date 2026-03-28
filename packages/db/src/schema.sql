@@ -707,3 +707,66 @@ DO $$ BEGIN
     ON documents
     USING (tenant_id::text = current_setting('app.tenant_id', true));
 EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+-- ── Larry Intelligence tables ──────────────────────────────────────────────────
+-- These replace extracted_actions, agent_runs, agent_run_transitions, interventions
+-- for the core intelligence loop. Old tables kept until migration is complete.
+
+CREATE TABLE IF NOT EXISTS larry_events (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  project_id   UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+
+  -- Lifecycle state
+  event_type   TEXT NOT NULL CHECK (event_type IN ('auto_executed', 'suggested', 'accepted', 'dismissed')),
+
+  -- What Larry did or wants to do
+  action_type  TEXT NOT NULL,
+  display_text TEXT NOT NULL,
+  reasoning    TEXT NOT NULL,
+  payload      JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+  -- Execution
+  executed_at  TIMESTAMPTZ,
+  triggered_by TEXT NOT NULL CHECK (triggered_by IN ('schedule', 'login', 'chat', 'signal')),
+  chat_message TEXT,
+
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_larry_events_project
+  ON larry_events (project_id, event_type, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_larry_events_tenant_state
+  ON larry_events (tenant_id, event_type, created_at DESC);
+
+ALTER TABLE larry_events ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_larry_events
+    ON larry_events
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS larry_briefings (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  content     JSONB NOT NULL,
+  event_ids   UUID[] NOT NULL DEFAULT '{}',
+  seen_at     TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_larry_briefings_user
+  ON larry_briefings (user_id, created_at DESC);
+
+ALTER TABLE larry_briefings ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_larry_briefings
+    ON larry_briefings
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;

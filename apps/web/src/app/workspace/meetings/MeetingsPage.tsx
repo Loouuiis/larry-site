@@ -395,7 +395,7 @@ export function MeetingsPage() {
               </div>
               <button
                 type="button"
-                onClick={() => router.push("/workspace/actions")}
+                onClick={() => router.push("/workspace")}
                 style={{
                   flexShrink: 0,
                   borderRadius: "var(--radius-btn)",

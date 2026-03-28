@@ -111,10 +111,10 @@ export const reportingRoutes: FastifyPluginAsync = async (fastify) => {
         [tenantId, params.id]
       );
 
-      const actionRows = await fastify.db.queryTenant<{ state: string; impact: "low" | "medium" | "high" }>(
+      const actionRows = await fastify.db.queryTenant<{ state: string }>(
         tenantId,
-        `SELECT state, impact
-         FROM extracted_actions
+        `SELECT event_type AS state
+         FROM larry_events
          WHERE tenant_id = $1 AND project_id = $2`,
         [tenantId, params.id]
       );
@@ -126,9 +126,9 @@ export const reportingRoutes: FastifyPluginAsync = async (fastify) => {
         (task) => task.priority === "high" || task.priority === "critical"
       ).length;
 
-      const pendingApprovals = actionRows.filter((action) => action.state === "pending").length;
+      const pendingApprovals = actionRows.filter((action) => action.state === "suggested").length;
       const autoExecuted = actionRows.filter(
-        (action) => action.state === "executed" || action.state === "approved"
+        (action) => action.state === "auto_executed" || action.state === "accepted"
       ).length;
 
       const outcome = {
@@ -156,7 +156,7 @@ export const reportingRoutes: FastifyPluginAsync = async (fastify) => {
           pendingApprovals,
           autoExecutedActions: autoExecuted,
         },
-        narrative: `Completion ${totalTasks === 0 ? 0 : Number(((completedTasks / totalTasks) * 100).toFixed(0))}%, ${highRiskTasks} high-risk tasks, ${pendingApprovals} pending approvals, ${autoExecuted} actions auto-executed.`,
+        narrative: `Completion ${totalTasks === 0 ? 0 : Number(((completedTasks / totalTasks) * 100).toFixed(0))}%, ${highRiskTasks} high-risk tasks, ${pendingApprovals} pending suggestions, ${autoExecuted} actions auto-executed.`,
       };
 
       await insertReportSnapshotOncePerDay(

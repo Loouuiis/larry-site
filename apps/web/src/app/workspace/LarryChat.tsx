@@ -1,31 +1,11 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import {
-  Bot,
-  ChevronDown,
-  FileText,
-  LayoutGrid,
-  ListChecks,
-  Mic,
-  Sparkles,
-  WandSparkles,
-  X,
-} from "lucide-react";
-import { useLarryChat, type LarryIntent, type LarryMessage } from "./useLarryChat";
-import { useWorkspaceChrome } from "./WorkspaceChromeContext";
-
-const INTENT_OPTIONS: Array<{ value: LarryIntent; label: string; icon: React.ElementType }> = [
-  { value: "freeform", label: "Ask", icon: WandSparkles },
-  { value: "create_plan", label: "Plan", icon: ListChecks },
-  { value: "update_scope", label: "Scope", icon: LayoutGrid },
-  { value: "draft_follow_up", label: "Follow-up", icon: Bot },
-  { value: "request_summary", label: "Summary", icon: FileText },
-];
+import { Mic, Sparkles, X } from "lucide-react";
+import { useLarryChat, type LarryMessage } from "./useLarryChat";
 
 interface LarryChatProps {
   projectId?: string;
-  pendingCount?: number;
   actionCount?: number;
   onVoiceInput?: () => void;
 }
@@ -51,32 +31,19 @@ function MessageBubble({ msg }: { msg: LarryMessage }) {
         ) : (
           <p>{msg.text}</p>
         )}
-        {isLarry && msg.reasoning && (
-          <details className="mt-1.5">
-            <summary className="cursor-pointer text-[11px] text-[#6366f1] hover:underline">Why?</summary>
-            <div className="mt-1 space-y-1 text-[11px] text-[var(--pm-text-secondary)]">
-              {msg.reasoning.why && <p>{msg.reasoning.why}</p>}
-              {msg.reasoning.signals && msg.reasoning.signals.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {msg.reasoning.signals.map((s, i) => (
-                    <span key={i} className="rounded-full bg-[#e0e7ff] px-2 py-0.5 text-[#4338ca]">{s}</span>
-                  ))}
-                </div>
-              )}
-              {msg.reasoning.threshold && (
-                <p className="text-[var(--pm-text-muted)]">Policy: {msg.reasoning.threshold}</p>
-              )}
-            </div>
-          </details>
+        {isLarry && (msg.actionsExecuted ?? 0) > 0 && (
+          <p className="mt-1 text-[11px] text-[#6366f1]">
+            {msg.actionsExecuted} action{msg.actionsExecuted !== 1 ? "s" : ""} taken
+            {(msg.suggestionCount ?? 0) > 0 ? ` · ${msg.suggestionCount} suggestion${msg.suggestionCount !== 1 ? "s" : ""} pending` : ""}
+          </p>
         )}
       </div>
     </div>
   );
 }
 
-export function LarryChat({ projectId, pendingCount = 0, actionCount = 0, onVoiceInput }: LarryChatProps) {
+export function LarryChat({ projectId, actionCount = 0, onVoiceInput }: LarryChatProps) {
   const chat = useLarryChat(projectId);
-  const chrome = useWorkspaceChrome();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Listen for external open/push/load-conversation events
@@ -114,9 +81,9 @@ export function LarryChat({ projectId, pendingCount = 0, actionCount = 0, onVoic
         title="Open Larry"
       >
         <Sparkles size={22} />
-        {(pendingCount + actionCount) > 0 && (
+        {actionCount > 0 && (
           <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white">
-            {pendingCount + actionCount}
+            {actionCount}
           </span>
         )}
       </button>
@@ -125,7 +92,7 @@ export function LarryChat({ projectId, pendingCount = 0, actionCount = 0, onVoic
 
   return (
     <div className="fixed bottom-6 right-6 z-50 flex flex-col rounded-2xl border border-[var(--pm-border)] bg-white shadow-2xl"
-      style={{ width: 400, height: 560 }}
+      style={{ width: 400, height: 520 }}
     >
       {/* Header */}
       <div className="flex items-center justify-between rounded-t-2xl border-b border-[var(--pm-border)] bg-gradient-to-r from-[#6366f1] to-[#0073EA] px-4 py-3">
@@ -146,20 +113,6 @@ export function LarryChat({ projectId, pendingCount = 0, actionCount = 0, onVoic
           <X size={16} />
         </button>
       </div>
-
-      {/* Proactive banners */}
-      {(pendingCount > 0 || actionCount > 0) && (
-        <div className="border-b border-[var(--pm-border)] bg-amber-50 px-4 py-2">
-          {pendingCount > 0 && (
-            <p className="text-[12px] text-amber-800">
-              {pendingCount} item{pendingCount !== 1 ? "s" : ""} in Action Center awaiting review
-            </p>
-          )}
-          {actionCount > 0 && actionCount !== pendingCount && (
-            <p className="text-[12px] text-amber-700">{actionCount} pending notifications</p>
-          )}
-        </div>
-      )}
 
       {/* Proactive queue */}
       {chat.proactiveQueue.length > 0 && (
@@ -185,7 +138,9 @@ export function LarryChat({ projectId, pendingCount = 0, actionCount = 0, onVoic
           <div className="flex h-full flex-col items-center justify-center text-center">
             <Sparkles size={28} className="mb-2 text-[#6366f1] opacity-40" />
             <p className="text-[13px] text-[var(--pm-text-muted)]">
-              Ask Larry anything about this workspace or run a coordination command.
+              {projectId
+                ? "Tell Larry what to do — it will act immediately."
+                : "Open a project to chat with Larry about it."}
             </p>
           </div>
         )}
@@ -195,49 +150,28 @@ export function LarryChat({ projectId, pendingCount = 0, actionCount = 0, onVoic
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Intent chips */}
-      <div className="flex flex-wrap gap-1 border-t border-[var(--pm-border)] px-4 pt-2 pb-1">
-        {INTENT_OPTIONS.map((opt) => {
-          const Icon = opt.icon;
-          const active = chat.intent === opt.value;
-          return (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => chat.setIntent(opt.value)}
-              className={`inline-flex h-6 items-center gap-1 rounded-full px-2 text-[11px] font-medium transition ${
-                active
-                  ? "bg-[#6366f1] text-white"
-                  : "bg-[var(--pm-gray-light)] text-[var(--pm-text-secondary)] hover:bg-[#e0e2e8]"
-              }`}
-            >
-              <Icon size={10} />
-              {opt.label}
-            </button>
-          );
-        })}
-      </div>
-
       {/* Input */}
       <form onSubmit={chat.handleSubmit} className="flex items-center gap-2 border-t border-[var(--pm-border)] px-4 py-3">
         <input
           value={chat.input}
           onChange={(e) => chat.setInput(e.target.value)}
-          placeholder="Message Larry…"
-          disabled={chat.busy}
+          placeholder={projectId ? "Tell Larry what to do…" : "Open a project first"}
+          disabled={chat.busy || !projectId}
           className="flex-1 h-9 rounded-lg border border-[var(--pm-border)] bg-[var(--pm-gray-light)] px-3 text-[13px] outline-none focus:border-[#6366f1] focus:bg-white disabled:opacity-50"
         />
-        <button
-          type="button"
-          onClick={onVoiceInput}
-          aria-label="Voice input"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--pm-border)] bg-[var(--pm-gray-light)] text-[#6366f1] transition-colors hover:border-[#6366f1] hover:bg-[#ede9fe]"
-        >
-          <Mic size={15} />
-        </button>
+        {onVoiceInput && (
+          <button
+            type="button"
+            onClick={onVoiceInput}
+            aria-label="Voice input"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--pm-border)] bg-[var(--pm-gray-light)] text-[#6366f1] transition-colors hover:border-[#6366f1] hover:bg-[#ede9fe]"
+          >
+            <Mic size={15} />
+          </button>
+        )}
         <button
           type="submit"
-          disabled={chat.busy || chat.input.trim().length < 3}
+          disabled={chat.busy || !projectId || chat.input.trim().length < 1}
           className="h-9 rounded-lg bg-[#6366f1] px-3 text-[13px] font-medium text-white disabled:opacity-50 hover:bg-[#4f46e5]"
         >
           {chat.busy ? "…" : "Send"}

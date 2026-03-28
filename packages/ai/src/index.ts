@@ -1255,3 +1255,19 @@ export function classifyRiskLevel(score: number): RiskScoreSnapshot["riskLevel"]
   if (score >= 35) return "medium";
   return "low";
 }
+
+// ── Larry Intelligence (Phase 1) ─────────────────────────────────────────────
+export { runIntelligence } from "./intelligence.js";
+
+// Re-export new shared intelligence types for convenience
+export type {
+  IntelligenceConfig,
+  IntelligenceResult,
+  LarryAction,
+  LarryActionType,
+  LarryEventType,
+  ProjectSnapshot,
+  ProjectTaskSnapshot,
+  ProjectTeamMember,
+  ProjectSignal,
+} from "@larry/shared";

@@ -101,14 +101,12 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
   ];
 
   const projects = snapshot?.projects ?? [];
-  const pendingCount = snapshot?.pendingActions?.length ?? 0;
 
   return (
     <WorkspaceChromeProvider
       value={{
         openMeeting: () => setMeetingOpen(true),
         refreshShell: loadShell,
-        pendingCount,
         notifCount,
         openLarry: () => window.dispatchEvent(new CustomEvent("larry:open")),
         pushLarryMessage: (msg) => window.dispatchEvent(new CustomEvent("larry:push", { detail: msg })),
@@ -121,7 +119,6 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
           mobileOpen={mobileOpen}
           onMobileClose={() => setMobileOpen(false)}
           userEmail={userEmail}
-          pendingCount={pendingCount}
           notifCount={notifCount}
         />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -142,7 +139,6 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
       />
       <LarryChat
         projectId={projectIdFromPath || undefined}
-        pendingCount={pendingCount}
       />
     </WorkspaceChromeProvider>
   );
