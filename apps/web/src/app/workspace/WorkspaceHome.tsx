@@ -170,10 +170,10 @@ export function WorkspaceHome() {
 
   return (
     <div
-      className="min-h-full overflow-y-auto"
+      className="min-h-full overflow-x-hidden overflow-y-auto"
       style={{ background: "var(--page-bg)" }}
     >
-      <div className="mx-auto max-w-[960px] px-6 py-8 space-y-6">
+      <div className="mx-auto max-w-[960px] px-4 py-8 space-y-6 sm:px-6">
 
         {/* Welcome header — no card wrapper */}
         <header>
@@ -319,7 +319,7 @@ export function WorkspaceHome() {
 
                 {/* Footer row */}
                 <div
-                  className="mt-3 flex items-center justify-between text-body-sm"
+                  className="mt-3 flex flex-wrap items-center justify-between gap-y-1 text-body-sm"
                 >
                   <span>{project.progress}%</span>
                   <span>{project.openTasks} open tasks</span>

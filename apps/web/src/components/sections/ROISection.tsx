@@ -64,7 +64,7 @@ export function ROISection() {
                   .join(" ")}
               >
                 <div className="mb-3 flex items-end gap-1 leading-none">
-                  <span className="text-[3rem] font-bold tracking-tight text-neutral-900 leading-none">
+                  <span className="text-[2.25rem] font-bold tracking-tight text-neutral-900 leading-none sm:text-[3rem]">
                     {value}
                   </span>
                   {unit && (

@@ -350,7 +350,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
       initial="hidden"
       animate="visible"
       exit="exit"
-      className="flex h-full w-[360px] shrink-0 flex-col border-l border-neutral-100 bg-white"
+      className="flex h-full w-full max-w-[360px] shrink-0 flex-col border-l border-neutral-100 bg-white"
     >
       {/* ── Header ── */}
       <div className="flex items-start gap-3 border-b border-neutral-100 px-5 py-4">

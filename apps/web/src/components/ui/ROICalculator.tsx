@@ -166,7 +166,7 @@ export function ROICalculator() {
             suppressHydrationWarning
             aria-live="polite"
             aria-atomic="true"
-            className="text-[3.25rem] font-bold leading-none tracking-tight tabular-nums text-neutral-900"
+            className="text-[2.5rem] font-bold leading-none tracking-tight tabular-nums text-neutral-900 sm:text-[3.25rem]"
           />
           <span className="mb-1.5 text-xl font-semibold text-neutral-400">
             hours.
