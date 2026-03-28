@@ -13,7 +13,7 @@ import { useProjectData } from "@/hooks/useProjectData";
 import { useLarryEvents } from "@/hooks/useLarryEvents";
 import { StatusChip } from "./StatusChip";
 import { TaskTable } from "./TaskTable";
-import { LarryActivityRail } from "./LarryActivityRail";
+import { LarryTabSection } from "./LarryTabSection";
 
 type TabId = "overview" | "timeline" | "analytics" | "meetings" | "orgchart" | "documents";
 
@@ -620,13 +620,15 @@ export function ProjectWorkspace({
               <span style={{ flex: 1, background: "var(--surface-2)" }} />
             </div>
 
-            <LarryActivityRail
+            <LarryTabSection
+              projectId={projectId}
+              tabId="overview"
               suggested={larrySuggested}
               activity={larryActivity}
               accepting={larryAccepting}
               dismissing={larryDismissing}
-              onAccept={(id) => { void acceptLarryEvent(id); }}
-              onDismiss={(id) => { void dismissLarryEvent(id); }}
+              onAccept={acceptLarryEvent}
+              onDismiss={dismissLarryEvent}
             />
 
             <TaskTable
@@ -642,15 +644,37 @@ export function ProjectWorkspace({
       case "timeline":
         if (timeline.dated.length === 0 && timeline.undated.length === 0) {
           return (
-            <EmptyPanel
-              title="No timeline yet"
-              description="Add tasks with start and due dates to lay out the project plan. Undated tasks will collect underneath so nothing goes missing."
-            />
+            <div className="space-y-5">
+              <LarryTabSection
+                projectId={projectId}
+                tabId="timeline"
+                suggested={larrySuggested}
+                activity={larryActivity}
+                accepting={larryAccepting}
+                dismissing={larryDismissing}
+                onAccept={acceptLarryEvent}
+                onDismiss={dismissLarryEvent}
+              />
+              <EmptyPanel
+                title="No timeline yet"
+                description="Add tasks with start and due dates to lay out the project plan. Undated tasks will collect underneath so nothing goes missing."
+              />
+            </div>
           );
         }
 
         return (
           <div className="space-y-5">
+            <LarryTabSection
+              projectId={projectId}
+              tabId="timeline"
+              suggested={larrySuggested}
+              activity={larryActivity}
+              accepting={larryAccepting}
+              dismissing={larryDismissing}
+              onAccept={acceptLarryEvent}
+              onDismiss={dismissLarryEvent}
+            />
             <div className="overflow-hidden rounded-[24px] border border-[var(--pm-border)] bg-white">
               <div className="grid grid-cols-[240px_minmax(0,1fr)] border-b border-[var(--pm-border)] px-5 py-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">
                 <span>Task lane</span>
@@ -751,6 +775,17 @@ export function ProjectWorkspace({
 
       case "analytics":
         return (
+          <div className="space-y-5">
+            <LarryTabSection
+              projectId={projectId}
+              tabId="analytics"
+              suggested={larrySuggested}
+              activity={larryActivity}
+              accepting={larryAccepting}
+              dismissing={larryDismissing}
+              onAccept={acceptLarryEvent}
+              onDismiss={dismissLarryEvent}
+            />
           <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
             <div className="rounded-[24px] border border-[var(--pm-border)] bg-white p-6">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">
@@ -771,7 +806,7 @@ export function ProjectWorkspace({
                 </div>
                 <div className="rounded-[20px] border border-[var(--pm-border)] bg-white p-4">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">High-risk rate</p>
-                  <p className="mt-3 text-[28px] font-semibold tracking-[-0.03em] text-[var(--pm-text)]">{`${Math.round(Number(outcomes?.metrics?.highRiskTaskRate ?? 0) * 100)}%`}</p>
+                  <p className="mt-3 text-[28px] font-semibold tracking-[-0.03em] text-[var(--pm-text)]">{`${Math.round(Number(outcomes?.metrics?.highRiskTaskRate ?? 0))}%`}</p>
                 </div>
               </div>
             </div>
@@ -786,20 +821,43 @@ export function ProjectWorkspace({
               </p>
             </div>
           </div>
+          </div>
         );
 
       case "meetings":
         if (meetings.length === 0) {
           return (
-            <EmptyPanel
-              title="No meeting notes yet"
-              description="Meeting summaries will appear here as soon as transcripts or calendar ingests are processed for this project."
-            />
+            <div className="space-y-5">
+              <LarryTabSection
+                projectId={projectId}
+                tabId="meetings"
+                suggested={larrySuggested}
+                activity={larryActivity}
+                accepting={larryAccepting}
+                dismissing={larryDismissing}
+                onAccept={acceptLarryEvent}
+                onDismiss={dismissLarryEvent}
+              />
+              <EmptyPanel
+                title="No meeting notes yet"
+                description="Meeting summaries will appear here as soon as transcripts or calendar ingests are processed for this project."
+              />
+            </div>
           );
         }
 
         return (
           <div className="space-y-4">
+            <LarryTabSection
+              projectId={projectId}
+              tabId="meetings"
+              suggested={larrySuggested}
+              activity={larryActivity}
+              accepting={larryAccepting}
+              dismissing={larryDismissing}
+              onAccept={acceptLarryEvent}
+              onDismiss={dismissLarryEvent}
+            />
             {meetings.map((meeting) => (
               <article
                 key={meeting.id}
@@ -834,14 +892,37 @@ export function ProjectWorkspace({
       case "orgchart":
         if (ownerRows.length === 0) {
           return (
-            <EmptyPanel
-              title="No ownership data yet"
-              description="Assign tasks to teammates and Larry will start building a real ownership map here."
-            />
+            <div className="space-y-5">
+              <LarryTabSection
+                projectId={projectId}
+                tabId="orgchart"
+                suggested={larrySuggested}
+                activity={larryActivity}
+                accepting={larryAccepting}
+                dismissing={larryDismissing}
+                onAccept={acceptLarryEvent}
+                onDismiss={dismissLarryEvent}
+              />
+              <EmptyPanel
+                title="No ownership data yet"
+                description="Assign tasks to teammates and Larry will start building a real ownership map here."
+              />
+            </div>
           );
         }
 
         return (
+          <div className="space-y-4">
+            <LarryTabSection
+              projectId={projectId}
+              tabId="orgchart"
+              suggested={larrySuggested}
+              activity={larryActivity}
+              accepting={larryAccepting}
+              dismissing={larryDismissing}
+              onAccept={acceptLarryEvent}
+              onDismiss={dismissLarryEvent}
+            />
           <div
             style={{
               border: "1px solid var(--border)",
@@ -888,10 +969,22 @@ export function ProjectWorkspace({
               </div>
             ))}
           </div>
+          </div>
         );
 
       case "documents":
         return (
+          <div className="space-y-5">
+            <LarryTabSection
+              projectId={projectId}
+              tabId="documents"
+              suggested={larrySuggested}
+              activity={larryActivity}
+              accepting={larryAccepting}
+              dismissing={larryDismissing}
+              onAccept={acceptLarryEvent}
+              onDismiss={dismissLarryEvent}
+            />
           <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
             <div className="rounded-[24px] border border-[var(--pm-border)] bg-white p-6">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">
@@ -920,6 +1013,7 @@ export function ProjectWorkspace({
                 </div>
               </div>
             </div>
+          </div>
           </div>
         );
     }

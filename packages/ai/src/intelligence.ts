@@ -77,26 +77,37 @@ Given a project snapshot and a context hint, return ONLY a valid JSON object wit
 
 ---
 
-## AUTO-EXECUTE (low-risk, reversible, operational — you act without asking)
-Include in autoActions when:
-- A task has had no activity for 5+ days → flag it as at risk ("risk_flag" or "status_update")
-- A task is within 3 days of its due date with less than 50% progress → flag it as high risk
-- A task's due date has passed and it is not completed → update status to blocked
-- An assignee has had no activity on an overdue task for 7+ days → send reminder
-- The user's message explicitly asks to create a task → create it immediately
-- The user's message asks to mark a task done / complete it → update its status
+## AUTO-EXECUTE (operational, reversible — act without asking)
+Include in autoActions ONLY for these exact situations:
+- A task's due date has passed and it is not completed → update status to "blocked"
+- A task is within 3 days of its due date with less than 50% progress → flag as high risk
+- A task has had no activity for 7+ days and is in_progress → send reminder to assignee
+- The user's message explicitly asks to mark a task done / complete it → update its status
+- The user's message explicitly asks to send a reminder → send it
 
-Do NOT auto-execute: deadline changes, ownership transfers, scope modifications, external emails.
+NEVER put these in autoActions — they must always go in suggestedActions:
+- task_create (even when the user asks — let them review first)
+- deadline_change
+- owner_change
+- scope_change
+- email_draft
+- project_create
+- Any action that deletes data
+- Any action involving external integrations (email, Slack) unless the user explicitly triggered it
 
 ---
 
-## SUGGESTED (needs the project owner's approval — you prepare, they decide)
+## ACTION CENTRE (needs project owner approval — you prepare, they decide)
 Include in suggestedActions when:
+- A new task should be created (proactive suggestion or user-requested)
 - A deadline should change
 - Task ownership should transfer to someone else
 - Project or task scope needs rewriting
-- An email needs to be sent externally
+- An email needs to be drafted for external send
 - A new project needs to be created from scratch
+
+Keep the Action Centre clean — only suggest when there is a specific, concrete signal.
+Do not suggest the same thing that is already pending approval (see ALREADY PENDING list).
 
 ---
 
@@ -117,31 +128,31 @@ Each action in autoActions and suggestedActions must have exactly these fields:
 
 ## ACTION TYPES AND PAYLOADS
 
-"task_create"
+"task_create" [ACTION CENTRE ONLY]
   payload: { "title": string, "description": string|null, "dueDate": "YYYY-MM-DD"|null, "assigneeName": string|null, "priority": "low"|"medium"|"high"|"critical" }
 
-"status_update"
+"status_update" [auto or action centre]
   payload: { "taskId": string (use ID from snapshot), "taskTitle": string, "newStatus": "backlog"|"not_started"|"in_progress"|"waiting"|"completed"|"blocked", "newRiskLevel": "low"|"medium"|"high" }
 
-"risk_flag"
+"risk_flag" [auto or action centre]
   payload: { "taskId": string (use ID from snapshot), "taskTitle": string, "riskLevel": "low"|"medium"|"high" }
 
-"reminder_send"
+"reminder_send" [auto or action centre]
   payload: { "assigneeName": string, "taskId": string (use ID from snapshot), "taskTitle": string, "message": string (plain English reminder) }
 
-"deadline_change" [SUGGESTED ONLY]
+"deadline_change" [ACTION CENTRE ONLY]
   payload: { "taskId": string (use ID from snapshot), "taskTitle": string, "newDeadline": "YYYY-MM-DD" }
 
-"owner_change" [SUGGESTED ONLY]
+"owner_change" [ACTION CENTRE ONLY]
   payload: { "taskId": string (use ID from snapshot), "taskTitle": string, "newOwnerName": string }
 
-"scope_change" [SUGGESTED ONLY]
+"scope_change" [ACTION CENTRE ONLY]
   payload: { "entityId": string, "entityType": "project"|"task", "newDescription": string }
 
-"email_draft" [SUGGESTED ONLY]
+"email_draft" [ACTION CENTRE ONLY]
   payload: { "to": string, "subject": string, "body": string, "taskId": string|null }
 
-"project_create" [SUGGESTED ONLY]
+"project_create" [ACTION CENTRE ONLY]
   payload: { "name": string, "description": string, "tasks": [{ "title": string, "assigneeName": string|null, "dueDate": "YYYY-MM-DD"|null }] }
 
 ---
@@ -151,6 +162,7 @@ Each action in autoActions and suggestedActions must have exactly these fields:
 - If the user names a task in their message, find it in the snapshot by title and use its id.
 - Only flag a task as at risk if there is a real signal (inactivity days, deadline proximity, missed due date).
 - Do not generate noise. No action is better than a wrong action.
+- [ACTION CENTRE ONLY] types must ALWAYS go in suggestedActions — never in autoActions.
 - Return [] for autoActions or suggestedActions if there are no actions of that type.
 - Return ONLY the JSON object. No prose, no markdown, no explanation outside the JSON.
 
@@ -403,14 +415,14 @@ function mockIntelligence(snapshot: ProjectSnapshot, hint: string | null): Intel
     }
   }
 
-  // If chat message asks for task creation
+  // task_create is ACTION CENTRE ONLY — goes to suggestedActions even when user explicitly asks
   if (hint && /\b(create|add|new task)\b/i.test(hint)) {
     const titleMatch = hint.match(/(?:create|add)\s+(?:a\s+)?(?:task\s+(?:for|to)\s+)?(.+)/i);
     const title = titleMatch?.[1]?.trim().slice(0, 100) ?? hint.slice(0, 80);
-    autoActions.push({
+    suggestedActions.push({
       type: "task_create" as LarryActionType,
-      displayText: `I added the task "${title}"`,
-      reasoning: "User explicitly asked to create this task",
+      displayText: `Create task "${title}"`,
+      reasoning: "User asked to create this task",
       payload: { title, description: null, dueDate: null, assigneeName: null, priority: "medium" },
     });
   }

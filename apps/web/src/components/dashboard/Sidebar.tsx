@@ -9,7 +9,7 @@ import {
   FileText, MessageSquare, ClipboardList,
   X, FolderOpen, Home, ListTodo, Settings,
   Search, LogOut, User, FolderKanban, CheckSquare,
-  Plus, BarChart2,
+  Plus, BarChart2, Sparkles,
 } from "lucide-react";
 import { WorkspaceProject } from "@/app/dashboard/types";
 
@@ -18,7 +18,7 @@ const DRAWER_EASE = [0.22, 1, 0.36, 1] as const;
 /* ─── Types ────────────────────────────────────────────────────────── */
 
 export type NavSection = "projects" | "documents" | "chats" | "meetings" | "analytics";
-export type WorkspaceSidebarNav = "home" | "my-work" | "project" | "meetings" | "documents" | "chats" | "settings";
+export type WorkspaceSidebarNav = "home" | "my-work" | "project" | "meetings" | "documents" | "chats" | "larry" | "settings";
 
 const WORKSPACE_NAV: { id: WorkspaceSidebarNav; label: string; icon: React.ElementType; href: string }[] = [
   { id: "home",      label: "Home",      icon: Home,         href: "/workspace"           },
@@ -26,6 +26,7 @@ const WORKSPACE_NAV: { id: WorkspaceSidebarNav; label: string; icon: React.Eleme
   { id: "meetings",  label: "Meetings",  icon: ClipboardList, href: "/workspace/meetings" },
   { id: "documents", label: "Documents", icon: FileText,     href: "/workspace/documents" },
   { id: "chats",     label: "Chats",     icon: MessageSquare, href: "/workspace/chats"    },
+  { id: "larry",     label: "Ask Larry", icon: Sparkles,     href: "/workspace/chats"     },
   { id: "settings",  label: "Settings",  icon: Settings,     href: "/workspace/settings"  },
 ];
 
@@ -198,10 +199,27 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail }: Work
         </div>
       ) : (
         <>
-      {/* Primary nav — no section label, 6 items */}
+      {/* Primary nav */}
       <nav className="shrink-0 px-2 space-y-0.5" aria-label="Main navigation">
         {WORKSPACE_NAV.map(({ id, label, icon: Icon, href }) => {
           const isActive = activeNav === id;
+          // "Ask Larry" opens the chat panel instead of navigating
+          if (id === "larry") {
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => {
+                  onClose?.();
+                  window.dispatchEvent(new CustomEvent("larry:open"));
+                }}
+                className={`pm-nav-item w-full text-left${isActive ? " active" : ""}`}
+              >
+                <Icon size={18} className="shrink-0 icon-md" style={{ color: "var(--brand)" }} />
+                <span style={{ color: "var(--text-1)", fontWeight: 500 }}>{label}</span>
+              </button>
+            );
+          }
           return (
             <Link
               key={id}
@@ -211,7 +229,6 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail }: Work
             >
               <Icon size={18} className="shrink-0 icon-md" style={{ color: isActive ? "var(--brand)" : "var(--text-disabled)" }} />
               <span style={{ color: isActive ? "var(--text-1)" : "var(--text-2)" }}>{label}</span>
-              {/* Red pending badge on the right edge for all items that might have pending — only shown for actions via top bar now */}
             </Link>
           );
         })}

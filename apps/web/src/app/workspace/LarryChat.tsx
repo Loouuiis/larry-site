@@ -6,7 +6,6 @@ import { useLarryChat, type LarryMessage } from "./useLarryChat";
 
 interface LarryChatProps {
   projectId?: string;
-  actionCount?: number;
   onVoiceInput?: () => void;
 }
 
@@ -42,11 +41,11 @@ function MessageBubble({ msg }: { msg: LarryMessage }) {
   );
 }
 
-export function LarryChat({ projectId, actionCount = 0, onVoiceInput }: LarryChatProps) {
+export function LarryChat({ projectId, onVoiceInput }: LarryChatProps) {
   const chat = useLarryChat(projectId);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Listen for external open/push/load-conversation events
+  // Listen for external open/push/load-conversation/prefill events
   useEffect(() => {
     function onOpen() { chat.open(); }
     function onPush(e: Event) {
@@ -57,15 +56,24 @@ export function LarryChat({ projectId, actionCount = 0, onVoiceInput }: LarryCha
       const id = (e as CustomEvent<string>).detail;
       if (id) void chat.loadConversation(id);
     }
+    function onPrefill(e: Event) {
+      const text = (e as CustomEvent<string>).detail;
+      if (text) {
+        chat.open();
+        chat.setInput(text);
+      }
+    }
     window.addEventListener("larry:open", onOpen);
     window.addEventListener("larry:push", onPush);
     window.addEventListener("larry:load-conversation", onLoadConversation);
+    window.addEventListener("larry:prefill", onPrefill);
     return () => {
       window.removeEventListener("larry:open", onOpen);
       window.removeEventListener("larry:push", onPush);
       window.removeEventListener("larry:load-conversation", onLoadConversation);
+      window.removeEventListener("larry:prefill", onPrefill);
     };
-  }, [chat.open, chat.pushMessage, chat.loadConversation]);
+  }, [chat.open, chat.pushMessage, chat.loadConversation, chat.setInput]);
 
   // Auto-scroll messages
   useEffect(() => {
@@ -73,21 +81,7 @@ export function LarryChat({ projectId, actionCount = 0, onVoiceInput }: LarryCha
   }, [chat.messages]);
 
   if (!chat.isOpen) {
-    return (
-      <button
-        type="button"
-        onClick={chat.open}
-        className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-[#6366f1] to-[#0073EA] text-white shadow-lg hover:shadow-xl transition-shadow"
-        title="Open Larry"
-      >
-        <Sparkles size={22} />
-        {actionCount > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white">
-            {actionCount}
-          </span>
-        )}
-      </button>
-    );
+    return null;
   }
 
   return (
@@ -140,7 +134,7 @@ export function LarryChat({ projectId, actionCount = 0, onVoiceInput }: LarryCha
             <p className="text-[13px] text-[var(--pm-text-muted)]">
               {projectId
                 ? "Tell Larry what to do — it will act immediately."
-                : "Open a project to chat with Larry about it."}
+                : "Open a project first, or use the Larry section inside any project tab to talk to me in context."}
             </p>
           </div>
         )}

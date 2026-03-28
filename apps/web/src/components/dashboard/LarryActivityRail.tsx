@@ -1,6 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import type { LarryEvent } from "@/hooks/useLarryEvents";
+
+const ACTIVITY_PREVIEW_COUNT = 3;
 
 interface LarryActivityRailProps {
   suggested: LarryEvent[];
@@ -9,6 +12,7 @@ interface LarryActivityRailProps {
   dismissing: string | null;
   onAccept: (id: string) => void;
   onDismiss: (id: string) => void;
+  onChatRefine?: (displayText: string) => void;
 }
 
 function formatRelativeTime(value: string): string {
@@ -29,8 +33,16 @@ export function LarryActivityRail({
   dismissing,
   onAccept,
   onDismiss,
+  onChatRefine,
 }: LarryActivityRailProps) {
+  const [showAllActivity, setShowAllActivity] = useState(false);
+
   if (suggested.length === 0 && activity.length === 0) return null;
+
+  const visibleActivity = showAllActivity
+    ? activity
+    : activity.slice(0, ACTIVITY_PREVIEW_COUNT);
+  const hiddenActivityCount = activity.length - ACTIVITY_PREVIEW_COUNT;
 
   return (
     <div className="space-y-3 mb-5">
@@ -68,7 +80,7 @@ export function LarryActivityRail({
                 >
                   {event.reasoning}
                 </p>
-                <div className="flex items-center gap-2 mt-3">
+                <div className="flex items-center gap-2 mt-3 flex-wrap">
                   <button
                     type="button"
                     disabled={busy}
@@ -105,8 +117,30 @@ export function LarryActivityRail({
                       opacity: busy ? 0.5 : 1,
                     }}
                   >
-                    {isDismissing ? "Dismissing…" : "Dismiss"}
+                    {isDismissing ? "Declining…" : "Decline"}
                   </button>
+                  {onChatRefine && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => onChatRefine(event.displayText)}
+                      style={{
+                        height: "30px",
+                        padding: "0 12px",
+                        background: "transparent",
+                        color: "#6366f1",
+                        borderRadius: "var(--radius-btn)",
+                        fontSize: "13px",
+                        fontWeight: 500,
+                        border: "1px solid #c7d2fe",
+                        cursor: busy ? "not-allowed" : "pointer",
+                        opacity: busy ? 0.5 : 1,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Chat to refine →
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -133,7 +167,7 @@ export function LarryActivityRail({
               Larry did
             </p>
           </div>
-          {activity.map((event, i) => (
+          {visibleActivity.map((event, i) => (
             <div
               key={event.id}
               style={{
@@ -153,6 +187,42 @@ export function LarryActivityRail({
               </p>
             </div>
           ))}
+          {!showAllActivity && hiddenActivityCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowAllActivity(true)}
+              style={{
+                width: "100%",
+                padding: "8px 16px",
+                borderTop: "1px solid var(--border)",
+                background: "transparent",
+                color: "var(--text-muted)",
+                fontSize: "12px",
+                cursor: "pointer",
+                textAlign: "left",
+              }}
+            >
+              Show {hiddenActivityCount} more…
+            </button>
+          )}
+          {showAllActivity && activity.length > ACTIVITY_PREVIEW_COUNT && (
+            <button
+              type="button"
+              onClick={() => setShowAllActivity(false)}
+              style={{
+                width: "100%",
+                padding: "8px 16px",
+                borderTop: "1px solid var(--border)",
+                background: "transparent",
+                color: "var(--text-muted)",
+                fontSize: "12px",
+                cursor: "pointer",
+                textAlign: "left",
+              }}
+            >
+              Show less
+            </button>
+          )}
         </div>
       )}
     </div>

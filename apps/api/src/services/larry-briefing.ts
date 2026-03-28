@@ -1,7 +1,8 @@
 import { Db, getProjectSnapshot } from "@larry/db";
 import { runIntelligence } from "@larry/ai";
 import type { IntelligenceConfig } from "@larry/shared";
-import { runAutoActions, storeSuggestions } from "@larry/db";
+import { runAutoActions, storeSuggestions, getPendingSuggestionTexts } from "@larry/db";
+import { buildPendingClause } from "../lib/intelligence-hints.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -67,8 +68,11 @@ export async function generateBriefing(
   //    projects are logged and skipped so one bad project can't kill the briefing
   const settled = await Promise.allSettled(
     projectRows.map(async (project) => {
-      const snapshot = await getProjectSnapshot(db, tenantId, project.id);
-      const result = await runIntelligence(config, snapshot, "user logged in");
+      const [snapshot, pendingTexts] = await Promise.all([
+        getProjectSnapshot(db, tenantId, project.id),
+        getPendingSuggestionTexts(db, tenantId, project.id).catch(() => [] as string[]),
+      ]);
+      const result = await runIntelligence(config, snapshot, `user logged in${buildPendingClause(pendingTexts)}`);
 
       const [autoResult, suggestResult] = await Promise.all([
         runAutoActions(db, tenantId, project.id, "login", result.autoActions),

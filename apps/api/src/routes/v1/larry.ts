@@ -4,7 +4,8 @@ import { runIntelligence } from "@larry/ai";
 import { getProjectSnapshot } from "@larry/db";
 import { getApiEnv } from "@larry/config";
 import { writeAuditLog } from "../../lib/audit.js";
-import { runAutoActions, storeSuggestions, executeAction } from "@larry/db";
+import { buildPendingClause } from "../../lib/intelligence-hints.js";
+import { runAutoActions, storeSuggestions, executeAction, getPendingSuggestionTexts } from "@larry/db";
 import { getOrGenerateBriefing } from "../../services/larry-briefing.js";
 import type { IntelligenceConfig } from "@larry/shared";
 import type { FastifyRequest } from "fastify";
@@ -341,9 +342,9 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         [tenantId, userId]
       );
       const user = userRows[0];
-      if (!user) throw fastify.httpErrors.notFound("User not found.");
-
-      const displayName = user.display_name?.trim() || user.email.split("@")[0] || "there";
+      const displayName = user
+        ? (user.display_name?.trim() || user.email.split("@")[0] || "there")
+        : "there";
 
       const config = buildIntelligenceConfig(fastify.config);
 
@@ -357,9 +358,21 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           displayName
         );
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
+        // Log the real cause but return a graceful empty briefing so the UI never
+        // shows a 500. The briefing is non-critical — users should still be able
+        // to use the app even when the briefing generation fails.
         request.log.error({ err, tenantId, userId }, "generateBriefing failed");
-        throw fastify.httpErrors.serviceUnavailable(`Larry briefing error: ${msg}`);
+        const hour = new Date().getHours();
+        const timeOfDay = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
+        return reply.code(200).send({
+          briefing: {
+            greeting: `Good ${timeOfDay}, ${displayName}.`,
+            projects: [],
+            totalNeedsYou: 0,
+          },
+          cached: false,
+          degraded: true,
+        });
       }
 
       // Mark as seen if this is the first read
@@ -369,7 +382,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           `UPDATE larry_briefings SET seen_at = NOW()
            WHERE tenant_id = $1 AND id = $2 AND seen_at IS NULL`,
           [tenantId, briefingResult.briefingId]
-        );
+        ).catch(() => { /* non-critical */ });
       }
 
       return reply.code(200).send({
@@ -416,11 +429,15 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         throw fastify.httpErrors.notFound(msg);
       }
 
+      // Fetch pending suggestions so intelligence can avoid re-proposing them
+      const pendingTexts = await getPendingSuggestionTexts(fastify.db, tenantId, projectId).catch(() => [] as string[]);
+      const pendingClause = buildPendingClause(pendingTexts);
+
       // Run intelligence
       const config = buildIntelligenceConfig(fastify.config);
       let result;
       try {
-        result = await runIntelligence(config, snapshot, `user said: "${message}"`);
+        result = await runIntelligence(config, snapshot, `user said: "${message}"${pendingClause}`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         request.log.error({ err, tenantId, projectId }, "runIntelligence failed");

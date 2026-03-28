@@ -139,11 +139,11 @@ export function useLarryChat(projectId?: string) {
   const sendMessage = useCallback(
     async (text: string) => {
       if (!projectId) {
-        // Without a projectId we can't run intelligence — show a prompt
+        // No project context — guide the user clearly
         const prompt: LarryMessage = {
           id: crypto.randomUUID(),
           role: "larry",
-          text: "Open a project to chat with Larry about it.",
+          text: "I need a project to work with. Open a project and use the Larry section inside it to chat with me, or select a project from the sidebar first.",
           createdAt: new Date().toISOString(),
         };
         setMessages((prev) => [...prev, prompt]);

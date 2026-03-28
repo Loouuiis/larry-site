@@ -527,8 +527,32 @@ export async function runAutoActions(
 }
 
 /**
+ * Return all currently-pending suggestion display_text values for a project.
+ * Used to inject into the intelligence prompt so Larry doesn't re-propose things
+ * that are already waiting for approval.
+ */
+export async function getPendingSuggestionTexts(
+  db: Db,
+  tenantId: string,
+  projectId: string
+): Promise<string[]> {
+  const rows = await db.queryTenant<{ action_type: string; display_text: string }>(
+    tenantId,
+    `SELECT action_type, display_text
+     FROM larry_events
+     WHERE tenant_id = $1
+       AND project_id = $2
+       AND event_type = 'suggested'
+     ORDER BY created_at DESC`,
+    [tenantId, projectId]
+  );
+  return rows.map((r) => `${r.action_type}: ${r.display_text}`);
+}
+
+/**
  * Store suggested actions from an IntelligenceResult without executing them.
- * Writes a larry_event with event_type='suggested' for each action.
+ * Skips any action that is already pending (same action_type + display_text)
+ * to prevent duplicate suggestions when Larry is prompted multiple times.
  */
 export async function storeSuggestions(
   db: Db,
@@ -538,12 +562,31 @@ export async function storeSuggestions(
   actions: LarryAction[],
   chatMessage?: string
 ): Promise<ExecutorResult> {
+  // Fetch existing pending suggestions once for dedup comparison
+  const existingRows = await db.queryTenant<{ action_type: string; display_text: string }>(
+    tenantId,
+    `SELECT action_type, display_text
+     FROM larry_events
+     WHERE tenant_id = $1
+       AND project_id = $2
+       AND event_type = 'suggested'`,
+    [tenantId, projectId]
+  );
+  const existingKeys = new Set(
+    existingRows.map((r) => `${r.action_type}||${r.display_text.toLowerCase()}`)
+  );
+
   const eventIds: string[] = [];
+  let suggestedCount = 0;
 
   for (const action of actions) {
+    const key = `${action.type}||${action.displayText.toLowerCase()}`;
+    if (existingKeys.has(key)) continue; // already pending — skip
     const eventId = await insertLarryEvent(db, tenantId, projectId, action, "suggested", triggeredBy, chatMessage, false);
     eventIds.push(eventId);
+    existingKeys.add(key); // guard against duplicates within the same batch
+    suggestedCount++;
   }
 
-  return { executedCount: 0, suggestedCount: actions.length, eventIds };
+  return { executedCount: 0, suggestedCount, eventIds };
 }
