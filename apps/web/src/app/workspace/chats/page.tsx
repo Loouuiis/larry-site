@@ -3,40 +3,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
-  Bot,
   Clock3,
-  FileText,
-  LayoutGrid,
-  ListChecks,
   MessageSquare,
   Plus,
   Sparkles,
-  WandSparkles,
 } from "lucide-react";
 import {
-  buildLarryResponseText,
   createLarryConversation,
   type LarryConversation,
-  type LarryIntent,
   type LarryMessage,
   listLarryConversations,
   listLarryMessages,
   readJson,
   saveLarryMessage,
-  sendLarryCommand,
+  sendLarryChat,
 } from "@/lib/larry";
-
-const INTENT_OPTIONS: Array<{
-  value: LarryIntent;
-  label: string;
-  icon: React.ElementType;
-}> = [
-  { value: "freeform", label: "Ask", icon: WandSparkles },
-  { value: "create_plan", label: "Plan", icon: ListChecks },
-  { value: "update_scope", label: "Scope", icon: LayoutGrid },
-  { value: "draft_follow_up", label: "Follow-up", icon: Bot },
-  { value: "request_summary", label: "Summary", icon: FileText },
-];
 
 interface WorkspaceProject {
   id: string;
@@ -144,7 +125,6 @@ export default function ChatsPage() {
   const [messageLoading, setMessageLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [input, setInput] = useState("");
-  const [intent, setIntent] = useState<LarryIntent>("freeform");
   const [error, setError] = useState<string | null>(null);
   const initializedRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -306,7 +286,6 @@ export default function ChatsPage() {
     setMessages([]);
     setError(null);
     setInput("");
-    setIntent("freeform");
   }
 
   function selectConversation(conversation: LarryConversation) {
@@ -318,19 +297,22 @@ export default function ChatsPage() {
   async function handleSubmit(event?: React.FormEvent) {
     event?.preventDefault();
     const text = input.trim();
-    if (busy || text.length < 3) return;
+    if (busy || text.length < 1) return;
+    if (!activeProjectId) {
+      setError("Select a project to chat with Larry about it.");
+      return;
+    }
 
     setBusy(true);
     setError(null);
     setInput("");
 
     let conversationId = selectedConversationId;
-    const projectId = activeProjectId ?? undefined;
 
     try {
       if (!conversationId) {
         const created = await createLarryConversation({
-          projectId,
+          projectId: activeProjectId,
           title: text.slice(0, 80),
         });
         conversationId = created.id;
@@ -357,14 +339,12 @@ export default function ChatsPage() {
 
       await saveLarryMessage(conversationId, "user", text).catch(() => undefined);
 
-      const { response, data } = await sendLarryCommand({
-        intent,
-        input: text,
-        projectId,
-        mode: "execute",
+      const { response, data } = await sendLarryChat({
+        projectId: activeProjectId,
+        message: text,
       });
 
-      const replyText = buildLarryResponseText(response, data);
+      const replyText = response.ok ? (data.message ?? "Done.") : (data.error ?? "Something went wrong.");
       const larryReply: LarryMessage = {
         id: crypto.randomUUID(),
         role: "larry",
@@ -379,7 +359,7 @@ export default function ChatsPage() {
       await saveLarryMessage(conversationId, "larry", replyText).catch(() => undefined);
       await refreshConversations(conversationId);
 
-      if (response.ok && data.runId) {
+      if (response.ok && (data.actionsExecuted ?? 0) > 0) {
         window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
       }
     } catch (err) {
@@ -737,8 +717,7 @@ export default function ChatsPage() {
                         color: "var(--text-2)",
                       }}
                     >
-                      Ask for plans, scope changes, follow-up drafts, or a quick summary. Larry will keep the thread under{" "}
-                      {activeProjectLabel.toLowerCase()} so the context stays easy to revisit.
+                      Tell Larry what to do — it will act immediately and report back. Select a project to get started.
                     </p>
                   </div>
                 )}
@@ -763,39 +742,6 @@ export default function ChatsPage() {
                 }}
               >
                 <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                  {/* Intent chips — above the input, right-aligned */}
-                  <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px", flexWrap: "wrap" }}>
-                    {INTENT_OPTIONS.map((option) => {
-                      const Icon = option.icon;
-                      const active = intent === option.value;
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() => setIntent(option.value)}
-                          style={{
-                            display: "inline-flex",
-                            height: "28px",
-                            alignItems: "center",
-                            gap: "5px",
-                            borderRadius: "var(--radius-badge)",
-                            padding: "0 10px",
-                            fontSize: "11px",
-                            fontWeight: 600,
-                            border: `1px solid ${active ? "var(--cta)" : "var(--border)"}`,
-                            background: active ? "var(--cta)" : "var(--surface-2)",
-                            color: active ? "#fff" : "var(--text-2)",
-                            cursor: "pointer",
-                            transition: "background 0.15s, border-color 0.15s",
-                          }}
-                        >
-                          <Icon size={11} />
-                          {option.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-
                   {/* Textarea */}
                   <div
                     style={{
@@ -853,7 +799,7 @@ export default function ChatsPage() {
                       </button>
                       <button
                         type="submit"
-                        disabled={busy || input.trim().length < 3}
+                        disabled={busy || input.trim().length < 1 || !activeProjectId}
                         className="pm-btn pm-btn-primary"
                         style={{
                           display: "inline-flex",

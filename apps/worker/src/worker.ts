@@ -14,6 +14,17 @@ const queueEvents = new QueueEvents(EVENT_QUEUE_NAME, { connection });
 
 const queue = new Queue(EVENT_QUEUE_NAME, { connection });
 
+// Run Larry's intelligence scan across all active projects every 4 hours.
+// Stable jobId prevents duplicate repeatable entries on restart.
+await queue.add(
+  "larry.scan",
+  {},
+  {
+    repeat: { every: 4 * 60 * 60 * 1000 },
+    jobId: "larry-scan",
+  }
+);
+
 // Register the escalation scan as a BullMQ repeatable job (hourly).
 // Using a stable jobId ensures only one repeatable entry exists even on restart.
 await queue.add(

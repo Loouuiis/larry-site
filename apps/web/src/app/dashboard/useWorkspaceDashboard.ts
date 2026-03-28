@@ -3,13 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ActionCardViewModel,
   BoardTaskRow,
   BoardView,
   ConnectorStatus,
   TaskGroup,
   TaskStatus,
-  WorkspaceAction,
   WorkspaceSnapshot,
   WorkspaceTask,
 } from "./types";
@@ -19,7 +17,6 @@ const EMPTY_SNAPSHOT: WorkspaceSnapshot = {
   selectedProjectId: null,
   projects: [],
   tasks: [],
-  pendingActions: [],
   timeline: null,
   health: null,
   outcomes: null,
@@ -32,8 +29,6 @@ const EMPTY_SNAPSHOT: WorkspaceSnapshot = {
   emailDrafts: [],
 };
 
-type LarryIntent = "create_plan" | "update_scope" | "request_summary" | "draft_follow_up" | "freeform";
-
 async function readJson<T>(response: Response): Promise<T> {
   const text = await response.text();
   if (!text) return {} as T;
@@ -44,11 +39,6 @@ async function readJson<T>(response: Response): Promise<T> {
   }
 }
 
-function normalizeImpact(value: string | undefined): "low" | "medium" | "high" {
-  if (value === "high") return "high";
-  if (value === "medium") return "medium";
-  return "low";
-}
 
 function coerceStatus(value: string): TaskStatus {
   if (
@@ -64,18 +54,6 @@ function coerceStatus(value: string): TaskStatus {
   return "not_started";
 }
 
-function mapAction(action: WorkspaceAction): ActionCardViewModel {
-  const confidence =
-    typeof action.confidence === "number" ? action.confidence.toFixed(2) : String(action.confidence ?? "0.00");
-  return {
-    id: action.id,
-    impact: normalizeImpact(action.impact),
-    title: action.actionType ?? "proposal",
-    reason: action.reasoning?.what ?? action.reason,
-    confidence,
-    threshold: action.reasoning?.threshold ?? "default policy",
-  };
-}
 
 function buildTaskGroups(tasks: BoardTaskRow[]): TaskGroup[] {
   const todo = tasks.filter((task) => task.status === "backlog" || task.status === "not_started");
@@ -140,12 +118,9 @@ export function useWorkspaceDashboard(projectIdFromUrl: string) {
     completed: false,
   });
 
-  const [larryPrompt, setLarryPrompt] = useState("Action: Turn this week's updates into assignments and follow-ups.");
-  const [larryIntent, setLarryIntent] = useState<LarryIntent>("freeform");
+  const [larryPrompt, setLarryPrompt] = useState("");
   const [larryBusy, setLarryBusy] = useState(false);
   const [lastLarryResponse, setLastLarryResponse] = useState("");
-  const [larryPolling, setLarryPolling] = useState(false);
-  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [actionBusyId, setActionBusyId] = useState<string | null>(null);
   const [correctionBusyId, setCorrectionBusyId] = useState<string | null>(null);
@@ -179,7 +154,6 @@ export function useWorkspaceDashboard(projectIdFromUrl: string) {
         selectedProjectId: data.selectedProjectId ?? null,
         projects: Array.isArray(data.projects) ? data.projects : [],
         tasks: Array.isArray(data.tasks) ? data.tasks : [],
-        pendingActions: Array.isArray(data.pendingActions) ? data.pendingActions : [],
         timeline: data.timeline ?? null,
         health: data.health ?? null,
         outcomes: data.outcomes ?? null,
@@ -212,11 +186,6 @@ export function useWorkspaceDashboard(projectIdFromUrl: string) {
     return () => window.removeEventListener("larry:refresh-snapshot", handler);
   }, [loadSnapshot, projectIdFromUrl]);
 
-  useEffect(() => {
-    return () => {
-      if (pollTimerRef.current !== null) clearInterval(pollTimerRef.current);
-    };
-  }, []);
 
   const boardTasks: BoardTaskRow[] = useMemo(() => {
     const fromTimeline = snapshot.timeline?.gantt ?? [];
@@ -270,10 +239,7 @@ export function useWorkspaceDashboard(projectIdFromUrl: string) {
     return counts;
   }, [boardTasks]);
 
-  const actionCards = useMemo(
-    () => snapshot.pendingActions.map(mapAction),
-    [snapshot.pendingActions]
-  );
+  const actionCards: { id: string; title: string; reason: string }[] = [];
 
   const canCreateTask = Boolean(selectedProjectId && taskTitle.trim().length > 0);
   const selectedProject =
@@ -417,133 +383,55 @@ export function useWorkspaceDashboard(projectIdFromUrl: string) {
   );
 
   const handleActionDecision = useCallback(
-    async (actionId: string, decision: "approve" | "reject") => {
-      setActionBusyId(actionId);
-      setError("");
-      setNotice("");
-      try {
-        const response = await fetch(`/api/workspace/actions/${actionId}/${decision}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ note: `UI ${decision}` }),
-        });
-        const body = await readJson<{ error?: string }>(response);
-        if (!response.ok) {
-          setError(body.error ?? `Failed to ${decision} action.`);
-          return;
-        }
-        await loadSnapshot(selectedProjectId || undefined);
-        setNotice(decision === "approve" ? "Action approved." : "Action rejected.");
-      } catch {
-        setError(`Action ${decision} network error.`);
-      } finally {
-        setActionBusyId(null);
-      }
+    async (_actionId: string, _decision: "approve" | "reject") => {
+      // Action approve/reject is no longer used — actions are handled inline per project
     },
-    [loadSnapshot, selectedProjectId]
+    []
   );
 
   const handleActionCorrect = useCallback(
-    async (actionId: string) => {
-      setCorrectionBusyId(actionId);
-      setError("");
-      setNotice("");
-      try {
-        const response = await fetch(`/api/workspace/actions/${actionId}/correct`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            correctionType: "bad_reasoning",
-            note: "Needs PM correction",
-            correctionPayload: { source: "workspace_ui" },
-            tunePolicy: true,
-          }),
-        });
-        const body = await readJson<{ error?: string; thresholdTuned?: boolean }>(response);
-        if (!response.ok) {
-          setError(body.error ?? "Failed to correct action.");
-          return;
-        }
-        await loadSnapshot(selectedProjectId || undefined);
-        setNotice(body.thresholdTuned ? "Correction captured + policy tuned." : "Correction captured.");
-      } catch {
-        setError("Action correction network error.");
-      } finally {
-        setCorrectionBusyId(null);
-      }
+    async (_actionId: string) => {
+      // Action correction is no longer used
     },
-    [loadSnapshot, selectedProjectId]
+    []
   );
 
   const handleLarryRun = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
       const prompt = larryPrompt.trim();
-      if (prompt.length < 3) return;
+      if (!prompt || !selectedProjectId) return;
 
       setLarryBusy(true);
       setError("");
       setNotice("");
       try {
-        const response = await fetch("/api/workspace/larry/commands", {
+        const response = await fetch("/api/workspace/larry/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            intent: larryIntent,
-            input: prompt,
-            projectId: selectedProjectId || undefined,
-            mode: "execute",
-          }),
+          body: JSON.stringify({ projectId: selectedProjectId, message: prompt }),
         });
         const body = await readJson<{
           error?: string;
           message?: string;
-          summary?: { narrative?: string };
-          runId?: string;
+          actionsExecuted?: number;
+          suggestionCount?: number;
         }>(response);
         if (!response.ok) {
-          setError(body.error ?? "Larry command failed.");
+          setError(body.error ?? "Larry chat failed.");
           return;
         }
-        const responseMessage =
-          body.summary?.narrative ??
-          body.message ??
-          (body.runId ? `Larry command accepted (run ${body.runId.slice(0, 8)}...).` : "Larry processed your command.");
+        const responseMessage = body.message ?? "Done.";
         setNotice(responseMessage);
         setLastLarryResponse(responseMessage);
-        await loadSnapshot(selectedProjectId || undefined);
-
-        // Poll /api/workspace/actions every 4s for up to 60s, stop on first result
-        if (pollTimerRef.current !== null) clearInterval(pollTimerRef.current);
-        setLarryPolling(true);
-        const pollStart = Date.now();
-        pollTimerRef.current = setInterval(() => {
-          void (async () => {
-            try {
-              const res = await fetch("/api/workspace/actions", { cache: "no-store" });
-              const data = await readJson<{ actions?: WorkspaceAction[] }>(res);
-              const actions = data.actions ?? [];
-              const timedOut = Date.now() - pollStart >= 60_000;
-              if (actions.length > 0 || timedOut) {
-                clearInterval(pollTimerRef.current!);
-                pollTimerRef.current = null;
-                setLarryPolling(false);
-                if (actions.length > 0) {
-                  setSnapshot((prev) => ({ ...prev, pendingActions: actions }));
-                }
-              }
-            } catch {
-              // ignore transient poll errors
-            }
-          })();
-        }, 4_000);
+        await loadSnapshot(selectedProjectId);
       } catch {
         setError("Larry network error.");
       } finally {
         setLarryBusy(false);
       }
     },
-    [larryPrompt, larryIntent, selectedProjectId, loadSnapshot]
+    [larryPrompt, selectedProjectId, loadSnapshot]
   );
 
   const refreshConnectors = useCallback(async () => {
@@ -666,9 +554,7 @@ export function useWorkspaceDashboard(projectIdFromUrl: string) {
     taskTriageBusyId,
     taskMoveBusyId,
     larryPrompt,
-    larryIntent,
     larryBusy,
-    larryPolling,
     lastLarryResponse,
     actionBusyId,
     correctionBusyId,
@@ -678,7 +564,6 @@ export function useWorkspaceDashboard(projectIdFromUrl: string) {
     setBoardView,
     setSearchQuery,
     setLarryPrompt,
-    setLarryIntent,
     setRightPanelOpen,
     toggleGroupCollapse,
     selectProject,

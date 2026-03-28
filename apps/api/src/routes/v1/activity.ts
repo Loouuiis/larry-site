@@ -39,26 +39,28 @@ export const activityRoutes: FastifyPluginAsync = async (fastify) => {
            UNION ALL
 
            SELECT
-             ea.id::text as id,
+             le.id::text as id,
              'proposal'::text as type,
-             COALESCE(ea.action_type, 'proposal') as title,
-             ea.reason as subtitle,
+             COALESCE(le.action_type, 'proposal') as title,
+             le.display_text as subtitle,
              'larry'::text as source,
-             ea.created_at as "createdAt"
-           FROM extracted_actions ea
-           WHERE ea.tenant_id = $1
+             le.created_at as "createdAt"
+           FROM larry_events le
+           WHERE le.tenant_id = $1
+             AND le.event_type IN ('suggested', 'auto_executed')
 
            UNION ALL
 
            SELECT
-             ad.id::text as id,
+             le.id::text as id,
              'approval'::text as type,
-             ad.decision as title,
-             ad.note as subtitle,
-             'action_center'::text as source,
-             ad.created_at as "createdAt"
-           FROM approval_decisions ad
-           WHERE ad.tenant_id = $1
+             le.event_type as title,
+             le.display_text as subtitle,
+             'larry'::text as source,
+             le.created_at as "createdAt"
+           FROM larry_events le
+           WHERE le.tenant_id = $1
+             AND le.event_type IN ('accepted', 'dismissed')
          ) activity_union
          ORDER BY "createdAt" DESC
          LIMIT $2`,

@@ -37,35 +37,6 @@ export interface WorkspaceTask {
   updatedAt?: string | null;
 }
 
-export interface WorkspaceAction {
-  id: string;
-  agentRunId?: string | null;
-  projectId?: string | null;
-  actionType?: string;
-  impact: string;
-  confidence: string | number;
-  reason: string;
-  createdAt?: string;
-  state?: string;
-  requiresApproval?: boolean;
-  signals?: string[];
-  payload?: Record<string, unknown>;
-  source?: {
-    type: "slack" | "email" | "calendar" | "transcript" | "larry_chat";
-    excerpt?: string | null;
-    timestamp?: string | null;
-    channelOrTitle?: string | null;
-    actor?: string | null;
-  };
-  reasoning?: {
-    what?: string;
-    why?: string;
-    signals?: string[];
-    threshold?: string;
-    decision?: "auto_execute" | "approval_required";
-    override?: string;
-  };
-}
 
 export interface WorkspaceTimelineTask {
   id: string;
@@ -141,7 +112,6 @@ export interface WorkspaceSnapshot {
   selectedProjectId?: string | null;
   projects: WorkspaceProject[];
   tasks: WorkspaceTask[];
-  pendingActions: WorkspaceAction[];
   timeline?: WorkspaceTimeline | null;
   health?: WorkspaceHealth | null;
   outcomes?: WorkspaceOutcomes | null;
@@ -178,14 +148,6 @@ export interface TaskGroup {
   tasks: BoardTaskRow[];
 }
 
-export interface ActionCardViewModel {
-  id: string;
-  impact: "low" | "medium" | "high";
-  title: string;
-  reason: string;
-  confidence: string;
-  threshold: string;
-}
 
 export type BoardView = "table" | "kanban" | "gantt";
 

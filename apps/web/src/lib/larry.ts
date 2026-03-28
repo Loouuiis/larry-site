@@ -1,11 +1,3 @@
-export type LarryIntent =
-  | "freeform"
-  | "create_plan"
-  | "update_scope"
-  | "draft_follow_up"
-  | "request_summary"
-  | "create_project";
-
 export interface LarryConversation {
   id: string;
   projectId: string | null;
@@ -23,20 +15,14 @@ export interface LarryMessage {
   reasoning?: {
     why?: string;
     signals?: string[];
-    threshold?: string;
   };
   createdAt: string;
 }
 
-export interface LarryCommandResponseBody {
-  summary?: {
-    narrative?: string;
-  };
-  runId?: string;
-  actionId?: string;
-  projectName?: string;
-  taskCount?: number;
-  message?: string;
+export interface LarryChatResponse {
+  message: string;
+  actionsExecuted: number;
+  suggestionCount: number;
   error?: string;
 }
 
@@ -106,41 +92,15 @@ export async function saveLarryMessage(
   }
 }
 
-export async function sendLarryCommand(input: {
-  intent: LarryIntent;
-  input: string;
-  projectId?: string;
-  context?: Record<string, unknown>;
-  mode?: "execute" | "preview";
-}): Promise<{ response: Response; data: LarryCommandResponseBody }> {
-  const response = await fetch("/api/workspace/larry/commands", {
+export async function sendLarryChat(input: {
+  projectId: string;
+  message: string;
+}): Promise<{ response: Response; data: LarryChatResponse }> {
+  const response = await fetch("/api/workspace/larry/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      intent: input.intent,
-      input: input.input,
-      projectId: input.projectId,
-      context: input.context,
-      mode: input.mode ?? "execute",
-    }),
+    body: JSON.stringify({ projectId: input.projectId, message: input.message }),
   });
-  const data = await readJson<LarryCommandResponseBody>(response);
+  const data = await readJson<LarryChatResponse>(response);
   return { response, data };
-}
-
-export function buildLarryResponseText(
-  response: Response,
-  data: LarryCommandResponseBody
-): string {
-  if (response.ok) {
-    return (
-      data.summary?.narrative ??
-      data.message ??
-      (data.runId
-        ? "Got it. Head to the Action Center to review the proposed changes."
-        : "Done.")
-    );
-  }
-
-  return data.error ?? "Something went wrong.";
 }

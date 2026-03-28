@@ -476,6 +476,7 @@ h3, h4 {
 .pm-pill-working     { background: var(--status-wip-bg);    color: var(--status-wip-text); }
 .pm-pill-stuck       { background: var(--status-stuck-bg);  color: var(--status-stuck-text); }
 .pm-pill-not-started { background: var(--status-todo-bg);   color: var(--status-todo-text); }
+.pm-pill-backlog     { background: var(--surface-2); color: var(--text-muted); }
 .pm-pill-review      { background: var(--status-review-bg); color: var(--status-review-text); }
 
 /* ─── Priority ────────────────────────────────────────────────────── */

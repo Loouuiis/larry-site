@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { LarryChat } from "./LarryChat";
 import { WorkspaceSidebar, type WorkspaceSidebarNav } from "@/components/dashboard/Sidebar";
 import type { WorkspaceSnapshot } from "@/app/dashboard/types";
 import { MeetingTranscriptModal } from "./MeetingTranscriptModal";
@@ -25,7 +26,6 @@ type WorkspaceShellProps = {
 
 export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
   const pathname = usePathname();
-  const router = useRouter();
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
   const [meetingOpen, setMeetingOpen] = useState(false);
   const [transcript, setTranscript] = useState("");
@@ -34,21 +34,6 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const projectIdFromPath = pathname?.match(/^\/workspace\/projects\/([^/]+)/)?.[1] ?? "";
-
-  const buildLarryHref = useCallback(
-    (draft?: string) => {
-      const search = new URLSearchParams();
-      if (projectIdFromPath) {
-        search.set("projectId", projectIdFromPath);
-      }
-      if (draft?.trim()) {
-        search.set("draft", draft.trim());
-      }
-      const query = search.toString();
-      return query ? `/workspace/chats?${query}` : "/workspace/chats";
-    },
-    [projectIdFromPath]
-  );
 
   const activeNav: WorkspaceSidebarNav = useMemo(() => {
     if (pathname === "/workspace") return "home";
@@ -116,17 +101,15 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
   ];
 
   const projects = snapshot?.projects ?? [];
-  const pendingCount = snapshot?.pendingActions?.length ?? 0;
 
   return (
     <WorkspaceChromeProvider
       value={{
         openMeeting: () => setMeetingOpen(true),
         refreshShell: loadShell,
-        pendingCount,
         notifCount,
-        openLarry: () => router.push(buildLarryHref()),
-        pushLarryMessage: (msg) => router.push(buildLarryHref(msg)),
+        openLarry: () => window.dispatchEvent(new CustomEvent("larry:open")),
+        pushLarryMessage: (msg) => window.dispatchEvent(new CustomEvent("larry:push", { detail: msg })),
       }}
     >
       <div className="workspace-root dashboard-root flex h-screen overflow-hidden bg-[var(--pm-bg)] text-[var(--pm-text)]">
@@ -136,7 +119,6 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
           mobileOpen={mobileOpen}
           onMobileClose={() => setMobileOpen(false)}
           userEmail={userEmail}
-          pendingCount={pendingCount}
           notifCount={notifCount}
         />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -154,6 +136,9 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
         onTranscriptChange={setTranscript}
         onSubmit={onMeetingSubmit}
         busy={meetingBusy}
+      />
+      <LarryChat
+        projectId={projectIdFromPath || undefined}
       />
     </WorkspaceChromeProvider>
   );

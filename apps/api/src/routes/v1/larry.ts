@@ -1,61 +1,29 @@
-import { randomUUID } from "node:crypto";
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { detectInjectionAttempt, type ChatProjectContext } from "@larry/ai";
-import { ingestCanonicalEvent } from "../../services/ingest/pipeline.js";
+import { runIntelligence } from "@larry/ai";
+import { getProjectSnapshot } from "@larry/db";
+import { getApiEnv } from "@larry/config";
 import { writeAuditLog } from "../../lib/audit.js";
+import { buildPendingClause } from "../../lib/intelligence-hints.js";
+import { runAutoActions, storeSuggestions, executeAction, getPendingSuggestionTexts } from "@larry/db";
+import { getOrGenerateBriefing } from "../../services/larry-briefing.js";
+import type { IntelligenceConfig } from "@larry/shared";
+import type { FastifyRequest } from "fastify";
 
-const LarryIntentSchema = z.enum([
-  "create_plan",
-  "update_scope",
-  "request_summary",
-  "draft_follow_up",
-  "create_project",
-  "freeform",
-]);
+// ── Config helper ─────────────────────────────────────────────────────────────
 
-const LarryCommandSchema = z.object({
-  intent: LarryIntentSchema.default("freeform"),
-  projectId: z.string().uuid().optional(),
-  input: z.string().min(3).max(8_000),
-  context: z.record(z.string(), z.unknown()).optional(),
-  mode: z.enum(["execute", "preview"]).default("execute"),
-});
-
-async function buildProjectSummary(
-  fastify: Parameters<FastifyPluginAsync>[0],
-  tenantId: string,
-  projectId: string
-) {
-  const rows = await fastify.db.queryTenant<{
-    status: "backlog" | "not_started" | "in_progress" | "waiting" | "completed" | "blocked";
-    risk_level: "low" | "medium" | "high";
-  }>(
-    tenantId,
-    `SELECT status, risk_level
-     FROM tasks
-     WHERE tenant_id = $1 AND project_id = $2`,
-    [tenantId, projectId]
-  );
-
-  const total = rows.length;
-  const completed = rows.filter((row) => row.status === "completed").length;
-  const blocked = rows.filter((row) => row.status === "blocked").length;
-  const highRisk = rows.filter((row) => row.risk_level === "high").length;
-  const completionRate = total === 0 ? 0 : Number(((completed / total) * 100).toFixed(1));
-
-  return {
-    projectId,
-    totals: {
-      tasks: total,
-      completed,
-      blocked,
-      highRisk,
-      completionRate,
-    },
-    narrative: `Project has ${total} tasks, ${completed} completed (${completionRate}%), ${blocked} blocked, and ${highRisk} high-risk items.`,
-  };
+function buildIntelligenceConfig(config: ReturnType<typeof getApiEnv>): IntelligenceConfig {
+  if (config.MODEL_PROVIDER === "openai") {
+    return { provider: "openai", apiKey: config.OPENAI_API_KEY, model: config.OPENAI_MODEL };
+  }
+  if (config.MODEL_PROVIDER === "anthropic") {
+    return { provider: "anthropic", apiKey: config.ANTHROPIC_API_KEY, model: config.ANTHROPIC_MODEL };
+  }
+  // "gemini" and other providers not yet wired into intelligence — use mock for local dev
+  return { provider: "mock", model: "mock" };
 }
+
+// ── Route plugin ──────────────────────────────────────────────────────────────
 
 export const larryRoutes: FastifyPluginAsync = async (fastify) => {
   // ── Conversations ────────────────────────────────────────────────────────
@@ -96,7 +64,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
          ) last_message ON TRUE
          WHERE c.tenant_id = $1
            AND c.user_id = $2
-           ${projectId ? 'AND project_id = $3' : ''}
+           ${projectId ? "AND project_id = $3" : ""}
          ORDER BY COALESCE(last_message.created_at, c.updated_at) DESC, c.created_at DESC
          LIMIT 50`,
         projectId ? [tenantId, userId, projectId] : [tenantId, userId]
@@ -139,7 +107,6 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       const userId = request.user.userId;
       const { id } = request.params as { id: string };
 
-      // Verify ownership
       const conv = await fastify.db.queryTenant<{ id: string }>(
         tenantId,
         `SELECT id FROM larry_conversations WHERE tenant_id = $1 AND id = $2 AND user_id = $3 LIMIT 1`,
@@ -182,7 +149,6 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         throw fastify.httpErrors.badRequest("content is required.");
       }
 
-      // Verify ownership
       const conv = await fastify.db.queryTenant<{ id: string }>(
         tenantId,
         `SELECT id FROM larry_conversations WHERE tenant_id = $1 AND id = $2 AND user_id = $3 LIMIT 1`,
@@ -198,7 +164,6 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         [tenantId, id, body.role, body.content.trim(), JSON.stringify(body.reasoning ?? null)]
       );
 
-      // Bump conversation updated_at
       await fastify.db.queryTenant(
         tenantId,
         `UPDATE larry_conversations SET updated_at = NOW() WHERE tenant_id = $1 AND id = $2`,
@@ -209,230 +174,298 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
-  // ── Commands ─────────────────────────────────────────────────────────────
+  // ── Events ───────────────────────────────────────────────────────────────
+
+  fastify.get(
+    "/events",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
+    async (request) => {
+      const tenantId = request.user.tenantId;
+      const parseResult = z.object({
+        projectId: z.string().uuid(),
+        eventType: z.enum(["auto_executed", "suggested", "accepted", "dismissed"]).optional(),
+        limit: z.coerce.number().int().min(1).max(200).default(50),
+      }).safeParse(request.query);
+      if (!parseResult.success) {
+        throw fastify.httpErrors.badRequest(parseResult.error.issues[0]?.message ?? "Invalid query params");
+      }
+      const query = parseResult.data;
+
+      const params: unknown[] = [tenantId, query.projectId];
+      const eventTypeFilter = query.eventType ? `AND event_type = $3` : "";
+      if (query.eventType) params.push(query.eventType);
+      params.push(query.limit);
+      const limitParam = `$${params.length}`;
+
+      const rows = await fastify.db.queryTenant(
+        tenantId,
+        `SELECT id, project_id AS "projectId", event_type AS "eventType",
+                action_type AS "actionType", display_text AS "displayText",
+                reasoning, payload, executed_at AS "executedAt",
+                triggered_by AS "triggeredBy", chat_message AS "chatMessage",
+                created_at AS "createdAt"
+         FROM larry_events
+         WHERE tenant_id = $1
+           AND project_id = $2
+           ${eventTypeFilter}
+         ORDER BY created_at DESC
+         LIMIT ${limitParam}`,
+        params
+      );
+
+      return { events: rows };
+    }
+  );
 
   fastify.post(
-    "/commands",
-    {
-      config: { rateLimit: { max: 20, timeWindow: "1 minute", keyGenerator: (req: import("fastify").FastifyRequest) => (req.user as { tenantId?: string } | undefined)?.tenantId ?? req.ip } },
-      preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])],
-    },
+    "/events/:id/accept",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
     async (request, reply) => {
-      const body = LarryCommandSchema.parse(request.body);
       const tenantId = request.user.tenantId;
+      const { id } = request.params as { id: string };
 
-      // Detect and log prompt injection attempts at the API boundary
-      if (detectInjectionAttempt(body.input)) {
-        request.log.warn({ tenantId, userId: request.user.userId, intent: body.intent }, "Possible prompt injection attempt detected");
-        await writeAuditLog(fastify.db, {
-          tenantId,
-          actorUserId: request.user.userId,
-          actionType: "llm.injection_attempt",
-          objectType: "larry_command",
-          objectId: request.user.userId,
-          details: { intent: body.intent, inputLength: body.input.length },
-        });
-      }
-
-      if (body.intent === "request_summary") {
-        if (!body.projectId) {
-          throw fastify.httpErrors.badRequest("projectId is required for request_summary intent.");
-        }
-        const summary = await buildProjectSummary(fastify, tenantId, body.projectId);
-
-        await writeAuditLog(fastify.db, {
-          tenantId,
-          actorUserId: request.user.userId,
-          actionType: "larry.command.summary",
-          objectType: "project",
-          objectId: body.projectId,
-          details: { input: body.input },
-        });
-
-        return {
-          commandAccepted: true,
-          commandMode: body.mode,
-          intent: body.intent,
-          summary,
-        };
-      }
-
-      if (body.intent === "create_project") {
-        const projectStructure = await fastify.llmProvider.extractProjectStructure({
-          description: body.input,
-        });
-
-        const runRows = await fastify.db.queryTenant<{ id: string }>(
-          tenantId,
-          `INSERT INTO agent_runs (tenant_id, project_id, source, source_ref_id, state, status_message, correlation_id, created_by_user_id)
-           VALUES ($1, $2, 'transcript', $3, 'APPROVAL_PENDING', $4, $5, $6)
-           RETURNING id`,
-          [
-            tenantId,
-            null,
-            `larry-create-project:${randomUUID()}`,
-            `Larry proposes new project: ${projectStructure.name}`,
-            `${tenantId}:create_project:${randomUUID()}`,
-            request.user.userId,
-          ]
-        );
-        const runId = runRows[0].id;
-
-        const actionRows = await fastify.db.queryTenant<{ id: string }>(
-          tenantId,
-          `INSERT INTO extracted_actions
-            (tenant_id, agent_run_id, project_id, action_type, impact, confidence, reason, signals, payload, reasoning, state, requires_approval)
-           VALUES ($1, $2, $3, 'project_create', 'high', 1.0, $4, $5::jsonb, $6::jsonb, $7::jsonb, 'pending', true)
-           RETURNING id`,
-          [
-            tenantId,
-            runId,
-            null,
-            `Larry proposes creating project: ${projectStructure.name}`,
-            JSON.stringify([`User requested: ${body.input.slice(0, 120)}`]),
-            JSON.stringify(projectStructure),
-            JSON.stringify({
-              what: projectStructure.name,
-              why: "User asked Larry to create a new project",
-              signals: [`${projectStructure.tasks.length} initial tasks proposed`],
-              threshold: "project_create",
-              decision: "approval_required",
-              override: "Approve in the Action Centre to create the project and its initial tasks.",
-            }),
-          ]
-        );
-        const actionId = actionRows[0].id;
-
-        await writeAuditLog(fastify.db, {
-          tenantId,
-          actorUserId: request.user.userId,
-          actionType: "larry.command.create_project",
-          objectType: "agent_run",
-          objectId: runId,
-          details: { projectName: projectStructure.name, taskCount: projectStructure.tasks.length },
-        });
-
-        return reply.code(202).send({
-          commandAccepted: true,
-          commandMode: body.mode,
-          intent: body.intent,
-          runId,
-          actionId,
-          projectName: projectStructure.name,
-          taskCount: projectStructure.tasks.length,
-          message: `Larry has drafted "${projectStructure.name}" with ${projectStructure.tasks.length} tasks. Review and approve it in the Action Centre.`,
-        });
-      }
-
-      if (body.mode === "preview") {
-        const proposed = await fastify.llmProvider.extractActionsFromTranscript({
-          transcript: body.input,
-          projectName: body.projectId,
-        });
-        return {
-          commandAccepted: true,
-          commandMode: body.mode,
-          intent: body.intent,
-          preview: proposed,
-        };
-      }
-
-      const sourceEventId = `larry-cmd:${randomUUID()}`;
-      const canonical = await ingestCanonicalEvent(fastify, tenantId, {
-        source: "transcript",
-        sourceEventId,
-        actor: request.user.email ?? request.user.userId,
-        payload: {
-          transcript: body.input,
-          intent: body.intent,
-          context: body.context ?? {},
-        },
-      });
-
-      const runRows = await fastify.db.queryTenant<{ id: string }>(
+      const events = await fastify.db.queryTenant<{
+        id: string;
+        projectId: string;
+        eventType: string;
+        actionType: string;
+        payload: Record<string, unknown>;
+      }>(
         tenantId,
-        `INSERT INTO agent_runs (tenant_id, project_id, source, source_ref_id, state, status_message, correlation_id, created_by_user_id)
-         VALUES ($1, $2, 'transcript', $3, 'INGESTED', $4, $5, $6)
-         RETURNING id`,
-        [
-          tenantId,
-          body.projectId ?? null,
-          canonical.canonicalEventId,
-          `Larry command accepted (${body.intent})`,
-          canonical.idempotencyKey,
-          request.user.userId,
-        ]
+        `SELECT id, project_id AS "projectId", event_type AS "eventType",
+                action_type AS "actionType", payload
+         FROM larry_events
+         WHERE tenant_id = $1 AND id = $2
+         LIMIT 1`,
+        [tenantId, id]
       );
-      const runId = runRows[0].id;
+
+      if (!events[0]) throw fastify.httpErrors.notFound("Event not found.");
+      const event = events[0];
+
+      if (event.eventType !== "suggested") {
+        throw fastify.httpErrors.conflict("Only suggested events can be accepted.");
+      }
+
+      let entity: unknown;
+      try {
+        entity = await executeAction(
+          fastify.db,
+          tenantId,
+          event.projectId,
+          event.actionType as import("@larry/shared").LarryActionType,
+          event.payload
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw fastify.httpErrors.unprocessableEntity(msg);
+      }
 
       await fastify.db.queryTenant(
         tenantId,
-        `INSERT INTO agent_run_transitions
-         (tenant_id, agent_run_id, previous_state, next_state, reason, metadata)
-         VALUES ($1, $2, NULL, 'INGESTED', $3, $4::jsonb)`,
-        [
-          tenantId,
-          runId,
-          "Command accepted by Larry command ingress",
-          JSON.stringify({ intent: body.intent }),
-        ]
+        `UPDATE larry_events
+         SET event_type = 'accepted', executed_at = NOW()
+         WHERE tenant_id = $1 AND id = $2`,
+        [tenantId, id]
       );
-
-      await fastify.queue.publish({
-        type: "agent_run.ingested",
-        tenantId,
-        payload: {
-          runId,
-          canonicalEventId: canonical.canonicalEventId,
-          transcript: body.input,
-          projectId: body.projectId ?? null,
-          intent: body.intent,
-        },
-        dedupeKey: `${tenantId}:${runId}:larry-command`,
-      });
 
       await writeAuditLog(fastify.db, {
         tenantId,
         actorUserId: request.user.userId,
-        actionType: "larry.command.execute",
-        objectType: "agent_run",
-        objectId: runId,
+        actionType: "larry.event.accepted",
+        objectType: "larry_event",
+        objectId: id,
+        details: { actionType: event.actionType },
+      });
+
+      return reply.code(200).send({ accepted: true, entity });
+    }
+  );
+
+  fastify.post(
+    "/events/:id/dismiss",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
+    async (request, reply) => {
+      const tenantId = request.user.tenantId;
+      const { id } = request.params as { id: string };
+      const body = (request.body ?? {}) as { reason?: string };
+
+      const events = await fastify.db.queryTenant<{ id: string; eventType: string }>(
+        tenantId,
+        `SELECT id, event_type AS "eventType" FROM larry_events WHERE tenant_id = $1 AND id = $2 LIMIT 1`,
+        [tenantId, id]
+      );
+
+      if (!events[0]) throw fastify.httpErrors.notFound("Event not found.");
+      if (events[0].eventType !== "suggested") {
+        throw fastify.httpErrors.conflict("Only suggested events can be dismissed.");
+      }
+
+      await fastify.db.queryTenant(
+        tenantId,
+        `UPDATE larry_events
+         SET event_type = 'dismissed',
+             payload = payload || $3::jsonb
+         WHERE tenant_id = $1 AND id = $2`,
+        [tenantId, id, JSON.stringify({ dismissReason: body.reason ?? null })]
+      );
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId: request.user.userId,
+        actionType: "larry.event.dismissed",
+        objectType: "larry_event",
+        objectId: id,
+        details: { reason: body.reason ?? null },
+      });
+
+      return reply.code(200).send({ dismissed: true });
+    }
+  );
+
+  // ── Briefing ─────────────────────────────────────────────────────────────
+
+  fastify.get(
+    "/briefing",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
+    async (request, reply) => {
+      const tenantId = request.user.tenantId;
+      const userId = request.user.userId;
+
+      // Fetch display name for the greeting
+      const userRows = await fastify.db.queryTenant<{ display_name: string | null; email: string }>(
+        tenantId,
+        `SELECT u.display_name, u.email
+         FROM users u
+         WHERE u.id = $2 AND u.tenant_id = $1
+         LIMIT 1`,
+        [tenantId, userId]
+      );
+      const user = userRows[0];
+      const displayName = user
+        ? (user.display_name?.trim() || user.email.split("@")[0] || "there")
+        : "there";
+
+      const config = buildIntelligenceConfig(fastify.config);
+
+      let briefingResult;
+      try {
+        briefingResult = await getOrGenerateBriefing(
+          fastify.db,
+          config,
+          userId,
+          tenantId,
+          displayName
+        );
+      } catch (err) {
+        // Log the real cause but return a graceful empty briefing so the UI never
+        // shows a 500. The briefing is non-critical — users should still be able
+        // to use the app even when the briefing generation fails.
+        request.log.error({ err, tenantId, userId }, "generateBriefing failed");
+        const hour = new Date().getHours();
+        const timeOfDay = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
+        return reply.code(200).send({
+          briefing: {
+            greeting: `Good ${timeOfDay}, ${displayName}.`,
+            projects: [],
+            totalNeedsYou: 0,
+          },
+          cached: false,
+          degraded: true,
+        });
+      }
+
+      // Mark as seen if this is the first read
+      if (briefingResult.briefingId) {
+        await fastify.db.queryTenant(
+          tenantId,
+          `UPDATE larry_briefings SET seen_at = NOW()
+           WHERE tenant_id = $1 AND id = $2 AND seen_at IS NULL`,
+          [tenantId, briefingResult.briefingId]
+        ).catch(() => { /* non-critical */ });
+      }
+
+      return reply.code(200).send({
+        briefing: briefingResult.content,
+        cached: !briefingResult.fresh,
+      });
+    }
+  );
+
+  // ── Chat ─────────────────────────────────────────────────────────────────
+
+  const ChatSchema = z.object({
+    projectId: z.string().uuid(),
+    message: z.string().min(1).max(8_000),
+  });
+
+  fastify.post(
+    "/chat",
+    {
+      config: {
+        rateLimit: {
+          max: 20,
+          timeWindow: "1 minute",
+          keyGenerator: (req: FastifyRequest) =>
+            (req.user as { tenantId?: string } | undefined)?.tenantId ?? req.ip,
+        },
+      },
+      preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])],
+    },
+    async (request, reply) => {
+      const chatParse = ChatSchema.safeParse(request.body);
+      if (!chatParse.success) {
+        throw fastify.httpErrors.badRequest(chatParse.error.issues[0]?.message ?? "Invalid request body");
+      }
+      const { projectId, message } = chatParse.data;
+      const tenantId = request.user.tenantId;
+
+      // Assemble project context
+      let snapshot;
+      try {
+        snapshot = await getProjectSnapshot(fastify.db, tenantId, projectId);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw fastify.httpErrors.notFound(msg);
+      }
+
+      // Fetch pending suggestions so intelligence can avoid re-proposing them
+      const pendingTexts = await getPendingSuggestionTexts(fastify.db, tenantId, projectId).catch(() => [] as string[]);
+      const pendingClause = buildPendingClause(pendingTexts);
+
+      // Run intelligence
+      const config = buildIntelligenceConfig(fastify.config);
+      let result;
+      try {
+        result = await runIntelligence(config, snapshot, `user said: "${message}"${pendingClause}`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        request.log.error({ err, tenantId, projectId }, "runIntelligence failed");
+        throw fastify.httpErrors.serviceUnavailable(`Larry intelligence error: ${msg}`);
+      }
+
+      // Execute auto-actions and store suggestions in parallel
+      const [autoResult, suggestResult] = await Promise.all([
+        runAutoActions(fastify.db, tenantId, projectId, "chat", result.autoActions, message),
+        storeSuggestions(fastify.db, tenantId, projectId, "chat", result.suggestedActions, message),
+      ]);
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId: request.user.userId,
+        actionType: "larry.chat",
+        objectType: "project",
+        objectId: projectId,
         details: {
-          intent: body.intent,
-          projectId: body.projectId ?? null,
-          sourceEventId,
+          actionsExecuted: autoResult.executedCount,
+          suggestionCount: suggestResult.suggestedCount,
         },
       });
 
-      // Generate a real conversational response via the LLM
-      let responseMessage = "I've received your message and queued it for processing. Check the Action Center for any proposed actions.";
-      try {
-        let projectContext: ChatProjectContext | undefined;
-        if (body.projectId) {
-          const summary = await buildProjectSummary(fastify, tenantId, body.projectId);
-          projectContext = {
-            totalTasks: summary.totals.tasks,
-            completed: summary.totals.completed,
-            blocked: summary.totals.blocked,
-            highRisk: summary.totals.highRisk,
-            completionRate: summary.totals.completionRate,
-          };
-        }
-        responseMessage = await fastify.llmProvider.generateResponse({
-          message: body.input,
-          projectContext,
-        });
-      } catch (err) {
-        request.log.warn({ err, runId }, "Failed to generate Larry chat response — using fallback");
-      }
-
-      return reply.code(202).send({
-        commandAccepted: true,
-        commandMode: body.mode,
-        intent: body.intent,
-        runId,
-        canonicalEventId: canonical.canonicalEventId,
-        message: responseMessage,
+      return reply.code(200).send({
+        message: result.briefing,
+        actionsExecuted: autoResult.executedCount,
+        suggestionCount: suggestResult.suggestedCount,
       });
     }
   );

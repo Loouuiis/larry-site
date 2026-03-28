@@ -6,7 +6,7 @@ import { persistSession, proxyApiRequest } from "@/lib/workspace-proxy";
 const MeetingTranscriptSchema = z.object({
   transcript: z.string().min(20).max(30_000),
   projectId: z.string().uuid().optional(),
-  trigger: z.string().default("meeting_transcript_upload"),
+  meetingTitle: z.string().optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -24,14 +24,15 @@ export async function POST(request: NextRequest) {
 
   const result = await proxyApiRequest(
     session,
-    "/v1/agent/runs",
+    "/v1/ingest/transcript",
     {
       method: "POST",
       body: JSON.stringify({
-        source: "transcript",
-        projectId: payload.projectId,
+        sourceEventId: `web-upload-${Date.now()}`,
         transcript: payload.transcript,
-        trigger: payload.trigger,
+        projectId: payload.projectId,
+        meetingTitle: payload.meetingTitle,
+        payload: {},
       }),
     },
     { timeoutMs: 60_000 }

@@ -4,7 +4,6 @@ import rateLimit from "@fastify/rate-limit";
 import sensible from "@fastify/sensible";
 import { getApiEnv } from "@larry/config";
 import { Db } from "@larry/db";
-import { createLlmProvider } from "@larry/ai";
 import { securityPlugin } from "./plugins/security.js";
 import { requestContextPlugin } from "./plugins/request-context.js";
 import { healthRoutes } from "./routes/health.js";
@@ -22,18 +21,6 @@ export async function createApp() {
 
   app.decorate("db", new Db(env.DATABASE_URL));
   app.decorate("queue", createQueuePublisher(env.REDIS_URL));
-  app.decorate(
-    "llmProvider",
-    createLlmProvider({
-      provider: env.MODEL_PROVIDER,
-      openAiApiKey: env.OPENAI_API_KEY,
-      openAiModel: env.OPENAI_MODEL,
-      anthropicApiKey: env.ANTHROPIC_API_KEY,
-      anthropicModel: env.ANTHROPIC_MODEL,
-      geminiApiKey: env.GEMINI_API_KEY,
-      geminiModel: env.GEMINI_MODEL,
-    })
-  );
 
   await app.register(sensible);
   await app.register(rateLimit, {

@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type {
-  WorkspaceAction,
   WorkspaceHealth,
   WorkspaceOutcomes,
   WorkspaceProject,
@@ -27,7 +26,6 @@ interface ProjectDataState {
   project: WorkspaceProject | null;
   tasks: WorkspaceTask[];
   health: WorkspaceHealth | null;
-  actions: WorkspaceAction[];
   meetings: ProjectMeeting[];
   timeline: WorkspaceTimeline | null;
   outcomes: WorkspaceOutcomes | null;
@@ -50,7 +48,6 @@ export function useProjectData(projectId: string): ProjectDataState {
   const [project, setProject] = useState<WorkspaceProject | null>(null);
   const [tasks, setTasks] = useState<WorkspaceTask[]>([]);
   const [health, setHealth] = useState<WorkspaceHealth | null>(null);
-  const [actions, setActions] = useState<WorkspaceAction[]>([]);
   const [meetings, setMeetings] = useState<ProjectMeeting[]>([]);
   const [timeline, setTimeline] = useState<WorkspaceTimeline | null>(null);
   const [outcomes, setOutcomes] = useState<WorkspaceOutcomes | null>(null);
@@ -78,7 +75,6 @@ export function useProjectData(projectId: string): ProjectDataState {
       setProject(snapshot.projects.find((item) => item.id === projectId) ?? null);
       setTasks((snapshot.tasks ?? []).filter((item) => item.projectId === projectId));
       setHealth(snapshot.health ?? null);
-      setActions((snapshot.pendingActions ?? []).filter((item) => item.projectId === projectId));
       setTimeline(snapshot.timeline ?? null);
       setOutcomes(snapshot.outcomes ?? null);
       setMeetings(
@@ -119,7 +115,6 @@ export function useProjectData(projectId: string): ProjectDataState {
     project,
     tasks,
     health,
-    actions,
     meetings,
     timeline,
     outcomes,

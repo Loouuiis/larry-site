@@ -113,7 +113,6 @@ export function MeetingsPage() {
   const [loading, setLoading] = useState(true);
   const [transcript, setTranscript] = useState("");
   const [processing, setProcessing] = useState(false);
-  const [processingRunId, setProcessingRunId] = useState<string | null>(null);
   const [processingState, setProcessingState] = useState<AgentRunState | null>(null);
   const [successState, setSuccessState] = useState<"complete" | "failed" | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -121,7 +120,6 @@ export function MeetingsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [search, setSearch] = useState("");
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const simTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const loadMeetings = useCallback(async () => {
@@ -148,36 +146,6 @@ export function MeetingsPage() {
       .catch(() => {});
   }, []);
 
-  const pollRunState = useCallback((runId: string) => {
-    if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/workspace/agent/runs/${runId}`);
-        const data = await readJson<{ run?: { state?: AgentRunState } }>(res);
-        const state = data.run?.state;
-        if (state) {
-          setProcessingState(state);
-          if (state === "VERIFIED" || state === "APPROVAL_PENDING") {
-            clearInterval(pollRef.current!);
-            setProcessing(false);
-            setProcessingRunId(null);
-            setSuccessState("complete");
-            setTimeout(() => void loadMeetings(), 1000);
-          } else if (state === "FAILED") {
-            clearInterval(pollRef.current!);
-            setProcessing(false);
-            setProcessingRunId(null);
-            setSuccessState("failed");
-          }
-        }
-      } catch {
-        clearInterval(pollRef.current!);
-        setProcessing(false);
-      }
-    }, 2000);
-  }, [loadMeetings]);
-
-  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
   // Simulate state progression while the synchronous API call is running
   useEffect(() => {
@@ -212,15 +180,17 @@ export function MeetingsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ transcript: t, projectId: selectedProjectId || undefined }),
       });
-      const data = await readJson<{ runId?: string }>(res);
-      if (res.ok && data.runId) {
-        setProcessingRunId(data.runId);
+      if (res.ok) {
         setTranscript("");
-        pollRunState(data.runId);
+        setSuccessState("complete");
+        setProcessingState("VERIFIED");
+        setTimeout(() => void loadMeetings(), 800);
       } else {
-        setProcessing(false);
+        setSuccessState("failed");
       }
     } catch {
+      setSuccessState("failed");
+    } finally {
       setProcessing(false);
     }
   };
@@ -387,29 +357,31 @@ export function MeetingsPage() {
               <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
                 <CheckCircle2 size={16} style={{ marginTop: "2px", flexShrink: 0, color: "#16a34a" }} />
                 <div>
-                  <p style={{ fontSize: "13px", fontWeight: 500, color: "#15803d" }}>Extraction complete</p>
+                  <p style={{ fontSize: "13px", fontWeight: 500, color: "#15803d" }}>Transcript processed</p>
                   <p style={{ marginTop: "2px", fontSize: "12px", color: "#166534" }}>
-                    Actions are ready for review in the Action Center.
+                    Larry has analysed the meeting. Check the project for suggested actions.
                   </p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => router.push("/workspace/actions")}
-                style={{
-                  flexShrink: 0,
-                  borderRadius: "var(--radius-btn)",
-                  background: "#16a34a",
-                  border: "none",
-                  padding: "4px 12px",
-                  fontSize: "12px",
-                  fontWeight: 500,
-                  color: "#fff",
-                  cursor: "pointer",
-                }}
-              >
-                Go to Action Center →
-              </button>
+              {selectedProjectId && (
+                <button
+                  type="button"
+                  onClick={() => router.push(`/workspace/projects/${selectedProjectId}`)}
+                  style={{
+                    flexShrink: 0,
+                    borderRadius: "var(--radius-btn)",
+                    background: "#16a34a",
+                    border: "none",
+                    padding: "4px 12px",
+                    fontSize: "12px",
+                    fontWeight: 500,
+                    color: "#fff",
+                    cursor: "pointer",
+                  }}
+                >
+                  View project →
+                </button>
+              )}
             </div>
           )}
 

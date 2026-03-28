@@ -5,7 +5,6 @@ import { createContext, useContext } from "react";
 export type WorkspaceChromeContextValue = {
   openMeeting: () => void;
   refreshShell: () => void;
-  pendingCount: number;
   notifCount: number;
   openLarry: () => void;
   pushLarryMessage: (msg: string) => void;

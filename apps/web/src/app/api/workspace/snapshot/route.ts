@@ -50,9 +50,8 @@ export async function GET(request: NextRequest) {
     ? null
     : queryProjectId || (projects.length > 0 && typeof projects[0].id === "string" ? projects[0].id : null);
 
-  const [tasksResult, actionsResult] = await Promise.all([
+  const [tasksResult] = await Promise.all([
     proxyApiRequest(activeSession, "/v1/tasks"),
-    proxyApiRequest(activeSession, "/v1/agent/actions?state=pending"),
   ]);
   const [
     timelineResult,
@@ -89,7 +88,6 @@ export async function GET(request: NextRequest) {
 
   const updatedSession =
     tasksResult.session ??
-    actionsResult.session ??
     timelineResult.session ??
     healthResult.session ??
     outcomesResult.session ??
@@ -103,18 +101,11 @@ export async function GET(request: NextRequest) {
     await persistSession(updatedSession);
   }
 
-  const error =
-    extractError(tasksResult.body) ||
-    extractError(actionsResult.body) ||
-    extractError(timelineResult.body) ||
-    extractError(healthResult.body) ||
-    extractError(outcomesResult.body) ||
-    extractError(slackStatusResult.body) ||
-    extractError(calendarStatusResult.body) ||
-    extractError(emailStatusResult.body) ||
-    extractError(activityResult.body) ||
-    extractError(emailDraftsResult.body) ||
-    undefined;
+  // Only surface errors for the tasks call — everything else degrades silently
+  // so a broken connector or missing project-level endpoint never kills the whole page.
+  const error = tasksResult.status >= 500
+    ? (extractError(tasksResult.body) ?? "Failed to load tasks.")
+    : undefined;
 
   const connectors = {
     slack:
@@ -140,7 +131,6 @@ export async function GET(request: NextRequest) {
     selectedProjectId,
     projects,
     tasks: extractItems(tasksResult.body),
-    pendingActions: extractItems(actionsResult.body),
     timeline: timelineResult.body,
     health: healthResult.body,
     outcomes: outcomesResult.body,
