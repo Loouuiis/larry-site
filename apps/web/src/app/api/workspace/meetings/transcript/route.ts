@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
         sourceEventId: `web-upload-${Date.now()}`,
         transcript: payload.transcript,
         projectId: payload.projectId,
-        meetingTitle: payload.meetingTitle ?? null,
+        meetingTitle: payload.meetingTitle,
         payload: {},
       }),
     },
