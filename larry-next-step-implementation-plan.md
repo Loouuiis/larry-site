@@ -43,21 +43,36 @@ Implemented:
 Validation run:
 - `npm run test -w @larry/api -- larry-chat.test.ts` passed.
 
+### Slice 2026-03-29-B (implemented)
+
+Goal: keep legacy transcript endpoint safe while migrating callers to the Larry endpoint contract.
+
+Implemented:
+- Converted `POST /v1/ingest/transcript` in `apps/api/src/routes/v1/ingest.ts` into a compatibility shim.
+- Shim now forwards requests to `POST /v1/larry/transcript` internally and returns upstream payload/status.
+- Added explicit deprecation signaling:
+  - response header: `x-larry-deprecated-endpoint: /v1/ingest/transcript`
+  - response body fields: `deprecatedEndpoint`, `replacementEndpoint`
+- Added API test coverage in `apps/api/tests/larry-chat.test.ts` for compatibility behavior.
+
+Validation run:
+- `npm run test -w @larry/api -- larry-chat.test.ts` passed.
+
 ## Next Smallest Slice (recommended)
 
-### Slice 2026-03-29-B (next)
+### Slice 2026-03-29-C (next)
 
-Goal: complete transcript API migration and remove stale contract drift.
+Goal: update docs and remove stale endpoint narratives so plan/docs match shipped behavior.
 
 Plan:
-1. Add compatibility shim in `/v1/ingest/transcript` that delegates to shared transcript handler (or mark as deprecated with consistent response).
-2. Update any remaining internal callers/docs to use `/v1/larry/transcript`.
-3. Add one integration test asserting both paths remain behaviorally consistent while migration is active.
-4. Update `docs/LARRY-INTELLIGENCE-PLAN.md` API endpoint section to reflect implemented state and compatibility window.
+1. Update `docs/LARRY-INTELLIGENCE-PLAN.md` endpoint section with implemented/current contracts.
+2. Add a short deprecation note for `/v1/ingest/transcript` compatibility window.
+3. Verify no web callers point to `/v1/ingest/transcript`.
+4. Decide removal timing for shim after downstream clients migrate.
 
 Definition of done:
-- No active web caller depends exclusively on `/v1/ingest/transcript`.
-- Both endpoint contracts are documented and tested.
+- Docs match repo behavior for larry/ingest transcript flows.
+- Deprecation path and removal criteria are explicit for the next agent.
 
 ## Notes
 

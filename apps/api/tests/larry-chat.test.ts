@@ -63,6 +63,7 @@ import {
   touchLarryConversation,
 } from "../src/lib/larry-ledger.js";
 import { ingestCanonicalEvent } from "../src/services/ingest/pipeline.js";
+import { ingestRoutes } from "../src/routes/v1/ingest.js";
 import { larryRoutes } from "../src/routes/v1/larry.js";
 
 const TENANT_ID = "11111111-1111-4111-8111-111111111111";
@@ -118,6 +119,42 @@ async function createTestApp() {
 
   await app.register(sensible);
   await app.register(larryRoutes, { prefix: "/larry" });
+  await app.register(ingestRoutes, { prefix: "/ingest" });
+  await app.ready();
+
+  return app;
+}
+
+async function createV1PrefixedTestApp() {
+  const app = Fastify({ logger: false });
+
+  app.decorate(
+    "db",
+    {
+      queryTenant: vi.fn().mockResolvedValue([]),
+    } as unknown as Db
+  );
+  app.decorate("config", { MODEL_PROVIDER: "mock" } as unknown as ApiEnv);
+  app.decorate(
+    "authenticate",
+    async (request: Parameters<(typeof app)["authenticate"]>[0]) => {
+      (
+        request as typeof request & {
+          user: { tenantId: string; userId: string; role: "pm"; email: string };
+        }
+      ).user = {
+        tenantId: TENANT_ID,
+        userId: USER_ID,
+        role: "pm",
+        email: "pm@example.com",
+      };
+    }
+  );
+  app.decorate("requireRole", () => async () => undefined);
+
+  await app.register(sensible);
+  await app.register(larryRoutes, { prefix: "/v1/larry" });
+  await app.register(ingestRoutes, { prefix: "/v1/ingest" });
   await app.ready();
 
   return app;
@@ -554,5 +591,50 @@ describe("POST /larry/transcript", () => {
 
     expect(response.statusCode).toBe(400);
     expect(ingestCanonicalEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /ingest/transcript compatibility shim", () => {
+  it("forwards to /larry/transcript and returns deprecation metadata", async () => {
+    vi.mocked(ingestCanonicalEvent).mockResolvedValue({
+      rawEventId: "raw-event-2",
+      canonicalEventId: "canon-event-2",
+      queued: true,
+    });
+    vi.mocked(getProjectSnapshot).mockResolvedValue(MOCK_SNAPSHOT);
+    vi.mocked(runIntelligence).mockResolvedValue({
+      briefing: "Processed transcript",
+      autoActions: [],
+      suggestedActions: [],
+    });
+    vi.mocked(runAutoActions).mockResolvedValue({ executedCount: 0, suggestedCount: 0, eventIds: [] });
+    vi.mocked(storeSuggestions).mockResolvedValue({ executedCount: 0, suggestedCount: 0, eventIds: [] });
+
+    const app = await createV1PrefixedTestApp();
+    appsToClose.push(app);
+
+    const dbQueryTenant = vi.mocked(app.db.queryTenant as unknown as (...args: unknown[]) => Promise<unknown[]>);
+    dbQueryTenant.mockResolvedValueOnce([{ id: "meeting-note-2" }]);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/v1/ingest/transcript",
+      payload: {
+        sourceEventId: "web-upload-compat",
+        transcript: "Joel will finalise rollout notes and Krish will prep stakeholder summary by Tuesday.",
+        projectId: PROJECT_ID,
+        meetingTitle: "Compat path test",
+        payload: {},
+      },
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.headers["x-larry-deprecated-endpoint"]).toBe("/v1/ingest/transcript");
+    expect(response.json()).toMatchObject({
+      accepted: true,
+      canonicalEventId: "canon-event-2",
+      deprecatedEndpoint: "/v1/ingest/transcript",
+      replacementEndpoint: "/v1/larry/transcript",
+    });
   });
 });

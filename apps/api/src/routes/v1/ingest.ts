@@ -1,10 +1,6 @@
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import {
-  ingestCanonicalEvent,
-  insertCanonicalEventRecords,
-  publishCanonicalEventCreated,
-} from "../../services/ingest/pipeline.js";
+import { ingestCanonicalEvent } from "../../services/ingest/pipeline.js";
 import { writeAuditLog } from "../../lib/audit.js";
 
 const BaseIngestSchema = z.object({
@@ -19,6 +15,14 @@ const TranscriptIngestSchema = BaseIngestSchema.extend({
   transcript: z.string().min(20),
   meetingTitle: z.string().optional(),
 });
+
+function tryParseJson(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return { error: raw };
+  }
+}
 
 export const ingestRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
@@ -98,55 +102,31 @@ export const ingestRoutes: FastifyPluginAsync = async (fastify) => {
     },
     async (request, reply) => {
       const body = TranscriptIngestSchema.parse(request.body);
-      const tenantId = request.user.tenantId;
-      const userId = request.user.userId;
-
-      const result = await fastify.db.tx(async (client) => {
-        await client.query("SELECT set_config('app.tenant_id', $1, true)", [tenantId]);
-
-        const meetingNoteResult = await client.query<{ id: string }>(
-          `INSERT INTO meeting_notes
-            (tenant_id, project_id, title, transcript, created_by_user_id)
-           VALUES ($1, $2, $3, $4, $5)
-           RETURNING id`,
-          [tenantId, body.projectId ?? null, body.meetingTitle ?? null, body.transcript, userId]
-        );
-        const meetingNoteId = meetingNoteResult.rows[0]?.id ?? null;
-
-        const canonicalResult = await insertCanonicalEventRecords(client, tenantId, {
-          source: "transcript",
-          sourceEventId: body.sourceEventId,
-          actor: body.actor,
-          occurredAt: body.occurredAt,
-          payload: {
-            ...body.payload,
-            transcript: body.transcript,
-            meetingTitle: body.meetingTitle,
-            projectId: body.projectId,
-            meetingNoteId,
-            submittedByUserId: userId,
-          },
-        });
-
-        return { ...canonicalResult, meetingNoteId };
+      const upstream = await fastify.inject({
+        method: "POST",
+        url: "/v1/larry/transcript",
+        headers: {
+          ...(request.headers.authorization
+            ? { authorization: request.headers.authorization }
+            : {}),
+        },
+        payload: body,
       });
 
-      await publishCanonicalEventCreated(fastify, tenantId, result);
+      const upstreamBody = tryParseJson(upstream.body);
+      const responseBody =
+        upstreamBody && typeof upstreamBody === "object"
+          ? {
+              ...(upstreamBody as Record<string, unknown>),
+              deprecatedEndpoint: "/v1/ingest/transcript",
+              replacementEndpoint: "/v1/larry/transcript",
+            }
+          : upstreamBody;
 
-      await writeAuditLog(fastify.db, {
-        tenantId,
-        actorUserId: userId,
-        actionType: "ingest.transcript",
-        objectType: "meeting_note",
-        objectId: result.meetingNoteId ?? result.canonicalEventId,
-      });
-
-      return reply.code(202).send({
-        accepted: true,
-        canonicalEventId: result.canonicalEventId,
-        idempotencyKey: result.idempotencyKey,
-        meetingNoteId: result.meetingNoteId,
-      });
+      return reply
+        .header("x-larry-deprecated-endpoint", "/v1/ingest/transcript")
+        .code(upstream.statusCode)
+        .send(responseBody);
     }
   );
 };
