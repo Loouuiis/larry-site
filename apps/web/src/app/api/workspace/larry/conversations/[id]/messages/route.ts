@@ -17,20 +17,15 @@ export async function GET(
   return NextResponse.json(result.body, { status: result.status });
 }
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function POST(_request: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { id } = await params;
-  const body = await request.json().catch(() => ({}));
-  const result = await proxyApiRequest(
-    session,
-    `/v1/larry/conversations/${id}/messages`,
-    { method: "POST", body: JSON.stringify(body) }
+  return NextResponse.json(
+    {
+      error:
+        "Legacy workspace conversation message writes have been retired. Use /api/workspace/larry/chat for canonical chat persistence.",
+    },
+    { status: 410 }
   );
-  if (result.session) await persistSession(result.session);
-  return NextResponse.json(result.body, { status: result.status });
 }

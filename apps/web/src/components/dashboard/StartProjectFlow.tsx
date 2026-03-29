@@ -22,10 +22,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import {
-  createLarryConversation,
-  saveLarryMessage,
-} from "@/lib/larry";
+import { sendLarryChat } from "@/lib/larry";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -49,7 +46,7 @@ const MODE_OPTIONS: Array<{
   description: string;
 }> = [
   { id: "manual", icon: ClipboardList, title: "Manual setup", description: "Create the project directly with dates and description." },
-  { id: "chat", icon: MessageSquare, title: "Chat intake", description: "Answer five guided questions and create a pending project draft." },
+  { id: "chat", icon: MessageSquare, title: "Chat intake", description: "Answer five guided questions and create the project with a seeded Larry chat." },
   { id: "transcript", icon: FileText, title: "Transcript import", description: "Paste notes or upload a .txt transcript for extraction." },
 ];
 
@@ -70,6 +67,15 @@ function buildProjectIntake(answers: string[]) {
     `Deliverables or workstreams: ${deliverables}`,
     `Risks, constraints, and dependencies: ${risks}`,
   ].join("\n");
+}
+
+function buildIntakeSeedMessage(answers: string[]) {
+  const intake = buildProjectIntake(answers);
+  return [
+    "I just created a new project from guided intake answers.",
+    "Use this context to bootstrap the project chat: summarize setup and propose useful next actions.",
+    intake,
+  ].join("\n\n");
 }
 
 function buildTranscriptToast(actionCount: number, pendingApprovals: number) {
@@ -151,7 +157,7 @@ function ModeSelectionStep({
           Pick the intake mode
         </h2>
         <p className="mt-2 text-sm text-neutral-500">
-          Manual creates immediately, chat creates a pending project draft, and transcript runs the real extraction flow.
+          Manual creates immediately, chat creates and seeds project context, and transcript runs the real extraction flow.
         </p>
       </div>
 
@@ -314,7 +320,6 @@ function ChatPane({
   onReviewActions: () => void;
   showToast: (toast: ToastState) => void;
 }) {
-  const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Array<{ id: string; role: "larry" | "user"; text: string }>>([
     { id: "q0", role: "larry", text: CHAT_QUESTIONS[0] },
   ]);
@@ -323,7 +328,7 @@ function ChatPane({
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<{ projectName: string; taskCount: number; actionId?: string } | null>(null);
+  const [success, setSuccess] = useState<{ projectName: string; seeded: boolean } | null>(null);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -332,18 +337,9 @@ function ChatPane({
 
     setBusy(true);
     setError(null);
-    let activeConversationId = conversationId;
     const nextAnswers = answers.concat(answer);
 
     try {
-      if (!activeConversationId) {
-        const created = await createLarryConversation({ title: `Project intake: ${answer.slice(0, 60)}` });
-        activeConversationId = created.id;
-        setConversationId(created.id);
-        await saveLarryMessage(created.id, "larry", CHAT_QUESTIONS[0]).catch(() => undefined);
-      }
-
-      await saveLarryMessage(activeConversationId, "user", answer).catch(() => undefined);
       setMessages((current) => current.concat({ id: crypto.randomUUID(), role: "user", text: answer }));
       setAnswers(nextAnswers);
       setInput("");
@@ -353,7 +349,6 @@ function ChatPane({
         const nextPrompt = CHAT_QUESTIONS[nextIndex];
         setMessages((current) => current.concat({ id: `q${nextIndex}`, role: "larry", text: nextPrompt }));
         setQuestionIndex(nextIndex);
-        await saveLarryMessage(activeConversationId, "larry", nextPrompt).catch(() => undefined);
         return;
       }
 
@@ -373,29 +368,45 @@ function ChatPane({
         setMessages((current) =>
           current.filter((message) => message.id !== "processing").concat({ id: crypto.randomUUID(), role: "larry", text: replyText })
         );
-        await saveLarryMessage(activeConversationId, "larry", replyText).catch(() => undefined);
         setError(replyText);
         return;
       }
 
-      const replyText = `Done — "${projectName}" is created. Open it and tell Larry what to set up first.`;
+      let seedSucceeded = false;
+      try {
+        const seedMessage = buildIntakeSeedMessage(nextAnswers);
+        const { response: seedResponse } = await sendLarryChat({
+          projectId: data.id,
+          message: seedMessage,
+        });
+        seedSucceeded = seedResponse.ok;
+      } catch {
+        seedSucceeded = false;
+      }
+
+      const replyText = seedSucceeded
+        ? `Done - "${projectName}" is created with intake context seeded in Larry chat.`
+        : `Done - "${projectName}" is created. Intake context could not be auto-seeded, so start by sharing setup in project chat.`;
       setMessages((current) =>
         current.filter((message) => message.id !== "processing").concat({ id: crypto.randomUUID(), role: "larry", text: replyText })
       );
-      await saveLarryMessage(activeConversationId, "larry", replyText).catch(() => undefined);
 
       setSuccess({
         projectName,
-        taskCount: 0,
-        actionId: undefined,
+        seeded: seedSucceeded,
       });
-      showToast({ tone: "success", message: `"${projectName}" created.` });
+      showToast({
+        tone: "success",
+        message: seedSucceeded
+          ? `"${projectName}" created and seeded in Larry chat.`
+          : `"${projectName}" created. Chat seed did not complete.`,
+      });
       window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
     } catch {
       setMessages((current) =>
         current.filter((message) => message.id !== "processing").concat({ id: crypto.randomUUID(), role: "larry", text: "Network error. Please try again." })
       );
-      setError("Network error while creating the project draft.");
+      setError("Network error while creating the project.");
     } finally {
       setBusy(false);
     }
@@ -410,7 +421,9 @@ function ChatPane({
           </div>
           <h2 className="mt-4 text-2xl font-semibold tracking-[-0.03em] text-neutral-900">{success.projectName} is ready</h2>
           <p className="mt-2 text-[14px] text-neutral-600">
-            Open the project and tell Larry what tasks to set up — it will act immediately.
+            {success.seeded
+              ? "Open the project and continue from the seeded Larry chat context."
+              : "Open the project and continue in Larry chat with your intake summary."}
           </p>
           <button
             type="button"
@@ -430,7 +443,7 @@ function ChatPane({
       <div className="rounded-[24px] border border-[#dbe3ef] bg-[#f8fbff] p-5">
         <h2 className="text-2xl font-semibold tracking-[-0.03em] text-neutral-900">Chat intake</h2>
         <p className="mt-2 text-[14px] text-neutral-500">
-          Five fixed questions, persisted as a Larry conversation, ending in a pending `create_project` command.
+          Five fixed questions, then project creation plus one canonical Larry chat seed write.
         </p>
       </div>
 
@@ -469,14 +482,14 @@ function ChatPane({
         />
         {error && <div className="rounded-2xl bg-rose-50 px-4 py-3 text-[13px] text-rose-700">{error}</div>}
         <div className="flex items-center justify-between gap-4">
-          <p className="text-[12px] text-neutral-500">Larry will save this intake and create a pending review action at the end.</p>
+          <p className="text-[12px] text-neutral-500">Intake answers stay local until project creation, then seed one canonical Larry chat message.</p>
           <button
             type="submit"
             disabled={busy || input.trim().length < 2}
             className="inline-flex h-11 items-center gap-2 rounded-2xl bg-[#0f62fe] px-5 text-sm font-semibold text-white transition disabled:opacity-50 hover:bg-[#0043ce]"
           >
             {busy ? <Loader2 size={16} className="animate-spin" /> : <ArrowRight size={16} />}
-            {questionIndex === CHAT_QUESTIONS.length - 1 ? "Draft project" : "Next answer"}
+            {questionIndex === CHAT_QUESTIONS.length - 1 ? "Create project" : "Next answer"}
           </button>
         </div>
       </form>

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, CalendarRange, Check, FileText, Loader2, MessageSquare, Sparkles } from "lucide-react";
-import { createLarryConversation, saveLarryMessage } from "@/lib/larry";
+import { sendLarryChat } from "@/lib/larry";
 import { triggerBoundedWorkspaceRefresh } from "@/app/workspace/refresh";
 
 type IntakeMode = "manual" | "chat" | "meeting";
@@ -28,6 +28,15 @@ function buildProjectIntake(answers: string[]) {
     `Deliverables or workstreams: ${deliverables}`,
     `Risks, constraints, and dependencies: ${risks}`,
   ].join("\n");
+}
+
+function buildIntakeSeedMessage(answers: string[]) {
+  const intake = buildProjectIntake(answers);
+  return [
+    "I just created a new project from guided intake answers.",
+    "Use this context to bootstrap the project chat: summarize the setup and propose the most useful next actions.",
+    intake,
+  ].join("\n\n");
 }
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -144,7 +153,6 @@ export function WorkspaceProjectIntake() {
   const [manualBusy, setManualBusy] = useState(false);
   const [manualError, setManualError] = useState<string | null>(null);
 
-  const [chatConversationId, setChatConversationId] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<Array<{ id: string; role: "larry" | "user"; text: string }>>([
     { id: "q0", role: "larry", text: CHAT_QUESTIONS[0] },
   ]);
@@ -155,6 +163,7 @@ export function WorkspaceProjectIntake() {
   const [chatError, setChatError] = useState<string | null>(null);
   const [chatCreatedProjectId, setChatCreatedProjectId] = useState<string | null>(null);
   const [chatCreatedProjectName, setChatCreatedProjectName] = useState<string | null>(null);
+  const [chatSeedWarning, setChatSeedWarning] = useState<string | null>(null);
 
   const [meetingName, setMeetingName] = useState("");
   const [meetingDescription, setMeetingDescription] = useState("");
@@ -217,18 +226,9 @@ export function WorkspaceProjectIntake() {
 
     setChatBusy(true);
     setChatError(null);
-    let activeConversationId = chatConversationId;
     const nextAnswers = chatAnswers.concat(answer);
 
     try {
-      if (!activeConversationId) {
-        const created = await createLarryConversation({ title: `Project intake: ${answer.slice(0, 60)}` });
-        activeConversationId = created.id;
-        setChatConversationId(created.id);
-        await saveLarryMessage(created.id, "larry", CHAT_QUESTIONS[0]).catch(() => undefined);
-      }
-
-      await saveLarryMessage(activeConversationId, "user", answer).catch(() => undefined);
       setChatMessages((current) => current.concat({ id: crypto.randomUUID(), role: "user", text: answer }));
       setChatAnswers(nextAnswers);
       setChatInput("");
@@ -238,7 +238,6 @@ export function WorkspaceProjectIntake() {
         const nextPrompt = CHAT_QUESTIONS[nextIndex];
         setChatMessages((current) => current.concat({ id: `q${nextIndex}`, role: "larry", text: nextPrompt }));
         setChatQuestionIndex(nextIndex);
-        await saveLarryMessage(activeConversationId, "larry", nextPrompt).catch(() => undefined);
         return;
       }
 
@@ -246,11 +245,30 @@ export function WorkspaceProjectIntake() {
       const projectName = nextAnswers[0]?.trim() || "New Project";
       const description = buildProjectIntake(nextAnswers);
       const projectId = await createProject({ name: projectName, description });
-      const replyText = `Project created. Open ${projectName} and keep building with Larry from the project workspace.`;
+      setChatSeedWarning(null);
+
+      let seedSucceeded = false;
+      try {
+        const seedMessage = buildIntakeSeedMessage(nextAnswers);
+        const { response } = await sendLarryChat({
+          projectId,
+          message: seedMessage,
+        });
+        seedSucceeded = response.ok;
+      } catch {
+        seedSucceeded = false;
+      }
+
+      const replyText = seedSucceeded
+        ? `Project created. Open ${projectName} and keep building with Larry from the project workspace.`
+        : `Project created. Open ${projectName}. Larry intake context could not be auto-seeded, so start by sharing the setup in project chat.`;
       setChatMessages((current) =>
         current.filter((message) => message.id !== "processing").concat({ id: crypto.randomUUID(), role: "larry", text: replyText }),
       );
-      await saveLarryMessage(activeConversationId, "larry", replyText).catch(() => undefined);
+
+      if (!seedSucceeded) {
+        setChatSeedWarning("The project is live, but intake context was not auto-seeded in Larry chat.");
+      }
       setChatCreatedProjectId(projectId);
       setChatCreatedProjectName(projectName);
       window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
@@ -472,8 +490,15 @@ export function WorkspaceProjectIntake() {
                       {chatCreatedProjectName} is ready
                     </p>
                     <p className="mt-2 text-[13px]" style={{ color: "#166534" }}>
-                      The project is now live on the workspace path with Larry chat ready inside the project.
+                      {chatSeedWarning
+                        ? "The project is now live on the workspace path."
+                        : "The project is now live on the workspace path with Larry chat ready inside the project."}
                     </p>
+                    {chatSeedWarning && (
+                      <p className="mt-2 text-[12px]" style={{ color: "#166534" }}>
+                        {chatSeedWarning}
+                      </p>
+                    )}
                     <button
                       type="button"
                       onClick={() => router.push(`/workspace/projects/${chatCreatedProjectId}`)}

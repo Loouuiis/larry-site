@@ -202,9 +202,27 @@ async function login(page: Page) {
   await page.waitForURL("**/workspace");
 }
 
+async function routeLegacyLarryEventsReadBoundary(page: Page): Promise<() => number> {
+  let legacyEventsReadCount = 0;
+
+  await page.route(/\/api\/workspace\/larry\/events(?:\?.*)?$/, async (route) => {
+    legacyEventsReadCount += 1;
+    await route.fulfill({
+      status: 410,
+      json: {
+        error:
+          "Legacy workspace event-list reads have been retired. Use /api/workspace/projects/:id/action-centre (project) or /api/workspace/larry/action-centre (global).",
+      },
+    });
+  });
+
+  return () => legacyEventsReadCount;
+}
+
 test("keeps the global and project action centres in sync for the same suggestion", async ({ page }) => {
   const suggestedEvent = createSuggestedEvent();
   const acceptedEvent = createAcceptedEvent(suggestedEvent);
+  const getLegacyEventsReadCount = await routeLegacyLarryEventsReadBoundary(page);
 
   let globalActionCentre = {
     suggested: [suggestedEvent],
@@ -278,10 +296,12 @@ test("keeps the global and project action centres in sync for the same suggestio
   await expect(page.getByRole("heading", { name: "Workspace Action Centre" })).toBeVisible();
   await expect(page.getByText("Draft launch update email")).toBeVisible();
   await expect(page.getByText("Accepted by Taylor")).toBeVisible();
+  expect(getLegacyEventsReadCount()).toBe(0);
 });
 
 test("global action centre linked-chat actions support quick panel and rich chat launches", async ({ page }) => {
   const suggestedEvent = createSuggestedEvent();
+  const getLegacyEventsReadCount = await routeLegacyLarryEventsReadBoundary(page);
   const acceptedActivityEvent = createAcceptedEvent(
     createSuggestedEvent({
       id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
@@ -385,10 +405,12 @@ test("global action centre linked-chat actions support quick panel and rich chat
   await expect(page.getByText("Opened from Workspace Action Centre")).toBeVisible();
   await expect(page.getByText("Project: Alpha Launch | Source: Calendar signal | Event: Accepted")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Launch update email" })).toBeVisible();
+  expect(getLegacyEventsReadCount()).toBe(0);
 });
 
 test("dismiss in global action centre removes the suggestion and stays in sync with project view", async ({ page }) => {
   const dismissEventId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const getLegacyEventsReadCount = await routeLegacyLarryEventsReadBoundary(page);
   const suggestedEvent = createSuggestedEvent({
     id: dismissEventId,
     displayText: "Draft partner follow-up email",
@@ -467,12 +489,14 @@ test("dismiss in global action centre removes the suggestion and stays in sync w
   await expect(page.getByRole("heading", { name: "Alpha Launch" })).toBeVisible();
   await expect(page.getByText("No pending Larry actions for this project.")).toBeVisible();
   await expect(page.getByText("Draft partner follow-up email")).toHaveCount(0);
+  expect(getLegacyEventsReadCount()).toBe(0);
 });
 
 test("global action centre picks up new cross-project suggestions via background refresh without navigation", async ({
   page,
 }) => {
   const alphaSuggestedEvent = createSuggestedEvent();
+  const getLegacyEventsReadCount = await routeLegacyLarryEventsReadBoundary(page);
   const betaSuggestedEvent = createSuggestedEvent({
     id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
     projectId: OTHER_PROJECT_ID,
@@ -518,4 +542,5 @@ test("global action centre picks up new cross-project suggestions via background
   await expect(page.getByText("Create beta rollout escalation checklist")).toBeVisible({
     timeout: 15_000,
   });
+  expect(getLegacyEventsReadCount()).toBe(0);
 });

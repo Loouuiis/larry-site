@@ -21,6 +21,15 @@ export interface LarryEventContext {
   sourceRecordId?: string | null;
 }
 
+interface NormalizedLarryEventContext {
+  conversationId: string | null;
+  requestMessageId: string | null;
+  responseMessageId: string | null;
+  requesterUserId: string | null;
+  sourceKind: string;
+  sourceRecordId: string | null;
+}
+
 export interface ExecutorResult {
   executedCount: number;
   suggestedCount: number;
@@ -88,7 +97,68 @@ interface ProjectCreatePayload {
   tasks: Array<{ title: string; assigneeName: string | null; dueDate: string | null }>;
 }
 
+const SOURCE_KINDS_REQUIRING_RECORD_ID = new Set([
+  "chat",
+  "meeting",
+  "email",
+  "slack",
+  "calendar",
+  "briefing",
+  "schedule",
+]);
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function normalizeContextValue(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function normalizeLarryEventContext(
+  triggeredBy: TriggeredBy,
+  context?: LarryEventContext
+): NormalizedLarryEventContext {
+  const normalized: NormalizedLarryEventContext = {
+    conversationId: normalizeContextValue(context?.conversationId),
+    requestMessageId: normalizeContextValue(context?.requestMessageId),
+    responseMessageId: normalizeContextValue(context?.responseMessageId),
+    requesterUserId: normalizeContextValue(context?.requesterUserId),
+    sourceKind: normalizeContextValue(context?.sourceKind) ?? triggeredBy,
+    sourceRecordId: normalizeContextValue(context?.sourceRecordId),
+  };
+
+  if (!normalized.sourceKind) {
+    throw new Error("insertLarryEvent: sourceKind is required for every Larry event");
+  }
+
+  if (SOURCE_KINDS_REQUIRING_RECORD_ID.has(normalized.sourceKind) && !normalized.sourceRecordId) {
+    throw new Error(
+      `insertLarryEvent: sourceRecordId is required when sourceKind='${normalized.sourceKind}'`
+    );
+  }
+
+  if (normalized.sourceKind === "chat") {
+    if (!normalized.conversationId) {
+      throw new Error("insertLarryEvent: conversationId is required for chat-sourced events");
+    }
+    if (!normalized.requestMessageId) {
+      throw new Error("insertLarryEvent: requestMessageId is required for chat-sourced events");
+    }
+    if (!normalized.responseMessageId) {
+      throw new Error("insertLarryEvent: responseMessageId is required for chat-sourced events");
+    }
+    if (!normalized.requesterUserId) {
+      throw new Error("insertLarryEvent: requesterUserId is required for chat-sourced events");
+    }
+  }
+
+  if (triggeredBy === "login" && !normalized.requesterUserId) {
+    throw new Error("insertLarryEvent: requesterUserId is required for login-triggered events");
+  }
+
+  return normalized;
+}
 
 async function resolveUserByName(
   db: Db,
@@ -148,11 +218,12 @@ async function insertLarryEvent(
 ): Promise<string> {
   const executionMode: LarryExecutionMode = eventType === "auto_executed" ? "auto" : "approval";
   const executedByKind: LarryExecutedByKind | null = eventType === "auto_executed" ? "larry" : null;
+  const normalizedContext = normalizeLarryEventContext(triggeredBy, context);
   const rows = await db.queryTenant<{ id: string }>(
     tenantId,
     `INSERT INTO larry_events
        (tenant_id, project_id, event_type, action_type, display_text, reasoning, payload, executed_at, triggered_by, chat_message,
-        conversation_id, request_message_id, response_message_id, requested_by_user_id, executed_by_kind, execution_mode, source_kind, source_record_id)
+         conversation_id, request_message_id, response_message_id, requested_by_user_id, executed_by_kind, execution_mode, source_kind, source_record_id)
      VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10,
              $11, $12, $13, $14, $15, $16, $17, $18)
      RETURNING id`,
@@ -167,14 +238,14 @@ async function insertLarryEvent(
       executed ? new Date().toISOString() : null,
       triggeredBy,
       chatMessage ?? null,
-      context?.conversationId ?? null,
-      context?.requestMessageId ?? null,
-      context?.responseMessageId ?? null,
-      context?.requesterUserId ?? null,
+      normalizedContext.conversationId,
+      normalizedContext.requestMessageId,
+      normalizedContext.responseMessageId,
+      normalizedContext.requesterUserId,
       executedByKind,
       executionMode,
-      context?.sourceKind ?? triggeredBy,
-      context?.sourceRecordId ?? null,
+      normalizedContext.sourceKind,
+      normalizedContext.sourceRecordId,
     ]
   );
   return rows[0].id;
@@ -529,6 +600,9 @@ export async function runAutoActions(
         context
       );
     } catch (err) {
+      if (err instanceof Error && err.message.startsWith("insertLarryEvent:")) {
+        throw err;
+      }
       console.error(`runAutoActions: failed to create event record for "${action.type}"`, {
         actionType: action.type,
         tenantId,

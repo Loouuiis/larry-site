@@ -7,7 +7,7 @@
 - The repo is not starting from zero. It already has real project/task CRUD, per-project Larry chat, transcript ingest, calendar watch and webhook ingestion, email draft storage, and project analytics.
 - The repo is also carrying structural overlap that should be treated as foundation work, not tolerated as background debt:
   - The active product lives under `/workspace`, but a legacy `/dashboard` route tree and older dashboard shell still exist in-repo.
-  - The active workspace intake now supports manual, chat, and meeting modes on `/workspace/projects/new`, but a legacy `StartProjectFlow` still exists in dashboard-era code and the chat bootstrap still uses the older `saveLarryMessage` side-path.
+  - The active workspace intake now supports manual, chat, and meeting modes on `/workspace/projects/new`, but a legacy `StartProjectFlow` still exists in dashboard-era code.
   - Legacy dashboard surfaces still rely on one broad `/api/workspace/snapshot` aggregator, even though the active `/workspace` route tree has already been moved onto scoped read models.
   - The data model still contains both the older extraction and approval pipeline and the newer `larry_events` and conversation model.
   - The worker now processes `canonical_event.created` for transcript-led meeting flows plus login briefing, scheduled scan, email, Slack, and calendar connector flows; connector-heavy behavior still leans on scheduled scans as fallback and hygiene.
@@ -150,9 +150,24 @@ These are not optional cleanups; they are part of the implementation strategy:
   - Refactored transcript ingest so the API writes `meeting_notes` first, inserts the canonical transcript event with `projectId`, `meetingNoteId`, and `submittedByUserId` in the payload, and only publishes `canonical_event.created` after the transaction commits.
   - Added active worker handling for `canonical_event.created` so transcript jobs load the canonical event, resolve project scope, run intelligence once, write the meeting summary, create source-linked `larry_events`, and reconcile `meeting_notes.action_count`.
   - Added replay safety for transcript-driven event creation by querying existing meeting-linked `larry_events` before generating actions and by indexing `(tenant_id, source_kind, source_record_id)` on the canonical ledger.
-  - Extended non-chat `LarryEventContext` usage so login briefings stamp `requestedByUserId` and `sourceKind='briefing'`, then backfill `sourceRecordId=briefingId`, while scheduled scans stamp `sourceKind='schedule'`.
+  - Extended non-chat `LarryEventContext` usage so login briefings stamp `requestedByUserId`, `sourceKind='briefing'`, and `sourceRecordId=briefingId`, while scheduled scans stamp `sourceKind='schedule'`.
   - Updated active transcript entry points to treat processing as queued background work, trigger bounded workspace refresh, and render readable non-chat origin labels such as meeting transcript, login briefing, and scheduled scan in the project Action Centre.
   - Added API, worker, and Playwright coverage for transcript ingest, briefing attribution, transcript replay safety, scheduled scan stability, and meeting-led Action Centre provenance.
+- **Phase 2.3 intake chat-write migration boundary closure**:
+  - Retired `saveLarryMessage` and ad hoc conversation writes in active `/workspace/projects/new` chat intake and legacy `StartProjectFlow` chat intake.
+  - Kept guided intake Q&A local during questionnaire steps, then seeded one canonical project chat write via `/api/workspace/larry/chat` after project creation.
+  - Added non-blocking fallback behavior so project creation still succeeds when canonical seeding fails, with explicit UI copy guiding the user to continue in project chat.
+  - Added focused Playwright coverage for workspace chat intake project creation + canonical seed payload assertions, plus regression checks that legacy conversation/message write endpoints are not used by active intake flow.
+- **Phase 2.4 conversation write endpoint retirement/fencing**:
+  - Retired legacy manual write endpoints by fencing `POST /v1/larry/conversations` and `POST /v1/larry/conversations/:id/messages` with explicit `410 Gone` migration guidance to canonical `POST /v1/larry/chat`.
+  - Applied the same fencing at the workspace API boundary by returning `410` from `POST /api/workspace/larry/conversations` and `POST /api/workspace/larry/conversations/:id/messages` instead of proxying side-path writes.
+  - Removed now-dead web write helpers (`createLarryConversation`, `saveLarryMessage`) so new web code cannot accidentally reintroduce side-path chat persistence.
+  - Added API regression coverage for retired write endpoints and Playwright regression coverage proving active project chat persists through canonical `/api/workspace/larry/chat` without posting to legacy conversation/message write paths.
+- **Phase 2.5 legacy event-list read endpoint retirement/fencing**:
+  - Retired legacy event-list reads by fencing `GET /v1/larry/events` with explicit `410 Gone` migration guidance to canonical `GET /v1/larry/action-centre` project/global read contracts.
+  - Applied the same read fence at the workspace API boundary by returning `410` from `GET /api/workspace/larry/events` with migration guidance to `/api/workspace/projects/:id/action-centre` and `/api/workspace/larry/action-centre`.
+  - Added API regression coverage for retired `GET /larry/events` behavior, including assertion that legacy `listLarryEventSummaries` fan-out is not invoked by the fenced route.
+  - Added Playwright regression coverage proving active `/workspace/actions`, project workspace Action Centre, and linked chat launch flows do not call retired `/api/workspace/larry/events` reads.
 - **Phase 3 starter: Global Action Centre cutover**:
   - Extended the canonical Larry event summary contract with `projectName` so tenant-wide action-centre reads carry a project display label without stitched web-only joins.
   - Replaced the placeholder `/workspace/actions` page with a real workspace-native global Action Centre powered by `/api/workspace/larry/action-centre`, including cross-project labels, project links, and accept or dismiss controls on the canonical ledger path.
@@ -189,6 +204,11 @@ These are not optional cleanups; they are part of the implementation strategy:
   - Updated `/workspace/chats` query bootstrap precedence so `draft` still wins, then explicit `conversationId`, then project-first fallback behavior.
   - Added an Action Centre launch-context banner in `/workspace/chats` with project framing, normalized source label, event status context, and a direct return link to `/workspace/actions`.
   - Added targeted Playwright coverage validating linked-chat launch consistency and deep-link context rendering across both suggestion and activity cards.
+- **Phase 3 follow-up: Metadata normalization closure**:
+  - Hardened Larry event context normalization in `@larry/db` so every new event now enforces `sourceKind`, source-linkage requirements (`sourceRecordId` for chat/meeting/email/slack/calendar/briefing/schedule), chat linkage requirements (`conversationId`, request/response message IDs, requester), and login requester requirements before insert.
+  - Updated login briefing generation to pre-generate `briefingId`, pass `sourceRecordId=briefingId` into `runAutoActions` and `storeSuggestions`, and persist the briefing row with the same ID while keeping source-record backfill as idempotent safety.
+  - Updated scheduled scan ledger writes to stamp a per-project `sourceRecordId` so schedule-origin actions satisfy provenance linkage requirements without introducing synthetic requesters.
+  - Added API and worker contract coverage updates so briefing and scheduled-scan Larry writes fail regression checks if required provenance linkage metadata is omitted.
 
 ### Still To Do For Phase 1
 
@@ -204,16 +224,15 @@ These are not optional cleanups; they are part of the implementation strategy:
 
 - Continue consolidating connector-triggered Larry actions onto the same canonical Larry ledger contract as legacy paths are retired; chat, transcript, login briefing, scheduled scan, email, Slack, and calendar are now onboarded on the canonical path.
 - Consolidate Larry writes, approvals, and audit history further so active behavior no longer relies on both the legacy extraction tables and the newer Larry conversation and event model.
-- Decide and execute the migration boundary for the remaining `saveLarryMessage` side-path usage in project-intake chat bootstrap and legacy create flows so message persistence is no longer split across two write styles.
 - Rehearse the new `larry_events` and `larry_messages` backfills against production-like data before cutting more connector-heavy behavior onto the canonical ledger.
-- Retire or fence legacy Larry read and write paths once the canonical runtime contract is in place across chat, transcript, and signal-driven flows.
+- Continue retiring or fencing any remaining legacy Larry read/write paths beyond the now-fenced conversation writes and event-list reads as canonical contracts replace them.
 
 ### Recommended Next Slice
 
-- **Phase 3 follow-up: Metadata normalization closure**:
-  - Audit active Larry event creation paths to enforce source, requester, actor, and linked-context fields uniformly for every new action.
-  - Add API and worker contract coverage that fails when new action records omit required provenance and linkage metadata.
-  - Keep this slice scoped to provenance completeness and validation; do not add new UI surfaces.
+- **Phase 2 follow-up: Canonical ledger backfill rehearsal + extraction-runtime dependency audit**:
+  - Rehearse `larry_events` and `larry_messages` backfills on production-like data and capture row-count, linkage, and replay/idempotency verification outputs.
+  - Audit active API/worker/web Larry behavior for residual extraction-led runtime dependencies and produce a concrete cutover checklist for remaining dual-runtime touchpoints.
+  - Add targeted contract coverage around audited boundary points so regressions fail when new behavior bypasses canonical ledger/chat contracts.
 
 ---
 
@@ -283,7 +302,7 @@ Create a real Action Centre built on the consolidated Larry runtime and event-dr
 
 - [x] A dedicated `/workspace/actions` surface exists and reads from the same action ledger as the project workspace.
 - [x] Each project dashboard exposes its own Action Centre view backed by the same canonical ledger as the global Action Centre.
-- [ ] Every new Larry action includes normalized source, requester, actor, and linked context metadata.
+- [x] Every new Larry action includes normalized source, requester, actor, and linked context metadata.
 - [x] Project-level and global Action Centre views stay consistent without manual refresh choreography.
 - [x] Connector and transcript events can create or update visible Larry actions through the canonical event-driven path.
 

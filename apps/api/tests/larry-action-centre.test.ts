@@ -106,6 +106,22 @@ afterEach(async () => {
 });
 
 describe("Larry action centre routes", () => {
+  it("returns 410 for legacy event-list reads", async () => {
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/larry/events?projectId=${PROJECT_ID}&eventType=suggested`,
+    });
+
+    expect(response.statusCode).toBe(410);
+    expect(response.json()).toMatchObject({
+      error: expect.stringContaining("retired"),
+    });
+    expect(listLarryEventSummaries).not.toHaveBeenCalled();
+  });
+
   it("returns the canonical action-centre payload", async () => {
     vi.mocked(getLarryActionCentreData).mockResolvedValue({
       suggested: [

@@ -46,22 +46,6 @@ export async function listLarryConversations(projectId?: string): Promise<LarryC
   return data.conversations ?? [];
 }
 
-export async function createLarryConversation(input: {
-  projectId?: string;
-  title?: string;
-}): Promise<LarryConversation> {
-  const response = await fetch("/api/workspace/larry/conversations", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  const data = await readJson<LarryConversation & { error?: string }>(response);
-  if (!response.ok || !data.id) {
-    throw new Error(data.error ?? "Failed to create conversation.");
-  }
-  return data;
-}
-
 export async function listLarryMessages(conversationId: string): Promise<LarryMessage[]> {
   const response = await fetch(`/api/workspace/larry/conversations/${conversationId}/messages`, {
     cache: "no-store",
@@ -71,23 +55,6 @@ export async function listLarryMessages(conversationId: string): Promise<LarryMe
     throw new Error(data.error ?? "Failed to load conversation messages.");
   }
   return data.messages ?? [];
-}
-
-export async function saveLarryMessage(
-  conversationId: string,
-  role: "user" | "larry",
-  content: string,
-  reasoning?: LarryMessage["reasoning"]
-): Promise<void> {
-  const response = await fetch(`/api/workspace/larry/conversations/${conversationId}/messages`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ role, content, reasoning }),
-  });
-  if (!response.ok) {
-    const data = await readJson<{ error?: string }>(response);
-    throw new Error(data.error ?? "Failed to save Larry message.");
-  }
 }
 
 export async function sendLarryChat(input: {

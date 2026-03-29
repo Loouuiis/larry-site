@@ -31,6 +31,8 @@ import { runLarryScan } from "../src/larry-scan.js";
 
 const TENANT_ID = "11111111-1111-4111-8111-111111111111";
 const PROJECT_ID = "33333333-3333-4333-8333-333333333333";
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -93,7 +95,10 @@ describe("runLarryScan", () => {
       "schedule",
       [],
       undefined,
-      { sourceKind: "schedule" }
+      {
+        sourceKind: "schedule",
+        sourceRecordId: expect.stringMatching(UUID_REGEX),
+      }
     );
     expect(storeSuggestions).toHaveBeenCalledWith(
       expect.anything(),
@@ -102,7 +107,10 @@ describe("runLarryScan", () => {
       "schedule",
       [],
       undefined,
-      { sourceKind: "schedule" }
+      {
+        sourceKind: "schedule",
+        sourceRecordId: expect.stringMatching(UUID_REGEX),
+      }
     );
   });
 });

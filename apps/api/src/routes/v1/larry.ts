@@ -14,7 +14,6 @@ import type {
   IntelligenceConfig,
   LarryActionType,
   LarryChatResponse,
-  LarryEventType,
   LarryMessageRecord,
 } from "@larry/shared";
 import { writeAuditLog } from "../../lib/audit.js";
@@ -45,25 +44,8 @@ function buildIntelligenceConfig(config: ReturnType<typeof getApiEnv>): Intellig
   return { provider: "mock", model: "mock" };
 }
 
-const ConversationCreateSchema = z.object({
-  projectId: z.string().uuid().optional(),
-  title: z.string().trim().min(1).max(200).optional(),
-});
-
 const ConversationQuerySchema = z.object({
   projectId: z.string().uuid().optional(),
-});
-
-const ConversationMessageSchema = z.object({
-  role: z.enum(["user", "larry"]),
-  content: z.string().trim().min(1).max(8_000),
-  reasoning: z.record(z.string(), z.unknown()).nullable().optional(),
-});
-
-const EventsQuerySchema = z.object({
-  projectId: z.string().uuid().optional(),
-  eventType: z.enum(["auto_executed", "suggested", "accepted", "dismissed"]).optional(),
-  limit: z.coerce.number().int().min(1).max(200).default(50),
 });
 
 const ActionCentreQuerySchema = z.object({
@@ -75,10 +57,6 @@ const ChatSchema = z.object({
   message: z.string().trim().min(1).max(8_000),
   conversationId: z.string().uuid().optional(),
 });
-
-function toPendingType(eventType?: LarryEventType): LarryEventType[] | undefined {
-  return eventType ? [eventType] : undefined;
-}
 
 function fallbackMessage(input: {
   id: string;
@@ -125,20 +103,11 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     "/conversations",
     { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
-    async (request, reply) => {
-      const parseResult = ConversationCreateSchema.safeParse(request.body ?? {});
-      if (!parseResult.success) {
-        throw fastify.httpErrors.badRequest(parseResult.error.issues[0]?.message ?? "Invalid request body");
-      }
-
-      const conversation = await createLarryConversation(
-        fastify.db,
-        request.user.tenantId,
-        request.user.userId,
-        parseResult.data
-      );
-
-      return reply.code(201).send(conversation);
+    async (_request, reply) => {
+      return reply.code(410).send({
+        error:
+          "Legacy conversation creation has been retired. Use POST /v1/larry/chat for canonical chat persistence.",
+      });
     }
   );
 
@@ -163,67 +132,22 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     "/conversations/:id/messages",
     { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
-    async (request, reply) => {
-      const tenantId = request.user.tenantId;
-      const userId = request.user.userId;
-      const { id } = request.params as { id: string };
-      const parseResult = ConversationMessageSchema.safeParse(request.body ?? {});
-
-      if (!parseResult.success) {
-        throw fastify.httpErrors.badRequest(parseResult.error.issues[0]?.message ?? "Invalid request body");
-      }
-
-      const conversation = await getLarryConversationForUser(fastify.db, tenantId, userId, id);
-      if (!conversation) {
-        throw fastify.httpErrors.notFound("Conversation not found.");
-      }
-
-      const body = parseResult.data;
-      const inserted = await insertLarryMessage(fastify.db, tenantId, id, {
-        role: body.role,
-        content: body.content,
-        reasoning: body.reasoning ?? null,
-        actorUserId: body.role === "user" ? userId : null,
+    async (_request, reply) => {
+      return reply.code(410).send({
+        error:
+          "Legacy conversation message writes have been retired. Use POST /v1/larry/chat for canonical chat persistence.",
       });
-
-      await touchLarryConversation(
-        fastify.db,
-        tenantId,
-        id,
-        body.role === "user" ? body.content.slice(0, 80) : undefined
-      );
-
-      const [message] = await listLarryMessagesByIds(fastify.db, tenantId, [inserted.id]);
-
-      return reply.code(201).send(
-        message ??
-          fallbackMessage({
-            id: inserted.id,
-            role: body.role,
-            content: body.content,
-            createdAt: inserted.createdAt,
-            actorUserId: body.role === "user" ? userId : null,
-          })
-      );
     }
   );
 
   fastify.get(
     "/events",
     { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
-    async (request) => {
-      const parseResult = EventsQuerySchema.safeParse(request.query);
-      if (!parseResult.success) {
-        throw fastify.httpErrors.badRequest(parseResult.error.issues[0]?.message ?? "Invalid query params");
-      }
-
-      const events = await listLarryEventSummaries(fastify.db, request.user.tenantId, {
-        projectId: parseResult.data.projectId,
-        eventTypes: toPendingType(parseResult.data.eventType),
-        limit: parseResult.data.limit,
+    async (_request, reply) => {
+      return reply.code(410).send({
+        error:
+          "Legacy event-list reads have been retired. Use GET /v1/larry/action-centre?projectId=... (project) or GET /v1/larry/action-centre (global).",
       });
-
-      return { events };
     }
   );
 

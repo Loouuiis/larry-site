@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Db, backfillLarryEventSourceRecord, getProjectSnapshot } from "@larry/db";
 import { runIntelligence } from "@larry/ai";
 import type { IntelligenceConfig } from "@larry/shared";
@@ -51,6 +52,8 @@ export async function generateBriefing(
   tenantId: string,
   userDisplayName: string
 ): Promise<{ content: LarryBriefingContent; briefingId: string }> {
+  const briefingId = randomUUID();
+
   // 1. Load all active projects this user is a member of (cap at 20 for latency)
   const projectRows = await db.queryTenant<{ id: string; name: string; risk_level: string }>(
     tenantId,
@@ -71,6 +74,7 @@ export async function generateBriefing(
       const ledgerContext = {
         requesterUserId: userId,
         sourceKind: "briefing",
+        sourceRecordId: briefingId,
       } as const;
       const [snapshot, pendingTexts] = await Promise.all([
         getProjectSnapshot(db, tenantId, project.id),
@@ -120,16 +124,16 @@ export async function generateBriefing(
   // 6. Persist — store event IDs so the briefing is auditable
   const briefingRows = await db.queryTenant<{ id: string }>(
     tenantId,
-    `INSERT INTO larry_briefings (tenant_id, user_id, content, event_ids)
-     VALUES ($1, $2, $3::jsonb, $4::uuid[])
+    `INSERT INTO larry_briefings (id, tenant_id, user_id, content, event_ids)
+     VALUES ($1, $2, $3, $4::jsonb, $5::uuid[])
      RETURNING id`,
-    [tenantId, userId, JSON.stringify(content), allEventIds]
+    [briefingId, tenantId, userId, JSON.stringify(content), allEventIds]
   );
 
-  const briefingId = briefingRows[0].id;
-  await backfillLarryEventSourceRecord(db, tenantId, allEventIds, "briefing", briefingId);
+  const persistedBriefingId = briefingRows[0].id;
+  await backfillLarryEventSourceRecord(db, tenantId, allEventIds, "briefing", persistedBriefingId);
 
-  return { content, briefingId };
+  return { content, briefingId: persistedBriefingId };
 }
 
 /**

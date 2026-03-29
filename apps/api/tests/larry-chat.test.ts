@@ -129,6 +129,41 @@ afterEach(async () => {
 });
 
 describe("POST /larry/chat", () => {
+  it("returns 410 for legacy conversation creation writes", async () => {
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/larry/conversations",
+      payload: { projectId: PROJECT_ID, title: "Legacy write" },
+    });
+
+    expect(response.statusCode).toBe(410);
+    expect(response.json()).toMatchObject({
+      error: expect.stringContaining("retired"),
+    });
+    expect(createLarryConversation).not.toHaveBeenCalled();
+  });
+
+  it("returns 410 for legacy conversation message writes", async () => {
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/larry/conversations/${CONVERSATION_ID}/messages`,
+      payload: { role: "user", content: "Legacy write" },
+    });
+
+    expect(response.statusCode).toBe(410);
+    expect(response.json()).toMatchObject({
+      error: expect.stringContaining("retired"),
+    });
+    expect(getLarryConversationForUser).not.toHaveBeenCalled();
+    expect(insertLarryMessage).not.toHaveBeenCalled();
+  });
+
   it("returns the persisted conversation, messages, and linked actions", async () => {
     vi.mocked(getLarryConversationForUser).mockResolvedValue(null);
     vi.mocked(getProjectSnapshot).mockResolvedValue(MOCK_SNAPSHOT);

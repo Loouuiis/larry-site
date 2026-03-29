@@ -16,15 +16,15 @@ export async function GET(request: NextRequest) {
   return NextResponse.json(result.body, { status: result.status });
 }
 
-export async function POST(request: NextRequest) {
+export async function POST() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await request.json().catch(() => ({}));
-  const result = await proxyApiRequest(session, "/v1/larry/conversations", {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-  if (result.session) await persistSession(result.session);
-  return NextResponse.json(result.body, { status: result.status });
+  return NextResponse.json(
+    {
+      error:
+        "Legacy workspace conversation creation has been retired. Use /api/workspace/larry/chat for canonical chat persistence.",
+    },
+    { status: 410 }
+  );
 }

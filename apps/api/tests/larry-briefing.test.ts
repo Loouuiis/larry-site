@@ -31,7 +31,6 @@ import { generateBriefing } from "../src/services/larry-briefing.js";
 const TENANT_ID = "11111111-1111-4111-8111-111111111111";
 const USER_ID = "22222222-2222-4222-8222-222222222222";
 const PROJECT_ID = "33333333-3333-4333-8333-333333333333";
-const BRIEFING_ID = "44444444-4444-4444-8444-444444444444";
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -39,11 +38,18 @@ afterEach(() => {
 
 describe("generateBriefing", () => {
   it("stamps briefing provenance onto generated Larry events and backfills the source record", async () => {
+    let insertedBriefingId: string | null = null;
     const db = {
-      queryTenant: vi
-        .fn()
-        .mockResolvedValueOnce([{ id: PROJECT_ID, name: "Board Prep", risk_level: "medium" }])
-        .mockResolvedValueOnce([{ id: BRIEFING_ID }]),
+      queryTenant: vi.fn(async (_tenantId: string, sql: string, values?: unknown[]) => {
+        if (sql.includes("SELECT p.id")) {
+          return [{ id: PROJECT_ID, name: "Board Prep", risk_level: "medium" }];
+        }
+        if (sql.includes("INSERT INTO larry_briefings")) {
+          insertedBriefingId = String(values?.[0] ?? "");
+          return [{ id: insertedBriefingId }];
+        }
+        return [];
+      }),
     } as unknown as Db;
 
     vi.mocked(getProjectSnapshot).mockResolvedValue({
@@ -103,8 +109,9 @@ describe("generateBriefing", () => {
       "Taylor"
     );
 
+    expect(insertedBriefingId).toEqual(expect.any(String));
     expect(result).toMatchObject({
-      briefingId: BRIEFING_ID,
+      briefingId: insertedBriefingId,
       content: {
         greeting: expect.stringContaining("Taylor"),
         totalNeedsYou: 1,
@@ -120,6 +127,7 @@ describe("generateBriefing", () => {
       {
         requesterUserId: USER_ID,
         sourceKind: "briefing",
+        sourceRecordId: insertedBriefingId,
       }
     );
     expect(storeSuggestions).toHaveBeenCalledWith(
@@ -132,6 +140,7 @@ describe("generateBriefing", () => {
       {
         requesterUserId: USER_ID,
         sourceKind: "briefing",
+        sourceRecordId: insertedBriefingId,
       }
     );
     expect(backfillLarryEventSourceRecord).toHaveBeenCalledWith(
@@ -139,7 +148,7 @@ describe("generateBriefing", () => {
       TENANT_ID,
       ["ev-auto-1", "ev-suggest-1"],
       "briefing",
-      BRIEFING_ID
+      insertedBriefingId
     );
   });
 });

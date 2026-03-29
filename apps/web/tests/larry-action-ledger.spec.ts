@@ -67,6 +67,9 @@ test("links project chat actions back into the action centre and acceptance flow
   };
 
   let messages: Array<Record<string, unknown>> = [];
+  let legacyConversationWriteCount = 0;
+  let legacyMessageWriteCount = 0;
+  let legacyEventsReadCount = 0;
   let actionCentre = {
     suggested: [] as Array<Record<string, unknown>>,
     activity: [] as Array<Record<string, unknown>>,
@@ -155,6 +158,38 @@ test("links project chat actions back into the action centre and acceptance flow
     });
   });
 
+  await page.route(/\/api\/workspace\/larry\/events(?:\?.*)?$/, async (route) => {
+    legacyEventsReadCount += 1;
+    await route.fulfill({
+      status: 410,
+      json: {
+        error:
+          "Legacy workspace event-list reads have been retired. Use /api/workspace/projects/:id/action-centre (project) or /api/workspace/larry/action-centre (global).",
+      },
+    });
+  });
+
+  await page.route("**/api/workspace/larry/conversations", async (route) => {
+    if (route.request().method() === "POST") {
+      legacyConversationWriteCount += 1;
+      await route.fulfill({
+        status: 410,
+        json: {
+          error:
+            "Legacy workspace conversation creation has been retired. Use /api/workspace/larry/chat for canonical chat persistence.",
+        },
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      json: {
+        conversations: actionCentre.conversations,
+      },
+    });
+  });
+
   await page.route(`**/api/workspace/larry/conversations?projectId=${PROJECT_ID}`, async (route) => {
     await route.fulfill({
       status: 200,
@@ -165,6 +200,18 @@ test("links project chat actions back into the action centre and acceptance flow
   });
 
   await page.route(`**/api/workspace/larry/conversations/${CONVERSATION_ID}/messages`, async (route) => {
+    if (route.request().method() === "POST") {
+      legacyMessageWriteCount += 1;
+      await route.fulfill({
+        status: 410,
+        json: {
+          error:
+            "Legacy workspace conversation message writes have been retired. Use /api/workspace/larry/chat for canonical chat persistence.",
+        },
+      });
+      return;
+    }
+
     await route.fulfill({
       status: 200,
       json: {
@@ -270,4 +317,7 @@ test("links project chat actions back into the action centre and acceptance flow
 
   await expect(page.getByText("Accepted by Taylor")).toBeVisible();
   await expect(page.getByText("Accepted", { exact: true })).toBeVisible();
+  expect(legacyConversationWriteCount).toBe(0);
+  expect(legacyMessageWriteCount).toBe(0);
+  expect(legacyEventsReadCount).toBe(0);
 });
