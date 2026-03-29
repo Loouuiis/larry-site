@@ -31,14 +31,34 @@ Exit behavior:
 
 Artifacts are commit-safe JSON + Markdown files under `plans/phase-2.7-artifacts` by default.
 
+## Latest Deployed Snapshot (J2b-2a, Railway Prod)
+
+Environment: `railway-prod`  
+Tenant: `11111111-1111-4111-8111-111111111111`
+
+- Pre-alignment blocked artifact:
+  - `plans/phase-2.7-artifacts/2026-03-29T22-17-41-761Z__railway-prod__deployed-preflight-blocked__11111111.{json,md}`
+- Baseline FK/table notes:
+  - `plans/phase-2.7-artifacts/2026-03-29__railway-prod__j2b-1-notes.md`
+- Post-alignment artifact:
+  - `plans/phase-2.7-artifacts/2026-03-29T22-18-18-863Z__railway-prod__deployed-preflight-aligned__11111111.{json,md}`
+  - canonical preflight passed (`status=ok`), but anomaly triage is still required before destructive A/B/C/D/E execution.
+- Read-only recheck (temp output, non-committed):
+  - `2026-03-29T22:25:35.771Z` (`status=ok`, counts unchanged from post-alignment artifact).
+- J2b-2a triage + waiver dossier:
+  - `plans/phase-2.7-artifacts/2026-03-29__railway-prod__j2b-2a-anomaly-waiver-dossier.md`
+  - Explicit gate: only pre-existing anomalies are waivable; any post-baseline growth blocks J2b-2b execution.
+- J2b-2b execution command pack:
+  - `plans/phase-2.7-schema-deprecation-prep.md#j2b-2b-operator-command-pack-copypaste`
+
 ## Keep/Migrate/Fence Matrix
 
 | Legacy table | Current active-path usage | Decision | Notes |
 | --- | --- | --- | --- |
-| `agent_runs` | No active workspace/API/worker runtime reads or writes after task-triage cutover to canonical `POST /v1/larry/chat`. Legacy schema/docs/script references remain (`meeting_notes.agent_run_id`, `agent_run_transitions`, legacy seeds/docs, demo script). | Fence + deprecate prep | Phase 2.6 removed meetings read coupling. Phase 2.7a removed transcript write-time `agent_run_id` coupling and deleted unused `/api/workspace/agent/runs/[runId]` proxy route. Phase 2.7b removed active workspace task-triage writes to `/v1/agent/runs`. |
-| `extracted_actions` | No active runtime reads/writes. Still referenced by legacy FK columns (`email_outbound_drafts.action_id`, `interventions.action_id`) and seed/docs. | Fence + migrate later | Keep for historical rows until FK migration and deprecation migration are executed. |
-| `approval_decisions` | No active runtime reads/writes in API/worker/web. | Keep (historical) + fence new usage | Canonical approval lifecycle is on `larry_events` (`accepted`/`dismissed` + attribution columns). |
-| `interventions` | No active runtime reads/writes. Legacy table still present in schema/seed/docs. | Keep (historical) + fence new usage | Replace with canonical policy/execution metadata already attached to `larry_events`. |
+| `agent_runs` | No active workspace/API/worker runtime reads or writes after task-triage cutover to canonical `POST /v1/larry/chat`. Compatibility placeholders still exist in nullable columns/metadata (`meeting_notes.agent_run_id`, notification metadata). | Retired in repo (Migration E) | Parent table is removed from repo schema with idempotent drop; environment execution and evidence capture are pending rollout window. |
+| `extracted_actions` | No active runtime reads/writes. Compatibility `action_id` columns remain nullable and detached from FK constraints in runtime tables. | Retired in repo (Migration E) | Parent table is removed from repo schema with idempotent drop; environment execution and evidence capture are pending rollout window. |
+| `approval_decisions` | No active runtime reads/writes in API/worker/web. | Retired in repo (Migration D) | Child table is removed from repo schema with idempotent drop; environment execution and evidence capture are pending rollout window. |
+| `interventions` | No active runtime reads/writes in API/worker/web. | Retired in repo (Migration D) | Child table is removed from repo schema with idempotent drop; environment execution and evidence capture are pending rollout window. |
 
 ## Rehearsal SQL Checks
 
@@ -47,30 +67,22 @@ The script above runs these checks using tenant parameterization.
 
 ### 1) Row-count inventory
 
+The rehearsal script now performs existence-aware inventory checks and writes per-table `tableStatus` (`present` or `retired`) plus `rowCount` (nullable when retired), so it works both before and after Migration D/E.
+
+Manual existence snapshot query:
+
 ```sql
-SELECT 'larry_events' AS table_name, COUNT(*) AS row_count
-FROM larry_events
-WHERE tenant_id = $1
+SELECT 'larry_events' AS table_name, to_regclass('public.larry_events') IS NOT NULL AS table_exists
 UNION ALL
-SELECT 'larry_messages', COUNT(*)
-FROM larry_messages
-WHERE tenant_id = $1
+SELECT 'larry_messages', to_regclass('public.larry_messages') IS NOT NULL
 UNION ALL
-SELECT 'agent_runs', COUNT(*)
-FROM agent_runs
-WHERE tenant_id = $1
+SELECT 'agent_runs', to_regclass('public.agent_runs') IS NOT NULL
 UNION ALL
-SELECT 'extracted_actions', COUNT(*)
-FROM extracted_actions
-WHERE tenant_id = $1
+SELECT 'extracted_actions', to_regclass('public.extracted_actions') IS NOT NULL
 UNION ALL
-SELECT 'approval_decisions', COUNT(*)
-FROM approval_decisions
-WHERE tenant_id = $1
+SELECT 'approval_decisions', to_regclass('public.approval_decisions') IS NOT NULL
 UNION ALL
-SELECT 'interventions', COUNT(*)
-FROM interventions
-WHERE tenant_id = $1;
+SELECT 'interventions', to_regclass('public.interventions') IS NOT NULL;
 ```
 
 ### 2) Canonical linkage completeness
@@ -187,7 +199,7 @@ Record one artifact per rehearsal run with:
 - Environment and dataset identifier
 - Tenant(s) covered
 - Query output snapshots for:
-  - row-count inventory
+  - row-count inventory (`tableStatus` + `rowCount`)
   - linkage completeness checks
   - meeting reconciliation check
   - replay/idempotency smoke checks
@@ -196,3 +208,11 @@ Record one artifact per rehearsal run with:
 - Sign-off (engineer + reviewer)
 
 Use generated artifacts under `plans/phase-2.7-artifacts` and link them from Phase 2 tracking updates.
+
+## J2b-2b Gate Reminder
+
+Before destructive A/B/C/D/E execution:
+
+- Ensure the J2b-2a dossier has non-placeholder owner/reviewer approval.
+- Run a fresh deployed rehearsal and compare counts with the J2b-2a baseline.
+- Block if any anomaly growth is detected after `2026-03-29T22:25:35.771Z`.

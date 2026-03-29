@@ -58,14 +58,9 @@ const CE1 = "b0000001-0000-4000-8000-000000000001"; // Slack signal
 const CE2 = "b0000002-0000-4000-8000-000000000002"; // Transcript ingestion
 const CE3 = "b0000003-0000-4000-8000-000000000003"; // Calendar event
 
-const AR1 = "c0000001-0000-4000-8000-000000000001"; // Slack run → VERIFIED
-const AR2 = "c0000002-0000-4000-8000-000000000002"; // Transcript run → APPROVAL_PENDING
-const AR3 = "c0000003-0000-4000-8000-000000000003"; // Calendar run → EXECUTED
-
-const EA1 = "d0000001-0000-4000-8000-000000000001"; // Mark QA task blocked — pending
-const EA2 = "d0000002-0000-4000-8000-000000000002"; // Extend deadline 7 days — pending
-const EA3 = "d0000003-0000-4000-8000-000000000003"; // Reassign perf-testing to Marcus — pending
-const EA4 = "d0000004-0000-4000-8000-000000000004"; // Draft follow-up email — auto-executed
+const COMPAT_AGENT_RUN_ID_PENDING = "c0000002-0000-4000-8000-000000000002";
+const COMPAT_AGENT_RUN_ID_EXECUTED = "c0000003-0000-4000-8000-000000000003";
+const COMPAT_ACTION_ID_EMAIL_DRAFT = "d0000004-0000-4000-8000-000000000004";
 
 const MN1 = "e0000001-0000-4000-8000-000000000001"; // Sprint standup note
 const MN2 = "e0000002-0000-4000-8000-000000000002"; // Stakeholder sync note
@@ -231,115 +226,10 @@ async function seed() {
   })]);
   console.log("✓  Canonical events: Slack + Transcript + Calendar");
 
-  // ── 10. Agent runs ───────────────────────────────────────────────────────────
-  await q(`
-    INSERT INTO agent_runs (id, tenant_id, project_id, source, source_ref_id, state, status_message, correlation_id, created_by_user_id, created_at, updated_at)
-    VALUES
-      ($1, $2, $3, 'slack',      $4,  'VERIFIED',         'All actions processed and verified.',     'corr-slack-001',      $5, $6, $6),
-      ($7, $2, $3, 'transcript', $8,  'APPROVAL_PENDING',  '2 actions awaiting PM approval.',         'corr-transcript-001', $5, $9, $9),
-      ($10,$2, $3, 'calendar',   $11, 'EXECUTED',          'Meeting note created automatically.',     'corr-calendar-001',   $5, $12,$12)
-    ON CONFLICT (id) DO UPDATE SET state = EXCLUDED.state
-  `, [
-    AR1, TENANT_ID, PROJECT_ID, CE1, U_ADMIN, daysAgo(1),
-    AR2, CE2,                                  daysAgo(0),
-    AR3, CE3,                                  daysAgo(0),
-  ]);
-  console.log("✓  Agent runs: 3 runs (1 verified, 1 pending, 1 executed)");
+  console.log("✓  Migration E compatibility: skipped agent_runs/extracted_actions seeding");
 
-  // ── 11. Agent run transitions ────────────────────────────────────────────────
-  const transitions: [string, string | null, string, string, string][] = [
-    // AR1 — Slack → VERIFIED (full lifecycle)
-    [AR1, null,              'INGESTED',         'Signal received from Slack',          daysAgo(1)],
-    [AR1, 'INGESTED',        'NORMALIZED',       'Event normalised',                    daysAgo(1)],
-    [AR1, 'NORMALIZED',      'EXTRACTED',        'Actions extracted by LLM',            daysAgo(1)],
-    [AR1, 'EXTRACTED',       'PROPOSED',         'Policy evaluation complete',          daysAgo(1)],
-    [AR1, 'PROPOSED',        'APPROVAL_PENDING', '1 high-impact action requires review',daysAgo(1)],
-    [AR1, 'APPROVAL_PENDING','EXECUTED',         'PM approved action',                  daysAgo(0)],
-    [AR1, 'EXECUTED',        'VERIFIED',         'Run verified — all actions resolved', daysAgo(0)],
-    // AR2 — Transcript → APPROVAL_PENDING
-    [AR2, null,              'INGESTED',         'Transcript submitted via Larry Chat',  daysAgo(0)],
-    [AR2, 'INGESTED',        'NORMALIZED',       'Event normalised',                    daysAgo(0)],
-    [AR2, 'NORMALIZED',      'EXTRACTED',        '3 actions extracted by LLM',          daysAgo(0)],
-    [AR2, 'EXTRACTED',       'PROPOSED',         'Policy evaluation complete',          daysAgo(0)],
-    [AR2, 'PROPOSED',        'APPROVAL_PENDING', '2 strategic actions require approval',daysAgo(0)],
-    // AR3 — Calendar → EXECUTED
-    [AR3, null,              'INGESTED',         'Calendar event received via webhook',  daysAgo(0)],
-    [AR3, 'INGESTED',        'NORMALIZED',       'Event normalised',                    daysAgo(0)],
-    [AR3, 'NORMALIZED',      'EXTRACTED',        'Meeting note action extracted',        daysAgo(0)],
-    [AR3, 'EXTRACTED',       'PROPOSED',         'Policy: low-impact, auto-execute',    daysAgo(0)],
-    [AR3, 'PROPOSED',        'EXECUTED',         'Meeting note created automatically',  daysAgo(0)],
-  ];
-  for (const [runId, prev, next, reason, ts] of transitions) {
-    await q(`
-      INSERT INTO agent_run_transitions (tenant_id, agent_run_id, previous_state, next_state, reason, created_at)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      ON CONFLICT DO NOTHING
-    `, [TENANT_ID, runId, prev, next, reason, ts]);
-  }
-  console.log("✓  Agent run transitions logged");
 
-  // ── 12. Extracted actions ─────────────────────────────────────────────────────
-  const ea1Payload = JSON.stringify({ taskId: T2, newStatus: "blocked", reason: "Stripe.js regression — QA failed 3rd time" });
-  const ea2Payload = JSON.stringify({ projectId: PROJECT_ID, fieldName: "target_date", currentValue: daysFromNow(18), proposedValue: daysFromNow(25), reason: "QA blocker puts launch 7 days behind" });
-  const ea3Payload = JSON.stringify({ taskId: T7, currentOwner: "marcus@larry.local", proposedOwner: "sarah@larry.local", reason: "Marcus blocked on QA regression — reassign perf testing" });
-  const ea4Payload = JSON.stringify({ to: "stakeholders@acme.com", subject: "Q2 Launch — Checkout Delay Update", body: "Hi team, wanted to flag that the checkout QA regression is currently blocking our Q2 launch timeline. Marcus is leading the fix and expects resolution within 48 hours. We will send a further update once QA sign-off is confirmed." });
-
-  const actions = [
-    [EA1, TENANT_ID, AR1, PROJECT_ID, T2,  "status_update",  "high",   0.92,
-     "Slack message indicates QA has failed 3 times and checkout is blocking launch.",
-     JSON.stringify(["QA failed again", "3rd time", "blocking the launch date", "2 more days"]),
-     ea1Payload, "pending", true,
-     JSON.stringify({ why: "High-impact status change on a critical task requires PM confirmation.", threshold: "impact=high → approval required", signals: ["Slack #product-launch", "3 consecutive QA failures"] }),
-     daysAgo(1)],
-    [EA2, TENANT_ID, AR2, PROJECT_ID, null, "deadline_change", "high",   0.89,
-     "Standup transcript: team consensus that current deadline is unreachable with QA blocker.",
-     JSON.stringify(["deadline slipping", "QA still blocked", "need 2 more days", "cannot ship without QA sign-off"]),
-     ea2Payload, "pending", true,
-     JSON.stringify({ why: "Deadline change is a strategic action — always routed to approval.", threshold: "action_type=deadline_change → approval required", signals: ["Standup transcript", "QA blocker unresolved"] }),
-     daysAgo(0)],
-    [EA3, TENANT_ID, AR2, PROJECT_ID, T7,  "owner_change",   "medium", 0.85,
-     "Transcript: Marcus is overloaded with QA. Performance testing needs a dedicated owner.",
-     JSON.stringify(["Marcus overloaded", "QA taking priority", "perf testing stalling", "needs dedicated owner"]),
-     ea3Payload, "pending", true,
-     JSON.stringify({ why: "Owner changes require PM approval to avoid confusion.", threshold: "action_type=owner_change → approval required", signals: ["Standup transcript", "task inactivity >3 days"] }),
-     daysAgo(0)],
-    [EA4, TENANT_ID, AR1, PROJECT_ID, null, "email_draft",    "low",    0.91,
-     "Slack message warrants a follow-up email to stakeholders about checkout delay.",
-     JSON.stringify(["checkout blocking launch", "stakeholders need update", "timeline impact"]),
-     ea4Payload, "executed", false,
-     JSON.stringify({ why: "Email draft auto-executed — low impact, high confidence, within policy threshold.", threshold: "impact=low, confidence=0.91 ≥ 0.75 → auto_execute", signals: ["Slack #product-launch"] }),
-     daysAgo(1)],
-  ];
-
-  for (const [id, tenantId, runId, projId, taskId, actionType, impact, confidence, reason, signals, payload, state, requiresApproval, reasoning, ts] of actions) {
-    await q(`
-      INSERT INTO extracted_actions
-        (id, tenant_id, agent_run_id, project_id, task_id, action_type, impact, confidence, reason, signals, payload, state, requires_approval, reasoning, created_at, updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb,$12,$13,$14::jsonb,$15,$15)
-      ON CONFLICT (id) DO UPDATE SET state = EXCLUDED.state
-    `, [id, tenantId, runId, projId, taskId, actionType, impact, confidence, reason, signals, payload, state, requiresApproval, reasoning, ts]);
-  }
-  console.log("✓  Extracted actions: 3 pending approval + 1 auto-executed");
-
-  // ── 13. Interventions ────────────────────────────────────────────────────────
-  await q(`
-    INSERT INTO interventions
-      (tenant_id, project_id, task_id, agent_run_id, action_id, intervention_type, threshold, decision, requires_approval, status, reason, created_at)
-    VALUES
-      ($1, $2, $3, $4, $5, 'policy_gate', 'impact=high', 'approval_required', true, 'pending',
-       'High-impact status update on critical task — routed to Action Center.', $6),
-      ($1, $2, NULL, $7, $8, 'policy_gate', 'action_type=deadline_change', 'approval_required', true, 'pending',
-       'Strategic action: deadline change always requires PM approval.', $9),
-      ($1, $2, $10, $4, $11, 'policy_gate', 'impact=low,confidence≥0.75', 'auto_execute', false, 'executed',
-       'Low-impact email draft auto-executed within policy bounds.', $12)
-    ON CONFLICT DO NOTHING
-  `, [
-    TENANT_ID, PROJECT_ID, T2, AR1, EA1, daysAgo(1),
-    AR2, EA2,                            daysAgo(0),
-    T7,       EA4,                       daysAgo(1),
-  ]);
-
-  // ── 14. Email outbound draft (from EA4 auto-execute) ─────────────────────────
+  // 10. Email outbound draft (compatibility action_id placeholder)
   await q(`
     INSERT INTO email_outbound_drafts (tenant_id, project_id, action_id, created_by_user_id, recipient, subject, body, state, sent_at)
     VALUES ($1, $2, $3, $4,
@@ -354,10 +244,10 @@ We will send a further update once QA sign-off is confirmed.
 — Larry (on behalf of Alex)',
       'sent', $5)
     ON CONFLICT DO NOTHING
-  `, [TENANT_ID, PROJECT_ID, EA4, U_ADMIN, daysAgo(1)]);
-  console.log("✓  Email outbound draft: stakeholder update (auto-sent)");
+  `, [TENANT_ID, PROJECT_ID, COMPAT_ACTION_ID_EMAIL_DRAFT, U_ADMIN, daysAgo(1)]);
+  console.log("✓  Email outbound draft: stakeholder update (canonical runtime + compatibility action_id)");
 
-  // ── 15. Meeting notes ────────────────────────────────────────────────────────
+  // ── 11. Meeting notes ────────────────────────────────────────────────────────
   await q(`
     INSERT INTO meeting_notes (id, tenant_id, project_id, agent_run_id, title, transcript, summary, action_count, meeting_date, created_by_user_id, created_at)
     VALUES
@@ -374,14 +264,14 @@ We will send a further update once QA sign-off is confirmed.
     'Standup surfaced 3 blockers: QA failure on checkout (Marcus), pricing copy pending sign-off (Sarah), and investor deck slide 4 needs updated ARR. Larry extracted 3 proposed actions.',
     daysAgo(1).slice(0, 10), U_ADMIN, daysAgo(1),
 
-    MN2, AR3,
+    MN2, COMPAT_AGENT_RUN_ID_EXECUTED,
     CALENDAR_TRANSCRIPT,
     'All-hands review confirmed the launch is at risk. Team agreed to a 7-day extension pending QA resolution. Larry proposed a deadline change — awaiting approval in Action Center.',
     daysAgo(0).slice(0, 10), daysAgo(0),
   ]);
   console.log("✓  Meeting notes: standup + all-hands review");
 
-  // ── 16. Activity log ─────────────────────────────────────────────────────────
+  // ── 12. Activity log ─────────────────────────────────────────────────────────
   await q(`
     INSERT INTO activity_log (tenant_id, project_id, task_id, actor_user_id, activity_type, payload, created_at)
     VALUES
@@ -398,7 +288,7 @@ We will send a further update once QA sign-off is confirmed.
     T1, U_SARAH,                daysAgo(3),
   ]);
 
-  // ── 17. Notifications ────────────────────────────────────────────────────────
+  // ── 13. Notifications ────────────────────────────────────────────────────────
   await q(`
     INSERT INTO notifications (tenant_id, user_id, channel, subject, body, metadata, created_at)
     VALUES
@@ -410,7 +300,7 @@ We will send a further update once QA sign-off is confirmed.
        '{"taskId":"${T3}","projectId":"${PROJECT_ID}","type":"pre_deadline_alert"}'::jsonb, $5),
       ($1, $6, 'in_app', '2 actions awaiting your review',
        'Larry extracted 2 proposed actions from the standup transcript. Review them in the Action Center.',
-       '{"agentRunId":"${AR2}","actionCount":2,"type":"approval_pending"}'::jsonb, $7)
+       '{"agentRunId":"${COMPAT_AGENT_RUN_ID_PENDING}","actionCount":2,"type":"approval_pending"}'::jsonb, $7)
     ON CONFLICT DO NOTHING
   `, [
     TENANT_ID, U_MARCUS, daysAgo(0),
@@ -419,7 +309,7 @@ We will send a further update once QA sign-off is confirmed.
   ]);
   console.log("✓  Notifications: 3 unread");
 
-  // ── 18. Larry conversation (Chats page demo) ──────────────────────────────────
+  // ── 14. Larry conversation (Chats page demo) ──────────────────────────────────
   await q(`
     INSERT INTO larry_conversations (id, tenant_id, project_id, user_id, title, created_at, updated_at)
     VALUES ($1, $2, $3, $4, 'Q2 Launch status check', $5, $5)
@@ -437,7 +327,7 @@ We will send a further update once QA sign-off is confirmed.
   `, [TENANT_ID, LC1, daysAgo(1), daysAgo(1), daysAgo(0)]);
   console.log("✓  Larry conversation seeded for Chats demo");
 
-  // ── 19. Risk snapshots ───────────────────────────────────────────────────────
+  // ── 15. Risk snapshots ───────────────────────────────────────────────────────
   await q(`
     INSERT INTO risk_snapshots (tenant_id, project_id, task_id, risk_score, risk_level, signals, created_at)
     VALUES
@@ -452,7 +342,7 @@ We will send a further update once QA sign-off is confirmed.
   ]);
   console.log("✓  Risk snapshots recorded");
 
-  // ── 20. Second demo project: Customer Onboarding Redesign ──────────────────────
+  // ── 16. Second demo project: Customer Onboarding Redesign ──────────────────────
   await q(`
     INSERT INTO projects (id, tenant_id, name, description, owner_user_id, status, risk_score, risk_level, start_date, target_date)
     VALUES ($1, $2, 'Customer Onboarding Redesign',
@@ -515,10 +405,10 @@ We will send a further update once QA sign-off is confirmed.
     • Customer Onboarding Redesign — low risk, on track, 30-day runway
 
   What to demo:
-    1. Action Center  → 2 pending approvals from Slack + transcript
+    1. Action Center  → 2 pending ledger actions from Slack + transcript
     2. Project board  → Q2 Product Launch with 8 tasks, blocked checkout
     3. Project board  → Onboarding Redesign with 6 tasks, healthy progress
-    4. Meetings       → Standup note with AI summary + extracted actions
+    4. Meetings       → Standup note with AI summary + linked ledger actions
     5. Larry Chat     → Ask for a summary or draft a follow-up
     6. Settings       → Connect Slack / Calendar / Email via OAuth
     7. Notifications  → 3 unread alerts (bell icon)
@@ -568,3 +458,4 @@ seed()
     process.exitCode = 1;
   })
   .finally(() => db.close());
+

@@ -17,9 +17,13 @@ Where:
 - `environment` and `dataset` are sanitized labels from CLI metadata.
 - `tenant-prefix` is the first 8 chars of tenant UUID for quick identification.
 
+Manual triage/waiver packets may also be stored here as markdown notes using explicit slice naming, for example:
+
+- `YYYY-MM-DD__<environment>__j2b-2a-anomaly-waiver-dossier.md`
+
 ## Data safety constraints
 
-- Artifacts include counts, IDs, linkage checks, and hashed display text fingerprints.
+- Artifacts include table inventory status/counts, IDs, linkage checks, and hashed display text fingerprints.
 - Artifacts do not include raw payload JSON, transcript text, reasoning text, or full chat/email bodies.
 
 ## Sign-off flow
@@ -27,3 +31,4 @@ Where:
 1. Generate a rehearsal artifact for each production-like run.
 2. Populate the sign-off fields in the generated artifact markdown file.
 3. Link the artifact filename in Phase 2 tracking notes and migration tickets.
+4. For J2b-2b migrations, confirm the latest waiver dossier is approved before running destructive SQL.

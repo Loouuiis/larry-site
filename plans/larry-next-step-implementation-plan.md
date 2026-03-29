@@ -1,4 +1,4 @@
-﻿# Plan: Larry Next-Step Workspace Expansion
+# Plan: Larry Next-Step Workspace Expansion
 
 > Source PRD: user report in thread on 2026-03-28
 
@@ -9,7 +9,7 @@
   - The active product lives under `/workspace`, but a legacy `/dashboard` route tree and older dashboard shell still exist in-repo.
   - The active workspace intake now supports manual, chat, and meeting modes on `/workspace/projects/new`, but a legacy `StartProjectFlow` still exists in dashboard-era code.
   - Legacy dashboard surfaces still rely on one broad `/api/workspace/snapshot` aggregator, even though the active `/workspace` route tree has already been moved onto scoped read models.
-  - The data model still contains both the older extraction and approval pipeline and the newer `larry_events` and conversation model.
+  - Legacy parent extraction tables (`agent_runs`, `extracted_actions`) are now retired in repo via Migration E, while target-environment execution evidence is still pending rollout windows.
   - The worker now processes `canonical_event.created` for transcript-led meeting flows plus login briefing, scheduled scan, email, Slack, and calendar connector flows; connector-heavy behavior still leans on scheduled scans as fallback and hygiene.
   - The canonical Larry Action Centre contract already supports both project-scoped and tenant-wide reads, and the active global `/workspace/actions` page now renders cross-project ledger entries with project display labels.
   - Policy and ambiguity logic exist in `packages/ai`, but the active Larry chat path mostly bypasses them in favor of direct intelligence plus immediate auto-execution.
@@ -147,11 +147,11 @@ These are not optional cleanups; they are part of the implementation strategy:
   - Updated the active project chat panel and `/workspace/chats` to use the persisted chat response, render linked action chips beneath assistant replies, and remove the old fire-and-forget message persistence path for action-generating chats.
   - Added API coverage for the upgraded chat and Action Centre routes, schema assertions for the ledger migration, a Playwright smoke test for project chat -> linked action -> accept flow, and a reusable `@larry/web` `test:e2e` script for the new smoke path.
 - **Phase 2.2 transcript and signal ledger cutover**:
-  - Refactored transcript ingest so the API writes `meeting_notes` first, inserts the canonical transcript event with `projectId`, `meetingNoteId`, and `submittedByUserId` in the payload, and only publishes `canonical_event.created` after the transaction commits.
+  - Consolidated transcript ingest onto canonical `/v1/larry/transcript` + `canonical_event.created` publishing, with transcript payload normalization (`projectId`, meeting metadata, submitter attribution) aligned to canonical worker handling.
   - Added active worker handling for `canonical_event.created` so transcript jobs load the canonical event, resolve project scope, run intelligence once, write the meeting summary, create source-linked `larry_events`, and reconcile `meeting_notes.action_count`.
   - Added replay safety for transcript-driven event creation by querying existing meeting-linked `larry_events` before generating actions and by indexing `(tenant_id, source_kind, source_record_id)` on the canonical ledger.
   - Extended non-chat `LarryEventContext` usage so login briefings stamp `requestedByUserId`, `sourceKind='briefing'`, and `sourceRecordId=briefingId`, while scheduled scans stamp `sourceKind='schedule'`.
-  - Updated active transcript entry points to treat processing as queued background work, trigger bounded workspace refresh, and render readable non-chat origin labels such as meeting transcript, login briefing, and scheduled scan in the project Action Centre.
+  - Updated active transcript entry points to return queued-style UX while preserving transitional inline intelligence writes in `/v1/larry/transcript`; full queue-only transcript execution remains a deferred seam.
   - Added API, worker, and Playwright coverage for transcript ingest, briefing attribution, transcript replay safety, scheduled scan stability, and meeting-led Action Centre provenance.
 - **Phase 2.3 intake chat-write migration boundary closure**:
   - Retired `saveLarryMessage` and ad hoc conversation writes in active `/workspace/projects/new` chat intake and legacy `StartProjectFlow` chat intake.
@@ -193,6 +193,48 @@ These are not optional cleanups; they are part of the implementation strategy:
   - Added an idempotent schema migration block that discovers and drops any existing `meeting_notes.agent_run_id -> agent_runs.id` FK constraint for already-provisioned environments.
   - Added schema regression coverage (`tests/larry-schema.test.ts`) that fails if `meeting_notes` reintroduces inline `agent_runs` FK coupling or if the detach migration block is removed.
   - Updated Phase 2.7 deprecation runbook/planning notes with Migration A forward intent, rollback intent, and FK pre/post validation query guidance.
+- **Phase 2.7g Migration B+C FK detach (repo-level, compatibility-safe)**:
+  - Updated `packages/db/src/schema.sql` so `email_outbound_drafts.action_id` and `correction_feedback.action_id` remain nullable compatibility columns but no longer declare inline FKs to `extracted_actions`.
+  - Added idempotent schema migration blocks that discover and drop any existing FK constraints for:
+    - `email_outbound_drafts.action_id -> extracted_actions.id`
+    - `correction_feedback.action_id -> extracted_actions.id`
+  - Extended schema regression coverage (`tests/larry-schema.test.ts`) to fail if either inline FK coupling is reintroduced or if either detach migration block is removed.
+  - Updated Phase 2.7 deprecation runbook/checklist notes to mark Migration B/C repo-complete (environment execution pending), include forward/rollback plus pre/post validation SQL, and advance next repo migration target to Migration D.
+- **Phase 2.7h Migration D child-table retirement + compatibility hardening (repo-level)**:
+  - Retired extraction child tables in `packages/db/src/schema.sql` with explicit idempotent drops:
+    - `approval_decisions`
+    - `interventions`
+    - `agent_run_transitions`
+  - Removed child-table RLS/policy declarations and added schema regression coverage so those tables cannot be reintroduced silently.
+  - Updated `packages/db/src/seed.ts` to stop inserting retired child-table rows while preserving legacy parent compatibility seeding (`agent_runs`, `extracted_actions`) for Migration E sequencing.
+  - Updated `scripts/phase-2.7-extraction-rehearsal.mjs` row inventory behavior to be existence-aware, emitting per-table `tableStatus` (`present`/`retired`) with nullable counts for retired tables.
+  - Updated Phase 2.7 deprecation runbook/checklist notes to mark Migration D repo-complete (environment execution pending) and advance the next repo migration target to Migration E parent retirement.
+- **Phase 2.7i Migration E parent-table retirement + compatibility hardening (repo-level)**:
+  - Retired extraction parent tables in `packages/db/src/schema.sql` with explicit idempotent drops:
+    - `extracted_actions`
+    - `agent_runs`
+  - Removed retired parent-table baseline definitions and related RLS/policy declarations, while keeping Migration A/B/C detach blocks and compatibility columns in place.
+  - Updated `packages/db/src/seed.ts` to stop inserting parent-table rows while preserving compatibility placeholder IDs for nullable `action_id` / `agent_run_id` metadata fields.
+  - Extended schema regression coverage (`tests/larry-schema.test.ts`) to fail if parent-table definitions or Migration E drop intent regress.
+  - Updated Phase 2.7 deprecation runbook/checklist notes to mark Migration E repo-complete (environment execution pending) and advance next follow-up to rollout evidence closeout + Cleanup F.
+- **Phase 2.7j-1 Cleanup F operational contract closure (repo-level, operational core)**:
+  - Canonicalized active operational contract artifacts away from retired extraction-era endpoints:
+    - Updated `apps/api/openapi.yaml` to remove `/v1/agent/*` and legacy `/v1/actions/{id}/approve|reject|override` entries and represent canonical Larry endpoints.
+    - Updated `scripts/demo-smoke-test.sh` to validate canonical transcript -> action-centre -> event-accept flow and removed legacy run/action polling seams.
+    - Updated `apps/web/src/lib/pm-api.ts` to source pending actions from canonical `/v1/larry/action-centre` suggestions while preserving `WorkspaceSnapshot.pendingActions`.
+  - Added focused boundary regression coverage (`tests/cleanup-f-operational-boundary.test.ts`) that fails if operational contract files reintroduce `/v1/agent/*` or legacy approve/reject/override references.
+  - Re-synced tracker/runbook guidance and deferred broad historical docs sweep to follow-up work.
+- **Phase 2.7j-2a Cleanup F docs boundary closure (repo-level, core runtime docs)**:
+  - Canonicalized core runtime docs to reflect shipped Larry contracts and extraction-era runtime retirement:
+    - Updated `docs/AI-AGENT.md`
+    - Updated `docs/BACKEND-API.md`
+    - Updated `docs/BACKEND-WORKER.md`
+    - Updated `docs/DATABASE.md`
+    - Updated `docs/ARCHITECTURE.md`
+  - Removed active-path legacy `/v1/agent/*` and `/v1/actions/.../approve|reject|override` runtime narratives from the core runtime docs set.
+  - Applied targeted stale-state correction in `docs/LARRY-INTELLIGENCE-PLAN.md` to reflect repo-retired extraction runtime tables with target-environment evidence still pending.
+  - Added docs-boundary regression coverage (`tests/cleanup-f-docs-boundary.test.ts`) so core runtime docs fail CI if canonical endpoint references regress or legacy runtime seams are reintroduced.
+  - Advanced next follow-up to Phase 2.7j-2b environment evidence closeout.
 - **Phase 3 starter: Global Action Centre cutover**:
   - Extended the canonical Larry event summary contract with `projectName` so tenant-wide action-centre reads carry a project display label without stitched web-only joins.
   - Replaced the placeholder `/workspace/actions` page with a real workspace-native global Action Centre powered by `/api/workspace/larry/action-centre`, including cross-project labels, project links, and accept or dismiss controls on the canonical ledger path.
@@ -234,6 +276,40 @@ These are not optional cleanups; they are part of the implementation strategy:
   - Updated login briefing generation to pre-generate `briefingId`, pass `sourceRecordId=briefingId` into `runAutoActions` and `storeSuggestions`, and persist the briefing row with the same ID while keeping source-record backfill as idempotent safety.
   - Updated scheduled scan ledger writes to stamp a per-project `sourceRecordId` so schedule-origin actions satisfy provenance linkage requirements without introducing synthetic requesters.
   - Added API and worker contract coverage updates so briefing and scheduled-scan Larry writes fail regression checks if required provenance linkage metadata is omitted.
+- **Phase 2.7j-2b-1 deployed canonical preflight unblock**:
+  - Ran deployed baseline rehearsal and captured blocked artifact evidence in:
+    - `plans/phase-2.7-artifacts/2026-03-29T22-17-41-761Z__railway-prod__deployed-preflight-blocked__11111111.{json,md}`
+  - Captured pre-DDL migration baseline evidence for target environment FK/table state and row counts in:
+    - `plans/phase-2.7-artifacts/2026-03-29__railway-prod__j2b-1-notes.md`
+  - Applied non-destructive target-environment M0 alignment on `larry_events` (add missing canonical linkage/provenance columns, backfills, and required indexes) without running A/B/C/D/E table retirement.
+  - Re-ran deployed rehearsal and captured post-alignment artifact evidence in:
+    - `plans/phase-2.7-artifacts/2026-03-29T22-18-18-863Z__railway-prod__deployed-preflight-aligned__11111111.{json,md}`
+  - Unblocked canonical preflight (`status=ok`, `preflight passed`) while surfacing high/medium anomaly follow-ups that must be triaged before destructive retirement execution.
+- **Phase 2.7j-2b-2a anomaly waiver packet + operator command pack (repo-prep)**:
+  - Re-ran deployed canonical rehearsal read-only on Railway prod (`2026-03-29T22:25:35.771Z`) and confirmed no gate movement:
+    - `status=ok`, preflight passed,
+    - anomaly counts unchanged (`missing_source_record_links`, `invalid_chat_linkage`, `meeting_action_count_mismatch`),
+    - A/B/C FK dependencies and D/E legacy tables still present.
+  - Added committed anomaly triage/waiver dossier:
+    - `plans/phase-2.7-artifacts/2026-03-29__railway-prod__j2b-2a-anomaly-waiver-dossier.md`
+    - Includes baseline counts, rationale, waiver defaults, owner/reviewer placeholders, due date, and explicit "no post-baseline growth" gate rule.
+  - Added deterministic J2b-2b operator command pack in Phase 2.7 runbook docs:
+    - pre-checks (rehearsal + FK/table validation),
+    - staged A/B/C then D/E execution,
+    - post-check/rollback command blocks,
+    - sign-off metadata template.
+  - Corrected tracker language for transcript runtime reality: `/v1/larry/transcript` still performs inline intelligence writes alongside canonical event enqueue (known residual seam).
+- **Phase 2.7j-2b-2b anomaly-gated retirement execution (in progress, reviewer-gated)**:
+  - Ran a fresh deployed J2b-2b pre-check rehearsal and committed artifacts:
+    - `plans/phase-2.7-artifacts/2026-03-29T22-43-10-868Z__railway-prod__deployed-preflight-j2b-2b-gate__11111111.{json,md}`
+    - `status=ok`, preflight passed, anomaly counts unchanged from J2b-2a baseline.
+  - Ran growth-gate and FK/table baseline queries and captured outputs in:
+    - `plans/phase-2.7-artifacts/2026-03-29__railway-prod__j2b-2b-precheck-notes.md`
+    - Growth-gate deltas all `0`; A/B/C FK dependencies plus D/E tables still present as expected pre-execution.
+  - Updated anomaly dossier sign-off fields:
+    - Engineer `Fergus`, Rollback owner `Fergus`, Reviewer pending.
+    - Decision set to `blocked` until reviewer assignment/sign-off is completed.
+  - Did not execute destructive A/B/C/D/E SQL in this slice because reviewer gate is unmet.
 
 ### Still To Do For Phase 1
 
@@ -248,17 +324,22 @@ These are not optional cleanups; they are part of the implementation strategy:
 ### Still To Do For Phase 2
 
 - Continue consolidating connector-triggered Larry actions onto the same canonical Larry ledger contract as legacy paths are retired; chat, transcript, login briefing, scheduled scan, email, Slack, and calendar are now onboarded on the canonical path.
-- Execute production-like rehearsal runs via `scripts/phase-2.7-extraction-rehearsal.mjs` and capture signed artifacts in `plans/phase-2.7-artifacts`.
-- Execute Migration A in target environments after rehearsal sign-off (repo implementation is complete) and capture FK-detach validation outputs.
-- Continue extraction-era migration execution with Migration B (`email_outbound_drafts.action_id`) and Migration C (`correction_feedback.action_id`) before child/parent table retirement steps in `plans/phase-2.7-schema-deprecation-prep.md`.
+- Assign reviewer and complete approval status in `plans/phase-2.7-artifacts/2026-03-29__railway-prod__j2b-2a-anomaly-waiver-dossier.md` (engineer + rollback owner are now set).
+- Re-run deployed rehearsal and growth-gate/FK/table baselines at migration window start and confirm no post-baseline anomaly growth.
+- Execute Migration A/B/C in target environments after anomaly/sign-off gates clear and capture FK-detach validation outputs.
+- Execute Migration D/E table retirements in target environments after anomaly/sign-off gates clear and capture table-retirement validation outputs.
+- Record rollout sign-off metadata (engineer, reviewer, rollback owner, deploy window, evidence links) in Phase 2.7 runbook notes.
+- Complete any residual non-core docs sweep work found during evidence closeout; core runtime docs sweep + guard are complete in J2a.
 - Continue retiring or fencing any remaining legacy Larry read/write paths beyond the now-fenced conversation writes and event-list reads as canonical contracts replace them.
+- Known residual seam to schedule: `/v1/larry/transcript` still performs inline intelligence writes alongside canonical event enqueue; queue-only transcript execution cutover remains pending.
 
 ### Recommended Next Slice
 
-- **Phase 2.7e follow-up: Rehearsal sign-off + Migration B FK detach prep**:
-  - Run `scripts/phase-2.7-extraction-rehearsal.mjs` on production-like data and commit signed artifact outputs under `plans/phase-2.7-artifacts`.
-  - If preflight passes and anomalies are cleared/signed off, execute repo-ready Migration A (`meeting_notes.agent_run_id` FK detach) and record FK validation evidence in migration tracking notes.
-  - Implement/execute Migration B (`email_outbound_drafts.action_id` constraint-first detach; column drop only if compatibility window permits) with matching forward/rollback SQL and pre/post validation queries.
+- **Phase 2.7j-2b-2b completion follow-up: reviewer unlock + staged retirement execution (target environments)**:
+  - Assign reviewer/sign-off in `plans/phase-2.7-artifacts/2026-03-29__railway-prod__j2b-2a-anomaly-waiver-dossier.md` and move decision from `blocked` to `approved`.
+  - Re-run J2b-2b pre-check command pack at migration window start (rehearsal + growth-gate + FK/table baseline) and verify no drift from current baseline.
+  - Execute staged A/B/C FK detaches then D/E retirements in target environments and capture documented pre/post validation evidence.
+  - Record final sign-off owners, rollback owner, migration window, and evidence links in Phase 2.7 runbook notes.
 
 ---
 
@@ -548,3 +629,4 @@ Finish the platform by adding archive and delete lifecycle support, removing sup
 - Avoid parallel work across the same canonical model in the same phase.
 - Prefer one thin end-to-end cutover at a time over broad layer-by-layer rewrites.
 - Use the Requirement Coverage Matrix as the delegation contract so no agent-owned slice quietly drops part of the report.
+

@@ -52,4 +52,71 @@ describe("Larry ledger schema", () => {
     expect(schema).toContain("ccu.table_name = 'agent_runs'");
     expect(schema).toContain("ALTER TABLE meeting_notes DROP CONSTRAINT %I");
   });
+
+  it("detaches email_outbound_drafts.action_id from extracted_actions with an idempotent migration block", () => {
+    const emailDraftsTable = schema.match(/CREATE TABLE IF NOT EXISTS email_outbound_drafts \([\s\S]*?\n\);/);
+    expect(emailDraftsTable).not.toBeNull();
+
+    const emailDraftsTableSql = emailDraftsTable?.[0] ?? "";
+    expect(emailDraftsTableSql).toContain("action_id UUID,");
+    expect(emailDraftsTableSql).not.toContain(
+      "action_id UUID REFERENCES extracted_actions(id) ON DELETE SET NULL"
+    );
+
+    expect(schema).toContain(
+      "Phase 2.7g: detach email_outbound_drafts.action_id from legacy extracted_actions FK."
+    );
+    expect(schema).toContain("tc.table_name = 'email_outbound_drafts'");
+    expect(schema).toContain("kcu.column_name = 'action_id'");
+    expect(schema).toContain("ccu.table_name = 'extracted_actions'");
+    expect(schema).toContain("ALTER TABLE email_outbound_drafts DROP CONSTRAINT %I");
+  });
+
+  it("detaches correction_feedback.action_id from extracted_actions with an idempotent migration block", () => {
+    const correctionFeedbackTable = schema.match(/CREATE TABLE IF NOT EXISTS correction_feedback \([\s\S]*?\n\);/);
+    expect(correctionFeedbackTable).not.toBeNull();
+
+    const correctionFeedbackTableSql = correctionFeedbackTable?.[0] ?? "";
+    expect(correctionFeedbackTableSql).toContain("action_id UUID,");
+    expect(correctionFeedbackTableSql).not.toContain(
+      "action_id UUID REFERENCES extracted_actions(id) ON DELETE SET NULL"
+    );
+
+    expect(schema).toContain(
+      "Phase 2.7g: detach correction_feedback.action_id from legacy extracted_actions FK."
+    );
+    expect(schema).toContain("tc.table_name = 'correction_feedback'");
+    expect(schema).toContain("kcu.column_name = 'action_id'");
+    expect(schema).toContain("ccu.table_name = 'extracted_actions'");
+    expect(schema).toContain("ALTER TABLE correction_feedback DROP CONSTRAINT %I");
+  });
+
+  it("retires migration D extraction child tables with explicit idempotent drops", () => {
+    expect(schema).not.toContain("CREATE TABLE IF NOT EXISTS approval_decisions (");
+    expect(schema).not.toContain("CREATE TABLE IF NOT EXISTS interventions (");
+    expect(schema).not.toContain("CREATE TABLE IF NOT EXISTS agent_run_transitions (");
+
+    expect(schema).toContain("Phase 2.7h Migration D: retire extraction child tables after FK-detach prep.");
+    expect(schema).toContain("DROP TABLE IF EXISTS approval_decisions;");
+    expect(schema).toContain("DROP TABLE IF EXISTS interventions;");
+    expect(schema).toContain("DROP TABLE IF EXISTS agent_run_transitions;");
+
+    expect(schema).not.toContain("ALTER TABLE approval_decisions ENABLE ROW LEVEL SECURITY;");
+    expect(schema).not.toContain("ALTER TABLE interventions ENABLE ROW LEVEL SECURITY;");
+    expect(schema).not.toContain("ALTER TABLE agent_run_transitions ENABLE ROW LEVEL SECURITY;");
+  });
+
+  it("retires migration E extraction parent tables with explicit idempotent drops", () => {
+    expect(schema).not.toContain("CREATE TABLE IF NOT EXISTS extracted_actions (");
+    expect(schema).not.toContain("CREATE TABLE IF NOT EXISTS agent_runs (");
+
+    expect(schema).toContain("Phase 2.7i Migration E: retire extraction parent tables after child retirement.");
+    expect(schema).toContain("DROP TABLE IF EXISTS extracted_actions;");
+    expect(schema).toContain("DROP TABLE IF EXISTS agent_runs;");
+
+    expect(schema).not.toContain("ALTER TABLE extracted_actions ENABLE ROW LEVEL SECURITY;");
+    expect(schema).not.toContain("ALTER TABLE agent_runs ENABLE ROW LEVEL SECURITY;");
+    expect(schema).not.toContain("CREATE POLICY tenant_isolation_actions ON extracted_actions");
+    expect(schema).not.toContain("CREATE POLICY tenant_isolation_agent_runs ON agent_runs");
+  });
 });

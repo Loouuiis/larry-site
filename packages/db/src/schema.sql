@@ -213,68 +213,6 @@ CREATE TABLE IF NOT EXISTS canonical_events (
 CREATE INDEX IF NOT EXISTS idx_canonical_events_tenant_created
   ON canonical_events (tenant_id, created_at DESC);
 
-CREATE TABLE IF NOT EXISTS agent_runs (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
-  source TEXT NOT NULL,
-  source_ref_id TEXT,
-  state agent_run_state NOT NULL DEFAULT 'INGESTED',
-  status_message TEXT,
-  correlation_id TEXT NOT NULL,
-  created_by_user_id UUID REFERENCES users(id),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_agent_runs_tenant_created ON agent_runs (tenant_id, created_at DESC);
-
-CREATE TABLE IF NOT EXISTS agent_run_transitions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  agent_run_id UUID NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
-  previous_state agent_run_state,
-  next_state agent_run_state NOT NULL,
-  reason TEXT,
-  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS extracted_actions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  agent_run_id UUID REFERENCES agent_runs(id) ON DELETE SET NULL,
-  project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
-  task_id UUID REFERENCES tasks(id) ON DELETE SET NULL,
-  action_type TEXT NOT NULL,
-  impact TEXT NOT NULL,
-  confidence NUMERIC(4,3) NOT NULL,
-  reason TEXT NOT NULL,
-  signals JSONB NOT NULL,
-  payload JSONB NOT NULL,
-  state action_state NOT NULL DEFAULT 'pending',
-  requires_approval BOOLEAN NOT NULL DEFAULT TRUE,
-  executed_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_extracted_actions_tenant_state
-  ON extracted_actions (tenant_id, state, created_at DESC);
-
-ALTER TABLE extracted_actions
-  ADD COLUMN IF NOT EXISTS reasoning JSONB;
-
-CREATE TABLE IF NOT EXISTS approval_decisions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  action_id UUID NOT NULL REFERENCES extracted_actions(id) ON DELETE CASCADE,
-  decision TEXT NOT NULL,
-  decided_by_user_id UUID NOT NULL REFERENCES users(id),
-  note TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
 CREATE TABLE IF NOT EXISTS notifications (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -412,7 +350,7 @@ CREATE TABLE IF NOT EXISTS email_outbound_drafts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
-  action_id UUID REFERENCES extracted_actions(id) ON DELETE SET NULL,
+  action_id UUID,
   created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
   recipient TEXT NOT NULL,
   subject TEXT NOT NULL,
@@ -427,26 +365,30 @@ CREATE TABLE IF NOT EXISTS email_outbound_drafts (
 CREATE INDEX IF NOT EXISTS idx_email_outbound_drafts_tenant_state
   ON email_outbound_drafts (tenant_id, state, created_at DESC);
 
-CREATE TABLE IF NOT EXISTS interventions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
-  task_id UUID REFERENCES tasks(id) ON DELETE SET NULL,
-  agent_run_id UUID REFERENCES agent_runs(id) ON DELETE SET NULL,
-  action_id UUID REFERENCES extracted_actions(id) ON DELETE SET NULL,
-  intervention_type TEXT NOT NULL,
-  threshold TEXT NOT NULL,
-  decision TEXT NOT NULL,
-  requires_approval BOOLEAN NOT NULL,
-  status TEXT NOT NULL DEFAULT 'created',
-  reason TEXT NOT NULL,
-  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_interventions_tenant_created
-  ON interventions (tenant_id, created_at DESC);
+-- Phase 2.7g: detach email_outbound_drafts.action_id from legacy extracted_actions FK.
+DO $$
+DECLARE
+  fk_constraint_name TEXT;
+BEGIN
+  FOR fk_constraint_name IN
+    SELECT tc.constraint_name
+    FROM information_schema.table_constraints tc
+    JOIN information_schema.key_column_usage kcu
+      ON tc.table_schema = kcu.table_schema
+     AND tc.constraint_name = kcu.constraint_name
+    JOIN information_schema.constraint_column_usage ccu
+      ON tc.table_schema = ccu.table_schema
+     AND tc.constraint_name = ccu.constraint_name
+    WHERE tc.table_schema = 'public'
+      AND tc.table_name = 'email_outbound_drafts'
+      AND tc.constraint_type = 'FOREIGN KEY'
+      AND kcu.column_name = 'action_id'
+      AND ccu.table_name = 'extracted_actions'
+      AND ccu.column_name = 'id'
+  LOOP
+    EXECUTE format('ALTER TABLE email_outbound_drafts DROP CONSTRAINT %I', fk_constraint_name);
+  END LOOP;
+END $$;
 
 CREATE TABLE IF NOT EXISTS report_snapshots (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -483,12 +425,46 @@ CREATE TABLE IF NOT EXISTS risk_snapshots (
 CREATE TABLE IF NOT EXISTS correction_feedback (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  action_id UUID REFERENCES extracted_actions(id) ON DELETE SET NULL,
+  action_id UUID,
   corrected_by_user_id UUID NOT NULL REFERENCES users(id),
   correction_type TEXT NOT NULL,
   correction_payload JSONB NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Phase 2.7g: detach correction_feedback.action_id from legacy extracted_actions FK.
+DO $$
+DECLARE
+  fk_constraint_name TEXT;
+BEGIN
+  FOR fk_constraint_name IN
+    SELECT tc.constraint_name
+    FROM information_schema.table_constraints tc
+    JOIN information_schema.key_column_usage kcu
+      ON tc.table_schema = kcu.table_schema
+     AND tc.constraint_name = kcu.constraint_name
+    JOIN information_schema.constraint_column_usage ccu
+      ON tc.table_schema = ccu.table_schema
+     AND tc.constraint_name = ccu.constraint_name
+    WHERE tc.table_schema = 'public'
+      AND tc.table_name = 'correction_feedback'
+      AND tc.constraint_type = 'FOREIGN KEY'
+      AND kcu.column_name = 'action_id'
+      AND ccu.table_name = 'extracted_actions'
+      AND ccu.column_name = 'id'
+  LOOP
+    EXECUTE format('ALTER TABLE correction_feedback DROP CONSTRAINT %I', fk_constraint_name);
+  END LOOP;
+END $$;
+
+-- Phase 2.7h Migration D: retire extraction child tables after FK-detach prep.
+DROP TABLE IF EXISTS approval_decisions;
+DROP TABLE IF EXISTS interventions;
+DROP TABLE IF EXISTS agent_run_transitions;
+
+-- Phase 2.7i Migration E: retire extraction parent tables after child retirement.
+DROP TABLE IF EXISTS extracted_actions;
+DROP TABLE IF EXISTS agent_runs;
 
 CREATE TABLE IF NOT EXISTS audit_log (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -525,21 +501,16 @@ ALTER TABLE task_comments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE activity_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE canonical_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE raw_events ENABLE ROW LEVEL SECURITY;
-ALTER TABLE extracted_actions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE approval_decisions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE risk_snapshots ENABLE ROW LEVEL SECURITY;
 ALTER TABLE correction_feedback ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE kpi_snapshots ENABLE ROW LEVEL SECURITY;
-ALTER TABLE agent_runs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE agent_run_transitions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE slack_installations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE slack_channel_project_mappings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE google_calendar_installations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE email_installations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE email_outbound_drafts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE interventions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE report_snapshots ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tenant_policy_settings ENABLE ROW LEVEL SECURITY;
 
@@ -565,12 +536,6 @@ DO $$ BEGIN
   CREATE POLICY tenant_isolation_raw_events ON raw_events USING (tenant_id::text = current_setting('app.tenant_id', true));
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 DO $$ BEGIN
-  CREATE POLICY tenant_isolation_actions ON extracted_actions USING (tenant_id::text = current_setting('app.tenant_id', true));
-EXCEPTION WHEN duplicate_object THEN null; END $$;
-DO $$ BEGIN
-  CREATE POLICY tenant_isolation_approval_decisions ON approval_decisions USING (tenant_id::text = current_setting('app.tenant_id', true));
-EXCEPTION WHEN duplicate_object THEN null; END $$;
-DO $$ BEGIN
   CREATE POLICY tenant_isolation_notifications ON notifications USING (tenant_id::text = current_setting('app.tenant_id', true));
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 DO $$ BEGIN
@@ -584,12 +549,6 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 DO $$ BEGIN
   CREATE POLICY tenant_isolation_kpis ON kpi_snapshots USING (tenant_id::text = current_setting('app.tenant_id', true));
-EXCEPTION WHEN duplicate_object THEN null; END $$;
-DO $$ BEGIN
-  CREATE POLICY tenant_isolation_agent_runs ON agent_runs USING (tenant_id::text = current_setting('app.tenant_id', true));
-EXCEPTION WHEN duplicate_object THEN null; END $$;
-DO $$ BEGIN
-  CREATE POLICY tenant_isolation_agent_run_transitions ON agent_run_transitions USING (tenant_id::text = current_setting('app.tenant_id', true));
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 DO $$ BEGIN
   CREATE POLICY tenant_isolation_slack_installations ON slack_installations USING (tenant_id::text = current_setting('app.tenant_id', true));
@@ -630,11 +589,6 @@ EXCEPTION WHEN duplicate_object THEN null; END $$;
 DO $$ BEGIN
   CREATE POLICY tenant_isolation_email_outbound_drafts
     ON email_outbound_drafts
-    USING (tenant_id::text = current_setting('app.tenant_id', true));
-EXCEPTION WHEN duplicate_object THEN null; END $$;
-DO $$ BEGIN
-  CREATE POLICY tenant_isolation_interventions
-    ON interventions
     USING (tenant_id::text = current_setting('app.tenant_id', true));
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 DO $$ BEGIN
@@ -773,8 +727,7 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 
 -- ── Larry Intelligence tables ──────────────────────────────────────────────────
--- These replace extracted_actions, agent_runs, agent_run_transitions, interventions
--- for the core intelligence loop. Old tables kept until migration is complete.
+-- Canonical Larry runtime tables replacing the retired extraction-era parents.
 
 CREATE TABLE IF NOT EXISTS larry_events (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),

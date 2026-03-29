@@ -30,6 +30,14 @@ const LINKAGE_SOURCE_KINDS = [
 ];
 
 const REPLAY_SOURCE_KINDS = ["meeting", "email", "slack", "calendar"];
+const INVENTORY_TABLES = [
+  "larry_events",
+  "larry_messages",
+  "agent_runs",
+  "extracted_actions",
+  "approval_decisions",
+  "interventions",
+];
 
 function parseArgs(argv) {
   const args = {
@@ -112,13 +120,6 @@ function toNumber(value) {
   if (typeof value === "number") return value;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function normalizeRowCounts(rows) {
-  return rows.map((row) => ({
-    tableName: row.table_name,
-    rowCount: toNumber(row.row_count),
-  }));
 }
 
 function normalizeMissingSourceRecords(rows) {
@@ -283,7 +284,7 @@ function renderMarkdown(report) {
 
   sections.push("## Row Count Inventory");
   sections.push("");
-  sections.push(renderKeyValueTable(report.checks.rowCountInventory, ["tableName", "rowCount"]));
+  sections.push(renderKeyValueTable(report.checks.rowCountInventory, ["tableName", "tableStatus", "rowCount"]));
   sections.push("");
 
   sections.push("## Linkage Completeness");
@@ -402,6 +403,56 @@ async function loadColumns(client, tableName) {
   return new Set(result.rows.map((row) => row.column_name));
 }
 
+async function loadTenantRowCount(client, tableName, tenantId) {
+  const tableExistsResult = await client.query(
+    `
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name = $1
+      ) AS table_exists
+    `,
+    [tableName]
+  );
+
+  const tableExists = tableExistsResult.rows[0]?.table_exists === true;
+  if (!tableExists) {
+    return {
+      tableName,
+      tableStatus: "retired",
+      rowCount: null,
+    };
+  }
+
+  if (!/^[a-z_][a-z0-9_]*$/.test(tableName)) {
+    throw new Error(`Unsafe table name in row inventory: ${tableName}`);
+  }
+
+  const rowCountResult = await client.query(
+    `
+      SELECT COUNT(*) AS row_count
+      FROM ${tableName}
+      WHERE tenant_id = $1
+    `,
+    [tenantId]
+  );
+
+  return {
+    tableName,
+    tableStatus: "present",
+    rowCount: toNumber(rowCountResult.rows[0]?.row_count),
+  };
+}
+
+async function loadRowCountInventory(client, tenantId) {
+  const inventoryRows = [];
+  for (const tableName of INVENTORY_TABLES) {
+    inventoryRows.push(await loadTenantRowCount(client, tableName, tenantId));
+  }
+  return inventoryRows;
+}
+
 async function run() {
   const args = parseArgs(process.argv.slice(2));
 
@@ -429,37 +480,10 @@ async function run() {
       }
     }
 
-    const rowCountResult = await client.query(
-      `
-        SELECT 'larry_events' AS table_name, COUNT(*) AS row_count
-        FROM larry_events
-        WHERE tenant_id = $1
-        UNION ALL
-        SELECT 'larry_messages', COUNT(*)
-        FROM larry_messages
-        WHERE tenant_id = $1
-        UNION ALL
-        SELECT 'agent_runs', COUNT(*)
-        FROM agent_runs
-        WHERE tenant_id = $1
-        UNION ALL
-        SELECT 'extracted_actions', COUNT(*)
-        FROM extracted_actions
-        WHERE tenant_id = $1
-        UNION ALL
-        SELECT 'approval_decisions', COUNT(*)
-        FROM approval_decisions
-        WHERE tenant_id = $1
-        UNION ALL
-        SELECT 'interventions', COUNT(*)
-        FROM interventions
-        WHERE tenant_id = $1
-      `,
-      [args.tenant]
-    );
+    const rowCountInventory = await loadRowCountInventory(client, args.tenant);
 
     const report = {
-      schemaVersion: "phase-2.7-rehearsal-v1",
+      schemaVersion: "phase-2.7-rehearsal-v2",
       status: "ok",
       generatedAtUtc,
       environment: args.environment,
@@ -473,7 +497,7 @@ async function run() {
       },
       blockedReason: null,
       checks: {
-        rowCountInventory: normalizeRowCounts(rowCountResult.rows),
+        rowCountInventory,
         linkageCompleteness: {
           missingSourceRecord: [],
           invalidChatLinkage: 0,

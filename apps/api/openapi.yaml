@@ -54,25 +54,26 @@ paths:
       summary: Ingest Calendar signal
   /v1/ingest/transcript:
     post:
-      summary: Ingest transcript and start agent run
-  /v1/agent/runs:
+      summary: Deprecated compatibility shim for transcript ingest
+      deprecated: true
+  /v1/larry/chat:
     post:
-      summary: Start agent run
-  /v1/agent/runs/{id}:
+      summary: Run canonical Larry chat turn with linked action persistence
+  /v1/larry/briefing:
     get:
-      summary: Get run with transitions and actions
-  /v1/agent/actions:
+      summary: Get Larry login briefing
+  /v1/larry/action-centre:
     get:
-      summary: List extracted actions by state
-  /v1/actions/{id}/approve:
+      summary: List canonical Larry action-centre data (project or tenant-wide)
+  /v1/larry/events/{id}/accept:
     post:
-      summary: Approve action
-  /v1/actions/{id}/reject:
+      summary: Accept a suggested Larry event
+  /v1/larry/events/{id}/dismiss:
     post:
-      summary: Reject action
-  /v1/actions/{id}/override:
+      summary: Dismiss a suggested Larry event
+  /v1/larry/transcript:
     post:
-      summary: Override action payload
+      summary: Ingest transcript through canonical Larry runtime
   /v1/projects/{id}/health:
     get:
       summary: Get project health snapshot

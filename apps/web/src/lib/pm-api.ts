@@ -6,6 +6,18 @@ interface ApiListResponse<T> {
   items: T[];
 }
 
+interface ApiActionCentreEvent {
+  id: string;
+  actionType?: string;
+  displayText?: string | null;
+  reasoning?: string | null;
+  createdAt?: string;
+}
+
+interface ApiActionCentreResponse {
+  suggested?: ApiActionCentreEvent[];
+}
+
 export interface WorkspaceProject {
   id: string;
   name: string;
@@ -93,6 +105,36 @@ async function apiGetList<T>(baseUrl: string, path: string, accessToken: string)
   return Array.isArray(payload.items) ? payload.items : [];
 }
 
+async function apiGetActionCentre(
+  baseUrl: string,
+  accessToken: string
+): Promise<ApiActionCentreResponse> {
+  const response = await fetch(`${baseUrl}/v1/larry/action-centre`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+    signal: AbortSignal.timeout(12_000),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`GET /v1/larry/action-centre failed (${response.status}): ${body}`);
+  }
+
+  const payload = (await response.json()) as ApiActionCentreResponse;
+  return payload && typeof payload === "object" ? payload : {};
+}
+
+function mapSuggestedEventsToWorkspaceActions(events: ApiActionCentreEvent[]): WorkspaceAction[] {
+  return events.map((event) => ({
+    id: event.id,
+    impact: event.displayText?.trim() || event.actionType || "suggested_action",
+    confidence: "n/a",
+    reason: event.reasoning?.trim() || event.displayText?.trim() || "Suggested from canonical Larry action centre.",
+    createdAt: event.createdAt ?? "",
+  }));
+}
+
 export async function getWorkspaceSnapshot(): Promise<WorkspaceSnapshot> {
   const env = getWorkspaceEnv();
 
@@ -110,11 +152,15 @@ export async function getWorkspaceSnapshot(): Promise<WorkspaceSnapshot> {
   try {
     const accessToken = await apiLogin(env.baseUrl, env.tenantId, env.email, env.password);
 
-    const [projects, tasks, pendingActions] = await Promise.all([
+    const [projects, tasks, actionCentre] = await Promise.all([
       apiGetList<WorkspaceProject>(env.baseUrl, "/v1/projects", accessToken),
       apiGetList<WorkspaceTask>(env.baseUrl, "/v1/tasks", accessToken),
-      apiGetList<WorkspaceAction>(env.baseUrl, "/v1/agent/actions?state=pending", accessToken),
+      apiGetActionCentre(env.baseUrl, accessToken),
     ]);
+
+    const pendingActions = mapSuggestedEventsToWorkspaceActions(
+      Array.isArray(actionCentre.suggested) ? actionCentre.suggested : []
+    );
 
     return {
       connected: true,

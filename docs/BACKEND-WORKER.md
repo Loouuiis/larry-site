@@ -1,61 +1,45 @@
-# Larry — Worker & Agent Lifecycle
+# Larry - Worker Runtime
 
 ## Overview
 
-BullMQ worker at `apps/worker/src/worker.ts`. Consumes jobs from the `larry-events` Redis queue. Processes async tasks including the full agent lifecycle.
+BullMQ worker at `apps/worker/src/worker.ts`. Queue name: `larry-events`.
 
-## Job Types
+## Active Job Types
 
 | Job Name | Description |
 |----------|-------------|
-| `agent_run.ingested` | Full lifecycle processing: normalise → extract → propose → gate → persist |
-| `canonical_event.created` | Triggered when a new canonical event is created; creates/resumes agent runs |
+| `canonical_event.created` | Handles canonical event-driven Larry processing by source type |
+| `larry.scan` | Scheduled scan across active projects |
+| `escalation.scan` | Periodic escalation notifications |
+| `calendar.webhook.renew` | Google Calendar watch renewal |
 
-## Agent Run State Machine
+## Canonical Event Processing
 
-```
-INGESTED
-  → NORMALIZED    (event payload normalised to canonical form)
-  → EXTRACTED     (actionable text extracted)
-  → PROPOSED      (actions proposed by LLM)
-  → APPROVAL_PENDING  (actions gated for human review)
-     or
-  → EXECUTED      (auto-executed low-confidence actions)
-  → VERIFIED      (all actions resolved)
-```
+For each `canonical_event.created` job in `apps/worker/src/canonical-event.ts`:
+1. Load canonical event row.
+2. Resolve project scope from payload/mappings.
+3. Skip when scope is missing or invalid.
+4. Build a source-aware prompt.
+5. Run `runIntelligence()`.
+6. Persist `auto_executed` and `suggested` Larry actions through `runAutoActions()` and `storeSuggestions()`.
+7. Enforce replay safety by source linkage checks before writing duplicate actions.
 
-State transitions are persisted to `agent_run_transitions`. Failures capture reason + retry count.
+Supported source handlers:
+- Transcript
+- Email
+- Calendar
+- Slack
 
-## Worker Logic (worker.ts)
+## Scheduler Notes
 
-For each `canonical_event.created` job:
-1. Fetch canonical event from DB
-2. Filter noise events (Slack subtypes: `bot_message`, `channel_join`, `channel_leave`, `message_changed`, `message_deleted` — skip these)
-3. `extractActionableText(event)` — source-aware parsing (Slack/email/calendar/transcript)
-4. If no actionable text → skip run creation
-5. Create/resume `agent_runs` row with `source_ref_id = canonical_event.id`
-6. Call `packages/ai` `extractActions()` → list of proposed `ExtractedAction`
-7. For each action: call `evaluateActionPolicy()` → `requires_approval` boolean
-8. Persist to `extracted_actions` with `state = 'pending'` or `'executed'`
-9. Persist `reasoning` and `interventions` JSON per action
-10. Transition run to `APPROVAL_PENDING` or `EXECUTED`
+- `larry.scan` repeats every 4 hours.
+- `escalation.scan` repeats hourly.
+- `calendar.webhook.renew` repeats every 5 days.
 
-## Background Jobs
+Stable `jobId` values are used for repeatable jobs to avoid duplicate schedule registration after restarts.
 
-| File | Purpose |
-|------|---------|
-| `apps/worker/src/calendar-renewal.ts` | Renews Google Calendar push watch channels before expiry. Must include `token` field in renewal request to match initial registration — missing token causes webhook auth failures after 7 days. |
-| `apps/worker/src/escalation.ts` | Periodic escalation notifications. Uses `ON CONFLICT ON CONSTRAINT uq_notifications_dedup DO NOTHING` to prevent duplicate escalation spam. |
+## Operational Invariants
 
-## Queue Config
-
-- Queue name: `larry-events` (from `packages/shared` `EVENT_QUEUE_NAME`)
-- Published by: `apps/api/src/services/queue.ts`
-- Concurrency: 5 workers
-- Worker env loads `.env` from: `apps/worker/.env` → fallback `apps/api/.env`
-
-## Key Invariants
-
-- Worker must share the same `DATABASE_URL` as the API. Mismatched DBs cause actions to be invisible in the Action Centre.
-- Restart worker after code changes: `npm run worker:dev`
-- Build before deploying: `npm run worker:build`
+- API and Worker must use the same `DATABASE_URL`.
+- Build and restart worker after runtime changes.
+- Keep queue contracts aligned with `@larry/shared` message types.

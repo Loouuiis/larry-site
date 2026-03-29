@@ -220,7 +220,7 @@ TRIGGER 4: SIGNAL
 
 Target state: `larry_events` and `larry_briefings` are the primary intelligence-loop tables.
 
-Current state note: legacy tables (`agent_runs`, `agent_run_transitions`, `extracted_actions`, `interventions`) still exist in schema and cleanup is tracked as a separate follow-up phase.
+Current state note: extraction-era runtime tables are retired in repo schema; target-environment execution evidence is still pending rollout windows.
 
 ### `larry_events`
 ```sql
@@ -296,14 +296,14 @@ CREATE INDEX larry_briefings_user ON larry_briefings(user_id, created_at DESC);
   - Response body fields: `deprecatedEndpoint`, `replacementEndpoint`
 
 ### Deprecated/retired endpoints
-- `POST /v1/agent/runs` — replaced by triggers above
-- `GET /v1/agent/actions` — replaced by `GET /v1/larry/events`
-- `POST /v1/actions/:id/approve` — replaced by `POST /v1/larry/events/:id/accept`
-- `POST /v1/actions/:id/reject` — replaced by `POST /v1/larry/events/:id/dismiss`
-- `POST /v1/actions/:id/override` — removed
-- `POST /v1/agent/actions/:id/correct` — removed
-- `POST /v1/larry/commands` — replaced by `POST /v1/larry/chat`
-- `GET /v1/larry/events` — retired in current implementation (`410`), replaced by `GET /v1/larry/action-centre`
+- `POST /v1/agent/runs` - replaced by triggers above
+- `GET /v1/agent/actions` - replaced by `GET /v1/larry/action-centre`
+- `POST /v1/actions/:id/approve` - replaced by `POST /v1/larry/events/:id/accept`
+- `POST /v1/actions/:id/reject` - replaced by `POST /v1/larry/events/:id/dismiss`
+- `POST /v1/actions/:id/override` - removed
+- `POST /v1/agent/actions/:id/correct` - removed
+- `POST /v1/larry/commands` - replaced by `POST /v1/larry/chat`
+- `GET /v1/larry/events` - retired in current implementation (`410`), replaced by `GET /v1/larry/action-centre`
 
 ### Transcript shim removal criteria
 Remove `POST /v1/ingest/transcript` compatibility shim when all of the following are true:
@@ -375,7 +375,7 @@ Frontend changes: `useLarryChat.ts` updates its send endpoint from `/api/workspa
 ### Phase 5 — Inline Project Actions
 **Location:** `apps/web/src/app/workspace/projects/[projectId]/`
 
-1. `GET /v1/larry/events?projectId=X&state=suggested` — fetch pending suggestions for the project
+1. `GET /v1/larry/action-centre?projectId=X` - fetch project-scoped suggestions and recent Larry activity
 2. Render inline in the project view as highlighted callouts (not a separate page)
 3. Auto-executed actions show as an activity feed: "Larry did: [display_text] — [reasoning]"
 4. Suggested actions show as highlighted items: "[display_text]" with Accept / Dismiss
@@ -489,3 +489,4 @@ The following planning documents were deleted as they describe the old architect
 - `docs/reports/larry-mvp-readiness-2026-03-25.md`
 - `docs/WORKSPACE-REDESIGN-PROPOSAL.md`
 - `.codex/context.md`
+
