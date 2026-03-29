@@ -109,8 +109,6 @@ test("queues transcript intake and surfaces non-chat meeting provenance in the p
                 meetingDate: null,
                 createdAt: "2026-03-29T10:05:00.000Z",
                 projectId: PROJECT_ID,
-                agentRunId: null,
-                agentRunState: null,
               },
             ]
           : [],
@@ -170,8 +168,6 @@ test("queues transcript intake and surfaces non-chat meeting provenance in the p
                 meetingDate: null,
                 createdAt: "2026-03-29T10:05:00.000Z",
                 projectId: PROJECT_ID,
-                agentRunId: null,
-                agentRunState: null,
               },
             ]
           : [],

@@ -92,23 +92,6 @@ function timeAgo(dateStr: string): string {
 }
 
 function getMeetingStatus(meeting: WorkspaceMeeting) {
-  if (meeting.agentRunState) {
-    return {
-      label:
-        meeting.agentRunState === "VERIFIED"
-          ? "Ready"
-          : meeting.agentRunState === "FAILED"
-            ? "Failed"
-            : meeting.agentRunState,
-      style:
-        meeting.agentRunState === "VERIFIED"
-          ? { background: "#e6f9f0", color: "#00854d" }
-          : meeting.agentRunState === "FAILED"
-            ? { background: "#fff0f0", color: "var(--pm-red)" }
-            : { background: "#eef2ff", color: "#4338ca" },
-    };
-  }
-
   if (meeting.summary?.trim() || meeting.actionCount > 0) {
     return {
       label: "Ready",
@@ -601,11 +584,6 @@ export function MeetingsPage() {
                             {expandedData[meeting.id].summary}
                           </p>
                         </div>
-                      )}
-                      {meeting.agentRunId && (
-                        <p style={{ fontSize: "11px", color: "var(--text-disabled)" }}>
-                          Run: {meeting.agentRunId.slice(0, 8)}... · State: {meeting.agentRunState ?? "-"}
-                        </p>
                       )}
                     </div>
                   )}

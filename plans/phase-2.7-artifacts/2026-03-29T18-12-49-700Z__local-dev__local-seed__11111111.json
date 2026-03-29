@@ -1,0 +1,135 @@
+{
+  "schemaVersion": "phase-2.7-rehearsal-v1",
+  "status": "blocked",
+  "generatedAtUtc": "2026-03-29T18:12:49.700Z",
+  "environment": "local-dev",
+  "dataset": "local-seed",
+  "tenantId": "11111111-1111-4111-8111-111111111111",
+  "scriptPath": "scripts/phase-2.7-extraction-rehearsal.mjs",
+  "preflight": {
+    "passed": false,
+    "requiredColumns": {
+      "larry_events": [
+        "source_kind",
+        "source_record_id",
+        "conversation_id",
+        "request_message_id",
+        "response_message_id",
+        "requested_by_user_id"
+      ],
+      "larry_messages": [
+        "id",
+        "tenant_id",
+        "conversation_id"
+      ]
+    },
+    "missing": [
+      {
+        "table": "larry_events",
+        "column": "source_kind"
+      },
+      {
+        "table": "larry_events",
+        "column": "source_record_id"
+      },
+      {
+        "table": "larry_events",
+        "column": "conversation_id"
+      },
+      {
+        "table": "larry_events",
+        "column": "request_message_id"
+      },
+      {
+        "table": "larry_events",
+        "column": "response_message_id"
+      },
+      {
+        "table": "larry_events",
+        "column": "requested_by_user_id"
+      }
+    ]
+  },
+  "blockedReason": "Canonical preflight failed. Required larry_events/larry_messages columns are missing in this environment.",
+  "checks": {
+    "rowCountInventory": [
+      {
+        "tableName": "larry_events",
+        "rowCount": 0
+      },
+      {
+        "tableName": "larry_messages",
+        "rowCount": 32
+      },
+      {
+        "tableName": "agent_runs",
+        "rowCount": 17
+      },
+      {
+        "tableName": "extracted_actions",
+        "rowCount": 32
+      },
+      {
+        "tableName": "approval_decisions",
+        "rowCount": 10
+      },
+      {
+        "tableName": "interventions",
+        "rowCount": 51
+      }
+    ],
+    "linkageCompleteness": {
+      "missingSourceRecord": [],
+      "invalidChatLinkage": 0,
+      "orphanedMessageLinks": 0
+    },
+    "meetingReconciliation": [],
+    "replayIdempotency": {
+      "duplicateGroups": [],
+      "sourceCoverage": []
+    }
+  },
+  "anomalies": [
+    {
+      "code": "preflight_missing_columns",
+      "severity": "blocked",
+      "summary": "Required canonical schema columns are missing.",
+      "details": [
+        {
+          "table": "larry_events",
+          "column": "source_kind"
+        },
+        {
+          "table": "larry_events",
+          "column": "source_record_id"
+        },
+        {
+          "table": "larry_events",
+          "column": "conversation_id"
+        },
+        {
+          "table": "larry_events",
+          "column": "request_message_id"
+        },
+        {
+          "table": "larry_events",
+          "column": "response_message_id"
+        },
+        {
+          "table": "larry_events",
+          "column": "requested_by_user_id"
+        }
+      ]
+    }
+  ],
+  "followUpActions": [
+    "Apply canonical larry_events schema migrations in the target environment, then rerun rehearsal.",
+    "Do not start extraction-table deprecation migrations until preflight passes."
+  ],
+  "signOff": {
+    "engineer": null,
+    "reviewer": null,
+    "status": "pending",
+    "notes": null
+  }
+}

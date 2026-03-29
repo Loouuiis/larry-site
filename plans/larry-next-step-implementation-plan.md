@@ -168,6 +168,26 @@ These are not optional cleanups; they are part of the implementation strategy:
   - Applied the same read fence at the workspace API boundary by returning `410` from `GET /api/workspace/larry/events` with migration guidance to `/api/workspace/projects/:id/action-centre` and `/api/workspace/larry/action-centre`.
   - Added API regression coverage for retired `GET /larry/events` behavior, including assertion that legacy `listLarryEventSummaries` fan-out is not invoked by the fenced route.
   - Added Playwright regression coverage proving active `/workspace/actions`, project workspace Action Centre, and linked chat launch flows do not call retired `/api/workspace/larry/events` reads.
+- **Phase 2.6 meetings read-path extraction runtime cutover (transitional)**:
+  - Removed `agent_runs` query and join dependencies from active `GET /v1/meetings` and `GET /v1/meetings/:id` handlers so meetings reads now run only from `meeting_notes`.
+  - Kept `agentRunId` and `agentRunState` in the meetings response contract as transitional nullable compatibility placeholders (`null`) while migration cleanup continues.
+  - Updated active workspace meetings status rendering and expanded rows to rely on canonical meeting outputs (`summary` and `actionCount`) instead of legacy run-state metadata.
+  - Added API regression coverage proving meetings handlers do not query `agent_runs`, and updated transcript-led Playwright fixtures to stop depending on agent-run fields.
+- **Phase 2.7a extraction boundary hardening (conservative)**:
+  - Removed transcript ingest write-time extraction coupling by updating `POST /v1/ingest/transcript` meeting-note inserts to stop referencing `agent_run_id`.
+  - Added an API regression guard in transcript ingest coverage so tests fail if `agent_run_id` is reintroduced in active ingest SQL.
+  - Deleted the unused legacy workspace proxy route `/api/workspace/agent/runs/[runId]` so active web code no longer exposes a run-state passthrough seam.
+  - Added `plans/phase-2.7-extraction-boundary-checklist.md` with a keep/migrate/fence matrix for `agent_runs`, `extracted_actions`, `approval_decisions`, and `interventions`, plus rehearsal SQL checks and artifact template fields.
+- **Phase 2.7b task-triage canonical cutover (workspace boundary)**:
+  - Migrated active workspace task-triage writes off legacy `/v1/agent/runs` onto canonical `POST /v1/larry/chat` in both `/api/workspace/tasks` auto-triage and `/api/workspace/tasks/triage`.
+  - Preserved existing workspace route contracts while moving triage payloads onto canonical `{ projectId, message }` chat input.
+  - Added API regression coverage (`tests/task-triage-runtime-boundary.test.ts`) that fails if active workspace task-triage routes reintroduce `/v1/agent/runs` or stop targeting `/v1/larry/chat`.
+- **Phase 2.7c rehearsal automation + schema deprecation sequencing prep (repo-prep)**:
+  - Added a runnable rehearsal tool (`scripts/phase-2.7-extraction-rehearsal.mjs`) with required CLI metadata (`--tenant`, `--environment`, `--dataset`) and optional `--out-dir`.
+  - Added canonical preflight checks in the rehearsal tool for required `larry_events`/`larry_messages` columns and blocked-artifact behavior when schema is not yet aligned.
+  - Standardized commit-safe artifact output under `plans/phase-2.7-artifacts` with JSON + Markdown output and sign-off placeholders.
+  - Updated `plans/phase-2.7-extraction-boundary-checklist.md` to reference scripted workflow, preflight expectations, and sanitized replay output.
+  - Added `plans/phase-2.7-schema-deprecation-prep.md` with ordered fence/sign-off/FK-detach/table-retirement sequencing and rollback notes for `agent_runs`, `extracted_actions`, `approval_decisions`, and `interventions`.
 - **Phase 3 starter: Global Action Centre cutover**:
   - Extended the canonical Larry event summary contract with `projectName` so tenant-wide action-centre reads carry a project display label without stitched web-only joins.
   - Replaced the placeholder `/workspace/actions` page with a real workspace-native global Action Centre powered by `/api/workspace/larry/action-centre`, including cross-project labels, project links, and accept or dismiss controls on the canonical ledger path.
@@ -223,16 +243,16 @@ These are not optional cleanups; they are part of the implementation strategy:
 ### Still To Do For Phase 2
 
 - Continue consolidating connector-triggered Larry actions onto the same canonical Larry ledger contract as legacy paths are retired; chat, transcript, login briefing, scheduled scan, email, Slack, and calendar are now onboarded on the canonical path.
-- Consolidate Larry writes, approvals, and audit history further so active behavior no longer relies on both the legacy extraction tables and the newer Larry conversation and event model.
-- Rehearse the new `larry_events` and `larry_messages` backfills against production-like data before cutting more connector-heavy behavior onto the canonical ledger.
+- Execute production-like rehearsal runs via `scripts/phase-2.7-extraction-rehearsal.mjs` and capture signed artifacts in `plans/phase-2.7-artifacts`.
+- Start extraction-era migration execution with the first FK-detach task (`meeting_notes.agent_run_id`) after rehearsal sign-off, then proceed through the ordered runbook in `plans/phase-2.7-schema-deprecation-prep.md`.
 - Continue retiring or fencing any remaining legacy Larry read/write paths beyond the now-fenced conversation writes and event-list reads as canonical contracts replace them.
 
 ### Recommended Next Slice
 
-- **Phase 2 follow-up: Canonical ledger backfill rehearsal + extraction-runtime dependency audit**:
-  - Rehearse `larry_events` and `larry_messages` backfills on production-like data and capture row-count, linkage, and replay/idempotency verification outputs.
-  - Audit active API/worker/web Larry behavior for residual extraction-led runtime dependencies and produce a concrete cutover checklist for remaining dual-runtime touchpoints.
-  - Add targeted contract coverage around audited boundary points so regressions fail when new behavior bypasses canonical ledger/chat contracts.
+- **Phase 2.7d follow-up: Production-like rehearsal execution + first FK-detach migration**:
+  - Run `scripts/phase-2.7-extraction-rehearsal.mjs` on production-like data and commit signed artifact outputs under `plans/phase-2.7-artifacts`.
+  - If preflight passes and anomalies are cleared/signed off, execute Migration A from `plans/phase-2.7-schema-deprecation-prep.md`: detach `meeting_notes.agent_run_id` (constraint-first, column-drop only if compatibility window permits).
+  - Add regression coverage and migration validation notes proving active meetings and transcript flows remain canonical after detach.
 
 ---
 

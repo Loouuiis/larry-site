@@ -111,8 +111,10 @@ export interface WorkspaceMeeting {
   meetingDate: string | null;
   createdAt: string;
   projectId: string | null;
-  agentRunId: string | null;
-  agentRunState: string | null;
+  /** @deprecated Transitional compatibility placeholder from legacy extraction runtime. */
+  agentRunId?: string | null;
+  /** @deprecated Transitional compatibility placeholder from legacy extraction runtime. */
+  agentRunState?: string | null;
 }
 
 export interface WorkspaceSnapshot {

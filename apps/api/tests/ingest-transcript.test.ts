@@ -111,11 +111,15 @@ describe("POST /ingest/transcript", () => {
     const meetingInsertIndex = query.mock.calls.findIndex(([sql]) =>
       String(sql).includes("INSERT INTO meeting_notes")
     );
+    const meetingInsertCall = query.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO meeting_notes")
+    );
     const canonicalInsertIndex = query.mock.calls.findIndex(([sql]) =>
       String(sql).includes("INSERT INTO canonical_events")
     );
     expect(meetingInsertIndex).toBeGreaterThanOrEqual(0);
     expect(canonicalInsertIndex).toBeGreaterThan(meetingInsertIndex);
+    expect(String(meetingInsertCall?.[0] ?? "")).not.toContain("agent_run_id");
 
     const rawInsertCall = query.mock.calls.find(([sql]) =>
       String(sql).includes("INSERT INTO raw_events")

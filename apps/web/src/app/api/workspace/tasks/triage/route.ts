@@ -10,9 +10,9 @@ const TriageTaskSchema = z.object({
   dueDate: z.string().date().optional(),
 });
 
-function buildTaskTriageTranscript(input: z.infer<typeof TriageTaskSchema>): string {
+function buildTaskTriageMessage(input: z.infer<typeof TriageTaskSchema>): string {
   const due = input.dueDate ? ` with due date ${input.dueDate}` : "";
-  return `Action: ${input.title}${due}. Confirm owner, confirm deadline, and draft a follow-up update for leadership.`;
+  return `Please triage task ${input.taskId}: ${input.title}${due}. Confirm owner, confirm deadline, and draft a follow-up update for leadership.`;
 }
 
 export async function POST(request: NextRequest) {
@@ -30,15 +30,12 @@ export async function POST(request: NextRequest) {
 
   const triageResult = await proxyApiRequest(
     session,
-    "/v1/agent/runs",
+    "/v1/larry/chat",
     {
       method: "POST",
       body: JSON.stringify({
-        source: "transcript",
-        sourceRefId: `task:${payload.taskId}`,
         projectId: payload.projectId,
-        trigger: "task_manual_triage",
-        transcript: buildTaskTriageTranscript(payload),
+        message: buildTaskTriageMessage(payload),
       }),
     },
     { timeoutMs: 60_000 }

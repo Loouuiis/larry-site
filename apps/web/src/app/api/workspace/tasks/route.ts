@@ -36,9 +36,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function buildTaskTriageTranscript(payload: z.infer<typeof CreateTaskSchema>): string {
+function buildTaskTriageMessage(payload: z.infer<typeof CreateTaskSchema>, taskId: string): string {
   const due = payload.dueDate ? ` with due date ${payload.dueDate}` : "";
-  return `Action: ${payload.title}${due}. Confirm owner, confirm deadline, and draft a follow-up update for leadership.`;
+  return `Please triage task ${taskId}: ${payload.title}${due}. Confirm owner, confirm deadline, and draft a follow-up update for leadership.`;
 }
 
 export async function POST(request: NextRequest) {
@@ -68,18 +68,15 @@ export async function POST(request: NextRequest) {
   const createdTaskId = isRecord(result.body) && typeof result.body.id === "string" ? result.body.id : null;
 
   if (createdTaskId && shouldAutoAiTriage()) {
-    // Fire-and-forget: kick off triage without blocking the response
+    // Fire-and-forget: kick off canonical triage chat without blocking the response.
     void proxyApiRequest(
       activeSession,
-      "/v1/agent/runs",
+      "/v1/larry/chat",
       {
         method: "POST",
         body: JSON.stringify({
-          source: "transcript",
-          sourceRefId: `task:${createdTaskId}`,
           projectId: payload.projectId,
-          trigger: "task_created_auto_triage",
-          transcript: buildTaskTriageTranscript(payload),
+          message: buildTaskTriageMessage(payload, createdTaskId),
         }),
       },
       { timeoutMs: 30_000 }

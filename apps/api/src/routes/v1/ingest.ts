@@ -106,8 +106,8 @@ export const ingestRoutes: FastifyPluginAsync = async (fastify) => {
 
         const meetingNoteResult = await client.query<{ id: string }>(
           `INSERT INTO meeting_notes
-            (tenant_id, project_id, agent_run_id, title, transcript, created_by_user_id)
-           VALUES ($1, $2, NULL, $3, $4, $5)
+            (tenant_id, project_id, title, transcript, created_by_user_id)
+           VALUES ($1, $2, $3, $4, $5)
            RETURNING id`,
           [tenantId, body.projectId ?? null, body.meetingTitle ?? null, body.transcript, userId]
         );

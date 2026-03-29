@@ -14,7 +14,7 @@ export const meetingRoutes: FastifyPluginAsync = async (fastify) => {
 
       const values: unknown[] = [tenantId, query.limit];
       let sql = `SELECT id, title, summary, action_count, meeting_date, created_at,
-                        project_id, agent_run_id
+                        project_id
                  FROM meeting_notes
                  WHERE tenant_id = $1`;
       if (query.projectId) {
@@ -31,20 +31,7 @@ export const meetingRoutes: FastifyPluginAsync = async (fastify) => {
         meeting_date: string | null;
         created_at: string;
         project_id: string | null;
-        agent_run_id: string | null;
       }>(tenantId, sql, values);
-
-      // Attach agent run state if available
-      const runIds = rows.map((r) => r.agent_run_id).filter(Boolean) as string[];
-      const runStates: Record<string, string> = {};
-      if (runIds.length > 0) {
-        const runRows = await fastify.db.queryTenant<{ id: string; state: string }>(
-          tenantId,
-          `SELECT id, state FROM agent_runs WHERE tenant_id = $1 AND id = ANY($2::uuid[])`,
-          [tenantId, runIds]
-        );
-        for (const r of runRows) runStates[r.id] = r.state;
-      }
 
       return {
         items: rows.map((r) => ({
@@ -55,8 +42,9 @@ export const meetingRoutes: FastifyPluginAsync = async (fastify) => {
           meetingDate: r.meeting_date,
           createdAt: r.created_at,
           projectId: r.project_id,
-          agentRunId: r.agent_run_id,
-          agentRunState: r.agent_run_id ? (runStates[r.agent_run_id] ?? null) : null,
+          // Transitional compatibility placeholders while active reads cut over from agent_runs.
+          agentRunId: null,
+          agentRunState: null,
         })),
       };
     }
@@ -78,16 +66,12 @@ export const meetingRoutes: FastifyPluginAsync = async (fastify) => {
         meeting_date: string | null;
         created_at: string;
         project_id: string | null;
-        agent_run_id: string | null;
-        agent_run_state: string | null;
       }>(
         tenantId,
-        `SELECT mn.id, mn.title, mn.transcript, mn.summary, mn.action_count,
-                mn.meeting_date, mn.created_at, mn.project_id, mn.agent_run_id,
-                ar.state AS agent_run_state
-         FROM meeting_notes mn
-         LEFT JOIN agent_runs ar ON ar.id = mn.agent_run_id
-         WHERE mn.tenant_id = $1 AND mn.id = $2 LIMIT 1`,
+        `SELECT id, title, transcript, summary, action_count,
+                meeting_date, created_at, project_id
+         FROM meeting_notes
+         WHERE tenant_id = $1 AND id = $2 LIMIT 1`,
         [tenantId, params.id]
       );
 
@@ -103,8 +87,9 @@ export const meetingRoutes: FastifyPluginAsync = async (fastify) => {
         meetingDate: r.meeting_date,
         createdAt: r.created_at,
         projectId: r.project_id,
-        agentRunId: r.agent_run_id,
-        agentRunState: r.agent_run_state ?? null,
+        // Transitional compatibility placeholders while active reads cut over from agent_runs.
+        agentRunId: null,
+        agentRunState: null,
       };
     }
   );
