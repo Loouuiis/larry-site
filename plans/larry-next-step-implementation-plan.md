@@ -188,6 +188,11 @@ These are not optional cleanups; they are part of the implementation strategy:
   - Standardized commit-safe artifact output under `plans/phase-2.7-artifacts` with JSON + Markdown output and sign-off placeholders.
   - Updated `plans/phase-2.7-extraction-boundary-checklist.md` to reference scripted workflow, preflight expectations, and sanitized replay output.
   - Added `plans/phase-2.7-schema-deprecation-prep.md` with ordered fence/sign-off/FK-detach/table-retirement sequencing and rollback notes for `agent_runs`, `extracted_actions`, `approval_decisions`, and `interventions`.
+- **Phase 2.7d Migration A FK detach (repo-level, compatibility-safe)**:
+  - Updated `packages/db/src/schema.sql` so `meeting_notes.agent_run_id` remains nullable but no longer declares an inline FK to `agent_runs`.
+  - Added an idempotent schema migration block that discovers and drops any existing `meeting_notes.agent_run_id -> agent_runs.id` FK constraint for already-provisioned environments.
+  - Added schema regression coverage (`tests/larry-schema.test.ts`) that fails if `meeting_notes` reintroduces inline `agent_runs` FK coupling or if the detach migration block is removed.
+  - Updated Phase 2.7 deprecation runbook/planning notes with Migration A forward intent, rollback intent, and FK pre/post validation query guidance.
 - **Phase 3 starter: Global Action Centre cutover**:
   - Extended the canonical Larry event summary contract with `projectName` so tenant-wide action-centre reads carry a project display label without stitched web-only joins.
   - Replaced the placeholder `/workspace/actions` page with a real workspace-native global Action Centre powered by `/api/workspace/larry/action-centre`, including cross-project labels, project links, and accept or dismiss controls on the canonical ledger path.
@@ -244,15 +249,16 @@ These are not optional cleanups; they are part of the implementation strategy:
 
 - Continue consolidating connector-triggered Larry actions onto the same canonical Larry ledger contract as legacy paths are retired; chat, transcript, login briefing, scheduled scan, email, Slack, and calendar are now onboarded on the canonical path.
 - Execute production-like rehearsal runs via `scripts/phase-2.7-extraction-rehearsal.mjs` and capture signed artifacts in `plans/phase-2.7-artifacts`.
-- Start extraction-era migration execution with the first FK-detach task (`meeting_notes.agent_run_id`) after rehearsal sign-off, then proceed through the ordered runbook in `plans/phase-2.7-schema-deprecation-prep.md`.
+- Execute Migration A in target environments after rehearsal sign-off (repo implementation is complete) and capture FK-detach validation outputs.
+- Continue extraction-era migration execution with Migration B (`email_outbound_drafts.action_id`) and Migration C (`correction_feedback.action_id`) before child/parent table retirement steps in `plans/phase-2.7-schema-deprecation-prep.md`.
 - Continue retiring or fencing any remaining legacy Larry read/write paths beyond the now-fenced conversation writes and event-list reads as canonical contracts replace them.
 
 ### Recommended Next Slice
 
-- **Phase 2.7d follow-up: Production-like rehearsal execution + first FK-detach migration**:
+- **Phase 2.7e follow-up: Rehearsal sign-off + Migration B FK detach prep**:
   - Run `scripts/phase-2.7-extraction-rehearsal.mjs` on production-like data and commit signed artifact outputs under `plans/phase-2.7-artifacts`.
-  - If preflight passes and anomalies are cleared/signed off, execute Migration A from `plans/phase-2.7-schema-deprecation-prep.md`: detach `meeting_notes.agent_run_id` (constraint-first, column-drop only if compatibility window permits).
-  - Add regression coverage and migration validation notes proving active meetings and transcript flows remain canonical after detach.
+  - If preflight passes and anomalies are cleared/signed off, execute repo-ready Migration A (`meeting_notes.agent_run_id` FK detach) and record FK validation evidence in migration tracking notes.
+  - Implement/execute Migration B (`email_outbound_drafts.action_id` constraint-first detach; column drop only if compatibility window permits) with matching forward/rollback SQL and pre/post validation queries.
 
 ---
 

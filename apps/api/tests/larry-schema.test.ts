@@ -35,4 +35,21 @@ describe("Larry ledger schema", () => {
     expect(schema).toContain("AND lm.role = 'user'");
     expect(schema).toContain("CREATE INDEX IF NOT EXISTS idx_larry_messages_conversation_created");
   });
+
+  it("detaches meeting_notes.agent_run_id from agent_runs with an idempotent migration block", () => {
+    const meetingNotesTable = schema.match(/CREATE TABLE IF NOT EXISTS meeting_notes \([\s\S]*?\n\);/);
+    expect(meetingNotesTable).not.toBeNull();
+
+    const meetingNotesTableSql = meetingNotesTable?.[0] ?? "";
+    expect(meetingNotesTableSql).toContain("agent_run_id UUID,");
+    expect(meetingNotesTableSql).not.toContain(
+      "agent_run_id UUID REFERENCES agent_runs(id) ON DELETE SET NULL"
+    );
+
+    expect(schema).toContain("Phase 2.7d: detach meeting_notes.agent_run_id from legacy agent_runs FK.");
+    expect(schema).toContain("tc.table_name = 'meeting_notes'");
+    expect(schema).toContain("kcu.column_name = 'agent_run_id'");
+    expect(schema).toContain("ccu.table_name = 'agent_runs'");
+    expect(schema).toContain("ALTER TABLE meeting_notes DROP CONSTRAINT %I");
+  });
 });

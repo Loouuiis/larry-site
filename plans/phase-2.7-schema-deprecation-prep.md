@@ -59,7 +59,7 @@ Rollback:
 
 Execute additive/detach migrations first, in this order:
 
-1. Detach `meeting_notes.agent_run_id`.
+1. [x] Detach `meeting_notes.agent_run_id` (**implemented in repo; environment execution pending gates/window**).
 2. Detach `email_outbound_drafts.action_id`.
 3. Detach `correction_feedback.action_id`.
 
@@ -68,6 +68,35 @@ Implementation notes:
 - Prefer dropping FK constraints before dropping columns.
 - If compatibility window is required, keep nullable columns temporarily but remove constraints first.
 - Ensure API contracts already return canonical fields only (or explicit null compatibility placeholders).
+
+Migration A implementation details (repo-complete, execution pending):
+
+- Forward SQL intent:
+  - Drop the `meeting_notes.agent_run_id -> agent_runs.id` FK constraint.
+  - Repo implementation now uses an idempotent schema migration block that discovers any matching FK constraint name and drops it.
+- Rollback SQL intent:
+  - Re-add the FK on `meeting_notes.agent_run_id` to `agent_runs(id)` with `ON DELETE SET NULL`.
+- Pre-validation query (FK exists before apply):
+
+```sql
+SELECT tc.constraint_name
+FROM information_schema.table_constraints tc
+JOIN information_schema.key_column_usage kcu
+  ON tc.table_schema = kcu.table_schema
+ AND tc.constraint_name = kcu.constraint_name
+JOIN information_schema.constraint_column_usage ccu
+  ON tc.table_schema = ccu.table_schema
+ AND tc.constraint_name = ccu.constraint_name
+WHERE tc.table_schema = 'public'
+  AND tc.table_name = 'meeting_notes'
+  AND tc.constraint_type = 'FOREIGN KEY'
+  AND kcu.column_name = 'agent_run_id'
+  AND ccu.table_name = 'agent_runs'
+  AND ccu.column_name = 'id';
+```
+
+- Post-validation query (FK removed after apply):
+  - Run the same query above and verify it returns zero rows.
 
 Rollback:
 

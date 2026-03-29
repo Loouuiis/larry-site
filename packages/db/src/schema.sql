@@ -657,7 +657,7 @@ CREATE TABLE IF NOT EXISTS meeting_notes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
-  agent_run_id UUID REFERENCES agent_runs(id) ON DELETE SET NULL,
+  agent_run_id UUID,
   title TEXT,
   transcript TEXT NOT NULL,
   summary TEXT,
@@ -666,6 +666,31 @@ CREATE TABLE IF NOT EXISTS meeting_notes (
   created_by_user_id UUID REFERENCES users(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Phase 2.7d: detach meeting_notes.agent_run_id from legacy agent_runs FK.
+DO $$
+DECLARE
+  fk_constraint_name TEXT;
+BEGIN
+  FOR fk_constraint_name IN
+    SELECT tc.constraint_name
+    FROM information_schema.table_constraints tc
+    JOIN information_schema.key_column_usage kcu
+      ON tc.table_schema = kcu.table_schema
+     AND tc.constraint_name = kcu.constraint_name
+    JOIN information_schema.constraint_column_usage ccu
+      ON tc.table_schema = ccu.table_schema
+     AND tc.constraint_name = ccu.constraint_name
+    WHERE tc.table_schema = 'public'
+      AND tc.table_name = 'meeting_notes'
+      AND tc.constraint_type = 'FOREIGN KEY'
+      AND kcu.column_name = 'agent_run_id'
+      AND ccu.table_name = 'agent_runs'
+      AND ccu.column_name = 'id'
+  LOOP
+    EXECUTE format('ALTER TABLE meeting_notes DROP CONSTRAINT %I', fk_constraint_name);
+  END LOOP;
+END $$;
 
 ALTER TABLE meeting_notes ENABLE ROW LEVEL SECURITY;
 
