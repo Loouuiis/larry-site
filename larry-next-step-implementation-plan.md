@@ -58,9 +58,20 @@ Implemented:
 Validation run:
 - `npm run test -w @larry/api -- larry-chat.test.ts` passed.
 
+### Slice 2026-03-29-C (implemented)
+
+Goal: resolve CI TypeScript failure in transcript route tests.
+
+Implemented:
+- Updated `apps/api/tests/larry-chat.test.ts` mock payloads for `ingestCanonicalEvent` to match `IngestEventResult`.
+- Removed invalid `rawEventId` field from mock resolved values.
+
+Validation run:
+- `npm run test -w @larry/api -- larry-chat.test.ts` passed (12/12).
+
 ## Next Smallest Slice (recommended)
 
-### Slice 2026-03-29-C (next)
+### Slice 2026-03-29-D (next)
 
 Goal: update docs and remove stale endpoint narratives so plan/docs match shipped behavior.
 

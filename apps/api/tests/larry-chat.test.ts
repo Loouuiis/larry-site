@@ -523,7 +523,6 @@ describe("POST /larry/chat", () => {
 describe("POST /larry/transcript", () => {
   it("accepts transcript uploads and runs best-effort intelligence for project-scoped payloads", async () => {
     vi.mocked(ingestCanonicalEvent).mockResolvedValue({
-      rawEventId: "raw-event-1",
       canonicalEventId: "canon-event-1",
       queued: true,
     });
@@ -597,7 +596,6 @@ describe("POST /larry/transcript", () => {
 describe("POST /ingest/transcript compatibility shim", () => {
   it("forwards to /larry/transcript and returns deprecation metadata", async () => {
     vi.mocked(ingestCanonicalEvent).mockResolvedValue({
-      rawEventId: "raw-event-2",
       canonicalEventId: "canon-event-2",
       queued: true,
     });
