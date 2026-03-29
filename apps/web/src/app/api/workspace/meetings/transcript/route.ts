@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
 
   const result = await proxyApiRequest(
     session,
-    "/v1/ingest/transcript",
+    "/v1/larry/transcript",
     {
       method: "POST",
       body: JSON.stringify({

@@ -33,6 +33,7 @@ import {
   touchLarryConversation,
 } from "../../lib/larry-ledger.js";
 import { getOrGenerateBriefing } from "../../services/larry-briefing.js";
+import { ingestCanonicalEvent } from "../../services/ingest/pipeline.js";
 
 function buildIntelligenceConfig(config: ReturnType<typeof getApiEnv>): IntelligenceConfig {
   if (config.MODEL_PROVIDER === "openai") {
@@ -317,6 +318,92 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
+  // ── Transcript ───────────────────────────────────────────────────────────
+
+  const TranscriptSchema = z.object({
+    sourceEventId: z.string().min(1),
+    transcript: z.string().min(20),
+    projectId: z.string().uuid().optional(),
+    meetingTitle: z.string().optional(),
+    actor: z.string().optional(),
+    occurredAt: z.string().datetime().optional(),
+    payload: z.record(z.string(), z.unknown()).optional(),
+  });
+
+  fastify.post(
+    "/transcript",
+    {
+      config: {
+        rateLimit: {
+          max: 10,
+          timeWindow: "1 minute",
+          keyGenerator: (req: FastifyRequest) =>
+            (req.user as { tenantId?: string } | undefined)?.tenantId ?? req.ip,
+        },
+      },
+      preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])],
+    },
+    async (request, reply) => {
+      const parse = TranscriptSchema.safeParse(request.body);
+      if (!parse.success) {
+        throw fastify.httpErrors.badRequest(parse.error.issues[0]?.message ?? "Invalid transcript payload");
+      }
+
+      const body = parse.data;
+      const tenantId = request.user.tenantId;
+
+      const ingestResult = await ingestCanonicalEvent(fastify, tenantId, {
+        source: "transcript",
+        sourceEventId: body.sourceEventId,
+        actor: body.actor,
+        occurredAt: body.occurredAt,
+        payload: {
+          ...(body.payload ?? {}),
+          transcript: body.transcript,
+          meetingTitle: body.meetingTitle,
+        },
+      });
+
+      const meetingNoteRows = await fastify.db.queryTenant<{ id: string }>(
+        tenantId,
+        `INSERT INTO meeting_notes
+          (tenant_id, project_id, agent_run_id, title, transcript, created_by_user_id)
+         VALUES ($1, $2, NULL, $3, $4, $5)
+         RETURNING id`,
+        [tenantId, body.projectId ?? null, body.meetingTitle ?? null, body.transcript, request.user.userId]
+      );
+      const meetingNoteId = meetingNoteRows[0]?.id;
+
+      if (body.projectId) {
+        try {
+          const config = buildIntelligenceConfig(fastify.config);
+          const snapshot = await getProjectSnapshot(fastify.db, tenantId, body.projectId);
+          const intelligenceResult = await runIntelligence(
+            config,
+            snapshot,
+            `transcript: "${body.transcript.slice(0, 500)}"`
+          );
+
+          await Promise.all([
+            runAutoActions(fastify.db, tenantId, body.projectId, "signal", intelligenceResult.autoActions),
+            storeSuggestions(fastify.db, tenantId, body.projectId, "signal", intelligenceResult.suggestedActions),
+          ]);
+        } catch (err) {
+          request.log.warn({ err, tenantId, projectId: body.projectId }, "transcript intelligence failed");
+        }
+      }
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId: request.user.userId,
+        actionType: "larry.transcript",
+        objectType: "meeting_note",
+        objectId: meetingNoteId ?? ingestResult.canonicalEventId,
+      });
+
+      return reply.code(202).send({ accepted: true, ...ingestResult });
+    }
+  );
   fastify.post(
     "/chat",
     {

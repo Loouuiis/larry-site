@@ -39,6 +39,10 @@ vi.mock("../src/services/larry-briefing.js", () => ({
   getOrGenerateBriefing: vi.fn(),
 }));
 
+vi.mock("../src/services/ingest/pipeline.js", () => ({
+  ingestCanonicalEvent: vi.fn(),
+}));
+
 import Fastify from "fastify";
 import sensible from "@fastify/sensible";
 import type { ApiEnv } from "@larry/config";
@@ -58,6 +62,7 @@ import {
   listLarryMessagesByIds,
   touchLarryConversation,
 } from "../src/lib/larry-ledger.js";
+import { ingestCanonicalEvent } from "../src/services/ingest/pipeline.js";
 import { larryRoutes } from "../src/routes/v1/larry.js";
 
 const TENANT_ID = "11111111-1111-4111-8111-111111111111";
@@ -475,5 +480,79 @@ describe("POST /larry/chat", () => {
 
     expect(response.statusCode).toBe(400);
     expect(getProjectSnapshot).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /larry/transcript", () => {
+  it("accepts transcript uploads and runs best-effort intelligence for project-scoped payloads", async () => {
+    vi.mocked(ingestCanonicalEvent).mockResolvedValue({
+      rawEventId: "raw-event-1",
+      canonicalEventId: "canon-event-1",
+      queued: true,
+    });
+    vi.mocked(getProjectSnapshot).mockResolvedValue(MOCK_SNAPSHOT);
+    vi.mocked(runIntelligence).mockResolvedValue({
+      briefing: "Processed transcript",
+      autoActions: [],
+      suggestedActions: [],
+    });
+    vi.mocked(runAutoActions).mockResolvedValue({ executedCount: 0, suggestedCount: 0, eventIds: [] });
+    vi.mocked(storeSuggestions).mockResolvedValue({ executedCount: 0, suggestedCount: 0, eventIds: [] });
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    const dbQueryTenant = vi.mocked(app.db.queryTenant as unknown as (...args: unknown[]) => Promise<unknown[]>);
+    dbQueryTenant.mockResolvedValueOnce([{ id: "meeting-note-1" }]);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/larry/transcript",
+      payload: {
+        sourceEventId: "web-upload-123",
+        transcript: "Anton will send the updated integration spec by Friday and Joel will review it.",
+        projectId: PROJECT_ID,
+        meetingTitle: "Weekly sync",
+        payload: {},
+      },
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.json()).toMatchObject({
+      accepted: true,
+      canonicalEventId: "canon-event-1",
+    });
+    expect(ingestCanonicalEvent).toHaveBeenCalled();
+    expect(runAutoActions).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT_ID,
+      PROJECT_ID,
+      "signal",
+      expect.any(Array)
+    );
+    expect(storeSuggestions).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT_ID,
+      PROJECT_ID,
+      "signal",
+      expect.any(Array)
+    );
+  });
+
+  it("returns 400 for invalid transcript payload", async () => {
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/larry/transcript",
+      payload: {
+        sourceEventId: "web-upload-123",
+        transcript: "too short",
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(ingestCanonicalEvent).not.toHaveBeenCalled();
   });
 });
