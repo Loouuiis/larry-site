@@ -1,14 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import type { WorkspaceLarryEvent } from "@/app/dashboard/types";
+import {
+  listLarryConversations,
+  listLarryMessages,
+  sendLarryChat,
+  type LarryMessage as PersistedLarryMessage,
+} from "@/lib/larry";
 
 export interface LarryMessage {
   id: string;
   role: "user" | "larry";
-  text: string;
+  content: string;
+  createdAt: string;
+  actorUserId: string | null;
+  actorDisplayName: string | null;
+  linkedActions: WorkspaceLarryEvent[];
   actionsExecuted?: number;
   suggestionCount?: number;
-  createdAt: string;
 }
 
 interface ProactiveItem {
@@ -16,23 +26,42 @@ interface ProactiveItem {
   message: string;
 }
 
-async function readJson<T>(response: Response): Promise<T> {
-  const text = await response.text();
-  if (!text) return {} as T;
-  try {
-    return JSON.parse(text) as T;
-  } catch {
-    return { error: text } as T;
-  }
+function normalizeMessage(
+  message: PersistedLarryMessage,
+  meta?: Pick<LarryMessage, "actionsExecuted" | "suggestionCount">
+): LarryMessage {
+  return {
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    createdAt: message.createdAt,
+    actorUserId: message.actorUserId,
+    actorDisplayName: message.actorDisplayName,
+    linkedActions: message.linkedActions ?? [],
+    actionsExecuted: meta?.actionsExecuted,
+    suggestionCount: meta?.suggestionCount,
+  };
 }
 
-function saveMessage(conversationId: string, role: "user" | "larry", content: string): void {
-  // Fire-and-forget — persistence failures must not block the UI
-  void fetch(`/api/workspace/larry/conversations/${conversationId}/messages`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ role, content }),
-  }).catch(() => undefined);
+function createLocalMessage(input: {
+  id?: string;
+  role: "user" | "larry";
+  content: string;
+  linkedActions?: WorkspaceLarryEvent[];
+  actionsExecuted?: number;
+  suggestionCount?: number;
+}): LarryMessage {
+  return {
+    id: input.id ?? crypto.randomUUID(),
+    role: input.role,
+    content: input.content,
+    createdAt: new Date().toISOString(),
+    actorUserId: null,
+    actorDisplayName: null,
+    linkedActions: input.linkedActions ?? [],
+    actionsExecuted: input.actionsExecuted,
+    suggestionCount: input.suggestionCount,
+  };
 }
 
 export function useLarryChat(projectId?: string) {
@@ -43,72 +72,45 @@ export function useLarryChat(projectId?: string) {
   const [proactiveQueue, setProactiveQueue] = useState<ProactiveItem[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
 
-  // Track which projectId we've already initialised for to avoid re-running
-  const initializedForRef = useRef<string | undefined>(undefined);
-
   const open = useCallback(() => setIsOpen(true), []);
   const close = useCallback(() => setIsOpen(false), []);
-  const toggle = useCallback(() => setIsOpen((o) => !o), []);
+  const toggle = useCallback(() => setIsOpen((openState) => !openState), []);
 
   const pushMessage = useCallback((text: string) => {
     const item: ProactiveItem = { id: crypto.randomUUID(), message: text };
-    setProactiveQueue((q) => [...q, item]);
+    setProactiveQueue((queue) => [...queue, item]);
     setIsOpen(true);
   }, []);
 
   const dismissProactive = useCallback((id: string) => {
-    setProactiveQueue((q) => q.filter((i) => i.id !== id));
+    setProactiveQueue((queue) => queue.filter((item) => item.id !== id));
   }, []);
 
-  // Load or create a conversation and hydrate message history
   useEffect(() => {
-    if (!isOpen) return;
-    if (initializedForRef.current === (projectId ?? "")) return;
-    initializedForRef.current = projectId ?? "";
+    setConversationId(null);
+    setMessages([]);
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!isOpen || !projectId) return;
 
     void (async () => {
       try {
-        const listUrl = projectId
-          ? `/api/workspace/larry/conversations?projectId=${encodeURIComponent(projectId)}`
-          : "/api/workspace/larry/conversations";
+        const conversations = await listLarryConversations(projectId);
+        const existing = conversations[0];
 
-        const listRes = await fetch(listUrl);
-        const listData = await readJson<{ conversations?: { id: string }[] }>(listRes);
-        const existing = listData.conversations?.[0];
-
-        let convId: string;
-        if (existing) {
-          convId = existing.id;
-        } else {
-          const createRes = await fetch("/api/workspace/larry/conversations", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ projectId: projectId ?? undefined }),
-          });
-          const created = await readJson<{ id?: string }>(createRes);
-          if (!created.id) return;
-          convId = created.id;
+        if (!existing) {
+          setConversationId(null);
+          setMessages([]);
+          return;
         }
 
-        setConversationId(convId);
-
-        const msgRes = await fetch(`/api/workspace/larry/conversations/${convId}/messages`);
-        const msgData = await readJson<{
-          messages?: Array<{ id: string; role: string; content: string; createdAt: string }>;
-        }>(msgRes);
-
-        if (msgData.messages && msgData.messages.length > 0) {
-          setMessages(
-            msgData.messages.map((m) => ({
-              id: m.id,
-              role: m.role as "user" | "larry",
-              text: m.content,
-              createdAt: m.createdAt,
-            }))
-          );
-        }
+        setConversationId(existing.id);
+        const history = await listLarryMessages(existing.id);
+        setMessages(history.map((message) => normalizeMessage(message)));
       } catch {
-        // Non-fatal — chat still works without persistence
+        setConversationId(null);
+        setMessages([]);
       }
     })();
   }, [isOpen, projectId]);
@@ -117,136 +119,121 @@ export function useLarryChat(projectId?: string) {
     setConversationId(id);
     setMessages([]);
     setIsOpen(true);
-    initializedForRef.current = undefined;
+
     try {
-      const res = await fetch(`/api/workspace/larry/conversations/${id}/messages`);
-      const data = await readJson<{
-        messages?: Array<{ id: string; role: "user" | "larry"; content: string; createdAt: string }>;
-      }>(res);
-      setMessages(
-        (data.messages ?? []).map((m) => ({
-          id: m.id,
-          role: m.role,
-          text: m.content,
-          createdAt: m.createdAt,
-        }))
-      );
+      const history = await listLarryMessages(id);
+      setMessages(history.map((message) => normalizeMessage(message)));
     } catch {
-      // ignore
+      setMessages([]);
     }
   }, []);
 
   const sendMessage = useCallback(
     async (text: string) => {
       if (!projectId) {
-        // No project context — guide the user clearly
-        const prompt: LarryMessage = {
-          id: crypto.randomUUID(),
-          role: "larry",
-          text: "I need a project to work with. Open a project and use the Larry section inside it to chat with me, or select a project from the sidebar first.",
-          createdAt: new Date().toISOString(),
-        };
-        setMessages((prev) => [...prev, prompt]);
+        setMessages((previous) =>
+          previous.concat(
+            createLocalMessage({
+              role: "larry",
+              content:
+                "I need a project to work with. Open a project and use the Larry section inside it to chat with me, or select a project from the sidebar first.",
+            })
+          )
+        );
         return;
       }
 
-      const userMsg: LarryMessage = {
-        id: crypto.randomUUID(),
-        role: "user",
-        text,
-        createdAt: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, userMsg]);
-      setBusy(true);
-      setMessages((prev) => [
-        ...prev,
-        { id: "processing", role: "larry", text: "Processing…", createdAt: new Date().toISOString() },
-      ]);
+      const optimisticUserId = `user-${crypto.randomUUID()}`;
+      const processingId = "processing";
 
-      // Create a conversation on the first message if we don't have one yet
-      let convId = conversationId;
-      if (!convId) {
-        try {
-          const res = await fetch("/api/workspace/larry/conversations", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              projectId: projectId || undefined,
-              title: text.slice(0, 80),
-            }),
-          });
-          const data = await readJson<{ id?: string }>(res);
-          if (data.id) {
-            convId = data.id;
-            setConversationId(data.id);
-          }
-        } catch {
-          // continue without persistence
-        }
-      }
+      setMessages((previous) =>
+        previous
+          .filter((message) => message.id !== processingId)
+          .concat(
+            createLocalMessage({ id: optimisticUserId, role: "user", content: text }),
+            createLocalMessage({ id: processingId, role: "larry", content: "Processing..." })
+          )
+      );
+      setBusy(true);
 
       try {
-        const res = await fetch("/api/workspace/larry/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ projectId, message: text }),
+        const { response, data } = await sendLarryChat({
+          projectId,
+          message: text,
+          conversationId: conversationId ?? undefined,
         });
 
-        const data = await readJson<{
-          message?: string;
-          actionsExecuted?: number;
-          suggestionCount?: number;
-          error?: string;
-        }>(res);
-
-        const responseText = res.ok
-          ? (data.message ?? "Done.")
-          : (data.error ?? "Something went wrong.");
-
-        const larryMsg: LarryMessage = {
-          id: crypto.randomUUID(),
-          role: "larry",
-          text: responseText,
-          actionsExecuted: data.actionsExecuted,
-          suggestionCount: data.suggestionCount,
-          createdAt: new Date().toISOString(),
-        };
-
-        setMessages((prev) => prev.filter((m) => m.id !== "processing").concat(larryMsg));
-
-        if (convId) {
-          saveMessage(convId, "user", text);
-          saveMessage(convId, "larry", responseText);
+        if (!response.ok) {
+          setMessages((previous) =>
+            previous
+              .filter((message) => message.id !== processingId)
+              .concat(
+                createLocalMessage({
+                  role: "larry",
+                  content: data.error ?? "Something went wrong.",
+                })
+              )
+          );
+          return;
         }
 
-        if (res.ok && (data.actionsExecuted ?? 0) > 0) {
+        setConversationId(data.conversationId);
+
+        const nextUserMessage = normalizeMessage(data.userMessage);
+        const nextAssistantMessage = normalizeMessage(
+          {
+            ...data.assistantMessage,
+            linkedActions:
+              data.assistantMessage.linkedActions?.length > 0
+                ? data.assistantMessage.linkedActions
+                : data.linkedActions,
+          },
+          {
+            actionsExecuted: data.actionsExecuted,
+            suggestionCount: data.suggestionCount,
+          }
+        );
+
+        setMessages((previous) =>
+          previous
+            .filter((message) => message.id !== optimisticUserId && message.id !== processingId)
+            .concat(nextUserMessage, nextAssistantMessage)
+        );
+
+        if (
+          (data.actionsExecuted ?? 0) > 0 ||
+          (data.suggestionCount ?? 0) > 0 ||
+          (data.linkedActions?.length ?? 0) > 0
+        ) {
           window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
         }
       } catch {
-        setMessages((prev) =>
-          prev.filter((m) => m.id !== "processing").concat({
-            id: crypto.randomUUID(),
-            role: "larry",
-            text: "Network error. Please try again.",
-            createdAt: new Date().toISOString(),
-          })
+        setMessages((previous) =>
+          previous
+            .filter((message) => message.id !== processingId)
+            .concat(
+              createLocalMessage({
+                role: "larry",
+                content: "Network error. Please try again.",
+              })
+            )
         );
       } finally {
         setBusy(false);
       }
     },
-    [projectId, conversationId]
+    [conversationId, projectId]
   );
 
   const handleSubmit = useCallback(
-    async (e?: React.FormEvent) => {
-      e?.preventDefault();
+    async (event?: React.FormEvent) => {
+      event?.preventDefault();
       const text = input.trim();
-      if (!text || text.length < 1 || busy) return;
+      if (!text || busy) return;
       setInput("");
       await sendMessage(text);
     },
-    [input, busy, sendMessage]
+    [busy, input, sendMessage]
   );
 
   return {

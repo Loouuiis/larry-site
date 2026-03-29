@@ -1,0 +1,603 @@
+import { runIntelligence } from "@larry/ai";
+import {
+  getProjectSnapshot,
+  listLarryEventIdsBySource,
+  runAutoActions,
+  storeSuggestions,
+} from "@larry/db";
+import type {
+  CanonicalEventCreatedPayload,
+  CanonicalEvent,
+  TranscriptCanonicalPayload,
+} from "@larry/shared";
+import { db } from "./context.js";
+import { buildWorkerIntelligenceConfig } from "./intelligence-config.js";
+
+interface CanonicalEventRow {
+  id: string;
+  source: CanonicalEvent["source"];
+  payload: Record<string, unknown>;
+}
+
+interface MeetingNoteRow {
+  id: string;
+  project_id: string | null;
+}
+
+interface EmailCanonicalPayload extends Record<string, unknown> {
+  projectId?: string;
+  from?: string;
+  subject?: string;
+  bodyText?: string;
+  threadId?: string;
+}
+
+interface CalendarCanonicalPayload extends Record<string, unknown> {
+  projectId?: string;
+  project_id?: string;
+  channelId?: string;
+  resourceState?: string;
+  resourceId?: string;
+  messageNumber?: string;
+  body?: Record<string, unknown>;
+}
+
+interface SlackCanonicalPayload extends Record<string, unknown> {
+  team_id?: string;
+  projectId?: string;
+  project_id?: string;
+  event?: Record<string, unknown>;
+}
+
+interface SlackEventPayload extends Record<string, unknown> {
+  team?: string;
+  channel?: string;
+  user?: string;
+  text?: string;
+  subtype?: string;
+  projectId?: string;
+  project_id?: string;
+  metadata?: Record<string, unknown>;
+}
+
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function readOptionalString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function readOptionalRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function isUuid(value: string): boolean {
+  return UUID_REGEX.test(value);
+}
+
+async function loadCanonicalEvent(
+  tenantId: string,
+  canonicalEventId: string
+): Promise<CanonicalEventRow | null> {
+  const rows = await db.queryTenant<CanonicalEventRow>(
+    tenantId,
+    `SELECT id, source, payload
+     FROM canonical_events
+     WHERE tenant_id = $1
+       AND id = $2
+     LIMIT 1`,
+    [tenantId, canonicalEventId]
+  );
+
+  return rows[0] ?? null;
+}
+
+async function loadMeetingNote(
+  tenantId: string,
+  meetingNoteId: string
+): Promise<MeetingNoteRow | null> {
+  const rows = await db.queryTenant<MeetingNoteRow>(
+    tenantId,
+    `SELECT id, project_id
+     FROM meeting_notes
+     WHERE tenant_id = $1
+       AND id = $2
+     LIMIT 1`,
+    [tenantId, meetingNoteId]
+  );
+
+  return rows[0] ?? null;
+}
+
+async function reconcileMeetingNote(
+  tenantId: string,
+  meetingNoteId: string,
+  actionCount: number,
+  options: { projectId?: string | null; summary?: string | null } = {}
+): Promise<void> {
+  await db.queryTenant(
+    tenantId,
+    `UPDATE meeting_notes
+     SET project_id = COALESCE(project_id, $3),
+         summary = COALESCE($4, summary),
+         action_count = $5
+     WHERE tenant_id = $1
+       AND id = $2`,
+    [tenantId, meetingNoteId, options.projectId ?? null, options.summary ?? null, actionCount]
+  );
+}
+
+function buildTranscriptPrompt(transcript: string): string {
+  return `transcript: "${transcript.slice(0, 500)}"`;
+}
+
+function buildEmailPrompt(payload: EmailCanonicalPayload): string {
+  const from = readOptionalString(payload.from) ?? "unknown sender";
+  const subject = readOptionalString(payload.subject) ?? "(no subject)";
+  const threadId = readOptionalString(payload.threadId) ?? "none";
+  const bodyText = readOptionalString(payload.bodyText) ?? "";
+  return [
+    `email signal from "${from}"`,
+    `subject: "${subject}"`,
+    `threadId: "${threadId}"`,
+    `body: "${bodyText.slice(0, 500)}"`,
+  ].join("\n");
+}
+
+function readCalendarProjectHint(payload: CalendarCanonicalPayload): string | null {
+  const body = readOptionalRecord(payload.body);
+  const bodyEvent = readOptionalRecord(body?.event);
+  const bodyPayload = readOptionalRecord(body?.payload);
+
+  const candidates = [
+    readOptionalString(payload.projectId),
+    readOptionalString(payload.project_id),
+    readOptionalString(body?.projectId),
+    readOptionalString(body?.project_id),
+    readOptionalString(bodyEvent?.projectId),
+    readOptionalString(bodyEvent?.project_id),
+    readOptionalString(bodyPayload?.projectId),
+    readOptionalString(bodyPayload?.project_id),
+  ];
+
+  for (const candidate of candidates) {
+    if (candidate && isUuid(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function buildCalendarPrompt(payload: CalendarCanonicalPayload): string {
+  const channelId = readOptionalString(payload.channelId) ?? "unknown-channel";
+  const resourceState = readOptionalString(payload.resourceState) ?? "unknown-state";
+  const resourceId = readOptionalString(payload.resourceId) ?? "unknown-resource";
+  const messageNumber = readOptionalString(payload.messageNumber) ?? "none";
+  const body = readOptionalRecord(payload.body);
+  const bodyText = body ? JSON.stringify(body).slice(0, 500) : "";
+
+  return [
+    `calendar signal on channel "${channelId}"`,
+    `resourceState: "${resourceState}"`,
+    `resourceId: "${resourceId}"`,
+    `messageNumber: "${messageNumber}"`,
+    `body: "${bodyText}"`,
+  ].join("\n");
+}
+
+function readSlackProjectHint(payload: SlackCanonicalPayload, event: SlackEventPayload | null): string | null {
+  const eventMetadata = readOptionalRecord(event?.metadata);
+  const eventMetadataPayload = readOptionalRecord(eventMetadata?.event_payload);
+
+  const candidates = [
+    readOptionalString(payload.projectId),
+    readOptionalString(payload.project_id),
+    readOptionalString(event?.projectId),
+    readOptionalString(event?.project_id),
+    readOptionalString(eventMetadataPayload?.projectId),
+    readOptionalString(eventMetadataPayload?.project_id),
+  ];
+
+  for (const candidate of candidates) {
+    if (candidate && isUuid(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function buildSlackPrompt(payload: SlackCanonicalPayload, event: SlackEventPayload | null): string {
+  const teamId = readOptionalString(payload.team_id) ?? readOptionalString(event?.team) ?? "unknown-team";
+  const channelId = readOptionalString(event?.channel) ?? "unknown-channel";
+  const actor = readOptionalString(event?.user) ?? "unknown-user";
+  const subtype = readOptionalString(event?.subtype) ?? "message";
+  const text = readOptionalString(event?.text) ?? "";
+
+  return [
+    `slack signal in workspace "${teamId}" channel "${channelId}"`,
+    `actor: "${actor}"`,
+    `subtype: "${subtype}"`,
+    `text: "${text.slice(0, 500)}"`,
+  ].join("\n");
+}
+
+async function loadSlackMappedProjectId(
+  tenantId: string,
+  slackTeamId: string,
+  slackChannelId: string
+): Promise<string | null> {
+  const rows = await db.queryTenant<{ project_id: string }>(
+    tenantId,
+    `SELECT project_id
+     FROM slack_channel_project_mappings
+     WHERE tenant_id = $1
+       AND slack_team_id = $2
+       AND slack_channel_id = $3
+     ORDER BY updated_at DESC
+     LIMIT 1`,
+    [tenantId, slackTeamId, slackChannelId]
+  );
+
+  return rows[0]?.project_id ?? null;
+}
+
+async function upsertSlackChannelProjectMapping(
+  tenantId: string,
+  input: { slackTeamId: string; slackChannelId: string; projectId: string }
+): Promise<void> {
+  await db.queryTenant(
+    tenantId,
+    `INSERT INTO slack_channel_project_mappings
+      (tenant_id, slack_team_id, slack_channel_id, project_id, updated_at)
+     VALUES ($1, $2, $3, $4, NOW())
+     ON CONFLICT (tenant_id, slack_team_id, slack_channel_id) DO UPDATE SET
+       project_id = EXCLUDED.project_id,
+       updated_at = NOW()`,
+    [tenantId, input.slackTeamId, input.slackChannelId, input.projectId]
+  );
+}
+
+async function handleTranscriptCanonicalEvent(
+  tenantId: string,
+  canonicalEvent: CanonicalEventRow
+): Promise<void> {
+  const transcriptPayload = canonicalEvent.payload as TranscriptCanonicalPayload;
+  const meetingNoteId = readOptionalString(transcriptPayload.meetingNoteId);
+  const transcript = readOptionalString(transcriptPayload.transcript);
+  const submittedByUserId = readOptionalString(transcriptPayload.submittedByUserId);
+
+  if (!meetingNoteId) {
+    console.warn(`[canonical-event] transcript event ${canonicalEvent.id} missing meetingNoteId; skipping`);
+    return;
+  }
+  if (!transcript) {
+    console.warn(`[canonical-event] transcript event ${canonicalEvent.id} missing transcript text; skipping`);
+    return;
+  }
+
+  const [meetingNote, existingEventIds] = await Promise.all([
+    loadMeetingNote(tenantId, meetingNoteId),
+    listLarryEventIdsBySource(db, tenantId, "meeting", meetingNoteId),
+  ]);
+  const resolvedProjectId =
+    readOptionalString(transcriptPayload.projectId) ?? meetingNote?.project_id ?? null;
+
+  if (existingEventIds.length > 0) {
+    await reconcileMeetingNote(tenantId, meetingNoteId, existingEventIds.length, {
+      projectId: resolvedProjectId,
+    });
+    return;
+  }
+
+  if (!resolvedProjectId) {
+    console.warn(
+      `[canonical-event] transcript event ${canonicalEvent.id} has no resolvable project scope; skipping action generation`
+    );
+    return;
+  }
+
+  const snapshot = await getProjectSnapshot(db, tenantId, resolvedProjectId);
+  const config = buildWorkerIntelligenceConfig();
+  const intelligenceResult = await runIntelligence(config, snapshot, buildTranscriptPrompt(transcript));
+
+  await reconcileMeetingNote(tenantId, meetingNoteId, 0, {
+    projectId: resolvedProjectId,
+    summary: intelligenceResult.briefing,
+  });
+
+  const ledgerContext = {
+    requesterUserId: submittedByUserId,
+    sourceKind: "meeting",
+    sourceRecordId: meetingNoteId,
+  } as const;
+
+  await Promise.all([
+    runAutoActions(
+      db,
+      tenantId,
+      resolvedProjectId,
+      "signal",
+      intelligenceResult.autoActions,
+      undefined,
+      ledgerContext
+    ),
+    storeSuggestions(
+      db,
+      tenantId,
+      resolvedProjectId,
+      "signal",
+      intelligenceResult.suggestedActions,
+      undefined,
+      ledgerContext
+    ),
+  ]);
+
+  const finalEventIds = await listLarryEventIdsBySource(db, tenantId, "meeting", meetingNoteId);
+  await reconcileMeetingNote(tenantId, meetingNoteId, finalEventIds.length, {
+    projectId: resolvedProjectId,
+    summary: intelligenceResult.briefing,
+  });
+}
+
+async function handleEmailCanonicalEvent(
+  tenantId: string,
+  canonicalEvent: CanonicalEventRow
+): Promise<void> {
+  const emailPayload = canonicalEvent.payload as EmailCanonicalPayload;
+  const projectId = readOptionalString(emailPayload.projectId);
+
+  if (!projectId) {
+    console.warn(
+      `[canonical-event] email event ${canonicalEvent.id} missing projectId; skipping action generation`
+    );
+    return;
+  }
+
+  const existingEventIds = await listLarryEventIdsBySource(db, tenantId, "email", canonicalEvent.id);
+  if (existingEventIds.length > 0) {
+    return;
+  }
+
+  let snapshot;
+  try {
+    snapshot = await getProjectSnapshot(db, tenantId, projectId);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.warn(
+      `[canonical-event] email event ${canonicalEvent.id} has invalid projectId ${projectId}; skipping (${reason})`
+    );
+    return;
+  }
+
+  const config = buildWorkerIntelligenceConfig();
+  const intelligenceResult = await runIntelligence(config, snapshot, buildEmailPrompt(emailPayload));
+  const ledgerContext = {
+    sourceKind: "email",
+    sourceRecordId: canonicalEvent.id,
+  } as const;
+
+  await Promise.all([
+    runAutoActions(
+      db,
+      tenantId,
+      projectId,
+      "signal",
+      intelligenceResult.autoActions,
+      undefined,
+      ledgerContext
+    ),
+    storeSuggestions(
+      db,
+      tenantId,
+      projectId,
+      "signal",
+      intelligenceResult.suggestedActions,
+      undefined,
+      ledgerContext
+    ),
+  ]);
+}
+
+async function handleCalendarCanonicalEvent(
+  tenantId: string,
+  canonicalEvent: CanonicalEventRow
+): Promise<void> {
+  const calendarPayload = canonicalEvent.payload as CalendarCanonicalPayload;
+  const existingEventIds = await listLarryEventIdsBySource(db, tenantId, "calendar", canonicalEvent.id);
+  if (existingEventIds.length > 0) {
+    return;
+  }
+
+  const projectId = readCalendarProjectHint(calendarPayload);
+  if (!projectId) {
+    console.warn(
+      `[canonical-event] calendar event ${canonicalEvent.id} has no resolvable project scope; skipping action generation`
+    );
+    return;
+  }
+
+  let snapshot;
+  try {
+    snapshot = await getProjectSnapshot(db, tenantId, projectId);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.warn(
+      `[canonical-event] calendar event ${canonicalEvent.id} has invalid project scope ${projectId}; skipping (${reason})`
+    );
+    return;
+  }
+
+  const config = buildWorkerIntelligenceConfig();
+  const intelligenceResult = await runIntelligence(config, snapshot, buildCalendarPrompt(calendarPayload));
+  const ledgerContext = {
+    sourceKind: "calendar",
+    sourceRecordId: canonicalEvent.id,
+  } as const;
+
+  await Promise.all([
+    runAutoActions(
+      db,
+      tenantId,
+      projectId,
+      "signal",
+      intelligenceResult.autoActions,
+      undefined,
+      ledgerContext
+    ),
+    storeSuggestions(
+      db,
+      tenantId,
+      projectId,
+      "signal",
+      intelligenceResult.suggestedActions,
+      undefined,
+      ledgerContext
+    ),
+  ]);
+}
+
+async function handleSlackCanonicalEvent(
+  tenantId: string,
+  canonicalEvent: CanonicalEventRow
+): Promise<void> {
+  const slackPayload = canonicalEvent.payload as SlackCanonicalPayload;
+  const event = readOptionalRecord(slackPayload.event) as SlackEventPayload | null;
+  const slackTeamId =
+    readOptionalString(slackPayload.team_id) ?? readOptionalString(event?.team);
+  const slackChannelId = readOptionalString(event?.channel);
+  const hintedProjectId = readSlackProjectHint(slackPayload, event);
+
+  const existingEventIds = await listLarryEventIdsBySource(db, tenantId, "slack", canonicalEvent.id);
+  if (existingEventIds.length > 0) {
+    return;
+  }
+
+  let resolvedProjectId: string | null = hintedProjectId;
+  if (!resolvedProjectId && slackTeamId && slackChannelId) {
+    resolvedProjectId = await loadSlackMappedProjectId(tenantId, slackTeamId, slackChannelId);
+  }
+
+  if (!resolvedProjectId) {
+    console.warn(
+      `[canonical-event] slack event ${canonicalEvent.id} has no resolvable project scope; skipping action generation`
+    );
+    return;
+  }
+
+  let snapshot;
+  try {
+    snapshot = await getProjectSnapshot(db, tenantId, resolvedProjectId);
+  } catch (error) {
+    // A stale project hint should not block mapped channels from producing actions.
+    if (hintedProjectId && slackTeamId && slackChannelId) {
+      const mappedProjectId = await loadSlackMappedProjectId(tenantId, slackTeamId, slackChannelId);
+      if (mappedProjectId && mappedProjectId !== resolvedProjectId) {
+        try {
+          snapshot = await getProjectSnapshot(db, tenantId, mappedProjectId);
+          resolvedProjectId = mappedProjectId;
+        } catch (fallbackError) {
+          const fallbackReason =
+            fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+          console.warn(
+            `[canonical-event] slack event ${canonicalEvent.id} has invalid fallback project scope ${mappedProjectId}; skipping (${fallbackReason})`
+          );
+          return;
+        }
+      } else {
+        const reason = error instanceof Error ? error.message : String(error);
+        console.warn(
+          `[canonical-event] slack event ${canonicalEvent.id} has invalid hinted project scope ${resolvedProjectId}; skipping (${reason})`
+        );
+        return;
+      }
+    } else {
+      const reason = error instanceof Error ? error.message : String(error);
+      console.warn(
+        `[canonical-event] slack event ${canonicalEvent.id} has invalid project scope ${resolvedProjectId}; skipping (${reason})`
+      );
+      return;
+    }
+  }
+
+  if (hintedProjectId && slackTeamId && slackChannelId && resolvedProjectId === hintedProjectId) {
+    await upsertSlackChannelProjectMapping(tenantId, {
+      slackTeamId,
+      slackChannelId,
+      projectId: hintedProjectId,
+    }).catch((error) => {
+      const reason = error instanceof Error ? error.message : String(error);
+      console.warn(
+        `[canonical-event] slack event ${canonicalEvent.id} failed to upsert channel mapping; continuing (${reason})`
+      );
+    });
+  }
+
+  const config = buildWorkerIntelligenceConfig();
+  const intelligenceResult = await runIntelligence(config, snapshot, buildSlackPrompt(slackPayload, event));
+  const ledgerContext = {
+    sourceKind: "slack",
+    sourceRecordId: canonicalEvent.id,
+  } as const;
+
+  await Promise.all([
+    runAutoActions(
+      db,
+      tenantId,
+      resolvedProjectId,
+      "signal",
+      intelligenceResult.autoActions,
+      undefined,
+      ledgerContext
+    ),
+    storeSuggestions(
+      db,
+      tenantId,
+      resolvedProjectId,
+      "signal",
+      intelligenceResult.suggestedActions,
+      undefined,
+      ledgerContext
+    ),
+  ]);
+}
+
+export async function handleCanonicalEventCreated(
+  tenantId: string,
+  payload: Record<string, unknown>
+): Promise<void> {
+  const job = payload as Partial<CanonicalEventCreatedPayload>;
+  if (!job.canonicalEventId || typeof job.canonicalEventId !== "string") {
+    console.warn("[canonical-event] Missing canonicalEventId in queue payload");
+    return;
+  }
+
+  const canonicalEvent = await loadCanonicalEvent(tenantId, job.canonicalEventId);
+  if (!canonicalEvent) {
+    console.warn(`[canonical-event] canonical event ${job.canonicalEventId} not found for tenant ${tenantId}`);
+    return;
+  }
+
+  if (canonicalEvent.source === "transcript") {
+    await handleTranscriptCanonicalEvent(tenantId, canonicalEvent);
+    return;
+  }
+
+  if (canonicalEvent.source === "email") {
+    await handleEmailCanonicalEvent(tenantId, canonicalEvent);
+    return;
+  }
+
+  if (canonicalEvent.source === "calendar") {
+    await handleCalendarCanonicalEvent(tenantId, canonicalEvent);
+    return;
+  }
+
+  if (canonicalEvent.source === "slack") {
+    await handleSlackCanonicalEvent(tenantId, canonicalEvent);
+    return;
+  }
+}

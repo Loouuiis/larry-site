@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
@@ -8,14 +9,13 @@ import {
   Plus,
   Sparkles,
 } from "lucide-react";
+import type { WorkspaceLarryEvent } from "@/app/dashboard/types";
 import {
-  createLarryConversation,
   type LarryConversation,
   type LarryMessage,
   listLarryConversations,
   listLarryMessages,
   readJson,
-  saveLarryMessage,
   sendLarryChat,
 } from "@/lib/larry";
 
@@ -61,9 +61,135 @@ function buildProjectLabel(
   return projectNameById.get(projectId) ?? "Project";
 }
 
+function getLaunchSourceLabel(sourceKind?: string | null): string {
+  switch (sourceKind) {
+    case "meeting":
+      return "Meeting transcript";
+    case "briefing":
+      return "Login briefing";
+    case "schedule":
+      return "Scheduled scan";
+    case "slack":
+      return "Slack signal";
+    case "email":
+      return "Email signal";
+    case "calendar":
+      return "Calendar signal";
+    case "chat":
+    case null:
+    case undefined:
+      return "Larry chat";
+    default:
+      return sourceKind;
+  }
+}
+
+function getLaunchEventLabel(eventType?: string | null): string | null {
+  switch (eventType) {
+    case "suggested":
+      return "Pending approval";
+    case "accepted":
+      return "Accepted";
+    case "auto_executed":
+      return "Auto executed";
+    case "dismissed":
+      return "Dismissed";
+    default:
+      return null;
+  }
+}
+
+function getActionTone(event: WorkspaceLarryEvent) {
+  if (event.eventType === "suggested") {
+    return {
+      badge: { background: "#fff7ed", color: "#c2410c" },
+      border: "#fed7aa",
+      label: "Pending approval",
+    };
+  }
+
+  if (event.eventType === "accepted") {
+    return {
+      badge: { background: "#ecfdf3", color: "#15803d" },
+      border: "#bbf7d0",
+      label: "Accepted",
+    };
+  }
+
+  return {
+    badge: { background: "#e8f0ff", color: "#1d4ed8" },
+    border: "#bfdbfe",
+    label: "Auto executed",
+  };
+}
+
+function getActionMeta(event: WorkspaceLarryEvent): string {
+  const pieces = [
+    event.requestedByName ? `Requested by ${event.requestedByName}` : "Requested from this chat",
+  ];
+
+  if (event.eventType === "accepted" && event.approvedByName) {
+    pieces.push(`Accepted by ${event.approvedByName}`);
+  } else if (event.executionMode === "auto") {
+    pieces.push("Executed by Larry");
+  }
+
+  return pieces.join(" · ");
+}
+
+function LinkedActionChips({ actions }: { actions: WorkspaceLarryEvent[] }) {
+  if (actions.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>
+      {actions.map((action) => {
+        const tone = getActionTone(action);
+        return (
+          <div
+            key={action.id}
+            style={{
+              borderRadius: "14px",
+              border: `1px solid ${tone.border}`,
+              background: "#ffffff",
+              padding: "10px 12px",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "10px" }}>
+              <p style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-1)" }}>
+                {action.displayText}
+              </p>
+              <span
+                style={{
+                  flexShrink: 0,
+                  borderRadius: "999px",
+                  padding: "2px 8px",
+                  fontSize: "10px",
+                  fontWeight: 600,
+                  ...tone.badge,
+                }}
+              >
+                {tone.label}
+              </span>
+            </div>
+            <p style={{ marginTop: "4px", fontSize: "11px", lineHeight: "1.5", color: "var(--text-muted)" }}>
+              {getActionMeta(action)}
+            </p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function MessageBubble({ message }: { message: LarryMessage }) {
   const isLarry = message.role === "larry";
   const isProcessing = message.id === "processing";
+  const executedCount = message.linkedActions.filter(
+    (action) => action.eventType === "auto_executed" || action.eventType === "accepted"
+  ).length;
+  const suggestionCount = message.linkedActions.filter(
+    (action) => action.eventType === "suggested"
+  ).length;
 
   return (
     <div className={`flex ${isLarry ? "justify-start" : "justify-end"}`}>
@@ -106,6 +232,15 @@ function MessageBubble({ message }: { message: LarryMessage }) {
         ) : (
           <p>{message.content}</p>
         )}
+        {isLarry && !isProcessing && (executedCount > 0 || suggestionCount > 0) && (
+          <p style={{ marginTop: "8px", fontSize: "11px", color: "var(--cta)" }}>
+            {executedCount} action{executedCount !== 1 ? "s" : ""} taken
+            {suggestionCount > 0
+              ? ` · ${suggestionCount} suggestion${suggestionCount !== 1 ? "s" : ""} pending`
+              : ""}
+          </p>
+        )}
+        {isLarry && !isProcessing && <LinkedActionChips actions={message.linkedActions ?? []} />}
       </div>
     </div>
   );
@@ -114,7 +249,12 @@ function MessageBubble({ message }: { message: LarryMessage }) {
 export default function ChatsPage() {
   const searchParams = useSearchParams();
   const preferredProjectId = searchParams.get("projectId");
+  const preferredConversationId = searchParams.get("conversationId");
   const draftFromQuery = searchParams.get("draft")?.trim() ?? "";
+  const launchContext = searchParams.get("launch");
+  const launchSourceKind = searchParams.get("sourceKind");
+  const launchEventType = searchParams.get("eventType");
+  const launchedFromActionCentre = launchContext === "action-centre";
 
   const [projects, setProjects] = useState<WorkspaceProject[]>([]);
   const [conversations, setConversations] = useState<LarryConversation[]>([]);
@@ -142,6 +282,8 @@ export default function ChatsPage() {
   const activeProjectId =
     activeConversation?.projectId ?? draftProjectId ?? preferredProjectId ?? null;
   const activeProjectLabel = buildProjectLabel(activeProjectId, projectNameById);
+  const launchSourceLabel = getLaunchSourceLabel(launchSourceKind);
+  const launchEventLabel = getLaunchEventLabel(launchEventType);
 
   const groupedConversations = useMemo(() => {
     const groups = new Map<string, { label: string; conversations: LarryConversation[] }>();
@@ -213,6 +355,17 @@ export default function ChatsPage() {
       return;
     }
 
+    const requestedConversation = preferredConversationId
+      ? conversations.find((conversation) => conversation.id === preferredConversationId)
+      : null;
+
+    if (requestedConversation) {
+      setSelectedConversationId(requestedConversation.id);
+      setDraftProjectId(requestedConversation.projectId);
+      initializedRef.current = true;
+      return;
+    }
+
     const preferredConversation = preferredProjectId
       ? conversations.find((conversation) => conversation.projectId === preferredProjectId)
       : null;
@@ -236,7 +389,7 @@ export default function ChatsPage() {
     }
 
     initializedRef.current = true;
-  }, [conversations, draftFromQuery, loading, preferredProjectId]);
+  }, [conversations, draftFromQuery, loading, preferredConversationId, preferredProjectId]);
 
   useEffect(() => {
     if (!selectedConversationId) {
@@ -306,71 +459,99 @@ export default function ChatsPage() {
     setBusy(true);
     setError(null);
     setInput("");
-
-    let conversationId = selectedConversationId;
+    const optimisticUserId = `user-${crypto.randomUUID()}`;
+    const processingId = "processing";
 
     try {
-      if (!conversationId) {
-        const created = await createLarryConversation({
-          projectId: activeProjectId,
-          title: text.slice(0, 80),
-        });
-        conversationId = created.id;
-        setSelectedConversationId(created.id);
-      }
-
       const userMessage: LarryMessage = {
-        id: crypto.randomUUID(),
+        id: optimisticUserId,
         role: "user",
         content: text,
         createdAt: new Date().toISOString(),
+        reasoning: null,
+        actorUserId: null,
+        actorDisplayName: null,
+        linkedActions: [],
       };
 
       setMessages((current) => [
-        ...current,
+        ...current.filter((message) => message.id !== processingId),
         userMessage,
         {
-          id: "processing",
+          id: processingId,
           role: "larry",
           content: "Processing...",
           createdAt: new Date().toISOString(),
+          reasoning: null,
+          actorUserId: null,
+          actorDisplayName: null,
+          linkedActions: [],
         },
       ]);
-
-      await saveLarryMessage(conversationId, "user", text).catch(() => undefined);
 
       const { response, data } = await sendLarryChat({
         projectId: activeProjectId,
         message: text,
+        conversationId: selectedConversationId ?? undefined,
       });
 
-      const replyText = response.ok ? (data.message ?? "Done.") : (data.error ?? "Something went wrong.");
-      const larryReply: LarryMessage = {
-        id: crypto.randomUUID(),
-        role: "larry",
-        content: replyText,
-        createdAt: new Date().toISOString(),
-      };
+      if (!response.ok) {
+        setMessages((current) =>
+          current
+            .filter((message) => message.id !== processingId)
+            .concat({
+              id: crypto.randomUUID(),
+              role: "larry",
+              content: data.error ?? "Something went wrong.",
+              createdAt: new Date().toISOString(),
+              reasoning: null,
+              actorUserId: null,
+              actorDisplayName: null,
+              linkedActions: [],
+            })
+        );
+        return;
+      }
+
+      setSelectedConversationId(data.conversationId);
 
       setMessages((current) =>
-        current.filter((message) => message.id !== "processing").concat(larryReply)
+        current
+          .filter((message) => message.id !== optimisticUserId && message.id !== processingId)
+          .concat(
+            data.userMessage,
+            {
+              ...data.assistantMessage,
+              linkedActions:
+                data.assistantMessage.linkedActions?.length > 0
+                  ? data.assistantMessage.linkedActions
+                  : data.linkedActions,
+            }
+          )
       );
 
-      await saveLarryMessage(conversationId, "larry", replyText).catch(() => undefined);
-      await refreshConversations(conversationId);
+      await refreshConversations(data.conversationId);
 
-      if (response.ok && (data.actionsExecuted ?? 0) > 0) {
+      if (
+        (data.actionsExecuted ?? 0) > 0 ||
+        (data.suggestionCount ?? 0) > 0 ||
+        (data.linkedActions?.length ?? 0) > 0
+      ) {
         window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
       }
     } catch (err) {
       setMessages((current) =>
         current
-          .filter((message) => message.id !== "processing")
+          .filter((message) => message.id !== processingId)
           .concat({
             id: crypto.randomUUID(),
             role: "larry",
             content: "Network error. Please try again.",
             createdAt: new Date().toISOString(),
+            reasoning: null,
+            actorUserId: null,
+            actorDisplayName: null,
+            linkedActions: [],
           })
       );
       setError(err instanceof Error ? err.message : "Failed to send message.");
@@ -397,6 +578,37 @@ export default function ChatsPage() {
             }}
           >
             {error}
+          </div>
+        )}
+        {launchedFromActionCentre && (
+          <div
+            style={{
+              borderRadius: "var(--radius-card)",
+              border: "1px solid #bfdbfe",
+              background: "#eff6ff",
+              padding: "14px 16px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "12px",
+              flexWrap: "wrap",
+            }}
+          >
+            <div>
+              <p style={{ fontSize: "14px", fontWeight: 600, color: "#1d4ed8" }}>
+                Opened from Workspace Action Centre
+              </p>
+              <p style={{ marginTop: "4px", fontSize: "12px", color: "#1e3a8a" }}>
+                Project: {activeProjectId ? activeProjectLabel : "General workspace"} | Source: {launchSourceLabel}
+                {launchEventLabel ? ` | Event: ${launchEventLabel}` : ""}
+              </p>
+            </div>
+            <Link
+              href="/workspace/actions"
+              style={{ fontSize: "12px", fontWeight: 600, color: "#1d4ed8" }}
+            >
+              Back to Workspace Action Centre
+            </Link>
           </div>
         )}
 

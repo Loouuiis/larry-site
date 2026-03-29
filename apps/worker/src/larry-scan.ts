@@ -1,22 +1,12 @@
 import { getProjectSnapshot, runAutoActions, storeSuggestions } from "@larry/db";
 import { runIntelligence } from "@larry/ai";
-import type { IntelligenceConfig } from "@larry/shared";
-import { db, env } from "./context.js";
-
-function buildIntelligenceConfig(): IntelligenceConfig {
-  if (env.MODEL_PROVIDER === "openai") {
-    return { provider: "openai", apiKey: env.OPENAI_API_KEY, model: env.OPENAI_MODEL };
-  }
-  if (env.MODEL_PROVIDER === "anthropic") {
-    return { provider: "anthropic", apiKey: env.ANTHROPIC_API_KEY, model: env.ANTHROPIC_MODEL };
-  }
-  return { provider: "mock", model: "mock" };
-}
+import { db } from "./context.js";
+import { buildWorkerIntelligenceConfig } from "./intelligence-config.js";
 
 const SCAN_CONCURRENCY = 5;
 
 export async function runLarryScan(): Promise<void> {
-  const config = buildIntelligenceConfig();
+  const config = buildWorkerIntelligenceConfig();
 
   // Load all active projects across all tenants using system bypass identity.
   // This mirrors the pattern established by escalation.ts.
@@ -46,10 +36,11 @@ export async function runLarryScan(): Promise<void> {
       try {
         const snapshot = await getProjectSnapshot(db, tenantId, projectId);
         const result = await runIntelligence(config, snapshot, "scheduled health scan");
+        const ledgerContext = { sourceKind: "schedule" } as const;
 
         const [autoResult, suggestResult] = await Promise.all([
-          runAutoActions(db, tenantId, projectId, "schedule", result.autoActions),
-          storeSuggestions(db, tenantId, projectId, "schedule", result.suggestedActions),
+          runAutoActions(db, tenantId, projectId, "schedule", result.autoActions, undefined, ledgerContext),
+          storeSuggestions(db, tenantId, projectId, "schedule", result.suggestedActions, undefined, ledgerContext),
         ]);
 
         processed++;

@@ -1,16 +1,39 @@
 import { FastifyPluginAsync } from "fastify";
+import type { FastifyRequest } from "fastify";
 import { z } from "zod";
 import { runIntelligence } from "@larry/ai";
-import { getProjectSnapshot } from "@larry/db";
+import {
+  executeAction,
+  getPendingSuggestionTexts,
+  getProjectSnapshot,
+  runAutoActions,
+  storeSuggestions,
+} from "@larry/db";
 import { getApiEnv } from "@larry/config";
+import type {
+  IntelligenceConfig,
+  LarryActionType,
+  LarryChatResponse,
+  LarryEventType,
+  LarryMessageRecord,
+} from "@larry/shared";
 import { writeAuditLog } from "../../lib/audit.js";
 import { buildPendingClause } from "../../lib/intelligence-hints.js";
-import { runAutoActions, storeSuggestions, executeAction, getPendingSuggestionTexts } from "@larry/db";
+import {
+  createLarryConversation,
+  getLarryActionCentreData,
+  getLarryConversationForUser,
+  getLarryEventForMutation,
+  insertLarryMessage,
+  listLarryConversationPreviews,
+  listLarryEventSummaries,
+  listLarryMessagesByIds,
+  listLarryMessagesForConversation,
+  markLarryEventAccepted,
+  markLarryEventDismissed,
+  touchLarryConversation,
+} from "../../lib/larry-ledger.js";
 import { getOrGenerateBriefing } from "../../services/larry-briefing.js";
-import type { IntelligenceConfig } from "@larry/shared";
-import type { FastifyRequest } from "fastify";
-
-// ── Config helper ─────────────────────────────────────────────────────────────
 
 function buildIntelligenceConfig(config: ReturnType<typeof getApiEnv>): IntelligenceConfig {
   if (config.MODEL_PROVIDER === "openai") {
@@ -19,58 +42,83 @@ function buildIntelligenceConfig(config: ReturnType<typeof getApiEnv>): Intellig
   if (config.MODEL_PROVIDER === "anthropic") {
     return { provider: "anthropic", apiKey: config.ANTHROPIC_API_KEY, model: config.ANTHROPIC_MODEL };
   }
-  // "gemini" and other providers not yet wired into intelligence — use mock for local dev
   return { provider: "mock", model: "mock" };
 }
 
-// ── Route plugin ──────────────────────────────────────────────────────────────
+const ConversationCreateSchema = z.object({
+  projectId: z.string().uuid().optional(),
+  title: z.string().trim().min(1).max(200).optional(),
+});
+
+const ConversationQuerySchema = z.object({
+  projectId: z.string().uuid().optional(),
+});
+
+const ConversationMessageSchema = z.object({
+  role: z.enum(["user", "larry"]),
+  content: z.string().trim().min(1).max(8_000),
+  reasoning: z.record(z.string(), z.unknown()).nullable().optional(),
+});
+
+const EventsQuerySchema = z.object({
+  projectId: z.string().uuid().optional(),
+  eventType: z.enum(["auto_executed", "suggested", "accepted", "dismissed"]).optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+
+const ActionCentreQuerySchema = z.object({
+  projectId: z.string().uuid().optional(),
+});
+
+const ChatSchema = z.object({
+  projectId: z.string().uuid(),
+  message: z.string().trim().min(1).max(8_000),
+  conversationId: z.string().uuid().optional(),
+});
+
+function toPendingType(eventType?: LarryEventType): LarryEventType[] | undefined {
+  return eventType ? [eventType] : undefined;
+}
+
+function fallbackMessage(input: {
+  id: string;
+  role: "user" | "larry";
+  content: string;
+  createdAt: string;
+  actorUserId?: string | null;
+  actorDisplayName?: string | null;
+  linkedActions?: LarryMessageRecord["linkedActions"];
+}): LarryMessageRecord {
+  return {
+    id: input.id,
+    role: input.role,
+    content: input.content,
+    reasoning: null,
+    createdAt: input.createdAt,
+    actorUserId: input.actorUserId ?? null,
+    actorDisplayName: input.actorDisplayName ?? null,
+    linkedActions: input.linkedActions ?? [],
+  };
+}
 
 export const larryRoutes: FastifyPluginAsync = async (fastify) => {
-  // ── Conversations ────────────────────────────────────────────────────────
-
   fastify.get(
     "/conversations",
     { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
     async (request) => {
-      const tenantId = request.user.tenantId;
-      const userId = request.user.userId;
-      const { projectId } = request.query as { projectId?: string };
+      const parseResult = ConversationQuerySchema.safeParse(request.query);
+      if (!parseResult.success) {
+        throw fastify.httpErrors.badRequest(parseResult.error.issues[0]?.message ?? "Invalid query params");
+      }
 
-      const rows = await fastify.db.queryTenant<{
-        id: string;
-        projectId: string | null;
-        title: string | null;
-        createdAt: string;
-        updatedAt: string;
-        lastMessagePreview: string | null;
-        lastMessageAt: string | null;
-      }>(
-        tenantId,
-        `SELECT c.id,
-                c.project_id as "projectId",
-                c.title,
-                c.created_at as "createdAt",
-                c.updated_at as "updatedAt",
-                last_message.preview as "lastMessagePreview",
-                COALESCE(last_message.created_at, c.updated_at) as "lastMessageAt"
-         FROM larry_conversations c
-         LEFT JOIN LATERAL (
-           SELECT LEFT(content, 160) as preview, created_at
-           FROM larry_messages
-           WHERE tenant_id = c.tenant_id
-             AND conversation_id = c.id
-           ORDER BY created_at DESC
-           LIMIT 1
-         ) last_message ON TRUE
-         WHERE c.tenant_id = $1
-           AND c.user_id = $2
-           ${projectId ? "AND project_id = $3" : ""}
-         ORDER BY COALESCE(last_message.created_at, c.updated_at) DESC, c.created_at DESC
-         LIMIT 50`,
-        projectId ? [tenantId, userId, projectId] : [tenantId, userId]
+      const conversations = await listLarryConversationPreviews(
+        fastify.db,
+        request.user.tenantId,
+        request.user.userId,
+        parseResult.data
       );
 
-      return { conversations: rows };
+      return { conversations };
     }
   );
 
@@ -78,24 +126,19 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
     "/conversations",
     { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
     async (request, reply) => {
-      const tenantId = request.user.tenantId;
-      const userId = request.user.userId;
-      const body = request.body as { projectId?: string; title?: string };
+      const parseResult = ConversationCreateSchema.safeParse(request.body ?? {});
+      if (!parseResult.success) {
+        throw fastify.httpErrors.badRequest(parseResult.error.issues[0]?.message ?? "Invalid request body");
+      }
 
-      const rows = await fastify.db.queryTenant<{
-        id: string;
-        projectId: string | null;
-        title: string | null;
-        createdAt: string;
-      }>(
-        tenantId,
-        `INSERT INTO larry_conversations (tenant_id, user_id, project_id, title)
-         VALUES ($1, $2, $3, $4)
-         RETURNING id, project_id as "projectId", title, created_at as "createdAt"`,
-        [tenantId, userId, body.projectId ?? null, body.title ?? null]
+      const conversation = await createLarryConversation(
+        fastify.db,
+        request.user.tenantId,
+        request.user.userId,
+        parseResult.data
       );
 
-      return reply.code(201).send(rows[0]);
+      return reply.code(201).send(conversation);
     }
   );
 
@@ -107,29 +150,13 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       const userId = request.user.userId;
       const { id } = request.params as { id: string };
 
-      const conv = await fastify.db.queryTenant<{ id: string }>(
-        tenantId,
-        `SELECT id FROM larry_conversations WHERE tenant_id = $1 AND id = $2 AND user_id = $3 LIMIT 1`,
-        [tenantId, id, userId]
-      );
-      if (!conv[0]) throw fastify.httpErrors.notFound("Conversation not found.");
+      const conversation = await getLarryConversationForUser(fastify.db, tenantId, userId, id);
+      if (!conversation) {
+        throw fastify.httpErrors.notFound("Conversation not found.");
+      }
 
-      const rows = await fastify.db.queryTenant<{
-        id: string;
-        role: string;
-        content: string;
-        reasoning: unknown;
-        createdAt: string;
-      }>(
-        tenantId,
-        `SELECT id, role, content, reasoning, created_at as "createdAt"
-         FROM larry_messages
-         WHERE tenant_id = $1 AND conversation_id = $2
-         ORDER BY created_at ASC`,
-        [tenantId, id]
-      );
-
-      return { messages: rows };
+      const messages = await listLarryMessagesForConversation(fastify.db, tenantId, id);
+      return { messages };
     }
   );
 
@@ -140,80 +167,81 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       const tenantId = request.user.tenantId;
       const userId = request.user.userId;
       const { id } = request.params as { id: string };
-      const body = request.body as { role: "user" | "larry"; content: string; reasoning?: unknown };
+      const parseResult = ConversationMessageSchema.safeParse(request.body ?? {});
 
-      if (body.role !== "user" && body.role !== "larry") {
-        throw fastify.httpErrors.badRequest("role must be 'user' or 'larry'.");
-      }
-      if (!body.content?.trim()) {
-        throw fastify.httpErrors.badRequest("content is required.");
+      if (!parseResult.success) {
+        throw fastify.httpErrors.badRequest(parseResult.error.issues[0]?.message ?? "Invalid request body");
       }
 
-      const conv = await fastify.db.queryTenant<{ id: string }>(
-        tenantId,
-        `SELECT id FROM larry_conversations WHERE tenant_id = $1 AND id = $2 AND user_id = $3 LIMIT 1`,
-        [tenantId, id, userId]
-      );
-      if (!conv[0]) throw fastify.httpErrors.notFound("Conversation not found.");
+      const conversation = await getLarryConversationForUser(fastify.db, tenantId, userId, id);
+      if (!conversation) {
+        throw fastify.httpErrors.notFound("Conversation not found.");
+      }
 
-      const rows = await fastify.db.queryTenant<{ id: string; createdAt: string }>(
+      const body = parseResult.data;
+      const inserted = await insertLarryMessage(fastify.db, tenantId, id, {
+        role: body.role,
+        content: body.content,
+        reasoning: body.reasoning ?? null,
+        actorUserId: body.role === "user" ? userId : null,
+      });
+
+      await touchLarryConversation(
+        fastify.db,
         tenantId,
-        `INSERT INTO larry_messages (tenant_id, conversation_id, role, content, reasoning)
-         VALUES ($1, $2, $3, $4, $5::jsonb)
-         RETURNING id, created_at as "createdAt"`,
-        [tenantId, id, body.role, body.content.trim(), JSON.stringify(body.reasoning ?? null)]
+        id,
+        body.role === "user" ? body.content.slice(0, 80) : undefined
       );
 
-      await fastify.db.queryTenant(
-        tenantId,
-        `UPDATE larry_conversations SET updated_at = NOW() WHERE tenant_id = $1 AND id = $2`,
-        [tenantId, id]
-      );
+      const [message] = await listLarryMessagesByIds(fastify.db, tenantId, [inserted.id]);
 
-      return reply.code(201).send(rows[0]);
+      return reply.code(201).send(
+        message ??
+          fallbackMessage({
+            id: inserted.id,
+            role: body.role,
+            content: body.content,
+            createdAt: inserted.createdAt,
+            actorUserId: body.role === "user" ? userId : null,
+          })
+      );
     }
   );
-
-  // ── Events ───────────────────────────────────────────────────────────────
 
   fastify.get(
     "/events",
     { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
     async (request) => {
-      const tenantId = request.user.tenantId;
-      const parseResult = z.object({
-        projectId: z.string().uuid(),
-        eventType: z.enum(["auto_executed", "suggested", "accepted", "dismissed"]).optional(),
-        limit: z.coerce.number().int().min(1).max(200).default(50),
-      }).safeParse(request.query);
+      const parseResult = EventsQuerySchema.safeParse(request.query);
       if (!parseResult.success) {
         throw fastify.httpErrors.badRequest(parseResult.error.issues[0]?.message ?? "Invalid query params");
       }
-      const query = parseResult.data;
 
-      const params: unknown[] = [tenantId, query.projectId];
-      const eventTypeFilter = query.eventType ? `AND event_type = $3` : "";
-      if (query.eventType) params.push(query.eventType);
-      params.push(query.limit);
-      const limitParam = `$${params.length}`;
+      const events = await listLarryEventSummaries(fastify.db, request.user.tenantId, {
+        projectId: parseResult.data.projectId,
+        eventTypes: toPendingType(parseResult.data.eventType),
+        limit: parseResult.data.limit,
+      });
 
-      const rows = await fastify.db.queryTenant(
-        tenantId,
-        `SELECT id, project_id AS "projectId", event_type AS "eventType",
-                action_type AS "actionType", display_text AS "displayText",
-                reasoning, payload, executed_at AS "executedAt",
-                triggered_by AS "triggeredBy", chat_message AS "chatMessage",
-                created_at AS "createdAt"
-         FROM larry_events
-         WHERE tenant_id = $1
-           AND project_id = $2
-           ${eventTypeFilter}
-         ORDER BY created_at DESC
-         LIMIT ${limitParam}`,
-        params
+      return { events };
+    }
+  );
+
+  fastify.get(
+    "/action-centre",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
+    async (request) => {
+      const parseResult = ActionCentreQuerySchema.safeParse(request.query);
+      if (!parseResult.success) {
+        throw fastify.httpErrors.badRequest(parseResult.error.issues[0]?.message ?? "Invalid query params");
+      }
+
+      return getLarryActionCentreData(
+        fastify.db,
+        request.user.tenantId,
+        request.user.userId,
+        parseResult.data.projectId
       );
-
-      return { events: rows };
     }
   );
 
@@ -222,27 +250,13 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
     { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
     async (request, reply) => {
       const tenantId = request.user.tenantId;
+      const actorUserId = request.user.userId;
       const { id } = request.params as { id: string };
 
-      const events = await fastify.db.queryTenant<{
-        id: string;
-        projectId: string;
-        eventType: string;
-        actionType: string;
-        payload: Record<string, unknown>;
-      }>(
-        tenantId,
-        `SELECT id, project_id AS "projectId", event_type AS "eventType",
-                action_type AS "actionType", payload
-         FROM larry_events
-         WHERE tenant_id = $1 AND id = $2
-         LIMIT 1`,
-        [tenantId, id]
-      );
-
-      if (!events[0]) throw fastify.httpErrors.notFound("Event not found.");
-      const event = events[0];
-
+      const event = await getLarryEventForMutation(fastify.db, tenantId, id);
+      if (!event) {
+        throw fastify.httpErrors.notFound("Event not found.");
+      }
       if (event.eventType !== "suggested") {
         throw fastify.httpErrors.conflict("Only suggested events can be accepted.");
       }
@@ -253,32 +267,28 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           fastify.db,
           tenantId,
           event.projectId,
-          event.actionType as import("@larry/shared").LarryActionType,
+          event.actionType as LarryActionType,
           event.payload
         );
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        throw fastify.httpErrors.unprocessableEntity(msg);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw fastify.httpErrors.unprocessableEntity(message);
       }
 
-      await fastify.db.queryTenant(
-        tenantId,
-        `UPDATE larry_events
-         SET event_type = 'accepted', executed_at = NOW()
-         WHERE tenant_id = $1 AND id = $2`,
-        [tenantId, id]
-      );
+      await markLarryEventAccepted(fastify.db, tenantId, id, actorUserId);
 
       await writeAuditLog(fastify.db, {
         tenantId,
-        actorUserId: request.user.userId,
+        actorUserId,
         actionType: "larry.event.accepted",
         objectType: "larry_event",
         objectId: id,
         details: { actionType: event.actionType },
       });
 
-      return reply.code(200).send({ accepted: true, entity });
+      const [updatedEvent] = await listLarryEventSummaries(fastify.db, tenantId, { ids: [id] });
+
+      return reply.code(200).send({ accepted: true, entity, event: updatedEvent ?? null });
     }
   );
 
@@ -287,43 +297,34 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
     { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
     async (request, reply) => {
       const tenantId = request.user.tenantId;
+      const actorUserId = request.user.userId;
       const { id } = request.params as { id: string };
       const body = (request.body ?? {}) as { reason?: string };
 
-      const events = await fastify.db.queryTenant<{ id: string; eventType: string }>(
-        tenantId,
-        `SELECT id, event_type AS "eventType" FROM larry_events WHERE tenant_id = $1 AND id = $2 LIMIT 1`,
-        [tenantId, id]
-      );
-
-      if (!events[0]) throw fastify.httpErrors.notFound("Event not found.");
-      if (events[0].eventType !== "suggested") {
+      const event = await getLarryEventForMutation(fastify.db, tenantId, id);
+      if (!event) {
+        throw fastify.httpErrors.notFound("Event not found.");
+      }
+      if (event.eventType !== "suggested") {
         throw fastify.httpErrors.conflict("Only suggested events can be dismissed.");
       }
 
-      await fastify.db.queryTenant(
-        tenantId,
-        `UPDATE larry_events
-         SET event_type = 'dismissed',
-             payload = payload || $3::jsonb
-         WHERE tenant_id = $1 AND id = $2`,
-        [tenantId, id, JSON.stringify({ dismissReason: body.reason ?? null })]
-      );
+      await markLarryEventDismissed(fastify.db, tenantId, id, actorUserId, body.reason ?? null);
 
       await writeAuditLog(fastify.db, {
         tenantId,
-        actorUserId: request.user.userId,
+        actorUserId,
         actionType: "larry.event.dismissed",
         objectType: "larry_event",
         objectId: id,
         details: { reason: body.reason ?? null },
       });
 
-      return reply.code(200).send({ dismissed: true });
+      const [updatedEvent] = await listLarryEventSummaries(fastify.db, tenantId, { ids: [id] });
+
+      return reply.code(200).send({ dismissed: true, event: updatedEvent ?? null });
     }
   );
-
-  // ── Briefing ─────────────────────────────────────────────────────────────
 
   fastify.get(
     "/briefing",
@@ -332,15 +333,16 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       const tenantId = request.user.tenantId;
       const userId = request.user.userId;
 
-      // Fetch display name for the greeting
       const userRows = await fastify.db.queryTenant<{ display_name: string | null; email: string }>(
         tenantId,
         `SELECT u.display_name, u.email
-         FROM users u
-         WHERE u.id = $2 AND u.tenant_id = $1
-         LIMIT 1`,
+           FROM users u
+          WHERE u.id = $2
+            AND u.tenant_id = $1
+          LIMIT 1`,
         [tenantId, userId]
       );
+
       const user = userRows[0];
       const displayName = user
         ? (user.display_name?.trim() || user.email.split("@")[0] || "there")
@@ -357,11 +359,8 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           tenantId,
           displayName
         );
-      } catch (err) {
-        // Log the real cause but return a graceful empty briefing so the UI never
-        // shows a 500. The briefing is non-critical — users should still be able
-        // to use the app even when the briefing generation fails.
-        request.log.error({ err, tenantId, userId }, "generateBriefing failed");
+      } catch (error) {
+        request.log.error({ err: error, tenantId, userId }, "generateBriefing failed");
         const hour = new Date().getHours();
         const timeOfDay = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
         return reply.code(200).send({
@@ -375,14 +374,16 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         });
       }
 
-      // Mark as seen if this is the first read
       if (briefingResult.briefingId) {
         await fastify.db.queryTenant(
           tenantId,
-          `UPDATE larry_briefings SET seen_at = NOW()
-           WHERE tenant_id = $1 AND id = $2 AND seen_at IS NULL`,
+          `UPDATE larry_briefings
+              SET seen_at = NOW()
+            WHERE tenant_id = $1
+              AND id = $2
+              AND seen_at IS NULL`,
           [tenantId, briefingResult.briefingId]
-        ).catch(() => { /* non-critical */ });
+        ).catch(() => undefined);
       }
 
       return reply.code(200).send({
@@ -391,13 +392,6 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       });
     }
   );
-
-  // ── Chat ─────────────────────────────────────────────────────────────────
-
-  const ChatSchema = z.object({
-    projectId: z.string().uuid(),
-    message: z.string().min(1).max(8_000),
-  });
 
   fastify.post(
     "/chat",
@@ -413,60 +407,161 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])],
     },
     async (request, reply) => {
-      const chatParse = ChatSchema.safeParse(request.body);
-      if (!chatParse.success) {
-        throw fastify.httpErrors.badRequest(chatParse.error.issues[0]?.message ?? "Invalid request body");
+      const parseResult = ChatSchema.safeParse(request.body ?? {});
+      if (!parseResult.success) {
+        throw fastify.httpErrors.badRequest(parseResult.error.issues[0]?.message ?? "Invalid request body");
       }
-      const { projectId, message } = chatParse.data;
-      const tenantId = request.user.tenantId;
 
-      // Assemble project context
+      const { projectId, message, conversationId } = parseResult.data;
+      const tenantId = request.user.tenantId;
+      const actorUserId = request.user.userId;
+      let existingConversation = null;
+
+      if (conversationId) {
+        existingConversation = await getLarryConversationForUser(
+          fastify.db,
+          tenantId,
+          actorUserId,
+          conversationId
+        );
+        if (!existingConversation) {
+          throw fastify.httpErrors.notFound("Conversation not found.");
+        }
+        if (existingConversation.projectId !== projectId) {
+          throw fastify.httpErrors.conflict("Conversation does not belong to this project.");
+        }
+      }
+
       let snapshot;
       try {
         snapshot = await getProjectSnapshot(fastify.db, tenantId, projectId);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        throw fastify.httpErrors.notFound(msg);
+      } catch (error) {
+        const messageText = error instanceof Error ? error.message : String(error);
+        throw fastify.httpErrors.notFound(messageText);
       }
 
-      // Fetch pending suggestions so intelligence can avoid re-proposing them
-      const pendingTexts = await getPendingSuggestionTexts(fastify.db, tenantId, projectId).catch(() => [] as string[]);
+      const pendingTexts = await getPendingSuggestionTexts(fastify.db, tenantId, projectId).catch(
+        () => [] as string[]
+      );
       const pendingClause = buildPendingClause(pendingTexts);
 
-      // Run intelligence
       const config = buildIntelligenceConfig(fastify.config);
       let result;
       try {
         result = await runIntelligence(config, snapshot, `user said: "${message}"${pendingClause}`);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        request.log.error({ err, tenantId, projectId }, "runIntelligence failed");
-        throw fastify.httpErrors.serviceUnavailable(`Larry intelligence error: ${msg}`);
+      } catch (error) {
+        const messageText = error instanceof Error ? error.message : String(error);
+        request.log.error({ err: error, tenantId, projectId }, "runIntelligence failed");
+        throw fastify.httpErrors.serviceUnavailable(`Larry intelligence error: ${messageText}`);
       }
 
-      // Execute auto-actions and store suggestions in parallel
-      const [autoResult, suggestResult] = await Promise.all([
-        runAutoActions(fastify.db, tenantId, projectId, "chat", result.autoActions, message),
-        storeSuggestions(fastify.db, tenantId, projectId, "chat", result.suggestedActions, message),
+      const conversation =
+        existingConversation ??
+        await createLarryConversation(fastify.db, tenantId, actorUserId, {
+          projectId,
+          title: message.slice(0, 80),
+        });
+
+      const userMessageInsert = await insertLarryMessage(fastify.db, tenantId, conversation.id, {
+        role: "user",
+        content: message,
+        actorUserId,
+      });
+
+      const assistantMessageInsert = await insertLarryMessage(fastify.db, tenantId, conversation.id, {
+        role: "larry",
+        content: result.briefing,
+      });
+
+      await touchLarryConversation(fastify.db, tenantId, conversation.id, message.slice(0, 80));
+
+      const actionContext = {
+        conversationId: conversation.id,
+        requestMessageId: userMessageInsert.id,
+        responseMessageId: assistantMessageInsert.id,
+        requesterUserId: actorUserId,
+        sourceKind: "chat",
+        sourceRecordId: userMessageInsert.id,
+      };
+
+      const [autoResult, suggestResult, persistedMessages] = await Promise.all([
+        runAutoActions(
+          fastify.db,
+          tenantId,
+          projectId,
+          "chat",
+          result.autoActions,
+          message,
+          actionContext
+        ),
+        storeSuggestions(
+          fastify.db,
+          tenantId,
+          projectId,
+          "chat",
+          result.suggestedActions,
+          message,
+          actionContext
+        ),
+        listLarryMessagesByIds(fastify.db, tenantId, [userMessageInsert.id, assistantMessageInsert.id]),
       ]);
+
+      const userMessage =
+        persistedMessages.find((entry) => entry.id === userMessageInsert.id) ??
+        fallbackMessage({
+          id: userMessageInsert.id,
+          role: "user",
+          content: message,
+          createdAt: userMessageInsert.createdAt,
+          actorUserId,
+        });
+
+      const assistantMessage =
+        persistedMessages.find((entry) => entry.id === assistantMessageInsert.id) ??
+        fallbackMessage({
+          id: assistantMessageInsert.id,
+          role: "larry",
+          content: result.briefing,
+          createdAt: assistantMessageInsert.createdAt,
+        });
+
+      const linkedActionIds = [...autoResult.eventIds, ...suggestResult.eventIds];
+      const linkedActions =
+        assistantMessage.linkedActions.length > 0 || linkedActionIds.length === 0
+          ? assistantMessage.linkedActions
+          : await listLarryEventSummaries(fastify.db, tenantId, {
+              ids: linkedActionIds,
+              sort: "chronological",
+            });
+
+      const responsePayload: LarryChatResponse = {
+        conversationId: conversation.id,
+        message: result.briefing,
+        userMessage,
+        assistantMessage: {
+          ...assistantMessage,
+          linkedActions,
+        },
+        linkedActions,
+        actionsExecuted: autoResult.executedCount,
+        suggestionCount: suggestResult.suggestedCount,
+      };
 
       await writeAuditLog(fastify.db, {
         tenantId,
-        actorUserId: request.user.userId,
+        actorUserId,
         actionType: "larry.chat",
         objectType: "project",
         objectId: projectId,
         details: {
+          conversationId: conversation.id,
           actionsExecuted: autoResult.executedCount,
           suggestionCount: suggestResult.suggestedCount,
+          linkedActionCount: linkedActions.length,
         },
       });
 
-      return reply.code(200).send({
-        message: result.briefing,
-        actionsExecuted: autoResult.executedCount,
-        suggestionCount: suggestResult.suggestedCount,
-      });
+      return reply.code(200).send(responsePayload);
     }
   );
 };

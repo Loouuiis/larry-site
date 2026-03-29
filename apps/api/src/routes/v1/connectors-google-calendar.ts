@@ -56,6 +56,47 @@ interface GoogleInstallationRow {
   webhook_expiration: string | null;
 }
 
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function readOptionalString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function readOptionalRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function isUuid(value: string): boolean {
+  return UUID_REGEX.test(value);
+}
+
+function readGoogleCalendarProjectHint(value: unknown): string | null {
+  const body = readOptionalRecord(value);
+  if (!body) return null;
+
+  const bodyEvent = readOptionalRecord(body.event);
+  const bodyPayload = readOptionalRecord(body.payload);
+  const candidates = [
+    readOptionalString(body.projectId),
+    readOptionalString(body.project_id),
+    readOptionalString(bodyEvent?.projectId),
+    readOptionalString(bodyEvent?.project_id),
+    readOptionalString(bodyPayload?.projectId),
+    readOptionalString(bodyPayload?.project_id),
+  ];
+
+  for (const candidate of candidates) {
+    if (candidate && isUuid(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
 function requireGoogleOauthConfig(
   app: Parameters<FastifyPluginAsync>[0]
 ): {
@@ -419,6 +460,7 @@ export const googleCalendarConnectorRoutes: FastifyPluginAsync = async (fastify)
     }
 
     const bodyPayload = typeof request.body === "object" && request.body !== null ? request.body : null;
+    const projectHint = readGoogleCalendarProjectHint(bodyPayload);
     const sourceEventId = `gcal:${channelId}:${messageNumber ?? randomUUID()}`;
     const payload: Record<string, unknown> = {
       channelId,
@@ -428,6 +470,9 @@ export const googleCalendarConnectorRoutes: FastifyPluginAsync = async (fastify)
       expiration: typeof expirationHeader === "string" ? parseGoogExpiration(expirationHeader) : undefined,
       body: bodyPayload ?? {},
     };
+    if (projectHint) {
+      payload.projectId = projectHint;
+    }
 
     const result = await ingestCanonicalEvent(fastify, installation.tenant_id, {
       source: "calendar",

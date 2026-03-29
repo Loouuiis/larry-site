@@ -3,9 +3,13 @@ import { QueueMessage } from "@larry/shared";
 import { runEscalationScan } from "./escalation.js";
 import { runCalendarWebhookRenewal } from "./calendar-renewal.js";
 import { runLarryScan } from "./larry-scan.js";
+import { handleCanonicalEventCreated } from "./canonical-event.js";
 
 export async function processQueueJob(job: Job<QueueMessage>): Promise<void> {
   switch (job.name) {
+    case "canonical_event.created":
+      await handleCanonicalEventCreated(job.data.tenantId, job.data.payload);
+      break;
     case "larry.scan":
       await runLarryScan();
       break;

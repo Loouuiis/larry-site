@@ -1,20 +1,10 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarCheck2, Clock, FileText, Upload, CheckCircle2, XCircle } from "lucide-react";
-
-interface MeetingNote {
-  id: string;
-  title?: string | null;
-  summary?: string | null;
-  actionCount: number;
-  meetingDate?: string | null;
-  createdAt: string;
-  projectId?: string | null;
-  agentRunId?: string | null;
-  agentRunState?: string | null;
-}
+import type { WorkspaceMeetingsOverview, WorkspaceMeeting, WorkspaceProject } from "@/app/dashboard/types";
+import { triggerBoundedWorkspaceRefresh } from "@/app/workspace/refresh";
 
 type AgentRunState =
   | "INGESTED"
@@ -27,10 +17,10 @@ type AgentRunState =
   | "FAILED";
 
 const STATE_PROGRESS: Record<AgentRunState, number> = {
-  INGESTED: 10,
-  NORMALIZED: 28,
-  EXTRACTED: 55,
-  PROPOSED: 75,
+  INGESTED: 14,
+  NORMALIZED: 38,
+  EXTRACTED: 62,
+  PROPOSED: 82,
   APPROVAL_PENDING: 92,
   EXECUTED: 96,
   VERIFIED: 100,
@@ -38,13 +28,13 @@ const STATE_PROGRESS: Record<AgentRunState, number> = {
 };
 
 const STATE_LABEL: Record<AgentRunState, string> = {
-  INGESTED: "Reading transcript…",
-  NORMALIZED: "Finding action items…",
-  EXTRACTED: "Preparing for your review…",
-  PROPOSED: "Proposing task changes…",
-  APPROVAL_PENDING: "Routing to Action Center…",
-  EXECUTED: "Executing actions…",
-  VERIFIED: "Complete",
+  INGESTED: "Saving transcript...",
+  NORMALIZED: "Queueing Larry...",
+  EXTRACTED: "Preparing project context...",
+  PROPOSED: "Action Centre will refresh shortly...",
+  APPROVAL_PENDING: "Background review running...",
+  EXECUTED: "Writing actions...",
+  VERIFIED: "Queued",
   FAILED: "Failed",
 };
 
@@ -84,7 +74,11 @@ function ProcessingProgress({ state }: { state: AgentRunState }) {
 async function readJson<T>(res: Response): Promise<T> {
   const text = await res.text();
   if (!text) return {} as T;
-  try { return JSON.parse(text) as T; } catch { return {} as T; }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return {} as T;
+  }
 }
 
 function timeAgo(dateStr: string): string {
@@ -97,80 +91,119 @@ function timeAgo(dateStr: string): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-function formatShortDate(dateStr: string | null | undefined): string {
-  const raw = dateStr;
-  if (!raw) return "—";
-  const d = new Date(raw);
-  if (isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
-}
+function getMeetingStatus(meeting: WorkspaceMeeting) {
+  if (meeting.agentRunState) {
+    return {
+      label:
+        meeting.agentRunState === "VERIFIED"
+          ? "Ready"
+          : meeting.agentRunState === "FAILED"
+            ? "Failed"
+            : meeting.agentRunState,
+      style:
+        meeting.agentRunState === "VERIFIED"
+          ? { background: "#e6f9f0", color: "#00854d" }
+          : meeting.agentRunState === "FAILED"
+            ? { background: "#fff0f0", color: "var(--pm-red)" }
+            : { background: "#eef2ff", color: "#4338ca" },
+    };
+  }
 
-interface Project { id: string; name: string; }
+  if (meeting.summary?.trim() || meeting.actionCount > 0) {
+    return {
+      label: "Ready",
+      style: { background: "#e6f9f0", color: "#00854d" },
+    };
+  }
+
+  return {
+    label: "Queued",
+    style: { background: "#eff6ff", color: "#1d4ed8" },
+  };
+}
 
 export function MeetingsPage() {
   const router = useRouter();
-  const [meetings, setMeetings] = useState<MeetingNote[]>([]);
+  const [meetings, setMeetings] = useState<WorkspaceMeeting[]>([]);
   const [loading, setLoading] = useState(true);
   const [transcript, setTranscript] = useState("");
   const [processing, setProcessing] = useState(false);
   const [processingState, setProcessingState] = useState<AgentRunState | null>(null);
   const [successState, setSuccessState] = useState<"complete" | "failed" | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [expandedData, setExpandedData] = useState<Record<string, MeetingNote>>({});
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [expandedData, setExpandedData] = useState<Record<string, WorkspaceMeeting>>({});
+  const [projects, setProjects] = useState<WorkspaceProject[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [search, setSearch] = useState("");
+  const [error, setError] = useState("");
   const simTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  const loadMeetings = useCallback(async () => {
+  const loadOverview = useCallback(async () => {
     setLoading(true);
+    setError("");
     try {
-      const res = await fetch("/api/workspace/meetings");
-      const data = await readJson<{ meetings?: MeetingNote[] }>(res);
-      setMeetings(data.meetings ?? []);
+      const res = await fetch("/api/workspace/meetings/overview", { cache: "no-store" });
+      const data = await readJson<WorkspaceMeetingsOverview>(res);
+      if (!res.ok) {
+        setError(data.error ?? "Failed to load meetings.");
+        return;
+      }
+      const nextProjects = Array.isArray(data.projects) ? data.projects : [];
+      setMeetings(Array.isArray(data.meetings) ? data.meetings : []);
+      setProjects(nextProjects);
+      setSelectedProjectId((current) => {
+        if (current && nextProjects.some((project) => project.id === current)) return current;
+        return nextProjects[0]?.id ?? "";
+      });
+      setError(data.error ?? "");
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { void loadMeetings(); }, [loadMeetings]);
+  useEffect(() => {
+    void loadOverview();
+  }, [loadOverview]);
 
   useEffect(() => {
-    fetch("/api/workspace/snapshot?includeProjectContext=false", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((data: { projects?: Project[] }) => {
-        const list = data.projects ?? [];
-        setProjects(list);
-        if (list.length > 0) setSelectedProjectId(list[0].id);
-      })
-      .catch(() => {});
-  }, []);
+    function onRefresh() {
+      void loadOverview();
+    }
 
+    window.addEventListener("larry:refresh-snapshot", onRefresh);
+    return () => window.removeEventListener("larry:refresh-snapshot", onRefresh);
+  }, [loadOverview]);
 
-  // Simulate state progression while the synchronous API call is running
   useEffect(() => {
     simTimersRef.current.forEach(clearTimeout);
     simTimersRef.current = [];
     if (!processing) return;
     const steps: [AgentRunState, number][] = [
-      ["NORMALIZED", 1200],
-      ["EXTRACTED", 3500],
-      ["PROPOSED", 18000],
+      ["NORMALIZED", 300],
+      ["EXTRACTED", 1200],
+      ["PROPOSED", 3200],
     ];
-    simTimersRef.current = steps.map(([s, delay]) =>
-      setTimeout(() => setProcessingState((prev) => {
-        const prevIdx = prev ? ["INGESTED","NORMALIZED","EXTRACTED","PROPOSED","APPROVAL_PENDING","EXECUTED","VERIFIED","FAILED"].indexOf(prev) : -1;
-        const newIdx = ["INGESTED","NORMALIZED","EXTRACTED","PROPOSED","APPROVAL_PENDING","EXECUTED","VERIFIED","FAILED"].indexOf(s);
-        return newIdx > prevIdx ? s : prev;
-      }), delay)
+    simTimersRef.current = steps.map(([state, delay]) =>
+      setTimeout(
+        () =>
+          setProcessingState((prev) => {
+            const order = ["INGESTED", "NORMALIZED", "EXTRACTED", "PROPOSED", "APPROVAL_PENDING", "EXECUTED", "VERIFIED", "FAILED"];
+            const prevIndex = prev ? order.indexOf(prev) : -1;
+            const nextIndex = order.indexOf(state);
+            return nextIndex > prevIndex ? state : prev;
+          }),
+        delay,
+      ),
     );
-    return () => { simTimersRef.current.forEach(clearTimeout); };
+    return () => {
+      simTimersRef.current.forEach(clearTimeout);
+    };
   }, [processing]);
 
   const handleProcess = async (e: React.FormEvent) => {
     e.preventDefault();
-    const t = transcript.trim();
-    if (t.length < 20) return;
+    const trimmedTranscript = transcript.trim();
+    if (trimmedTranscript.length < 20) return;
     setProcessing(true);
     setProcessingState("INGESTED");
     setSuccessState(null);
@@ -178,13 +211,12 @@ export function MeetingsPage() {
       const res = await fetch("/api/workspace/meetings/transcript", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript: t, projectId: selectedProjectId || undefined }),
+        body: JSON.stringify({ transcript: trimmedTranscript, projectId: selectedProjectId || undefined }),
       });
       if (res.ok) {
         setTranscript("");
         setSuccessState("complete");
-        setProcessingState("VERIFIED");
-        setTimeout(() => void loadMeetings(), 800);
+        triggerBoundedWorkspaceRefresh();
       } else {
         setSuccessState("failed");
       }
@@ -196,10 +228,13 @@ export function MeetingsPage() {
   };
 
   const loadExpanded = async (id: string) => {
-    if (expandedData[id]) { setExpandedId(id); return; }
+    if (expandedData[id]) {
+      setExpandedId(id);
+      return;
+    }
     try {
       const res = await fetch(`/api/workspace/meetings/${id}`);
-      const data = await readJson<MeetingNote>(res);
+      const data = await readJson<WorkspaceMeeting>(res);
       setExpandedData((prev) => ({ ...prev, [id]: data }));
       setExpandedId(id);
     } catch {
@@ -207,15 +242,14 @@ export function MeetingsPage() {
     }
   };
 
-  const filteredMeetings = meetings.filter((m) => {
+  const filteredMeetings = meetings.filter((meeting) => {
     if (!search.trim()) return true;
-    const q = search.toLowerCase();
-    return (m.title ?? "Meeting transcript").toLowerCase().includes(q);
+    const query = search.toLowerCase();
+    return (meeting.title ?? "Meeting transcript").toLowerCase().includes(query);
   });
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      {/* Page header */}
       <div
         style={{
           borderBottom: "1px solid var(--border)",
@@ -225,13 +259,36 @@ export function MeetingsPage() {
       >
         <h1 className="text-h1">Meetings</h1>
         <p className="text-body-sm" style={{ marginTop: "4px" }}>
-          Upload a transcript and Larry will extract tasks, decisions, and action items.
+          Upload a transcript and Larry will queue a background review that updates the meeting summary and project
+          Action Centre.
         </p>
       </div>
 
-      <div style={{ maxWidth: "896px", margin: "0 auto", padding: "24px 32px", display: "flex", flexDirection: "column", gap: "28px" }}>
+      <div
+        style={{
+          maxWidth: "896px",
+          margin: "0 auto",
+          padding: "24px 32px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "28px",
+        }}
+      >
+        {error && (
+          <div
+            style={{
+              borderRadius: "var(--radius-btn)",
+              border: "1px solid #fde68a",
+              background: "#fffbeb",
+              padding: "10px 14px",
+              fontSize: "13px",
+              color: "#92400e",
+            }}
+          >
+            {error}
+          </div>
+        )}
 
-        {/* Upload card */}
         <section
           style={{
             border: "1px solid var(--border)",
@@ -241,12 +298,11 @@ export function MeetingsPage() {
           }}
         >
           <form onSubmit={handleProcess} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            {/* Textarea with char count overlay */}
             <div style={{ position: "relative" }}>
               <textarea
                 value={transcript}
                 onChange={(e) => setTranscript(e.target.value)}
-                placeholder="Paste meeting transcript here… (minimum 20 characters)"
+                placeholder="Paste meeting transcript here... (minimum 20 characters)"
                 disabled={processing}
                 style={{
                   width: "100%",
@@ -277,7 +333,6 @@ export function MeetingsPage() {
               </span>
             </div>
 
-            {/* Project dropdown + submit in a flex row */}
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
               {projects.length > 0 && (
                 <select
@@ -297,8 +352,8 @@ export function MeetingsPage() {
                     opacity: processing ? 0.5 : 1,
                   }}
                 >
-                  {projects.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>{project.name}</option>
                   ))}
                 </select>
               )}
@@ -316,12 +371,11 @@ export function MeetingsPage() {
                 }}
               >
                 <Upload size={13} />
-                {processing ? "Processing…" : "Process"}
+                {processing ? "Queueing..." : "Queue transcript"}
               </button>
             </div>
           </form>
 
-          {/* Processing progress */}
           {processing && processingState && (
             <div
               style={{
@@ -333,13 +387,12 @@ export function MeetingsPage() {
               }}
             >
               <p style={{ fontSize: "13px", fontWeight: 500, color: "var(--text-2)" }}>
-                Larry is processing your meeting…
+                Larry is saving the transcript and queueing background review...
               </p>
               <ProcessingProgress state={processingState} />
             </div>
           )}
 
-          {/* Success banner */}
           {!processing && successState === "complete" && (
             <div
               style={{
@@ -357,9 +410,10 @@ export function MeetingsPage() {
               <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
                 <CheckCircle2 size={16} style={{ marginTop: "2px", flexShrink: 0, color: "#16a34a" }} />
                 <div>
-                  <p style={{ fontSize: "13px", fontWeight: 500, color: "#15803d" }}>Transcript processed</p>
+                  <p style={{ fontSize: "13px", fontWeight: 500, color: "#15803d" }}>Transcript queued</p>
                   <p style={{ marginTop: "2px", fontSize: "12px", color: "#166534" }}>
-                    Larry has analysed the meeting. Check the project for suggested actions.
+                    Larry saved the meeting and queued background processing. The meeting summary and project actions
+                    will refresh shortly.
                   </p>
                 </div>
               </div>
@@ -379,13 +433,12 @@ export function MeetingsPage() {
                     cursor: "pointer",
                   }}
                 >
-                  View project →
+                  View project {"->"}
                 </button>
               )}
             </div>
           )}
 
-          {/* Failure banner */}
           {!processing && successState === "failed" && (
             <div
               style={{
@@ -401,22 +454,20 @@ export function MeetingsPage() {
             >
               <XCircle size={16} style={{ flexShrink: 0, color: "#dc2626" }} />
               <p style={{ fontSize: "13px", fontWeight: 500, color: "#b91c1c" }}>
-                Processing failed — please try again.
+                Processing failed - please try again.
               </p>
             </div>
           )}
         </section>
 
-        {/* Meeting notes section */}
         <section>
           <h2 className="text-h2" style={{ marginBottom: "12px" }}>Meeting Notes</h2>
 
-          {/* Search */}
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search meetings…"
+            placeholder="Search meetings..."
             style={{
               width: "100%",
               height: "36px",
@@ -433,7 +484,7 @@ export function MeetingsPage() {
           />
 
           {loading ? (
-            <p className="text-body-sm">Loading…</p>
+            <p className="text-body-sm">Loading...</p>
           ) : meetings.length === 0 ? (
             <div
               style={{
@@ -444,14 +495,10 @@ export function MeetingsPage() {
                 textAlign: "center",
               }}
             >
-              <CalendarCheck2
-                size={24}
-                style={{ margin: "0 auto 12px", color: "var(--text-disabled)" }}
-              />
+              <CalendarCheck2 size={24} style={{ margin: "0 auto 12px", color: "var(--text-disabled)" }} />
               <p className="text-body-sm">No meetings yet. Process your first transcript above.</p>
             </div>
           ) : (
-            /* Table */
             <div
               style={{
                 border: "1px solid var(--border)",
@@ -460,11 +507,7 @@ export function MeetingsPage() {
                 background: "var(--surface)",
               }}
             >
-              {/* Table header */}
-              <div
-                className="pm-table-header"
-                style={{ gridTemplateColumns: "minmax(0,1fr) 120px 80px 100px" }}
-              >
+              <div className="pm-table-header" style={{ gridTemplateColumns: "minmax(0,1fr) 120px 80px 100px" }}>
                 <span>Title</span>
                 <span>Date</span>
                 <span>Actions</span>
@@ -481,10 +524,7 @@ export function MeetingsPage() {
                 <div key={meeting.id}>
                   <div
                     className="pm-table-row"
-                    style={{
-                      gridTemplateColumns: "minmax(0,1fr) 120px 80px 100px",
-                      cursor: "pointer",
-                    }}
+                    style={{ gridTemplateColumns: "minmax(0,1fr) 120px 80px 100px", cursor: "pointer" }}
                     onClick={() => {
                       if (expandedId === meeting.id) {
                         setExpandedId(null);
@@ -493,7 +533,6 @@ export function MeetingsPage() {
                       }
                     }}
                   >
-                    {/* Title */}
                     <span style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
                       <div
                         style={{
@@ -509,55 +548,30 @@ export function MeetingsPage() {
                       >
                         <FileText size={13} style={{ color: "var(--text-muted)" }} />
                       </div>
-                      <span
-                        className="text-h3"
-                        style={{
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
+                      <span className="text-h3" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {meeting.title ?? "Meeting transcript"}
                       </span>
                     </span>
 
-                    {/* Date */}
                     <span className="text-body-sm" style={{ display: "flex", alignItems: "center", gap: "4px" }}>
                       <Clock size={11} />
                       {timeAgo(meeting.createdAt)}
                     </span>
 
-                    {/* Action count */}
-                    <span className="text-body-sm">
-                      {meeting.actionCount}
-                    </span>
+                    <span className="text-body-sm">{meeting.actionCount}</span>
 
-                    {/* Status */}
                     <span>
-                      {meeting.agentRunState ? (
-                        <span
-                          className="pm-pill"
-                          style={
-                            meeting.agentRunState === "VERIFIED"
-                              ? { background: "#e6f9f0", color: "#00854d" }
-                              : meeting.agentRunState === "FAILED"
-                              ? { background: "#fff0f0", color: "var(--pm-red)" }
-                              : {}
-                          }
-                        >
-                          {meeting.agentRunState === "VERIFIED"
-                            ? "Done"
-                            : meeting.agentRunState === "FAILED"
-                            ? "Failed"
-                            : meeting.agentRunState}
-                        </span>
-                      ) : (
-                        <span className="text-body-sm">—</span>
-                      )}
+                      {(() => {
+                        const status = getMeetingStatus(meeting);
+                        return (
+                          <span className="pm-pill" style={status.style}>
+                            {status.label}
+                          </span>
+                        );
+                      })()}
                     </span>
                   </div>
 
-                  {/* Expanded detail */}
                   {expandedId === meeting.id && (
                     <div
                       style={{
@@ -590,7 +604,7 @@ export function MeetingsPage() {
                       )}
                       {meeting.agentRunId && (
                         <p style={{ fontSize: "11px", color: "var(--text-disabled)" }}>
-                          Run: {meeting.agentRunId.slice(0, 8)}… · State: {meeting.agentRunState ?? "—"}
+                          Run: {meeting.agentRunId.slice(0, 8)}... · State: {meeting.agentRunState ?? "-"}
                         </p>
                       )}
                     </div>

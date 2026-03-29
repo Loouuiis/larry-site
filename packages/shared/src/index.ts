@@ -31,6 +31,20 @@ export interface CanonicalEvent {
   confidence: number;
 }
 
+export interface CanonicalEventCreatedPayload extends Record<string, unknown> {
+  canonicalEventId: string;
+  source: CanonicalEvent["source"];
+  eventType: CanonicalEvent["eventType"];
+}
+
+export interface TranscriptCanonicalPayload extends Record<string, unknown> {
+  transcript: string;
+  meetingTitle?: string;
+  projectId?: string;
+  meetingNoteId?: string;
+  submittedByUserId?: string;
+}
+
 export interface ExtractedAction {
   title: string;
   owner?: string;
@@ -128,6 +142,9 @@ export type LarryActionType =
   | "project_create";
 
 export type LarryEventType = "auto_executed" | "suggested" | "accepted" | "dismissed";
+export type LarryTriggeredBy = "schedule" | "login" | "chat" | "signal";
+export type LarryExecutionMode = "auto" | "approval";
+export type LarryExecutedByKind = "larry" | "user";
 
 export interface LarryAction {
   type: LarryActionType;
@@ -145,6 +162,86 @@ export interface IntelligenceResult {
   autoActions: LarryAction[];
   /** Actions that need the project owner to approve — deadline/scope/ownership/external. */
   suggestedActions: LarryAction[];
+}
+
+export interface LarryConversationPreview {
+  id: string;
+  projectId: string | null;
+  title: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastMessagePreview?: string | null;
+  lastMessageAt?: string | null;
+}
+
+export interface LarryEventSummary {
+  id: string;
+  projectId: string;
+  projectName: string | null;
+  eventType: LarryEventType;
+  actionType: string;
+  displayText: string;
+  reasoning: string;
+  payload: Record<string, unknown>;
+  executedAt: string | null;
+  triggeredBy: LarryTriggeredBy;
+  chatMessage: string | null;
+  createdAt: string;
+  conversationId: string | null;
+  requestMessageId: string | null;
+  responseMessageId: string | null;
+  requestedByUserId: string | null;
+  requestedByName: string | null;
+  approvedByUserId: string | null;
+  approvedByName: string | null;
+  approvedAt: string | null;
+  dismissedByUserId: string | null;
+  dismissedByName: string | null;
+  dismissedAt: string | null;
+  executedByKind: LarryExecutedByKind | null;
+  executedByUserId: string | null;
+  executedByName: string | null;
+  executionMode: LarryExecutionMode | null;
+  sourceKind: string | null;
+  sourceRecordId: string | null;
+  conversationTitle?: string | null;
+  requestMessagePreview?: string | null;
+  responseMessagePreview?: string | null;
+}
+
+export interface LarryMessageRecord {
+  id: string;
+  role: "user" | "larry";
+  content: string;
+  reasoning: Record<string, unknown> | null;
+  createdAt: string;
+  actorUserId: string | null;
+  actorDisplayName: string | null;
+  linkedActions: LarryEventSummary[];
+}
+
+export interface LarryActionCentreData {
+  suggested: LarryEventSummary[];
+  activity: LarryEventSummary[];
+  conversations: LarryConversationPreview[];
+  error?: string;
+}
+
+export interface LarryChatRequest {
+  projectId: string;
+  message: string;
+  conversationId?: string;
+}
+
+export interface LarryChatResponse {
+  conversationId: string;
+  message: string;
+  userMessage: LarryMessageRecord;
+  assistantMessage: LarryMessageRecord;
+  linkedActions: LarryEventSummary[];
+  actionsExecuted: number;
+  suggestionCount: number;
+  error?: string;
 }
 
 export interface ProjectTaskSnapshot {

@@ -1,10 +1,10 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { TriangleAlert } from "lucide-react";
-import type { WorkspaceProject, WorkspaceSnapshot, WorkspaceTask } from "@/app/dashboard/types";
+import type { WorkspaceHomeData, WorkspaceProject, WorkspaceTask } from "@/app/dashboard/types";
 
 interface LarryBriefingProject {
   projectId: string;
@@ -22,13 +22,6 @@ interface LarryBriefingContent {
   totalNeedsYou: number;
 }
 
-interface AuthMePayload {
-  user?: {
-    email?: string | null;
-    displayName?: string | null;
-  } | null;
-}
-
 interface ProjectCardModel {
   id: string;
   name: string;
@@ -41,6 +34,10 @@ interface ProjectCardModel {
   totalTasks: number;
   openTasks: number;
   blockedTasks: number;
+}
+
+interface WorkspaceHomeProps {
+  viewerEmail?: string | null;
 }
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -74,12 +71,9 @@ function titleCase(value: string): string {
     .join(" ");
 }
 
-function deriveGreetingName(user: AuthMePayload["user"] | null | undefined): string {
-  if (user?.displayName && user.displayName.trim().length > 0) {
-    return user.displayName.trim().split(/\s+/)[0];
-  }
-  if (user?.email) {
-    const local = user.email.split("@")[0] ?? "there";
+function deriveGreetingName(email: string | null | undefined): string {
+  if (email) {
+    const local = email.split("@")[0] ?? "there";
     return titleCase(local);
   }
   return "there";
@@ -87,7 +81,7 @@ function deriveGreetingName(user: AuthMePayload["user"] | null | undefined): str
 
 function buildProjectCard(
   project: WorkspaceProject,
-  tasks: WorkspaceTask[]
+  tasks: WorkspaceTask[],
 ): ProjectCardModel {
   const projectTasks = tasks.filter((task) => task.projectId === project.id);
   const completedTasks = projectTasks.filter((task) => task.status === "completed").length;
@@ -105,7 +99,9 @@ function buildProjectCard(
     name: project.name,
     description:
       project.description?.trim() ||
-      (projectTasks.length > 0 ? "Live workspace with active delivery signals." : "Ready for the first task and meeting signal."),
+      (projectTasks.length > 0
+        ? "Live workspace with active delivery signals."
+        : "Ready for the first task and meeting signal."),
     status: project.status,
     riskLevel: project.riskLevel ?? "low",
     targetDate: project.targetDate,
@@ -117,10 +113,9 @@ function buildProjectCard(
   };
 }
 
-export function WorkspaceHome() {
+export function WorkspaceHome({ viewerEmail }: WorkspaceHomeProps) {
   const router = useRouter();
-  const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
-  const [viewer, setViewer] = useState<AuthMePayload["user"] | null>(null);
+  const [homeData, setHomeData] = useState<WorkspaceHomeData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [nudgeDismissed, setNudgeDismissed] = useState(false);
@@ -131,29 +126,29 @@ export function WorkspaceHome() {
       setLoading(true);
       setError(null);
 
-      const [snapshotResponse, meResponse] = await Promise.all([
-        fetch("/api/workspace/snapshot?includeProjectContext=false", { cache: "no-store" }),
-        fetch("/api/auth/me", { cache: "no-store" }),
-      ]);
+      const homeResponse = await fetch("/api/workspace/home", { cache: "no-store" });
+      const homePayload = await readJson<WorkspaceHomeData>(homeResponse);
 
-      const snapshotPayload = await readJson<WorkspaceSnapshot>(snapshotResponse);
-      const mePayload = await readJson<AuthMePayload>(meResponse);
-
-      if (!snapshotResponse.ok) {
-        throw new Error(snapshotPayload.error ?? "Could not load the workspace.");
+      if (!homeResponse.ok) {
+        throw new Error(homePayload.error ?? "Could not load the workspace.");
       }
 
-      setSnapshot(snapshotPayload);
-      setViewer(meResponse.ok ? mePayload.user ?? null : null);
+      setHomeData(homePayload);
+      setError(homePayload.error ?? null);
 
-      // Fire-and-forget — briefing should not block the page render
       fetch("/api/workspace/larry/briefing", { cache: "no-store" })
-        .then((r) => (r.ok ? readJson<{ briefing: LarryBriefingContent }>(r) : null))
-        .then((payload) => { if (payload?.briefing) setBriefing(payload.briefing); })
-        .catch(() => { /* non-critical, ignore */ });
+        .then((response) => (response.ok ? readJson<{ briefing: LarryBriefingContent }>(response) : null))
+        .then((payload) => {
+          if (payload?.briefing) {
+            setBriefing(payload.briefing);
+          }
+        })
+        .catch(() => {
+          // Briefing is supplementary. Ignore failures here.
+        });
     } catch (loadError) {
       setError(
-        loadError instanceof Error ? loadError.message : "Could not load the workspace."
+        loadError instanceof Error ? loadError.message : "Could not load the workspace.",
       );
     } finally {
       setLoading(false);
@@ -174,38 +169,32 @@ export function WorkspaceHome() {
   }, [loadWorkspace]);
 
   const projectCards = useMemo(() => {
-    const projects = snapshot?.projects ?? [];
-    const tasks = snapshot?.tasks ?? [];
+    const projects = homeData?.projects ?? [];
+    const tasks = homeData?.tasks ?? [];
     return projects.map((project) => buildProjectCard(project, tasks));
-  }, [snapshot]);
+  }, [homeData]);
 
-  const greetingName = deriveGreetingName(viewer);
+  const greetingName = deriveGreetingName(viewerEmail);
   const connectedCount = [
-    snapshot?.connectors?.slack?.connected,
-    snapshot?.connectors?.calendar?.connected,
-    snapshot?.connectors?.email?.connected,
+    homeData?.connectors?.slack?.connected,
+    homeData?.connectors?.calendar?.connected,
+    homeData?.connectors?.email?.connected,
   ].filter(Boolean).length;
 
   return (
-    <div
-      className="min-h-full overflow-y-auto"
-      style={{ background: "var(--page-bg)" }}
-    >
-      <div className="mx-auto max-w-[960px] px-6 py-8 space-y-6">
-
-        {/* Welcome header — no card wrapper */}
+    <div className="min-h-full overflow-y-auto" style={{ background: "var(--page-bg)" }}>
+      <div className="mx-auto max-w-[960px] space-y-6 px-6 py-8">
         <header>
           <h1 className="text-display" style={{ color: "var(--text-1)" }}>
             {briefing?.greeting ?? `Welcome back, ${greetingName}.`}
           </h1>
-          <p className="text-body-sm mt-1">
+          <p className="mt-1 text-body-sm">
             {briefing
               ? `${briefing.totalNeedsYou} project${briefing.totalNeedsYou !== 1 ? "s" : ""} need${briefing.totalNeedsYou === 1 ? "s" : ""} your attention · ${projectCards.length} active`
               : `${projectCards.length} active project${projectCards.length !== 1 ? "s" : ""}`}
           </p>
         </header>
 
-        {/* Larry briefing — per-project summaries */}
         {briefing && briefing.projects.length > 0 && (
           <div
             style={{
@@ -215,18 +204,17 @@ export function WorkspaceHome() {
               overflow: "hidden",
             }}
           >
-            {briefing.projects.map((bp, i) => (
+            {briefing.projects.map((bp, index) => (
               <div
                 key={bp.projectId}
                 style={{
                   padding: "14px 20px",
-                  borderTop: i > 0 ? "1px solid var(--border)" : undefined,
+                  borderTop: index > 0 ? "1px solid var(--border)" : undefined,
                   display: "flex",
                   alignItems: "flex-start",
                   gap: "12px",
                 }}
               >
-                {/* Status pill */}
                 <span
                   className="shrink-0 text-[11px] font-semibold leading-none"
                   style={{
@@ -250,20 +238,15 @@ export function WorkspaceHome() {
                   {bp.statusLabel}
                 </span>
 
-                {/* Summary */}
-                <div className="flex-1 min-w-0">
-                  <p
-                    className="text-[13px] font-semibold leading-snug truncate"
-                    style={{ color: "var(--text-1)" }}
-                  >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-semibold leading-snug" style={{ color: "var(--text-1)" }}>
                     {bp.name}
                   </p>
-                  <p className="text-body-sm mt-0.5 line-clamp-2" style={{ color: "var(--text-2)" }}>
+                  <p className="mt-0.5 line-clamp-2 text-body-sm" style={{ color: "var(--text-2)" }}>
                     {bp.summary}
                   </p>
                 </div>
 
-                {/* Needs you badge */}
                 {bp.needsYou && (
                   <span
                     className="shrink-0 text-[11px] font-semibold leading-none"
@@ -283,10 +266,9 @@ export function WorkspaceHome() {
           </div>
         )}
 
-        {/* Error banner */}
         {error && (
           <div
-            className="flex items-start gap-3 px-4 py-3 rounded-lg text-[14px]"
+            className="flex items-start gap-3 rounded-lg px-4 py-3 text-[14px]"
             style={{
               background: "var(--pm-red-light, #fff6f7)",
               border: "1px solid var(--pm-red)",
@@ -299,7 +281,6 @@ export function WorkspaceHome() {
           </div>
         )}
 
-        {/* Project cards grid */}
         {loading ? (
           <div className="grid gap-4 md:grid-cols-2">
             {Array.from({ length: 4 }).map((_, index) => (
@@ -356,22 +337,10 @@ export function WorkspaceHome() {
                   padding: "20px",
                 }}
               >
-                {/* Project name */}
-                <p
-                  className="text-[16px] font-semibold leading-snug truncate"
-                  style={{ color: "var(--text-1)" }}
-                >
+                <p className="truncate text-[16px] font-semibold leading-snug" style={{ color: "var(--text-1)" }}>
                   {project.name}
                 </p>
-
-                {/* Description — 1 line truncated */}
-                <p
-                  className="text-body-sm mt-1 truncate"
-                >
-                  {project.description}
-                </p>
-
-                {/* Progress bar */}
+                <p className="mt-1 truncate text-body-sm">{project.description}</p>
                 <div
                   className="mt-4 w-full overflow-hidden"
                   style={{
@@ -389,11 +358,7 @@ export function WorkspaceHome() {
                     }}
                   />
                 </div>
-
-                {/* Footer row */}
-                <div
-                  className="mt-3 flex items-center justify-between text-body-sm"
-                >
+                <div className="mt-3 flex items-center justify-between text-body-sm">
                   <span>{project.progress}%</span>
                   <span>{project.openTasks} open tasks</span>
                   <span>Updated {formatRelativeTime(project.updatedAt)}</span>
@@ -403,7 +368,6 @@ export function WorkspaceHome() {
           </div>
         )}
 
-        {/* Connected inputs nudge — only when all connectors are disconnected */}
         {!nudgeDismissed && connectedCount === 0 && (
           <div
             className="flex items-center justify-between gap-4"
@@ -416,11 +380,7 @@ export function WorkspaceHome() {
           >
             <p className="text-[14px]" style={{ color: "var(--text-2)" }}>
               Connect Slack or Calendar to let Larry monitor signals automatically.{" "}
-              <Link
-                href="/workspace/settings/connectors"
-                className="font-semibold"
-                style={{ color: "var(--cta)" }}
-              >
+              <Link href="/workspace/settings/connectors" className="font-semibold" style={{ color: "var(--cta)" }}>
                 Set up →
               </Link>
             </p>
@@ -435,7 +395,6 @@ export function WorkspaceHome() {
             </button>
           </div>
         )}
-
       </div>
     </div>
   );

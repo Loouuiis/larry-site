@@ -1,32 +1,21 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useState } from "react";
 import type {
   WorkspaceHealth,
+  WorkspaceMeeting,
   WorkspaceOutcomes,
   WorkspaceProject,
-  WorkspaceSnapshot,
+  WorkspaceProjectOverview,
   WorkspaceTask,
   WorkspaceTimeline,
 } from "@/app/dashboard/types";
-
-export interface ProjectMeeting {
-  id: string;
-  title: string | null;
-  summary: string | null;
-  actionCount: number;
-  meetingDate: string | null;
-  createdAt: string;
-  projectId: string | null;
-  agentRunId: string | null;
-  agentRunState: string | null;
-}
 
 interface ProjectDataState {
   project: WorkspaceProject | null;
   tasks: WorkspaceTask[];
   health: WorkspaceHealth | null;
-  meetings: ProjectMeeting[];
+  meetings: WorkspaceMeeting[];
   timeline: WorkspaceTimeline | null;
   outcomes: WorkspaceOutcomes | null;
   loading: boolean;
@@ -48,7 +37,7 @@ export function useProjectData(projectId: string): ProjectDataState {
   const [project, setProject] = useState<WorkspaceProject | null>(null);
   const [tasks, setTasks] = useState<WorkspaceTask[]>([]);
   const [health, setHealth] = useState<WorkspaceHealth | null>(null);
-  const [meetings, setMeetings] = useState<ProjectMeeting[]>([]);
+  const [meetings, setMeetings] = useState<WorkspaceMeeting[]>([]);
   const [timeline, setTimeline] = useState<WorkspaceTimeline | null>(null);
   const [outcomes, setOutcomes] = useState<WorkspaceOutcomes | null>(null);
   const [loading, setLoading] = useState(true);
@@ -60,29 +49,23 @@ export function useProjectData(projectId: string): ProjectDataState {
     }
 
     try {
-      const [snapshotResponse, meetingsResponse] = await Promise.all([
-        fetch(`/api/workspace/snapshot?projectId=${encodeURIComponent(projectId)}`, { cache: "no-store" }),
-        fetch(`/api/workspace/meetings?projectId=${encodeURIComponent(projectId)}&limit=20`, { cache: "no-store" }),
-      ]);
+      const response = await fetch(
+        `/api/workspace/projects/${encodeURIComponent(projectId)}/overview`,
+        { cache: "no-store" },
+      );
 
-      const snapshot = await readJson<WorkspaceSnapshot>(snapshotResponse);
-      const meetingsPayload = await readJson<{ meetings?: ProjectMeeting[] }>(meetingsResponse);
-
-      if (!snapshotResponse.ok) {
-        throw new Error(snapshot.error ?? "Failed to load project workspace.");
+      const overview = await readJson<WorkspaceProjectOverview>(response);
+      if (!response.ok) {
+        throw new Error(overview.error ?? "Failed to load project workspace.");
       }
 
-      setProject(snapshot.projects.find((item) => item.id === projectId) ?? null);
-      setTasks((snapshot.tasks ?? []).filter((item) => item.projectId === projectId));
-      setHealth(snapshot.health ?? null);
-      setTimeline(snapshot.timeline ?? null);
-      setOutcomes(snapshot.outcomes ?? null);
-      setMeetings(
-        Array.isArray(meetingsPayload.meetings)
-          ? meetingsPayload.meetings.filter((item) => item.projectId === projectId)
-          : []
-      );
-      setError(snapshot.error ?? null);
+      setProject(overview.project ?? null);
+      setTasks(Array.isArray(overview.tasks) ? overview.tasks : []);
+      setHealth(overview.health ?? null);
+      setTimeline(overview.timeline ?? null);
+      setOutcomes(overview.outcomes ?? null);
+      setMeetings(Array.isArray(overview.meetings) ? overview.meetings : []);
+      setError(overview.error ?? null);
     } catch (fetchError) {
       const message = fetchError instanceof Error ? fetchError.message : "Failed to load project data.";
       setError(message);

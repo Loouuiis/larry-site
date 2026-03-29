@@ -18,11 +18,12 @@ const DRAWER_EASE = [0.22, 1, 0.36, 1] as const;
 /* ─── Types ────────────────────────────────────────────────────────── */
 
 export type NavSection = "projects" | "documents" | "chats" | "meetings" | "analytics";
-export type WorkspaceSidebarNav = "home" | "my-work" | "project" | "meetings" | "documents" | "chats" | "larry" | "settings";
+export type WorkspaceSidebarNav = "home" | "my-work" | "actions" | "project" | "meetings" | "documents" | "chats" | "larry" | "settings";
 
 const WORKSPACE_NAV: { id: WorkspaceSidebarNav; label: string; icon: React.ElementType; href: string }[] = [
   { id: "home",      label: "Home",      icon: Home,         href: "/workspace"           },
   { id: "my-work",   label: "My work",   icon: ListTodo,     href: "/workspace/my-work"   },
+  { id: "actions",   label: "Actions",   icon: CheckSquare,  href: "/workspace/actions"   },
   { id: "meetings",  label: "Meetings",  icon: ClipboardList, href: "/workspace/meetings" },
   { id: "documents", label: "Documents", icon: FileText,     href: "/workspace/documents" },
   { id: "chats",     label: "Chats",     icon: MessageSquare, href: "/workspace/chats"    },
@@ -54,9 +55,9 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail }: Work
   const loadTasks = useCallback(async () => {
     if (tasksLoaded) return;
     try {
-      const res = await fetch("/api/workspace/snapshot?includeProjectContext=false");
-      const data = await res.json() as { tasks?: SearchTask[] };
-      setTasks(data.tasks ?? []);
+      const res = await fetch("/api/workspace/tasks", { cache: "no-store" });
+      const data = await res.json() as { items?: SearchTask[] };
+      setTasks(data.items ?? []);
       setTasksLoaded(true);
     } catch {
       setTasksLoaded(true);
@@ -274,7 +275,7 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail }: Work
             )}
             {/* + New inline */}
             <Link
-              href="/workspace"
+              href="/workspace/projects/new"
               onClick={onClose}
               className="flex w-full items-center gap-1.5 px-6 py-1.5 text-[13px] font-medium transition-opacity hover:opacity-80"
               style={{ color: "var(--cta)" }}

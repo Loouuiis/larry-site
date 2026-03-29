@@ -103,6 +103,18 @@ export interface EmailDraft {
   updatedAt: string;
 }
 
+export interface WorkspaceMeeting {
+  id: string;
+  title: string | null;
+  summary: string | null;
+  actionCount: number;
+  meetingDate: string | null;
+  createdAt: string;
+  projectId: string | null;
+  agentRunId: string | null;
+  agentRunState: string | null;
+}
+
 export interface WorkspaceSnapshot {
   connected: boolean;
   boardMeta?: {
@@ -122,6 +134,92 @@ export interface WorkspaceSnapshot {
   };
   activity?: WorkspaceActivityItem[];
   emailDrafts?: EmailDraft[];
+  error?: string;
+}
+
+export interface WorkspaceHomeData {
+  projects: WorkspaceProject[];
+  tasks: WorkspaceTask[];
+  connectors: {
+    slack?: ConnectorStatus;
+    calendar?: ConnectorStatus;
+    email?: ConnectorStatus;
+  };
+  error?: string;
+}
+
+export interface WorkspaceProjectOverview {
+  project: WorkspaceProject | null;
+  tasks: WorkspaceTask[];
+  timeline?: WorkspaceTimeline | null;
+  health?: WorkspaceHealth | null;
+  outcomes?: WorkspaceOutcomes | null;
+  meetings: WorkspaceMeeting[];
+  error?: string;
+}
+
+export interface WorkspaceMyWorkData {
+  viewerUserId: string | null;
+  projects: WorkspaceProject[];
+  tasks: WorkspaceTask[];
+  error?: string;
+}
+
+export interface WorkspaceMeetingsOverview {
+  projects: WorkspaceProject[];
+  meetings: WorkspaceMeeting[];
+  error?: string;
+}
+
+export interface WorkspaceLarryEvent {
+  id: string;
+  projectId: string;
+  projectName: string | null;
+  eventType: "auto_executed" | "suggested" | "accepted" | "dismissed";
+  actionType: string;
+  displayText: string;
+  reasoning: string;
+  payload: Record<string, unknown>;
+  executedAt: string | null;
+  triggeredBy: "schedule" | "login" | "chat" | "signal";
+  chatMessage: string | null;
+  createdAt: string;
+  conversationId: string | null;
+  requestMessageId: string | null;
+  responseMessageId: string | null;
+  requestedByUserId: string | null;
+  requestedByName: string | null;
+  approvedByUserId: string | null;
+  approvedByName: string | null;
+  approvedAt: string | null;
+  dismissedByUserId: string | null;
+  dismissedByName: string | null;
+  dismissedAt: string | null;
+  executedByKind: "larry" | "user" | null;
+  executedByUserId: string | null;
+  executedByName: string | null;
+  executionMode: "auto" | "approval" | null;
+  sourceKind: string | null;
+  sourceRecordId: string | null;
+  conversationTitle?: string | null;
+  requestMessagePreview?: string | null;
+  responseMessagePreview?: string | null;
+}
+
+export interface WorkspaceConversationPreview {
+  id: string;
+  projectId: string | null;
+  title: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastMessagePreview?: string | null;
+  lastMessageAt?: string | null;
+}
+
+export interface WorkspaceProjectActionCentre {
+  suggested: WorkspaceLarryEvent[];
+  activity: WorkspaceLarryEvent[];
+  conversations: WorkspaceConversationPreview[];
   error?: string;
 }
 

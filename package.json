@@ -16,6 +16,7 @@
     "api:test": "npm run build -w @larry/shared && npm run build -w @larry/config && npm run build -w @larry/db && npm run build -w @larry/ai && npm run test -w @larry/api",
     "worker:dev": "npm run dev -w @larry/worker",
     "worker:build": "npm run build -w @larry/shared && npm run build -w @larry/config && npm run build -w @larry/db && npm run build -w @larry/ai && npm run build -w @larry/worker",
+    "worker:test": "npm run build -w @larry/shared && npm run build -w @larry/config && npm run build -w @larry/db && npm run build -w @larry/ai && npm run test -w @larry/worker",
     "worker:start": "npm run start -w @larry/worker",
     "db:migrate": "npm run migrate -w @larry/db",
     "db:seed": "npm run seed -w @larry/db",

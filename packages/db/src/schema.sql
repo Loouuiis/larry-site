@@ -351,6 +351,23 @@ CREATE TABLE IF NOT EXISTS slack_installations (
 CREATE INDEX IF NOT EXISTS idx_slack_installations_tenant
   ON slack_installations (tenant_id, updated_at DESC);
 
+CREATE TABLE IF NOT EXISTS slack_channel_project_mappings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  slack_team_id TEXT NOT NULL,
+  slack_channel_id TEXT NOT NULL,
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (tenant_id, slack_team_id, slack_channel_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_slack_channel_project_mappings_tenant_project
+  ON slack_channel_project_mappings (tenant_id, project_id, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_slack_channel_project_mappings_team_channel
+  ON slack_channel_project_mappings (tenant_id, slack_team_id, slack_channel_id);
+
 CREATE TABLE IF NOT EXISTS google_calendar_installations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -518,6 +535,7 @@ ALTER TABLE kpi_snapshots ENABLE ROW LEVEL SECURITY;
 ALTER TABLE agent_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE agent_run_transitions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE slack_installations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE slack_channel_project_mappings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE google_calendar_installations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE email_installations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE email_outbound_drafts ENABLE ROW LEVEL SECURITY;
@@ -575,6 +593,11 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 DO $$ BEGIN
   CREATE POLICY tenant_isolation_slack_installations ON slack_installations USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_slack_channel_project_mappings
+    ON slack_channel_project_mappings
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 DO $$ BEGIN
   CREATE POLICY slack_installations_system_lookup
@@ -670,8 +693,24 @@ CREATE TABLE IF NOT EXISTS larry_messages (
   role TEXT NOT NULL CHECK (role IN ('user', 'larry')),
   content TEXT NOT NULL,
   reasoning JSONB,
+  actor_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE larry_messages
+  ADD COLUMN IF NOT EXISTS actor_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+
+UPDATE larry_messages lm
+SET actor_user_id = lc.user_id
+FROM larry_conversations lc
+WHERE lm.actor_user_id IS NULL
+  AND lm.role = 'user'
+  AND lm.tenant_id = lc.tenant_id
+  AND lm.conversation_id = lc.id
+  AND lc.user_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_larry_messages_conversation_created
+  ON larry_messages (conversation_id, created_at ASC);
 
 ALTER TABLE larry_conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE larry_messages ENABLE ROW LEVEL SECURITY;
@@ -730,15 +769,83 @@ CREATE TABLE IF NOT EXISTS larry_events (
   executed_at  TIMESTAMPTZ,
   triggered_by TEXT NOT NULL CHECK (triggered_by IN ('schedule', 'login', 'chat', 'signal')),
   chat_message TEXT,
+  conversation_id UUID REFERENCES larry_conversations(id) ON DELETE SET NULL,
+  request_message_id UUID REFERENCES larry_messages(id) ON DELETE SET NULL,
+  response_message_id UUID REFERENCES larry_messages(id) ON DELETE SET NULL,
+  requested_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  approved_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  approved_at TIMESTAMPTZ,
+  dismissed_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  dismissed_at TIMESTAMPTZ,
+  executed_by_kind TEXT CHECK (executed_by_kind IN ('larry', 'user')),
+  executed_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  execution_mode TEXT CHECK (execution_mode IN ('auto', 'approval')),
+  source_kind TEXT,
+  source_record_id UUID,
 
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE larry_events
+  ADD COLUMN IF NOT EXISTS conversation_id UUID REFERENCES larry_conversations(id) ON DELETE SET NULL;
+ALTER TABLE larry_events
+  ADD COLUMN IF NOT EXISTS request_message_id UUID REFERENCES larry_messages(id) ON DELETE SET NULL;
+ALTER TABLE larry_events
+  ADD COLUMN IF NOT EXISTS response_message_id UUID REFERENCES larry_messages(id) ON DELETE SET NULL;
+ALTER TABLE larry_events
+  ADD COLUMN IF NOT EXISTS requested_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE larry_events
+  ADD COLUMN IF NOT EXISTS approved_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE larry_events
+  ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
+ALTER TABLE larry_events
+  ADD COLUMN IF NOT EXISTS dismissed_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE larry_events
+  ADD COLUMN IF NOT EXISTS dismissed_at TIMESTAMPTZ;
+ALTER TABLE larry_events
+  ADD COLUMN IF NOT EXISTS executed_by_kind TEXT CHECK (executed_by_kind IN ('larry', 'user'));
+ALTER TABLE larry_events
+  ADD COLUMN IF NOT EXISTS executed_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE larry_events
+  ADD COLUMN IF NOT EXISTS execution_mode TEXT CHECK (execution_mode IN ('auto', 'approval'));
+ALTER TABLE larry_events
+  ADD COLUMN IF NOT EXISTS source_kind TEXT;
+ALTER TABLE larry_events
+  ADD COLUMN IF NOT EXISTS source_record_id UUID;
+
+UPDATE larry_events
+SET execution_mode = CASE
+  WHEN event_type = 'auto_executed' THEN 'auto'
+  ELSE 'approval'
+END
+WHERE execution_mode IS NULL;
+
+UPDATE larry_events
+SET executed_by_kind = 'larry'
+WHERE executed_by_kind IS NULL
+  AND event_type = 'auto_executed';
+
+UPDATE larry_events
+SET source_kind = triggered_by
+WHERE source_kind IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_larry_events_project
   ON larry_events (project_id, event_type, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_larry_events_tenant_state
   ON larry_events (tenant_id, event_type, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_larry_events_project_conversation_created
+  ON larry_events (project_id, conversation_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_larry_events_request_message
+  ON larry_events (request_message_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_larry_events_response_message
+  ON larry_events (response_message_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_larry_events_source_record
+  ON larry_events (tenant_id, source_kind, source_record_id, created_at DESC);
 
 ALTER TABLE larry_events ENABLE ROW LEVEL SECURITY;
 

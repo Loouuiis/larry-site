@@ -1,26 +1,24 @@
-export interface LarryConversation {
-  id: string;
-  projectId: string | null;
-  title: string | null;
-  createdAt: string;
-  updatedAt: string;
-  lastMessagePreview?: string | null;
-  lastMessageAt?: string | null;
-}
+import type { WorkspaceConversationPreview, WorkspaceLarryEvent } from "@/app/dashboard/types";
+
+export type LarryConversation = WorkspaceConversationPreview;
 
 export interface LarryMessage {
   id: string;
   role: "user" | "larry";
   content: string;
-  reasoning?: {
-    why?: string;
-    signals?: string[];
-  };
+  reasoning: Record<string, unknown> | null;
   createdAt: string;
+  actorUserId: string | null;
+  actorDisplayName: string | null;
+  linkedActions: WorkspaceLarryEvent[];
 }
 
 export interface LarryChatResponse {
+  conversationId: string;
   message: string;
+  userMessage: LarryMessage;
+  assistantMessage: LarryMessage;
+  linkedActions: WorkspaceLarryEvent[];
   actionsExecuted: number;
   suggestionCount: number;
   error?: string;
@@ -95,11 +93,16 @@ export async function saveLarryMessage(
 export async function sendLarryChat(input: {
   projectId: string;
   message: string;
+  conversationId?: string;
 }): Promise<{ response: Response; data: LarryChatResponse }> {
   const response = await fetch("/api/workspace/larry/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ projectId: input.projectId, message: input.message }),
+    body: JSON.stringify({
+      projectId: input.projectId,
+      message: input.message,
+      conversationId: input.conversationId,
+    }),
   });
   const data = await readJson<LarryChatResponse>(response);
   return { response, data };

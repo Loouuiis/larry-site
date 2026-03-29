@@ -1,21 +1,11 @@
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { ingestCanonicalEvent } from "../../services/ingest/pipeline.js";
+import {
+  ingestCanonicalEvent,
+  insertCanonicalEventRecords,
+  publishCanonicalEventCreated,
+} from "../../services/ingest/pipeline.js";
 import { writeAuditLog } from "../../lib/audit.js";
-import { runIntelligence } from "@larry/ai";
-import { getProjectSnapshot, runAutoActions, storeSuggestions } from "@larry/db";
-import { getApiEnv } from "@larry/config";
-import type { IntelligenceConfig } from "@larry/shared";
-
-function buildIntelligenceConfig(config: ReturnType<typeof getApiEnv>): IntelligenceConfig {
-  if (config.MODEL_PROVIDER === "openai") {
-    return { provider: "openai", apiKey: config.OPENAI_API_KEY, model: config.OPENAI_MODEL };
-  }
-  if (config.MODEL_PROVIDER === "anthropic") {
-    return { provider: "anthropic", apiKey: config.ANTHROPIC_API_KEY, model: config.ANTHROPIC_MODEL };
-  }
-  return { provider: "mock", model: "mock" };
-}
 
 const BaseIngestSchema = z.object({
   sourceEventId: z.string().min(1),
@@ -109,60 +99,54 @@ export const ingestRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const body = TranscriptIngestSchema.parse(request.body);
       const tenantId = request.user.tenantId;
+      const userId = request.user.userId;
 
-      // 1. Create canonical event record
-      const result = await ingestCanonicalEvent(fastify, tenantId, {
-        source: "transcript",
-        sourceEventId: body.sourceEventId,
-        actor: body.actor,
-        occurredAt: body.occurredAt,
-        payload: {
-          ...body.payload,
-          transcript: body.transcript,
-          meetingTitle: body.meetingTitle,
-        },
+      const result = await fastify.db.tx(async (client) => {
+        await client.query("SELECT set_config('app.tenant_id', $1, true)", [tenantId]);
+
+        const meetingNoteResult = await client.query<{ id: string }>(
+          `INSERT INTO meeting_notes
+            (tenant_id, project_id, agent_run_id, title, transcript, created_by_user_id)
+           VALUES ($1, $2, NULL, $3, $4, $5)
+           RETURNING id`,
+          [tenantId, body.projectId ?? null, body.meetingTitle ?? null, body.transcript, userId]
+        );
+        const meetingNoteId = meetingNoteResult.rows[0]?.id ?? null;
+
+        const canonicalResult = await insertCanonicalEventRecords(client, tenantId, {
+          source: "transcript",
+          sourceEventId: body.sourceEventId,
+          actor: body.actor,
+          occurredAt: body.occurredAt,
+          payload: {
+            ...body.payload,
+            transcript: body.transcript,
+            meetingTitle: body.meetingTitle,
+            projectId: body.projectId,
+            meetingNoteId,
+            submittedByUserId: userId,
+          },
+        });
+
+        return { ...canonicalResult, meetingNoteId };
       });
 
-      // 2. Store meeting notes (agent_run_id is nullable — old pipeline removed)
-      const meetingNoteRows = await fastify.db.queryTenant<{ id: string }>(
-        tenantId,
-        `INSERT INTO meeting_notes
-          (tenant_id, project_id, agent_run_id, title, transcript, created_by_user_id)
-         VALUES ($1, $2, NULL, $3, $4, $5)
-         RETURNING id`,
-        [tenantId, body.projectId ?? null, body.meetingTitle ?? null, body.transcript, request.user.userId]
-      );
-      const meetingNoteId = meetingNoteRows[0]?.id;
-
-      // 3. Run intelligence on the transcript if a project is provided — best-effort
-      if (body.projectId) {
-        try {
-          const config = buildIntelligenceConfig(fastify.config);
-          const snapshot = await getProjectSnapshot(fastify.db, tenantId, body.projectId);
-          const intelligenceResult = await runIntelligence(
-            config,
-            snapshot,
-            `transcript: "${body.transcript.slice(0, 500)}"`
-          );
-          await Promise.all([
-            runAutoActions(fastify.db, tenantId, body.projectId, "signal", intelligenceResult.autoActions),
-            storeSuggestions(fastify.db, tenantId, body.projectId, "signal", intelligenceResult.suggestedActions),
-          ]);
-        } catch (err) {
-          // Don't fail the ingest — transcript is stored, intelligence is best-effort
-          request.log.warn({ err, tenantId, projectId: body.projectId }, "transcript intelligence failed");
-        }
-      }
+      await publishCanonicalEventCreated(fastify, tenantId, result);
 
       await writeAuditLog(fastify.db, {
         tenantId,
-        actorUserId: request.user.userId,
+        actorUserId: userId,
         actionType: "ingest.transcript",
         objectType: "meeting_note",
-        objectId: meetingNoteId ?? result.canonicalEventId,
+        objectId: result.meetingNoteId ?? result.canonicalEventId,
       });
 
-      return reply.code(202).send({ accepted: true, ...result });
+      return reply.code(202).send({
+        accepted: true,
+        canonicalEventId: result.canonicalEventId,
+        idempotencyKey: result.idempotencyKey,
+        meetingNoteId: result.meetingNoteId,
+      });
     }
   );
 };

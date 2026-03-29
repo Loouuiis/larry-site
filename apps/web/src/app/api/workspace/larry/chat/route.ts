@@ -6,6 +6,7 @@ import { persistSession, proxyApiRequest } from "@/lib/workspace-proxy";
 const ChatSchema = z.object({
   projectId: z.string().uuid(),
   message: z.string().min(1).max(8000),
+  conversationId: z.string().uuid().optional(),
 });
 
 export async function POST(request: NextRequest) {

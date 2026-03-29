@@ -1,13 +1,14 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { LarryChat } from "./LarryChat";
 import { WorkspaceSidebar, type WorkspaceSidebarNav } from "@/components/dashboard/Sidebar";
-import type { WorkspaceSnapshot } from "@/app/dashboard/types";
+import type { WorkspaceProject } from "@/app/dashboard/types";
 import { MeetingTranscriptModal } from "./MeetingTranscriptModal";
 import { WorkspaceChromeProvider } from "./WorkspaceChromeContext";
 import { WorkspaceTopBar } from "./WorkspaceTopBar";
+import { triggerBoundedWorkspaceRefresh } from "./refresh";
 
 async function readJson<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -26,11 +27,11 @@ type WorkspaceShellProps = {
 
 export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
   const pathname = usePathname();
-  const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
+  const [projects, setProjects] = useState<WorkspaceProject[]>([]);
   const [meetingOpen, setMeetingOpen] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [meetingBusy, setMeetingBusy] = useState(false);
-  const [notifCount, setNotifCount] = useState(0);
+  const [notifCount] = useState(0);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const projectIdFromPath = pathname?.match(/^\/workspace\/projects\/([^/]+)/)?.[1] ?? "";
@@ -38,6 +39,7 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
   const activeNav: WorkspaceSidebarNav = useMemo(() => {
     if (pathname === "/workspace") return "home";
     if (pathname?.startsWith("/workspace/my-work")) return "my-work";
+    if (pathname?.startsWith("/workspace/actions")) return "actions";
     if (pathname?.startsWith("/workspace/meetings")) return "meetings";
     if (pathname?.startsWith("/workspace/documents")) return "documents";
     if (pathname?.startsWith("/workspace/chats")) return "chats";
@@ -46,61 +48,55 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
   }, [pathname]);
 
   const loadShell = useCallback(async () => {
-    const q = projectIdFromPath
-      ? `?projectId=${encodeURIComponent(projectIdFromPath)}`
-      : "?includeProjectContext=false";
     try {
-      const res = await fetch(`/api/workspace/snapshot${q}`, { cache: "no-store" });
-      const data = await readJson<WorkspaceSnapshot>(res);
-      if (res.ok) {
-        setSnapshot(data);
+      const response = await fetch("/api/workspace/projects", { cache: "no-store" });
+      const payload = await readJson<{ items?: WorkspaceProject[] }>(response);
+      if (response.ok) {
+        setProjects(Array.isArray(payload.items) ? payload.items : []);
       }
     } catch {
-      // no-op
+      // Keep the shell mounted even if project list refresh fails.
     }
-  }, [projectIdFromPath]);
+  }, []);
 
   useEffect(() => {
     void loadShell();
   }, [loadShell]);
 
   useEffect(() => {
-    function onRefresh() { void loadShell(); }
+    function onRefresh() {
+      void loadShell();
+    }
+
     window.addEventListener("larry:refresh-snapshot", onRefresh);
     return () => window.removeEventListener("larry:refresh-snapshot", onRefresh);
   }, [loadShell]);
 
   const onMeetingSubmit = useCallback(async () => {
-    const t = transcript.trim();
-    if (t.length < 20) return;
+    const trimmedTranscript = transcript.trim();
+    if (trimmedTranscript.length < 20) return;
+
     setMeetingBusy(true);
     try {
-      const res = await fetch("/api/workspace/meetings/transcript", {
+      const response = await fetch("/api/workspace/meetings/transcript", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          transcript: t,
+          transcript: trimmedTranscript,
           projectId: projectIdFromPath || undefined,
         }),
       });
-      if (res.ok) {
+
+      if (response.ok) {
         setTranscript("");
         setMeetingOpen(false);
         await loadShell();
-        window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
+        triggerBoundedWorkspaceRefresh();
       }
     } finally {
       setMeetingBusy(false);
     }
-  }, [transcript, projectIdFromPath, loadShell]);
-
-  const connectorDots = [
-    { key: "slack" as const, label: "Slack", connected: Boolean(snapshot?.connectors?.slack?.connected) },
-    { key: "calendar" as const, label: "Calendar", connected: Boolean(snapshot?.connectors?.calendar?.connected) },
-    { key: "email" as const, label: "Email", connected: Boolean(snapshot?.connectors?.email?.connected) },
-  ];
-
-  const projects = snapshot?.projects ?? [];
+  }, [loadShell, projectIdFromPath, transcript]);
 
   return (
     <WorkspaceChromeProvider
@@ -109,7 +105,7 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
         refreshShell: loadShell,
         notifCount,
         openLarry: () => window.dispatchEvent(new CustomEvent("larry:open")),
-        pushLarryMessage: (msg) => window.dispatchEvent(new CustomEvent("larry:push", { detail: msg })),
+        pushLarryMessage: (message) => window.dispatchEvent(new CustomEvent("larry:push", { detail: message })),
       }}
     >
       <div className="workspace-root dashboard-root flex h-screen overflow-hidden bg-[var(--pm-bg)] text-[var(--pm-text)]">
@@ -122,10 +118,7 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
           notifCount={notifCount}
         />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <WorkspaceTopBar
-            userEmail={userEmail}
-            onMobileMenuOpen={() => setMobileOpen(true)}
-          />
+          <WorkspaceTopBar userEmail={userEmail} onMobileMenuOpen={() => setMobileOpen(true)} />
           {children}
         </div>
       </div>
@@ -137,9 +130,7 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
         onSubmit={onMeetingSubmit}
         busy={meetingBusy}
       />
-      <LarryChat
-        projectId={projectIdFromPath || undefined}
-      />
+      <LarryChat projectId={projectIdFromPath || undefined} />
     </WorkspaceChromeProvider>
   );
 }

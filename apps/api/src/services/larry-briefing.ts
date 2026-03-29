@@ -1,4 +1,4 @@
-import { Db, getProjectSnapshot } from "@larry/db";
+import { Db, backfillLarryEventSourceRecord, getProjectSnapshot } from "@larry/db";
 import { runIntelligence } from "@larry/ai";
 import type { IntelligenceConfig } from "@larry/shared";
 import { runAutoActions, storeSuggestions, getPendingSuggestionTexts } from "@larry/db";
@@ -68,6 +68,10 @@ export async function generateBriefing(
   //    projects are logged and skipped so one bad project can't kill the briefing
   const settled = await Promise.allSettled(
     projectRows.map(async (project) => {
+      const ledgerContext = {
+        requesterUserId: userId,
+        sourceKind: "briefing",
+      } as const;
       const [snapshot, pendingTexts] = await Promise.all([
         getProjectSnapshot(db, tenantId, project.id),
         getPendingSuggestionTexts(db, tenantId, project.id).catch(() => [] as string[]),
@@ -75,8 +79,8 @@ export async function generateBriefing(
       const result = await runIntelligence(config, snapshot, `user logged in${buildPendingClause(pendingTexts)}`);
 
       const [autoResult, suggestResult] = await Promise.all([
-        runAutoActions(db, tenantId, project.id, "login", result.autoActions),
-        storeSuggestions(db, tenantId, project.id, "login", result.suggestedActions),
+        runAutoActions(db, tenantId, project.id, "login", result.autoActions, undefined, ledgerContext),
+        storeSuggestions(db, tenantId, project.id, "login", result.suggestedActions, undefined, ledgerContext),
       ]);
 
       return { project, result, autoResult, suggestResult };
@@ -122,7 +126,10 @@ export async function generateBriefing(
     [tenantId, userId, JSON.stringify(content), allEventIds]
   );
 
-  return { content, briefingId: briefingRows[0].id };
+  const briefingId = briefingRows[0].id;
+  await backfillLarryEventSourceRecord(db, tenantId, allEventIds, "briefing", briefingId);
+
+  return { content, briefingId };
 }
 
 /**

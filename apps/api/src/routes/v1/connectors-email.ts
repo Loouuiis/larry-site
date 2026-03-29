@@ -29,6 +29,7 @@ const EmailInboundBodySchema = z.object({
   from: z.string().optional(),
   subject: z.string().min(1),
   bodyText: z.string().min(1),
+  projectId: z.string().uuid().optional(),
   occurredAt: z.string().datetime().optional(),
   threadId: z.string().optional(),
 });
@@ -224,6 +225,7 @@ export const emailConnectorRoutes: FastifyPluginAsync = async (fastify) => {
         from: body.from ?? null,
         subject: body.subject,
         bodyText: body.bodyText,
+        projectId: body.projectId ?? null,
         threadId: body.threadId ?? null,
       },
     });

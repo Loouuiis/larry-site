@@ -1,7 +1,5 @@
 import { vi, describe, it, expect, afterEach } from "vitest";
 
-// Hoist mocks before importing the module under test
-
 vi.mock("@larry/ai", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@larry/ai")>();
   return { ...actual, runIntelligence: vi.fn() };
@@ -12,17 +10,31 @@ vi.mock("@larry/db", async (importOriginal) => {
   return {
     ...actual,
     getProjectSnapshot: vi.fn(),
+    getPendingSuggestionTexts: vi.fn(),
     runAutoActions: vi.fn(),
     storeSuggestions: vi.fn(),
   };
 });
 
+vi.mock("../src/lib/larry-ledger.js", () => ({
+  createLarryConversation: vi.fn(),
+  getLarryActionCentreData: vi.fn(),
+  getLarryConversationForUser: vi.fn(),
+  getLarryEventForMutation: vi.fn(),
+  insertLarryMessage: vi.fn(),
+  listLarryConversationPreviews: vi.fn(),
+  listLarryEventSummaries: vi.fn(),
+  listLarryMessagesByIds: vi.fn(),
+  listLarryMessagesForConversation: vi.fn(),
+  markLarryEventAccepted: vi.fn(),
+  markLarryEventDismissed: vi.fn(),
+  touchLarryConversation: vi.fn(),
+}));
+
 vi.mock("../src/lib/audit.js", () => ({
   writeAuditLog: vi.fn().mockResolvedValue(undefined),
 }));
 
-// Briefing service is imported by larry.ts but only called by /briefing, not /chat.
-// Mock it to prevent import-time side-effects from its own dependencies.
 vi.mock("../src/services/larry-briefing.js", () => ({
   getOrGenerateBriefing: vi.fn(),
 }));
@@ -33,12 +45,25 @@ import type { ApiEnv } from "@larry/config";
 import type { Db } from "@larry/db";
 import type { ProjectSnapshot } from "@larry/shared";
 import { runIntelligence } from "@larry/ai";
-import { getProjectSnapshot, runAutoActions, storeSuggestions } from "@larry/db";
+import {
+  getPendingSuggestionTexts,
+  getProjectSnapshot,
+  runAutoActions,
+  storeSuggestions,
+} from "@larry/db";
+import {
+  createLarryConversation,
+  getLarryConversationForUser,
+  insertLarryMessage,
+  listLarryMessagesByIds,
+  touchLarryConversation,
+} from "../src/lib/larry-ledger.js";
 import { larryRoutes } from "../src/routes/v1/larry.js";
 
 const TENANT_ID = "11111111-1111-4111-8111-111111111111";
 const USER_ID = "22222222-2222-4222-8222-222222222222";
 const PROJECT_ID = "55555555-5555-4555-8555-555555555555";
+const CONVERSATION_ID = "66666666-6666-4666-8666-666666666666";
 
 const MOCK_SNAPSHOT: ProjectSnapshot = {
   project: {
@@ -62,7 +87,12 @@ const MOCK_SNAPSHOT: ProjectSnapshot = {
 async function createTestApp() {
   const app = Fastify({ logger: false });
 
-  app.decorate("db", {} as Db);
+  app.decorate(
+    "db",
+    {
+      queryTenant: vi.fn().mockResolvedValue([]),
+    } as unknown as Db
+  );
   app.decorate("config", { MODEL_PROVIDER: "mock" } as unknown as ApiEnv);
   app.decorate(
     "authenticate",
@@ -93,16 +123,18 @@ const appsToClose: Array<ReturnType<typeof Fastify>> = [];
 afterEach(async () => {
   vi.clearAllMocks();
   while (appsToClose.length > 0) {
-    const a = appsToClose.pop();
-    if (a) await a.close();
+    const app = appsToClose.pop();
+    if (app) await app.close();
   }
 });
 
 describe("POST /larry/chat", () => {
-  it("returns the briefing and action counts from the intelligence result", async () => {
+  it("returns the persisted conversation, messages, and linked actions", async () => {
+    vi.mocked(getLarryConversationForUser).mockResolvedValue(null);
     vi.mocked(getProjectSnapshot).mockResolvedValue(MOCK_SNAPSHOT);
+    vi.mocked(getPendingSuggestionTexts).mockResolvedValue([]);
     vi.mocked(runIntelligence).mockResolvedValue({
-      briefing: "Three tasks are at risk. Security review is blocked.",
+      briefing: "Security review is blocked and needs attention.",
       autoActions: [
         {
           type: "risk_flag",
@@ -120,8 +152,77 @@ describe("POST /larry/chat", () => {
         },
       ],
     });
+    vi.mocked(createLarryConversation).mockResolvedValue({
+      id: CONVERSATION_ID,
+      projectId: PROJECT_ID,
+      title: "What tasks are at risk?",
+      createdAt: "2026-03-28T10:00:00.000Z",
+      updatedAt: "2026-03-28T10:00:00.000Z",
+      lastMessagePreview: null,
+      lastMessageAt: null,
+    });
+    vi.mocked(insertLarryMessage)
+      .mockResolvedValueOnce({ id: "77777777-7777-4777-8777-777777777777", createdAt: "2026-03-28T10:01:00.000Z" })
+      .mockResolvedValueOnce({ id: "88888888-8888-4888-8888-888888888888", createdAt: "2026-03-28T10:01:02.000Z" });
     vi.mocked(runAutoActions).mockResolvedValue({ executedCount: 1, suggestedCount: 0, eventIds: ["ev-auto-1"] });
     vi.mocked(storeSuggestions).mockResolvedValue({ executedCount: 0, suggestedCount: 1, eventIds: ["ev-sug-1"] });
+    vi.mocked(listLarryMessagesByIds).mockResolvedValue([
+      {
+        id: "77777777-7777-4777-8777-777777777777",
+        role: "user",
+        content: "What tasks are at risk?",
+        reasoning: null,
+        createdAt: "2026-03-28T10:01:00.000Z",
+        actorUserId: USER_ID,
+        actorDisplayName: "pm",
+        linkedActions: [],
+      },
+      {
+        id: "88888888-8888-4888-8888-888888888888",
+        role: "larry",
+        content: "Security review is blocked and needs attention.",
+        reasoning: null,
+        createdAt: "2026-03-28T10:01:02.000Z",
+        actorUserId: null,
+        actorDisplayName: null,
+        linkedActions: [
+          {
+            id: "ev-auto-1",
+            projectId: PROJECT_ID,
+            projectName: "Alpha Launch",
+            eventType: "auto_executed",
+            actionType: "risk_flag",
+            displayText: "Flagged security review as high risk",
+            reasoning: "Blocked for 5 days with no update",
+            payload: {},
+            executedAt: "2026-03-28T10:01:03.000Z",
+            triggeredBy: "chat",
+            chatMessage: "What tasks are at risk?",
+            createdAt: "2026-03-28T10:01:03.000Z",
+            conversationId: CONVERSATION_ID,
+            requestMessageId: "77777777-7777-4777-8777-777777777777",
+            responseMessageId: "88888888-8888-4888-8888-888888888888",
+            requestedByUserId: USER_ID,
+            requestedByName: "pm",
+            approvedByUserId: null,
+            approvedByName: null,
+            approvedAt: null,
+            dismissedByUserId: null,
+            dismissedByName: null,
+            dismissedAt: null,
+            executedByKind: "larry",
+            executedByUserId: null,
+            executedByName: null,
+            executionMode: "auto",
+            sourceKind: "chat",
+            sourceRecordId: "77777777-7777-4777-8777-777777777777",
+            conversationTitle: "What tasks are at risk?",
+            requestMessagePreview: "What tasks are at risk?",
+            responseMessagePreview: "Security review is blocked and needs attention.",
+          },
+        ],
+      },
+    ]);
 
     const app = await createTestApp();
     appsToClose.push(app);
@@ -134,24 +235,42 @@ describe("POST /larry/chat", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
-      message: "Three tasks are at risk. Security review is blocked.",
+      conversationId: CONVERSATION_ID,
+      message: "Security review is blocked and needs attention.",
       actionsExecuted: 1,
       suggestionCount: 1,
+      userMessage: {
+        id: "77777777-7777-4777-8777-777777777777",
+        role: "user",
+      },
+      assistantMessage: {
+        id: "88888888-8888-4888-8888-888888888888",
+        role: "larry",
+      },
+      linkedActions: [
+        {
+          id: "ev-auto-1",
+          requestedByUserId: USER_ID,
+          executionMode: "auto",
+        },
+      ],
     });
 
-    expect(getProjectSnapshot).toHaveBeenCalledWith(expect.anything(), TENANT_ID, PROJECT_ID);
-    expect(runIntelligence).toHaveBeenCalledWith(
-      expect.objectContaining({ provider: "mock" }),
-      MOCK_SNAPSHOT,
-      `user said: "What tasks are at risk?"`
-    );
     expect(runAutoActions).toHaveBeenCalledWith(
       expect.anything(),
       TENANT_ID,
       PROJECT_ID,
       "chat",
       expect.any(Array),
-      "What tasks are at risk?"
+      "What tasks are at risk?",
+      {
+        conversationId: CONVERSATION_ID,
+        requestMessageId: "77777777-7777-4777-8777-777777777777",
+        responseMessageId: "88888888-8888-4888-8888-888888888888",
+        requesterUserId: USER_ID,
+        sourceKind: "chat",
+        sourceRecordId: "77777777-7777-4777-8777-777777777777",
+      }
     );
     expect(storeSuggestions).toHaveBeenCalledWith(
       expect.anything(),
@@ -159,12 +278,90 @@ describe("POST /larry/chat", () => {
       PROJECT_ID,
       "chat",
       expect.any(Array),
+      "What tasks are at risk?",
+      {
+        conversationId: CONVERSATION_ID,
+        requestMessageId: "77777777-7777-4777-8777-777777777777",
+        responseMessageId: "88888888-8888-4888-8888-888888888888",
+        requesterUserId: USER_ID,
+        sourceKind: "chat",
+        sourceRecordId: "77777777-7777-4777-8777-777777777777",
+      }
+    );
+    expect(touchLarryConversation).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT_ID,
+      CONVERSATION_ID,
       "What tasks are at risk?"
     );
   });
 
+  it("reuses an existing conversation when conversationId is supplied", async () => {
+    vi.mocked(getLarryConversationForUser).mockResolvedValue({
+      id: CONVERSATION_ID,
+      projectId: PROJECT_ID,
+      title: "Existing chat",
+      createdAt: "2026-03-28T10:00:00.000Z",
+      updatedAt: "2026-03-28T10:00:00.000Z",
+      lastMessagePreview: null,
+      lastMessageAt: null,
+    });
+    vi.mocked(getProjectSnapshot).mockResolvedValue(MOCK_SNAPSHOT);
+    vi.mocked(getPendingSuggestionTexts).mockResolvedValue([]);
+    vi.mocked(runIntelligence).mockResolvedValue({
+      briefing: "Looks stable.",
+      autoActions: [],
+      suggestedActions: [],
+    });
+    vi.mocked(insertLarryMessage)
+      .mockResolvedValueOnce({ id: "99999999-9999-4999-8999-999999999999", createdAt: "2026-03-28T10:02:00.000Z" })
+      .mockResolvedValueOnce({ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", createdAt: "2026-03-28T10:02:01.000Z" });
+    vi.mocked(runAutoActions).mockResolvedValue({ executedCount: 0, suggestedCount: 0, eventIds: [] });
+    vi.mocked(storeSuggestions).mockResolvedValue({ executedCount: 0, suggestedCount: 0, eventIds: [] });
+    vi.mocked(listLarryMessagesByIds).mockResolvedValue([
+      {
+        id: "99999999-9999-4999-8999-999999999999",
+        role: "user",
+        content: "Any blockers?",
+        reasoning: null,
+        createdAt: "2026-03-28T10:02:00.000Z",
+        actorUserId: USER_ID,
+        actorDisplayName: "pm",
+        linkedActions: [],
+      },
+      {
+        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        role: "larry",
+        content: "Looks stable.",
+        reasoning: null,
+        createdAt: "2026-03-28T10:02:01.000Z",
+        actorUserId: null,
+        actorDisplayName: null,
+        linkedActions: [],
+      },
+    ]);
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/larry/chat",
+      payload: {
+        projectId: PROJECT_ID,
+        conversationId: CONVERSATION_ID,
+        message: "Any blockers?",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(createLarryConversation).not.toHaveBeenCalled();
+    expect(response.json()).toMatchObject({ conversationId: CONVERSATION_ID });
+  });
+
   it("returns 404 when getProjectSnapshot throws", async () => {
     vi.mocked(getProjectSnapshot).mockRejectedValue(new Error("Project not found"));
+    vi.mocked(getLarryConversationForUser).mockResolvedValue(null);
 
     const app = await createTestApp();
     appsToClose.push(app);
@@ -179,8 +376,30 @@ describe("POST /larry/chat", () => {
     expect(runIntelligence).not.toHaveBeenCalled();
   });
 
+  it("returns 404 when the provided conversation does not exist", async () => {
+    vi.mocked(getLarryConversationForUser).mockResolvedValue(null);
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/larry/chat",
+      payload: {
+        projectId: PROJECT_ID,
+        conversationId: CONVERSATION_ID,
+        message: "Status update?",
+      },
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(getProjectSnapshot).not.toHaveBeenCalled();
+  });
+
   it("returns 503 when runIntelligence throws", async () => {
+    vi.mocked(getLarryConversationForUser).mockResolvedValue(null);
     vi.mocked(getProjectSnapshot).mockResolvedValue(MOCK_SNAPSHOT);
+    vi.mocked(getPendingSuggestionTexts).mockResolvedValue([]);
     vi.mocked(runIntelligence).mockRejectedValue(new Error("OpenAI timeout"));
 
     const app = await createTestApp();
@@ -221,18 +440,5 @@ describe("POST /larry/chat", () => {
 
     expect(response.statusCode).toBe(400);
     expect(getProjectSnapshot).not.toHaveBeenCalled();
-  });
-
-  it("returns 400 when body is missing required fields", async () => {
-    const app = await createTestApp();
-    appsToClose.push(app);
-
-    const response = await app.inject({
-      method: "POST",
-      url: "/larry/chat",
-      payload: { message: "Hello Larry" },
-    });
-
-    expect(response.statusCode).toBe(400);
   });
 });

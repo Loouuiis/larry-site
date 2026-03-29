@@ -1,9 +1,25 @@
-import type { LarryAction, LarryActionType, LarryEventType } from "@larry/shared";
+import type {
+  LarryAction,
+  LarryActionType,
+  LarryExecutedByKind,
+  LarryEventType,
+  LarryExecutionMode,
+  LarryTriggeredBy,
+} from "@larry/shared";
 import { Db } from "./client.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type TriggeredBy = "schedule" | "login" | "chat" | "signal";
+export type TriggeredBy = LarryTriggeredBy;
+
+export interface LarryEventContext {
+  conversationId?: string | null;
+  requestMessageId?: string | null;
+  responseMessageId?: string | null;
+  requesterUserId?: string | null;
+  sourceKind?: string | null;
+  sourceRecordId?: string | null;
+}
 
 export interface ExecutorResult {
   executedCount: number;
@@ -127,13 +143,18 @@ async function insertLarryEvent(
   eventType: LarryEventType,
   triggeredBy: TriggeredBy,
   chatMessage: string | undefined,
-  executed: boolean
+  executed: boolean,
+  context?: LarryEventContext
 ): Promise<string> {
+  const executionMode: LarryExecutionMode = eventType === "auto_executed" ? "auto" : "approval";
+  const executedByKind: LarryExecutedByKind | null = eventType === "auto_executed" ? "larry" : null;
   const rows = await db.queryTenant<{ id: string }>(
     tenantId,
     `INSERT INTO larry_events
-       (tenant_id, project_id, event_type, action_type, display_text, reasoning, payload, executed_at, triggered_by, chat_message)
-     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10)
+       (tenant_id, project_id, event_type, action_type, display_text, reasoning, payload, executed_at, triggered_by, chat_message,
+        conversation_id, request_message_id, response_message_id, requested_by_user_id, executed_by_kind, execution_mode, source_kind, source_record_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10,
+             $11, $12, $13, $14, $15, $16, $17, $18)
      RETURNING id`,
     [
       tenantId,
@@ -146,6 +167,14 @@ async function insertLarryEvent(
       executed ? new Date().toISOString() : null,
       triggeredBy,
       chatMessage ?? null,
+      context?.conversationId ?? null,
+      context?.requestMessageId ?? null,
+      context?.responseMessageId ?? null,
+      context?.requesterUserId ?? null,
+      executedByKind,
+      executionMode,
+      context?.sourceKind ?? triggeredBy,
+      context?.sourceRecordId ?? null,
     ]
   );
   return rows[0].id;
@@ -477,7 +506,8 @@ export async function runAutoActions(
   projectId: string,
   triggeredBy: TriggeredBy,
   actions: LarryAction[],
-  chatMessage?: string
+  chatMessage?: string,
+  context?: LarryEventContext
 ): Promise<ExecutorResult> {
   const eventIds: string[] = [];
   let executedCount = 0;
@@ -487,7 +517,17 @@ export async function runAutoActions(
     // throws, we can delete it and avoid leaving an invisible mutation with no audit trail.
     let eventId: string;
     try {
-      eventId = await insertLarryEvent(db, tenantId, projectId, action, "auto_executed", triggeredBy, chatMessage, false);
+      eventId = await insertLarryEvent(
+        db,
+        tenantId,
+        projectId,
+        action,
+        "auto_executed",
+        triggeredBy,
+        chatMessage,
+        false,
+        context
+      );
     } catch (err) {
       console.error(`runAutoActions: failed to create event record for "${action.type}"`, {
         actionType: action.type,
@@ -502,7 +542,10 @@ export async function runAutoActions(
       await executeAction(db, tenantId, projectId, action.type, action.payload);
       await db.queryTenant(
         tenantId,
-        `UPDATE larry_events SET executed_at = NOW() WHERE tenant_id = $1 AND id = $2`,
+        `UPDATE larry_events
+         SET executed_at = NOW(),
+             executed_by_kind = COALESCE(executed_by_kind, 'larry')
+         WHERE tenant_id = $1 AND id = $2`,
         [tenantId, eventId]
       );
       eventIds.push(eventId);
@@ -549,6 +592,48 @@ export async function getPendingSuggestionTexts(
   return rows.map((r) => `${r.action_type}: ${r.display_text}`);
 }
 
+export async function listLarryEventIdsBySource(
+  db: Db,
+  tenantId: string,
+  sourceKind: string,
+  sourceRecordId: string
+): Promise<string[]> {
+  if (!sourceRecordId) return [];
+
+  const rows = await db.queryTenant<{ id: string }>(
+    tenantId,
+    `SELECT id
+     FROM larry_events
+     WHERE tenant_id = $1
+       AND source_kind = $2
+       AND source_record_id = $3
+     ORDER BY created_at ASC`,
+    [tenantId, sourceKind, sourceRecordId]
+  );
+
+  return rows.map((row) => row.id);
+}
+
+export async function backfillLarryEventSourceRecord(
+  db: Db,
+  tenantId: string,
+  eventIds: string[],
+  sourceKind: string,
+  sourceRecordId: string
+): Promise<void> {
+  if (eventIds.length === 0) return;
+
+  await db.queryTenant(
+    tenantId,
+    `UPDATE larry_events
+     SET source_kind = COALESCE(source_kind, $3),
+         source_record_id = $4
+     WHERE tenant_id = $1
+       AND id = ANY($2::uuid[])`,
+    [tenantId, eventIds, sourceKind, sourceRecordId]
+  );
+}
+
 /**
  * Store suggested actions from an IntelligenceResult without executing them.
  * Skips any action that is already pending (same action_type + display_text)
@@ -560,7 +645,8 @@ export async function storeSuggestions(
   projectId: string,
   triggeredBy: TriggeredBy,
   actions: LarryAction[],
-  chatMessage?: string
+  chatMessage?: string,
+  context?: LarryEventContext
 ): Promise<ExecutorResult> {
   // Fetch existing pending suggestions once for dedup comparison
   const existingRows = await db.queryTenant<{ action_type: string; display_text: string }>(
@@ -582,7 +668,17 @@ export async function storeSuggestions(
   for (const action of actions) {
     const key = `${action.type}||${action.displayText.toLowerCase()}`;
     if (existingKeys.has(key)) continue; // already pending — skip
-    const eventId = await insertLarryEvent(db, tenantId, projectId, action, "suggested", triggeredBy, chatMessage, false);
+    const eventId = await insertLarryEvent(
+      db,
+      tenantId,
+      projectId,
+      action,
+      "suggested",
+      triggeredBy,
+      chatMessage,
+      false,
+      context
+    );
     eventIds.push(eventId);
     existingKeys.add(key); // guard against duplicates within the same batch
     suggestedCount++;
