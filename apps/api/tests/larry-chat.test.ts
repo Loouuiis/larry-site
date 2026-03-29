@@ -524,7 +524,7 @@ describe("POST /larry/transcript", () => {
   it("accepts transcript uploads and runs best-effort intelligence for project-scoped payloads", async () => {
     vi.mocked(ingestCanonicalEvent).mockResolvedValue({
       canonicalEventId: "canon-event-1",
-      queued: true,
+      idempotencyKey: "idem-1",
     });
     vi.mocked(getProjectSnapshot).mockResolvedValue(MOCK_SNAPSHOT);
     vi.mocked(runIntelligence).mockResolvedValue({
@@ -597,7 +597,7 @@ describe("POST /ingest/transcript compatibility shim", () => {
   it("forwards to /larry/transcript and returns deprecation metadata", async () => {
     vi.mocked(ingestCanonicalEvent).mockResolvedValue({
       canonicalEventId: "canon-event-2",
-      queued: true,
+      idempotencyKey: "idem-2",
     });
     vi.mocked(getProjectSnapshot).mockResolvedValue(MOCK_SNAPSHOT);
     vi.mocked(runIntelligence).mockResolvedValue({
