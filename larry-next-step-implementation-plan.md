@@ -69,23 +69,37 @@ Implemented:
 Validation run:
 - `npm run test -w @larry/api -- larry-chat.test.ts` passed (12/12).
 
-## Next Smallest Slice (recommended)
-
-### Slice 2026-03-29-D (next)
+### Slice 2026-03-29-D (implemented)
 
 Goal: update docs and remove stale endpoint narratives so plan/docs match shipped behavior.
 
+Implemented:
+- Updated `docs/LARRY-INTELLIGENCE-PLAN.md` API section to reflect current implemented contracts:
+  - `GET /v1/larry/action-centre` is the live listing endpoint
+  - `GET /v1/larry/events` is currently retired (`410`)
+  - `POST /v1/larry/transcript` is canonical transcript endpoint
+- Added explicit compatibility note for `POST /v1/ingest/transcript` shim.
+- Added shim deprecation metadata and removal criteria in docs.
+- Re-verified no web callers use `/v1/ingest/transcript`.
+
+Validation run:
+- Docs alignment slice; no runtime code changes required.
+
+## Next Smallest Slice (recommended)
+
+### Slice 2026-03-29-E (next)
+
+Goal: begin cleanup/removal phase for legacy intelligence tables and dead route narratives.
+
 Plan:
-1. Update `docs/LARRY-INTELLIGENCE-PLAN.md` endpoint section with implemented/current contracts.
-2. Add a short deprecation note for `/v1/ingest/transcript` compatibility window.
-3. Verify no web callers point to `/v1/ingest/transcript`.
-4. Decide removal timing for shim after downstream clients migrate.
+1. Add a migration plan for dropping `agent_runs`, `agent_run_transitions`, `extracted_actions`, and `interventions` safely.
+2. Identify any remaining read/write paths touching those tables.
+3. Gate table removal behind verification checks in staging/prod.
+4. Update docs to mark cleanup complete once migration lands.
 
 Definition of done:
-- Docs match repo behavior for larry/ingest transcript flows.
-- Deprecation path and removal criteria are explicit for the next agent.
+- Cleanup migration plan is executable and mapped to concrete code paths.
 
 ## Notes
 
-- This repo currently has no `codex/implement-next-step` branch checked out locally (current branch observed: `master`).
-- If branch-level slice commits are required, switch/create that branch before the next slice.
+- Current branch for this execution stream: `codex/implement-next-step`.

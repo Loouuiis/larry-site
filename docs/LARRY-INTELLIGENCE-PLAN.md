@@ -218,7 +218,9 @@ TRIGGER 4: SIGNAL
 
 ## Data Model
 
-Two new tables replace `extracted_actions`, `agent_runs`, `agent_run_transitions`, `interventions`, and `canonical_events` for the core intelligence loop.
+Target state: `larry_events` and `larry_briefings` are the primary intelligence-loop tables.
+
+Current state note: legacy tables (`agent_runs`, `agent_run_transitions`, `extracted_actions`, `interventions`) still exist in schema and cleanup is tracked as a separate follow-up phase.
 
 ### `larry_events`
 ```sql
@@ -276,17 +278,24 @@ CREATE INDEX larry_briefings_user ON larry_briefings(user_id, created_at DESC);
 
 ## API Endpoints
 
-### New endpoints
+### Current endpoints (implemented)
 | Method | Path | What it does |
 |--------|------|--------------|
 | `GET` | `/v1/larry/briefing` | Get or generate login briefing for current user |
 | `POST` | `/v1/larry/chat` | Send chat message, get response + actions |
-| `GET` | `/v1/larry/events?projectId=&state=` | List larry_events for a project |
+| `GET` | `/v1/larry/action-centre?projectId=` | List larry event summaries for project/global action centre |
 | `POST` | `/v1/larry/events/:id/accept` | Accept a suggested action → execute it |
 | `POST` | `/v1/larry/events/:id/dismiss` | Dismiss a suggested action |
 | `POST` | `/v1/larry/transcript` | Submit meeting transcript → extract actions |
 
-### Removed endpoints (from the old pipeline)
+### Compatibility endpoints (temporary)
+- `POST /v1/ingest/transcript` remains available as a compatibility shim.
+- Shim behavior: forwards internally to `POST /v1/larry/transcript` and returns the same status/body.
+- Shim metadata:
+  - Response header: `x-larry-deprecated-endpoint: /v1/ingest/transcript`
+  - Response body fields: `deprecatedEndpoint`, `replacementEndpoint`
+
+### Deprecated/retired endpoints
 - `POST /v1/agent/runs` — replaced by triggers above
 - `GET /v1/agent/actions` — replaced by `GET /v1/larry/events`
 - `POST /v1/actions/:id/approve` — replaced by `POST /v1/larry/events/:id/accept`
@@ -294,6 +303,13 @@ CREATE INDEX larry_briefings_user ON larry_briefings(user_id, created_at DESC);
 - `POST /v1/actions/:id/override` — removed
 - `POST /v1/agent/actions/:id/correct` — removed
 - `POST /v1/larry/commands` — replaced by `POST /v1/larry/chat`
+- `GET /v1/larry/events` — retired in current implementation (`410`), replaced by `GET /v1/larry/action-centre`
+
+### Transcript shim removal criteria
+Remove `POST /v1/ingest/transcript` compatibility shim when all of the following are true:
+1. No first-party web callers use `/v1/ingest/transcript` (currently true).
+2. No third-party or automation clients rely on shim responses for one full release window.
+3. Action-centre and meeting transcript flows are stable in production on `/v1/larry/transcript`.
 
 ---
 
