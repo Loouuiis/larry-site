@@ -10,7 +10,7 @@ Larry v1 is a **standalone PM platform**. Larry Workspace is the system of recor
 
 1. **Larry Workspace** — tenancy, RBAC, projects, tasks, dependencies, status/risk, approvals, audit, Action Centre
 2. **Channel Presence** — Slack (inbound + action output), Email outbound drafts only, Google Calendar (watch + webhook)
-3. **AI Agent Layer** — canonical event normalisation, action extraction/proposal, policy-gated routing, traceability
+3. **AI Agent Layer** — canonical event normalisation, action extraction/proposal via canonical Larry runtime, policy-gated routing, traceability
 4. **Reporting** — weekly summaries, health/risk views, outcome snapshots
 
 ## What Is Out of V1
@@ -61,21 +61,25 @@ Larry v1 is a **standalone PM platform**. Larry Workspace is the system of recor
 4. Weekly summaries and risk signals are generated from workspace data
 5. End-to-end happy path and failure path tests pass in local/dev
 
-## Current Progress Snapshot (as of 2026-03-26)
+## Current Progress Snapshot (as of 2026-03-30)
 
 - Foundation and scaffolding: complete
-- Slack: connected, OAuth + event ingestion working
-- Google Calendar: OAuth + watch + webhook working; renewal token fix applied
-- Email: outbound drafts only; inbound OAuth not implemented
-- Worker lifecycle: full state machine implemented
-- Action approval loop: auto-closes and transitions to VERIFIED
-- Action Centre: approval/reject/correct + confidence + reasoning display working
-- Frontend workspace: active development (replaces mock data with real API data)
+- Slack: connected, OAuth + event ingestion working; Slack events onboarded on canonical ledger path
+- Google Calendar: OAuth + watch + webhook working; renewal token fix applied; calendar events onboarded on canonical ledger path
+- Email: outbound drafts only; inbound OAuth not implemented; email events onboarded on canonical ledger path
+- Canonical Larry runtime: active — `larry_events`, `larry_conversations`, `larry_messages` are the live data model
+- Legacy extraction pipeline retired: `agent_runs`, `extracted_actions`, `approval_decisions`, `interventions`, `agent_run_transitions` tables dropped in production (Phase 2.7 retirement window executed 2026-03-30)
+- Action Centre: canonical accept/dismiss on `larry_events`; project and global surfaces use shared ledger contract
+- Project memory starter: `project_memory_entries` schema, canonical `GET /v1/larry/memory`, and active project context timeline slot with source filtering
+- Worker lifecycle: `canonical_event.created` drives transcript, email, Slack, and calendar intelligence and ledger writes
+- Workspace surface: active product runs entirely under `/workspace/*`; legacy `/dashboard` redirects to workspace
 - Auth: functional but rate limiting + token revocation needed before launch
-- E2E tests: not yet added (Sprint Session 11)
+- E2E tests: Playwright smoke coverage for project chat → linked action → accept, transcript → action-centre, global dismiss parity, and background refresh
 
 ## Companion Docs
 
-- Active sprint plan: `docs/SPRINT-4DAY.md`
 - Architecture: `docs/ARCHITECTURE.md`
-- MVP readiness report: `docs/reports/larry-mvp-readiness-2026-03-25.md`
+- AI agent runtime: `docs/AI-AGENT.md`
+- Backend API: `docs/BACKEND-API.md`
+- Database schema: `docs/DATABASE.md`
+- Frontend structure: `docs/FRONTEND.md`

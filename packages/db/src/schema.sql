@@ -855,3 +855,30 @@ DO $$ BEGIN
     ON larry_briefings
     USING (tenant_id::text = current_setting('app.tenant_id', true));
 EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS project_memory_entries (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id        UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  project_id       UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  source           TEXT NOT NULL,
+  source_kind      VARCHAR NOT NULL,
+  source_record_id TEXT,
+  content          TEXT NOT NULL,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_memory_entries_project
+  ON project_memory_entries (tenant_id, project_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_project_memory_entries_source_kind
+  ON project_memory_entries (tenant_id, source_kind, created_at DESC);
+
+ALTER TABLE project_memory_entries ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_project_memory_entries
+    ON project_memory_entries
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;

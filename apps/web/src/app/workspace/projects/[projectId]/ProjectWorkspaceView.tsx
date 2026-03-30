@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   Activity,
   ArrowRight,
@@ -14,9 +14,14 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useWorkspaceChrome } from "@/app/workspace/WorkspaceChromeContext";
-import type { WorkspaceConversationPreview, WorkspaceLarryEvent } from "@/app/dashboard/types";
+import type {
+  WorkspaceConversationPreview,
+  WorkspaceLarryEvent,
+  WorkspaceProjectMemoryEntry,
+} from "@/app/dashboard/types";
 import { useProjectData } from "@/hooks/useProjectData";
 import { useProjectActionCentre } from "@/hooks/useProjectActionCentre";
+import { useProjectMemory } from "@/hooks/useProjectMemory";
 
 function formatDate(value?: string | null): string {
   if (!value) return "No date set";
@@ -99,6 +104,29 @@ function getEventOriginLabel(sourceKind?: string | null): string {
   }
 }
 
+function getMemorySourceLabel(sourceKind?: string | null): string {
+  switch (sourceKind) {
+    case "chat":
+      return "Larry chat";
+    case "action":
+      return "Accepted action";
+    case "meeting":
+      return "Meeting";
+    case "slack":
+      return "Slack";
+    case "email":
+      return "Email";
+    case "calendar":
+      return "Calendar";
+    case "briefing":
+      return "Briefing";
+    case "schedule":
+      return "Schedule";
+    default:
+      return sourceKind?.trim() ? formatStatus(sourceKind) : "General";
+  }
+}
+
 function getEventSourceMeta(sourceKind?: string | null): string {
   switch (sourceKind) {
     case "meeting":
@@ -139,8 +167,28 @@ function getEventMeta(event: WorkspaceLarryEvent): string {
   return pieces.join(" · ");
 }
 
+const MEMORY_FILTERS: Array<{ value: string; label: string }> = [
+  { value: "all", label: "All sources" },
+  { value: "chat", label: "Chat turns" },
+  { value: "action", label: "Accepted actions" },
+  { value: "meeting", label: "Meetings" },
+  { value: "slack", label: "Slack" },
+  { value: "email", label: "Email" },
+  { value: "calendar", label: "Calendar" },
+];
+
+function getMemoryMeta(entry: WorkspaceProjectMemoryEntry): string {
+  const pieces = [getMemorySourceLabel(entry.sourceKind)];
+  if (entry.source?.trim()) {
+    pieces.push(entry.source.trim());
+  }
+  return pieces.join(" - ");
+}
+
 export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
   const chrome = useWorkspaceChrome();
+  const [memorySourceFilter, setMemorySourceFilter] = useState("all");
+  const activeMemorySource = memorySourceFilter === "all" ? null : memorySourceFilter;
   const { project, tasks, health, meetings, outcomes, timeline, loading, error, refresh } = useProjectData(projectId);
   const {
     suggested,
@@ -154,6 +202,12 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
     dismiss,
     refresh: refreshActionCentre,
   } = useProjectActionCentre(projectId, refresh);
+  const {
+    entries: memoryEntries,
+    loading: memoryLoading,
+    error: memoryError,
+    refresh: refreshMemory,
+  } = useProjectMemory(projectId, activeMemorySource);
 
   const completionRate = useMemo(() => {
     if (health?.completionRate != null) return Number(health.completionRate);
@@ -399,6 +453,81 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
                 padding: "20px",
               }}
             >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-[18px] font-semibold" style={{ color: "var(--text-1)" }}>
+                    Project Context Timeline
+                  </p>
+                  <p className="mt-1 text-[13px]" style={{ color: "var(--text-2)" }}>
+                    Durable memory from recent Larry chat turns and accepted actions.
+                  </p>
+                </div>
+                <label className="text-[12px] font-semibold" style={{ color: "var(--text-muted)" }}>
+                  Source
+                  <select
+                    value={memorySourceFilter}
+                    onChange={(event) => setMemorySourceFilter(event.target.value)}
+                    className="ml-2 rounded-full border px-3 py-1.5 text-[12px] font-medium"
+                    style={{ borderColor: "var(--border)", background: "var(--surface-2)", color: "var(--text-1)" }}
+                  >
+                    {MEMORY_FILTERS.map((filter) => (
+                      <option key={filter.value} value={filter.value}>
+                        {filter.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="mt-5 space-y-3">
+                {memoryError && (
+                  <div
+                    className="rounded-[18px] border px-4 py-3 text-[13px]"
+                    style={{ borderColor: "#fecaca", background: "#fef2f2", color: "#b91c1c" }}
+                  >
+                    {memoryError}
+                  </div>
+                )}
+                {memoryLoading && memoryEntries.length === 0 ? (
+                  <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>
+                    Loading project memory...
+                  </p>
+                ) : memoryEntries.length === 0 ? (
+                  <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>
+                    No memory entries yet for this source filter.
+                  </p>
+                ) : (
+                  memoryEntries.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className="rounded-[18px] border px-4 py-3"
+                      style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-[13px] font-semibold" style={{ color: "var(--text-1)" }}>
+                          {getMemoryMeta(entry)}
+                        </p>
+                        <span className="shrink-0 text-[12px]" style={{ color: "var(--text-muted)" }}>
+                          {formatRelativeTime(entry.createdAt)}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-[13px] leading-6" style={{ color: "var(--text-2)" }}>
+                        {entry.content}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div
+              style={{
+                borderRadius: "var(--radius-card)",
+                border: "1px solid var(--border)",
+                background: "var(--surface)",
+                padding: "20px",
+              }}
+            >
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="text-[18px] font-semibold" style={{ color: "var(--text-1)" }}>
@@ -503,7 +632,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
                 <button
                   type="button"
                   onClick={() => {
-                    void Promise.all([refresh(), refreshActionCentre()]);
+                    void Promise.all([refresh(), refreshActionCentre(), refreshMemory()]);
                   }}
                   className="text-[12px] font-semibold"
                   style={{ color: "var(--cta)" }}

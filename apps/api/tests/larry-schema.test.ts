@@ -119,4 +119,16 @@ describe("Larry ledger schema", () => {
     expect(schema).not.toContain("CREATE POLICY tenant_isolation_actions ON extracted_actions");
     expect(schema).not.toContain("CREATE POLICY tenant_isolation_agent_runs ON agent_runs");
   });
+
+  it("adds project_memory_entries with tenant RLS and source indexes", () => {
+    expect(schema).toContain("CREATE TABLE IF NOT EXISTS project_memory_entries (");
+    expect(schema).toContain("tenant_id        UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE");
+    expect(schema).toContain("project_id       UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE");
+    expect(schema).toContain("source_kind      VARCHAR NOT NULL");
+    expect(schema).toContain("source_record_id TEXT");
+    expect(schema).toContain("CREATE INDEX IF NOT EXISTS idx_project_memory_entries_project");
+    expect(schema).toContain("CREATE INDEX IF NOT EXISTS idx_project_memory_entries_source_kind");
+    expect(schema).toContain("ALTER TABLE project_memory_entries ENABLE ROW LEVEL SECURITY;");
+    expect(schema).toContain("CREATE POLICY tenant_isolation_project_memory_entries");
+  });
 });

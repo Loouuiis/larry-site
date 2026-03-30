@@ -281,6 +281,19 @@ export interface ProjectSignal {
   timestamp: string;
 }
 
+export interface ProjectMemoryEntry {
+  id: string;
+  tenantId: string;
+  projectId: string;
+  /** Human-readable origin label, e.g. "Larry chat · 2026-03-30" */
+  source: string;
+  /** Normalized source kind: 'chat' | 'action' | 'meeting' | 'briefing' | 'schedule' | etc. */
+  sourceKind: string;
+  sourceRecordId: string | null;
+  content: string;
+  createdAt: string;
+}
+
 export interface ProjectSnapshot {
   project: {
     id: string;
@@ -298,6 +311,8 @@ export interface ProjectSnapshot {
   recentActivity: ProjectActivityEntry[];
   /** Optional signals from external integrations (Slack, Calendar, Email). */
   signals: ProjectSignal[];
+  /** Durable project memory from past Larry interactions (most recent first). */
+  memoryEntries?: ProjectMemoryEntry[];
   generatedAt: string;
 }
 

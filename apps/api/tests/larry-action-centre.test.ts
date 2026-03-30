@@ -12,6 +12,8 @@ vi.mock("@larry/db", async (importOriginal) => {
     executeAction: vi.fn(),
     getPendingSuggestionTexts: vi.fn(),
     getProjectSnapshot: vi.fn(),
+    insertProjectMemoryEntry: vi.fn(),
+    listProjectMemoryEntries: vi.fn(),
     runAutoActions: vi.fn(),
     storeSuggestions: vi.fn(),
   };
@@ -44,7 +46,11 @@ import Fastify from "fastify";
 import sensible from "@fastify/sensible";
 import type { ApiEnv } from "@larry/config";
 import type { Db } from "@larry/db";
-import { executeAction } from "@larry/db";
+import {
+  executeAction,
+  insertProjectMemoryEntry,
+  listProjectMemoryEntries,
+} from "@larry/db";
 import {
   getLarryActionCentreData,
   getLarryEventForMutation,
@@ -397,6 +403,16 @@ describe("Larry action centre routes", () => {
       EVENT_ID,
       USER_ID
     );
+    expect(insertProjectMemoryEntry).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT_ID,
+      PROJECT_ID,
+      expect.objectContaining({
+        source: "Action Centre",
+        sourceKind: "action",
+        sourceRecordId: EVENT_ID,
+      })
+    );
   });
 
   it("dismisses a suggested event and returns the updated attribution", async () => {
@@ -470,5 +486,59 @@ describe("Larry action centre routes", () => {
       USER_ID,
       "Not needed"
     );
+  });
+
+  it("returns project memory entries with optional source filter", async () => {
+    vi.mocked(listProjectMemoryEntries).mockResolvedValue([
+      {
+        id: "memory-1",
+        source: "Larry chat",
+        sourceKind: "chat",
+        sourceRecordId: "msg-1",
+        content: "User asked for launch risks and Larry suggested a mitigation plan.",
+        createdAt: "2026-03-30T19:00:00.000Z",
+      },
+    ]);
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/larry/memory?projectId=${PROJECT_ID}&sourceKind=chat&limit=10`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      items: [
+        {
+          id: "memory-1",
+          sourceKind: "chat",
+          sourceRecordId: "msg-1",
+        },
+      ],
+    });
+    expect(listProjectMemoryEntries).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT_ID,
+      PROJECT_ID,
+      {
+        sourceKind: "chat",
+        limit: 10,
+      }
+    );
+  });
+
+  it("returns 400 when projectId is missing for /larry/memory", async () => {
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/larry/memory?sourceKind=chat",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(listProjectMemoryEntries).not.toHaveBeenCalled();
   });
 });

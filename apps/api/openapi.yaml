@@ -65,6 +65,9 @@ paths:
   /v1/larry/action-centre:
     get:
       summary: List canonical Larry action-centre data (project or tenant-wide)
+  /v1/larry/memory:
+    get:
+      summary: List project memory timeline entries with optional source filtering
   /v1/larry/events/{id}/accept:
     post:
       summary: Accept a suggested Larry event

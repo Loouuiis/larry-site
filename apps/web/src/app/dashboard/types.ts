@@ -225,6 +225,15 @@ export interface WorkspaceProjectActionCentre {
   error?: string;
 }
 
+export interface WorkspaceProjectMemoryEntry {
+  id: string;
+  source: string;
+  sourceKind: string;
+  sourceRecordId: string | null;
+  content: string;
+  createdAt: string;
+}
+
 export interface BoardTaskRow {
   id: string;
   projectId: string;

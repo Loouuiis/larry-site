@@ -66,6 +66,9 @@ const MN1 = "e0000001-0000-4000-8000-000000000001"; // Sprint standup note
 const MN2 = "e0000002-0000-4000-8000-000000000002"; // Stakeholder sync note
 
 const LC1 = "f0000001-0000-4000-8000-000000000001"; // Larry conversation
+const PMEM1 = "f1000001-0000-4000-8000-000000000001"; // Project memory: chat
+const PMEM2 = "f1000002-0000-4000-8000-000000000002"; // Project memory: accepted action
+const PMEM3 = "f1000003-0000-4000-8000-000000000003"; // Project memory: meeting
 
 // ─── bcrypt hash for "DevPass123!" at 12 rounds ───────────────────────────────
 // Pre-computed so the seed doesn't require bcryptjs as a dep.
@@ -326,6 +329,32 @@ We will send a further update once QA sign-off is confirmed.
     ON CONFLICT DO NOTHING
   `, [TENANT_ID, LC1, daysAgo(1), daysAgo(1), daysAgo(0)]);
   console.log("✓  Larry conversation seeded for Chats demo");
+
+  await q(`
+    INSERT INTO project_memory_entries
+      (id, tenant_id, project_id, source, source_kind, source_record_id, content, created_at)
+    VALUES
+      ($1, $2, $3, 'Larry chat', 'chat', $4,
+       'User asked for launch risk summary. Larry highlighted checkout QA as the critical blocker and proposed mitigation actions.',
+       $5),
+      ($6, $2, $3, 'Action Centre', 'action', $7,
+       'Accepted action: extend checkout QA deadline by 7 days while Stripe.js regression fixes are verified.',
+       $8),
+      ($9, $2, $3, 'Meeting transcript', 'meeting', $10,
+       'Standup summary captured QA regression, pricing sign-off delay, and investor deck dependencies with owners.',
+       $11)
+    ON CONFLICT (id) DO UPDATE
+      SET source = EXCLUDED.source,
+          source_kind = EXCLUDED.source_kind,
+          source_record_id = EXCLUDED.source_record_id,
+          content = EXCLUDED.content,
+          created_at = EXCLUDED.created_at
+  `, [
+    PMEM1, TENANT_ID, PROJECT_ID, LC1, daysAgo(1),
+    PMEM2, "ev-demo-accepted-1", daysAgo(0),
+    PMEM3, MN1, daysAgo(0),
+  ]);
+  console.log("✓  Project memory entries seeded");
 
   // ── 15. Risk snapshots ───────────────────────────────────────────────────────
   await q(`

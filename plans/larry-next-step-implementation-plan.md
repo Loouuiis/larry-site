@@ -357,6 +357,20 @@ These are not optional cleanups; they are part of the implementation strategy:
     - `plans/phase-2.7-artifacts/2026-03-30T16-34-41-750Z__railway-prod__phase-2-7-retirement-window-precheck__11111111.{json,md}`
     - `plans/phase-2.7-artifacts/2026-03-30T16-34-52-288Z__railway-prod__phase-2-7-retirement-window-execute-precheck__11111111.{json,md}`
     - `plans/phase-2.7-artifacts/2026-03-30T16-34-52-288Z__railway-prod__phase-2-7-retirement-window-execute__11111111.{json,md}`
+- **Phase 4 - Project Memory starter slice (completed)**:
+  - Added durable `project_memory_entries` schema with tenant/project linkage, source metadata, recency indexes, and tenant RLS policy.
+  - Added DB helpers for memory writes/reads and extended project snapshots + intelligence prompt context to include recent project memory entries.
+  - Added canonical Larry memory read contract `GET /v1/larry/memory?projectId=&sourceKind=&limit=`.
+  - Wired memory writes from:
+    - canonical project chat turns (`POST /v1/larry/chat`)
+    - accepted suggestions (`POST /v1/larry/events/:id/accept`)
+  - Added workspace project memory proxy + hook and a source-filterable "Project Context Timeline" slot on active `ProjectWorkspaceView`.
+  - Added/extended API regression coverage for:
+    - memory read route behavior and query validation
+    - chat/accept memory write hooks
+    - schema guardrails for `project_memory_entries`
+  - Updated `packages/db/src/seed.ts` with deterministic project memory entries so local demo data immediately exercises the new timeline surface.
+  - Test gate passed: `cd apps/api && npm test` -> 18 files / 68 tests passing.
 
 ### Phase 2 Closure Snapshot (2026-03-30 UTC)
 
@@ -366,10 +380,29 @@ These are not optional cleanups; they are part of the implementation strategy:
     - queue-only `/v1/larry/transcript` cutover shipped,
     - runtime docs/runbook guidance updated to closure state,
     - transcript execution path now canonical-worker-only.
+  - **Phase 2 - Legacy Larry runtime boundary final fence sweep (completed)**:
+    - Verified no active runtime write/read paths bypass canonical Larry contracts:
+      - `POST /v1/larry/transcript` is canonical-enqueue-only (no inline intelligence).
+      - `GET /v1/larry/events` fenced 410; `GET /v1/larry/action-centre` is the canonical read.
+      - `POST /v1/larry/conversations` and `POST .../messages` fenced 410; `/v1/larry/chat` is canonical.
+      - `GET /api/workspace/larry/events` fenced 410 at workspace boundary.
+      - `POST /api/workspace/actions/:id/approve|reject|correct` fenced 410 at workspace boundary.
+      - `GET /api/workspace/snapshot` still present but only consumed by legacy `/dashboard` components; active `/workspace` routes use scoped read models.
+      - `useLarryEvents` hook (calls fenced `/api/workspace/larry/events`) only imported by legacy `components/dashboard/ProjectWorkspace.tsx`, which is not referenced by active workspace routes.
+      - Active workspace project view uses `ProjectWorkspaceView` (scoped overview endpoint); active Action Centre uses `useLarryActionCentre` (canonical ledger).
+    - Closed non-core docs sweep:
+      - Updated `docs/FRONTEND.md`: replaced stale component table, corrected `useProjectData` endpoint description, replaced legacy proxy entries with canonical Larry paths and fenced-410 notation.
+      - Updated `docs/V1-SCOPE.md`: corrected progress snapshot to reflect canonical Larry runtime and Phase 2.7 retirement evidence; removed deleted companion doc links.
+    - Extended `tests/cleanup-f-docs-boundary.test.ts` with non-core docs sweep describe block:
+      - Guards `FRONTEND.md` and `V1-SCOPE.md` against reintroduction of `/larry/commands`, `/larry/run`, `/v1/agent/` paths.
+      - Guards `V1-SCOPE.md` against reintroduction of deleted companion doc links.
+      - Guards `FRONTEND.md` against re-associating `useProjectData` with the snapshot endpoint.
+    - All 65 API tests pass (18 test files).
+
 - Remaining in current phase:
-  - Residual non-core docs sweep and final legacy Larry runtime boundary fence verification.
-- Next concrete milestone:
-  - Phase 2 - Legacy Larry runtime boundary final fence sweep.
+  - Expand project memory writes beyond chat + accepted actions to transcript and connector-led paths (meeting/email/slack/calendar) with replay-safe dedup behavior.
+  - Add focused regression coverage for worker-driven memory writes on canonical event replay paths.
+- Next concrete milestone: Phase 4 - Project Memory ingestion expansion (worker and connectors).
 
 ### Still To Do For Phase 1
 
@@ -383,16 +416,16 @@ These are not optional cleanups; they are part of the implementation strategy:
 
 ### Still To Do For Phase 2
 
-- Continue consolidating connector-triggered Larry actions onto the same canonical Larry ledger contract as legacy paths are retired; chat, transcript, login briefing, scheduled scan, email, Slack, and calendar are now onboarded on the canonical path.
-- Complete any residual non-core docs sweep work found during evidence closeout; core runtime docs sweep + guard are complete in J2a.
-- Continue retiring or fencing any remaining legacy Larry read/write paths beyond the now-fenced conversation writes and event-list reads as canonical contracts replace them.
+None. Phase 2 is fully closed as of 2026-03-30.
 
 ### Recommended Next Slice
 
-- **Phase 2 - Legacy Larry runtime boundary final fence sweep**:
-  - Verify no active runtime write/read paths bypass canonical Larry contracts.
-  - Close remaining non-core docs sweep tasks and confirm no stale retire-window guidance remains.
-  - Keep regression gates green for migration safety and retirement-window tooling while fencing any residual legacy seams.
+- **Phase 4 - Project Memory ingestion expansion (worker and connectors)**:
+  - Write `project_memory_entries` rows from transcript worker outputs and connector-led canonical events when project scope resolves.
+  - Add replay-safe dedup guardrails for memory writes keyed by `(tenant_id, project_id, source_kind, source_record_id, content hash or equivalent)`.
+  - Ensure memory source labels for `meeting`, `email`, `slack`, and `calendar` are normalized in read payloads and web timeline rendering.
+  - Extend API/worker regression coverage proving replayed canonical events do not create duplicate memory rows.
+  - Add one end-to-end smoke assertion that project context timeline shows at least one non-chat source entry after worker processing.
 
 ---
 

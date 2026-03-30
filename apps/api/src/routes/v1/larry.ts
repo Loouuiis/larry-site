@@ -6,6 +6,8 @@ import {
   executeAction,
   getPendingSuggestionTexts,
   getProjectSnapshot,
+  insertProjectMemoryEntry,
+  listProjectMemoryEntries,
   runAutoActions,
   storeSuggestions,
 } from "@larry/db";
@@ -56,6 +58,13 @@ const ActionCentreQuerySchema = z.object({
   projectId: z.string().uuid().optional(),
 });
 
+const MemoryQuerySchema = z.object({
+  projectId: z.string().uuid(),
+  sourceKind: z.string().trim().min(1).max(64).optional(),
+  source: z.string().trim().min(1).max(64).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+
 const ChatSchema = z.object({
   projectId: z.string().uuid(),
   message: z.string().trim().min(1).max(8_000),
@@ -81,6 +90,28 @@ function fallbackMessage(input: {
     actorDisplayName: input.actorDisplayName ?? null,
     linkedActions: input.linkedActions ?? [],
   };
+}
+
+function buildChatMemoryEntry(message: string, briefing: string): string {
+  const userLine = message.replace(/\s+/g, " ").trim();
+  const larryLine = briefing.replace(/\s+/g, " ").trim();
+  return `User asked: ${userLine}\nLarry replied: ${larryLine}`.slice(0, 4_000);
+}
+
+function buildAcceptedActionMemoryEntry(input: {
+  displayText?: string | null;
+  reasoning?: string | null;
+  approvedByName?: string | null;
+}): string {
+  const displayText = input.displayText?.trim() || "Accepted Larry action";
+  const reasoning = input.reasoning?.trim();
+  const approvedByName = input.approvedByName?.trim();
+
+  const parts = [displayText];
+  if (reasoning) parts.push(`Reasoning: ${reasoning}`);
+  if (approvedByName) parts.push(`Accepted by ${approvedByName}`);
+
+  return parts.join(" ").slice(0, 4_000);
 }
 
 export const larryRoutes: FastifyPluginAsync = async (fastify) => {
@@ -173,6 +204,29 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
+  fastify.get(
+    "/memory",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
+    async (request) => {
+      const parseResult = MemoryQuerySchema.safeParse(request.query);
+      if (!parseResult.success) {
+        throw fastify.httpErrors.badRequest(parseResult.error.issues[0]?.message ?? "Invalid query params");
+      }
+
+      const sourceKind = parseResult.data.sourceKind ?? parseResult.data.source;
+      const items = await listProjectMemoryEntries(
+        fastify.db,
+        request.user.tenantId,
+        parseResult.data.projectId,
+        {
+          sourceKind,
+          limit: parseResult.data.limit,
+        }
+      );
+      return { items };
+    }
+  );
+
   fastify.post(
     "/events/:id/accept",
     { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
@@ -205,16 +259,33 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
 
       await markLarryEventAccepted(fastify.db, tenantId, id, actorUserId);
 
-      await writeAuditLog(fastify.db, {
-        tenantId,
-        actorUserId,
-        actionType: "larry.event.accepted",
-        objectType: "larry_event",
-        objectId: id,
-        details: { actionType: event.actionType },
-      });
-
       const [updatedEvent] = await listLarryEventSummaries(fastify.db, tenantId, { ids: [id] });
+
+      await Promise.all([
+        writeAuditLog(fastify.db, {
+          tenantId,
+          actorUserId,
+          actionType: "larry.event.accepted",
+          objectType: "larry_event",
+          objectId: id,
+          details: { actionType: event.actionType },
+        }),
+        updatedEvent
+          ? Promise.resolve(
+              insertProjectMemoryEntry(fastify.db, tenantId, event.projectId, {
+                source: "Action Centre",
+                sourceKind: "action",
+                sourceRecordId: id,
+                content: buildAcceptedActionMemoryEntry(updatedEvent),
+              })
+            ).catch((error) => {
+              request.log.warn(
+                { err: error, tenantId, eventId: id, projectId: event.projectId },
+                "project memory write failed for accepted event"
+              );
+            })
+          : Promise.resolve(),
+      ]);
 
       return reply.code(200).send({ accepted: true, entity, event: updatedEvent ?? null });
     }
@@ -574,19 +645,34 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         suggestionCount: suggestResult.suggestedCount,
       };
 
-      await writeAuditLog(fastify.db, {
-        tenantId,
-        actorUserId,
-        actionType: "larry.chat",
-        objectType: "project",
-        objectId: projectId,
-        details: {
-          conversationId: conversation.id,
-          actionsExecuted: autoResult.executedCount,
-          suggestionCount: suggestResult.suggestedCount,
-          linkedActionCount: linkedActions.length,
-        },
-      });
+      await Promise.all([
+        writeAuditLog(fastify.db, {
+          tenantId,
+          actorUserId,
+          actionType: "larry.chat",
+          objectType: "project",
+          objectId: projectId,
+          details: {
+            conversationId: conversation.id,
+            actionsExecuted: autoResult.executedCount,
+            suggestionCount: suggestResult.suggestedCount,
+            linkedActionCount: linkedActions.length,
+          },
+        }),
+        Promise.resolve(
+          insertProjectMemoryEntry(fastify.db, tenantId, projectId, {
+            source: "Larry chat",
+            sourceKind: "chat",
+            sourceRecordId: userMessageInsert.id,
+            content: buildChatMemoryEntry(message, result.briefing),
+          })
+        ).catch((error) => {
+          request.log.warn(
+            { err: error, tenantId, projectId, conversationId: conversation.id },
+            "project memory write failed for chat turn"
+          );
+        }),
+      ]);
 
       return reply.code(200).send(responsePayload);
     }

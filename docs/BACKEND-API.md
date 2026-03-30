@@ -12,7 +12,7 @@ Fastify v5 REST API at `apps/api/`. Product routes are registered in `apps/api/s
 | `projects.ts` | CRUD ` /v1/projects` and project timeline/health utilities |
 | `tasks.ts` | CRUD `/v1/tasks` and task status/dependency helpers |
 | `ingest.ts` | `POST /v1/ingest/slack`, `/email`, `/calendar`, `/transcript` (transcript shim) |
-| `larry.ts` | `POST /v1/larry/chat`, `GET /v1/larry/briefing`, `GET /v1/larry/action-centre`, `POST /v1/larry/events/:id/accept`, `POST /v1/larry/events/:id/dismiss`, `POST /v1/larry/transcript` |
+| `larry.ts` | `POST /v1/larry/chat`, `GET /v1/larry/briefing`, `GET /v1/larry/action-centre`, `GET /v1/larry/memory`, `POST /v1/larry/events/:id/accept`, `POST /v1/larry/events/:id/dismiss`, `POST /v1/larry/transcript` |
 | `meetings.ts` | Meeting read surfaces and meeting data contracts |
 | `notifications.ts` | Workspace notification reads/mutations |
 | `activity.ts` | `GET /v1/activity` |
@@ -27,10 +27,12 @@ Fastify v5 REST API at `apps/api/`. Product routes are registered in `apps/api/s
 - `POST /v1/larry/chat`
 - `GET /v1/larry/briefing`
 - `GET /v1/larry/action-centre`
+- `GET /v1/larry/memory?projectId=&sourceKind=&limit=`
 - `POST /v1/larry/events/:id/accept`
 - `POST /v1/larry/events/:id/dismiss`
 - `POST /v1/larry/transcript`
 - `POST /v1/larry/transcript` is queue-only: it persists canonical ingest metadata and meeting linkage, returns `202`, and defers intelligence/action execution to worker `canonical_event.created`.
+- `POST /v1/larry/chat` and `POST /v1/larry/events/:id/accept` now write durable rows into `project_memory_entries` for project timeline context.
 
 Compatibility and retirement behavior:
 - `POST /v1/ingest/transcript` proxies to `/v1/larry/transcript` and returns deprecation metadata.

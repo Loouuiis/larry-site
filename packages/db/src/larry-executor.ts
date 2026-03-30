@@ -688,6 +688,81 @@ export async function listLarryEventIdsBySource(
   return rows.map((row) => row.id);
 }
 
+// ── Project memory ────────────────────────────────────────────────────────────
+
+export interface ProjectMemoryEntryInsert {
+  source: string;
+  sourceKind: string;
+  sourceRecordId?: string | null;
+  content: string;
+}
+
+export interface ProjectMemoryEntryRow {
+  id: string;
+  source: string;
+  sourceKind: string;
+  sourceRecordId: string | null;
+  content: string;
+  createdAt: string;
+}
+
+export async function insertProjectMemoryEntry(
+  db: Db,
+  tenantId: string,
+  projectId: string,
+  entry: ProjectMemoryEntryInsert
+): Promise<string> {
+  const rows = await db.queryTenant<{ id: string }>(
+    tenantId,
+    `INSERT INTO project_memory_entries (tenant_id, project_id, source, source_kind, source_record_id, content)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id`,
+    [tenantId, projectId, entry.source, entry.sourceKind, entry.sourceRecordId ?? null, entry.content]
+  );
+  return rows[0].id;
+}
+
+export async function listProjectMemoryEntries(
+  db: Db,
+  tenantId: string,
+  projectId: string,
+  opts?: { sourceKind?: string; limit?: number }
+): Promise<ProjectMemoryEntryRow[]> {
+  const limit = Math.min(opts?.limit ?? 20, 100);
+  const rows = await db.queryTenant<{
+    id: string;
+    source: string;
+    source_kind: string;
+    source_record_id: string | null;
+    content: string;
+    created_at: string;
+  }>(
+    tenantId,
+    opts?.sourceKind
+      ? `SELECT id, source, source_kind, source_record_id, content, created_at::text
+         FROM project_memory_entries
+         WHERE tenant_id = $1 AND project_id = $2 AND source_kind = $3
+         ORDER BY created_at DESC
+         LIMIT $4`
+      : `SELECT id, source, source_kind, source_record_id, content, created_at::text
+         FROM project_memory_entries
+         WHERE tenant_id = $1 AND project_id = $2
+         ORDER BY created_at DESC
+         LIMIT $3`,
+    opts?.sourceKind
+      ? [tenantId, projectId, opts.sourceKind, limit]
+      : [tenantId, projectId, limit]
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    source: r.source,
+    sourceKind: r.source_kind,
+    sourceRecordId: r.source_record_id,
+    content: r.content,
+    createdAt: r.created_at,
+  }));
+}
+
 export async function backfillLarryEventSourceRecord(
   db: Db,
   tenantId: string,

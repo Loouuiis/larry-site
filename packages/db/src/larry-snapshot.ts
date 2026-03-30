@@ -1,5 +1,6 @@
 import type {
   ProjectActivityEntry,
+  ProjectMemoryEntry,
   ProjectSignal,
   ProjectSnapshot,
   ProjectTaskSnapshot,
@@ -74,8 +75,8 @@ export async function getProjectSnapshot(
   projectId: string,
   signals: ProjectSignal[] = []
 ): Promise<ProjectSnapshot> {
-  // Run project, tasks, members, and activity in parallel
-  const [projectRows, taskRows, dependencyRows, memberRows, activityRows] = await Promise.all([
+  // Run project, tasks, members, activity, and memory in parallel
+  const [projectRows, taskRows, dependencyRows, memberRows, activityRows, memoryRows] = await Promise.all([
     db.query<ProjectRow>(
       `SELECT id, tenant_id, name, description, status, risk_score, risk_level,
               start_date::text, target_date::text
@@ -150,6 +151,15 @@ export async function getProjectSnapshot(
        LIMIT 20`,
       [projectId, tenantId]
     ),
+
+    db.query<{ id: string; source: string; source_kind: string; source_record_id: string | null; content: string; created_at: string }>(
+      `SELECT id, source, source_kind, source_record_id, content, created_at::text
+       FROM project_memory_entries
+       WHERE tenant_id = $1 AND project_id = $2
+       ORDER BY created_at DESC
+       LIMIT 10`,
+      [tenantId, projectId]
+    ),
   ]);
 
   if (projectRows.length === 0) {
@@ -195,6 +205,17 @@ export async function getProjectSnapshot(
     timestamp: a.created_at,
   }));
 
+  const memoryEntries: ProjectMemoryEntry[] = memoryRows.map((r) => ({
+    id: r.id,
+    tenantId,
+    projectId,
+    source: r.source,
+    sourceKind: r.source_kind,
+    sourceRecordId: r.source_record_id,
+    content: r.content,
+    createdAt: r.created_at,
+  }));
+
   return {
     project: {
       id: project.id,
@@ -211,6 +232,7 @@ export async function getProjectSnapshot(
     team,
     recentActivity,
     signals,
+    memoryEntries,
     generatedAt: new Date().toISOString(),
   };
 }

@@ -11,6 +11,7 @@ vi.mock("@larry/db", async (importOriginal) => {
     ...actual,
     getProjectSnapshot: vi.fn(),
     getPendingSuggestionTexts: vi.fn(),
+    insertProjectMemoryEntry: vi.fn(),
     runAutoActions: vi.fn(),
     storeSuggestions: vi.fn(),
   };
@@ -54,6 +55,7 @@ import { runIntelligence } from "@larry/ai";
 import {
   getPendingSuggestionTexts,
   getProjectSnapshot,
+  insertProjectMemoryEntry,
   runAutoActions,
   storeSuggestions,
 } from "@larry/db";
@@ -382,6 +384,16 @@ describe("POST /larry/chat", () => {
       TENANT_ID,
       CONVERSATION_ID,
       "What tasks are at risk?"
+    );
+    expect(insertProjectMemoryEntry).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT_ID,
+      PROJECT_ID,
+      expect.objectContaining({
+        source: "Larry chat",
+        sourceKind: "chat",
+        sourceRecordId: "77777777-7777-4777-8777-777777777777",
+      })
     );
   });
 
