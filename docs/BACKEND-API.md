@@ -21,7 +21,7 @@ Fastify v5 REST API at `apps/api/`. Product routes are registered in `apps/api/s
 | `reporting.ts` | Project reporting routes |
 | `orgs.ts` | Organization access request/admin approval routes |
 | `connectors-slack.ts` | Slack connector install/status/events |
-| `connectors-google-calendar.ts` | Google Calendar connector install/status/watch/webhook |
+| `connectors-google-calendar.ts` | Google Calendar connector install/status/watch/webhook + project-link mapping |
 | `connectors-email.ts` | Email connector status/install/inbound/send; draft send mirrors `email_draft` assets into `documents` |
 
 ## Canonical Larry Contracts
@@ -56,6 +56,20 @@ Compatibility and retirement behavior:
 - `POST /v1/ingest/transcript` proxies to `/v1/larry/transcript` and returns deprecation metadata.
 - `POST /v1/larry/conversations` and `POST /v1/larry/conversations/:id/messages` return `410`.
 - `GET /v1/larry/events` returns `410` and points callers to `/v1/larry/action-centre`.
+
+## Google Calendar Connector Contracts
+
+- `GET /v1/connectors/google-calendar/status?calendarId=...`
+  - Additively returns `projectId` when the installation is linked to a default project.
+- `GET /v1/connectors/google-calendar/project-link?calendarId=...`
+  - Returns `{ calendarId, projectId, linked }` for the calendar installation.
+- `PUT /v1/connectors/google-calendar/project-link`
+  - Body: `{ calendarId?, projectId? }` where `projectId: null` clears the link.
+  - Requires `admin|pm` and validates tenant-scoped project existence for non-null `projectId`.
+- `POST /v1/connectors/google-calendar/webhook`
+  - Canonical payload project scope resolution is additive:
+    - explicit webhook payload hint (`projectId`) if present
+    - otherwise installation default project link (`google_calendar_installations.project_id`) when present
 
 ## Project Collaborator Contracts
 

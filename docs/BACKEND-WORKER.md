@@ -20,6 +20,7 @@ BullMQ worker at `apps/worker/src/worker.ts`. Queue name: `larry-events`.
 For each `canonical_event.created` job in `apps/worker/src/canonical-event.ts`:
 1. Load canonical event row.
 2. Resolve project scope from payload/mappings.
+   - Calendar source uses payload `projectId` first, then installation channel mapping fallback (`google_calendar_installations.webhook_channel_id -> project_id`).
 3. Skip when scope is missing or invalid.
 4. Build a source-aware prompt.
 5. Run `runIntelligence()`.

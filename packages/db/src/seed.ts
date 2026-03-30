@@ -61,6 +61,7 @@ const CE3 = "b0000003-0000-4000-8000-000000000003"; // Calendar event
 const COMPAT_AGENT_RUN_ID_PENDING = "c0000002-0000-4000-8000-000000000002";
 const COMPAT_AGENT_RUN_ID_EXECUTED = "c0000003-0000-4000-8000-000000000003";
 const COMPAT_ACTION_ID_EMAIL_DRAFT = "d0000004-0000-4000-8000-000000000004";
+const GCAL_INSTALLATION_ID = "d2000001-0000-4000-8000-000000000001";
 
 const MN1 = "e0000001-0000-4000-8000-000000000001"; // Sprint standup note
 const MN2 = "e0000002-0000-4000-8000-000000000002"; // Stakeholder sync note
@@ -153,6 +154,22 @@ async function seed() {
     ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, risk_score = EXCLUDED.risk_score
   `, [PROJECT_ID, TENANT_ID, U_ADMIN, daysAgo(21).slice(0, 10), daysFromNow(18)]);
   console.log("✓  Project: Q2 Product Launch");
+
+  await q(`
+    INSERT INTO google_calendar_installations
+      (id, tenant_id, installed_by_user_id, project_id, google_calendar_id, google_access_token, google_refresh_token, google_scope, token_expires_at, updated_at)
+    VALUES
+      ($1, $2, $3, $4, 'primary', 'seed-google-access-token', 'seed-google-refresh-token', 'https://www.googleapis.com/auth/calendar.events', NULL, NOW())
+    ON CONFLICT (tenant_id, google_calendar_id) DO UPDATE SET
+      installed_by_user_id = EXCLUDED.installed_by_user_id,
+      project_id = EXCLUDED.project_id,
+      google_access_token = EXCLUDED.google_access_token,
+      google_refresh_token = EXCLUDED.google_refresh_token,
+      google_scope = EXCLUDED.google_scope,
+      token_expires_at = EXCLUDED.token_expires_at,
+      updated_at = NOW()
+  `, [GCAL_INSTALLATION_ID, TENANT_ID, U_ADMIN, PROJECT_ID]);
+  console.log("✓  Google Calendar installation mapped to Q2 Product Launch");
 
   // ── 6. Tasks ─────────────────────────────────────────────────────────────────
   const tasks = [

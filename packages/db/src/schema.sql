@@ -367,6 +367,7 @@ CREATE TABLE IF NOT EXISTS google_calendar_installations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
   installed_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
   google_calendar_id TEXT NOT NULL DEFAULT 'primary',
   google_access_token TEXT NOT NULL,
   google_refresh_token TEXT,
@@ -380,8 +381,14 @@ CREATE TABLE IF NOT EXISTS google_calendar_installations (
   UNIQUE (tenant_id, google_calendar_id)
 );
 
+ALTER TABLE google_calendar_installations
+  ADD COLUMN IF NOT EXISTS project_id UUID REFERENCES projects(id) ON DELETE SET NULL;
+
 CREATE INDEX IF NOT EXISTS idx_google_calendar_installations_tenant
   ON google_calendar_installations (tenant_id, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_google_calendar_installations_tenant_project
+  ON google_calendar_installations (tenant_id, project_id, updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS email_installations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

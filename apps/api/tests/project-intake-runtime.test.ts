@@ -380,7 +380,7 @@ describe("Project intake runtime routes", () => {
     const suggestedActions = vi.mocked(storeSuggestions).mock.calls[0]?.[4];
     expect(Array.isArray(suggestedActions)).toBe(true);
     expect(suggestedActions).toHaveLength(1);
-    expect((suggestedActions?.[0] as { payload: { entityId: string } }).payload.entityId).toBe(PROJECT_ID);
+    expect(suggestedActions?.[0]?.payload?.["entityId"]).toBe(PROJECT_ID);
     expect(insertProjectMemoryEntry).toHaveBeenCalledTimes(1);
     expect(createProjectOwnerMembership).toHaveBeenCalledWith(
       expect.anything(),

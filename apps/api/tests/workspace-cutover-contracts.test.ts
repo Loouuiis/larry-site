@@ -213,7 +213,7 @@ describe("Workspace cutover contracts", () => {
   });
 
   it("GET /tasks?projectId= filters by project scope", async () => {
-    const queryTenant = vi.fn(async () => [
+    const queryTenant = vi.fn(async (_tenantId: string, _sql: string, _values: unknown[] = []) => [
       {
         id: TASK_ID,
         projectId: PROJECT_ID,
@@ -253,7 +253,7 @@ describe("Workspace cutover contracts", () => {
     });
 
     expect(queryTenant).toHaveBeenCalledTimes(1);
-    const [tenantArg, sqlArg, valuesArg] = queryTenant.mock.calls[0] as [string, string, unknown[]];
+    const [tenantArg, sqlArg, valuesArg] = queryTenant.mock.calls[0]!;
     expect(tenantArg).toBe(TENANT_ID);
     expect(sqlArg).toContain("AND tasks.project_id = $2");
     expect(valuesArg).toEqual([TENANT_ID, PROJECT_ID]);

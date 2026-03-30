@@ -51,7 +51,7 @@ npm run seed
 |-------|---------|
 | `slack_installations` | Slack OAuth installation metadata |
 | `slack_channel_project_mappings` | Slack channel to project mapping |
-| `google_calendar_installations` | Calendar OAuth/watch metadata |
+| `google_calendar_installations` | Calendar OAuth/watch metadata with optional default project linkage |
 | `email_installations` | Email connector installation metadata |
 | `email_outbound_drafts` | Outbound draft records |
 
@@ -97,6 +97,9 @@ Use tenant-aware query helpers consistently in API and worker code.
   - uniqueness guard `(tenant_id, task_id, document_id)`
   - recency indexes for task/document lookups
   - tenant RLS policy (`tenant_isolation_task_document_attachments`)
+- `google_calendar_installations` includes additive default-linkage support:
+  - nullable `project_id` (`ON DELETE SET NULL`)
+  - tenant/project recency lookup index `idx_google_calendar_installations_tenant_project`
 - Seed data includes one deterministic `project_intake_drafts` fixture row so local/demo environments exercise the new intake contract.
 - Seed data includes deterministic `project_memberships` rows (including a multi-user project) so collaboration access is visible in local/demo environments.
 - Seed data includes deterministic `project_notes` rows (shared and personal) for workspace-note demos.

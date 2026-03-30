@@ -51,6 +51,8 @@ SLACK_OAUTH_STATE_TTL_SECONDS   (default: 3600)
 | `GET /install-url` | Generate Google OAuth URL |
 | `GET /callback` | OAuth token exchange + installation upsert |
 | `GET /status` | Returns connector status |
+| `GET /project-link` | Read default project linkage for a calendar installation |
+| `PUT /project-link` | Set or clear default project linkage (`projectId: null` clears) |
 | `POST /watch` | Register Google push notification watch channel |
 | `POST /webhook` | Receive Google push notifications |
 
@@ -71,6 +73,9 @@ GOOGLE_CALENDAR_WEBHOOK_URL
 ```
 
 ### Known Behaviour
+- Webhook project scope resolution is:
+  1. explicit payload `projectId` hint (if present)
+  2. otherwise the installation default project link (`google_calendar_installations.project_id`)
 - Channel token is compacted to short keys (`{ k, t, i }`) — Google enforces 256-char token limit.
 - Webhook rejects missing/invalid `x-goog-channel-token`. Renewal job must include the token field to match the initial registration — without this, calendar silently breaks after 7 days (the renewal fix was applied in Session 5).
 - Push webhooks deliver metadata only (no rich event text). Worker's `extractActionableText()` may return null for calendar events — calendar enrichment fetch (events detail pull) is a planned improvement.

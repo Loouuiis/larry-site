@@ -365,7 +365,7 @@ export default function DocumentsPage() {
                 href="/workspace/projects/new"
                 style={{ color: "var(--cta)", fontSize: "14px", fontWeight: 500 }}
               >
-                Start a project ->
+                Start a project -&gt;
               </Link>
             </div>
           )}

@@ -64,6 +64,7 @@ describe("POST /connectors/google-calendar/webhook", () => {
             {
               id: INSTALLATION_ID,
               tenant_id: TENANT_ID,
+              project_id: null,
               google_calendar_id: "primary",
               google_access_token: "access-token",
               google_refresh_token: null,
@@ -175,6 +176,7 @@ describe("POST /connectors/google-calendar/webhook", () => {
             {
               id: INSTALLATION_ID,
               tenant_id: TENANT_ID,
+              project_id: null,
               google_calendar_id: "primary",
               google_access_token: "access-token",
               google_refresh_token: null,
@@ -215,5 +217,89 @@ describe("POST /connectors/google-calendar/webhook", () => {
     expect(response.statusCode).toBe(401);
     expect(response.body).toContain("Missing Google channel token.");
     expect(queue.publish).not.toHaveBeenCalled();
+  });
+
+  it("falls back to mapped installation projectId when webhook payload has no project hint", async () => {
+    const query = vi.fn(async (sql: string, values: unknown[] = []) => {
+      if (sql.includes("FROM google_calendar_installations")) {
+        return {
+          rows: [
+            {
+              id: INSTALLATION_ID,
+              tenant_id: TENANT_ID,
+              project_id: PROJECT_ID,
+              google_calendar_id: "primary",
+              google_access_token: "access-token",
+              google_refresh_token: null,
+              token_expires_at: null,
+              webhook_channel_id: CHANNEL_ID,
+              webhook_resource_id: "resource-1",
+              webhook_expiration: null,
+            },
+          ],
+        };
+      }
+      if (sql.includes("INSERT INTO raw_events")) {
+        return { rows: [{ id: "raw-event-1" }] };
+      }
+      if (sql.includes("INSERT INTO canonical_events")) {
+        return { rows: [] };
+      }
+      return { rows: [] };
+    });
+
+    const db = {
+      tx: vi.fn(async (fn: (client: { query: typeof query }) => Promise<unknown>) => fn({ query })),
+      queryTenant: vi.fn().mockResolvedValue([]),
+    } as unknown as Db;
+
+    const queue = {
+      publish: vi.fn().mockResolvedValue(undefined),
+      close: vi.fn().mockResolvedValue(undefined),
+    } as unknown as QueuePublisher;
+
+    const app = await createTestApp({ db, queue });
+    appsToClose.push(app);
+
+    const channelToken = createSignedStateToken(
+      { k: "gcalch", t: TENANT_ID, i: INSTALLATION_ID },
+      JWT_SECRET,
+      600
+    );
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/connectors/google-calendar/webhook",
+      headers: {
+        "content-type": "application/json",
+        "x-goog-channel-id": CHANNEL_ID,
+        "x-goog-resource-state": "exists",
+        "x-goog-message-number": "43",
+        "x-goog-resource-id": "resource-1",
+        "x-goog-channel-token": channelToken,
+      },
+      payload: {
+        event: {
+          summary: "Launch sync without explicit project hint",
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(202);
+    const rawInsertCall = query.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO raw_events")
+    );
+    const canonicalPayload = JSON.parse(String(rawInsertCall?.[1]?.[3] ?? "{}"));
+    expect(canonicalPayload).toMatchObject({
+      channelId: CHANNEL_ID,
+      resourceState: "exists",
+      messageNumber: "43",
+      projectId: PROJECT_ID,
+      body: {
+        event: {
+          summary: "Launch sync without explicit project hint",
+        },
+      },
+    });
   });
 });

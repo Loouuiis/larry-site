@@ -5,6 +5,7 @@ import { CheckCircle2, Circle, ExternalLink, Zap } from "lucide-react";
 
 interface ConnectorStatus {
   connected?: boolean;
+  projectId?: string | null;
   installUrl?: string;
   lastEventAt?: string | null;
   recentEvents?: Array<{ id: string; title: string; source: string; createdAt: string }>;
@@ -14,6 +15,18 @@ interface ConnectorsData {
   slack?: ConnectorStatus;
   calendar?: ConnectorStatus;
   email?: ConnectorStatus;
+}
+
+interface WorkspaceProject {
+  id: string;
+  name: string;
+}
+
+interface CalendarProjectLinkResponse {
+  calendarId?: string;
+  projectId?: string | null;
+  linked?: boolean;
+  error?: string;
 }
 
 const CONNECTOR_INFO = {
@@ -58,14 +71,34 @@ async function readJson<T>(res: Response): Promise<T> {
 
 export function ConnectorsPage() {
   const [data, setData] = useState<ConnectorsData>({});
+  const [projects, setProjects] = useState<WorkspaceProject[]>([]);
+  const [calendarLinkedProjectId, setCalendarLinkedProjectId] = useState<string>("");
+  const [calendarLinkSaving, setCalendarLinkSaving] = useState(false);
+  const [calendarLinkMessage, setCalendarLinkMessage] = useState<string | null>(null);
+  const [calendarLinkError, setCalendarLinkError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setCalendarLinkMessage(null);
+    setCalendarLinkError(null);
     try {
-      const res = await fetch("/api/workspace/connectors/summary");
-      const d = await readJson<{ connectors: ConnectorsData }>(res);
-      setData(d.connectors ?? {});
+      const [summaryRes, projectsRes, projectLinkRes] = await Promise.all([
+        fetch("/api/workspace/connectors/summary"),
+        fetch("/api/workspace/projects"),
+        fetch("/api/workspace/connectors/calendar/project-link?calendarId=primary"),
+      ]);
+      const summaryData = await readJson<{ connectors: ConnectorsData }>(summaryRes);
+      const projectsData = await readJson<{ items?: WorkspaceProject[] }>(projectsRes);
+      const projectLinkData = await readJson<CalendarProjectLinkResponse>(projectLinkRes);
+
+      setData(summaryData.connectors ?? {});
+      setProjects(projectsRes.ok ? projectsData.items ?? [] : []);
+      if (projectLinkRes.ok) {
+        setCalendarLinkedProjectId(projectLinkData.projectId ?? "");
+      } else {
+        setCalendarLinkedProjectId(summaryData.connectors?.calendar?.projectId ?? "");
+      }
     } finally {
       setLoading(false);
     }
@@ -82,6 +115,39 @@ export function ConnectorsPage() {
         const d = await readJson<{ installUrl?: string }>(res);
         if (d.installUrl) window.location.href = d.installUrl;
       });
+    }
+  };
+
+  const handleSaveCalendarProjectLink = async () => {
+    setCalendarLinkSaving(true);
+    setCalendarLinkMessage(null);
+    setCalendarLinkError(null);
+    try {
+      const response = await fetch("/api/workspace/connectors/calendar/project-link", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          calendarId: "primary",
+          projectId: calendarLinkedProjectId || null,
+        }),
+      });
+      const payload = await readJson<CalendarProjectLinkResponse>(response);
+      if (!response.ok) {
+        setCalendarLinkError(payload.error ?? "Failed to update calendar project link.");
+        return;
+      }
+      setCalendarLinkedProjectId(payload.projectId ?? "");
+      setCalendarLinkMessage(
+        payload.projectId
+          ? "Calendar is now linked to the selected project."
+          : "Calendar project link cleared."
+      );
+    } catch (error) {
+      setCalendarLinkError(
+        error instanceof Error ? error.message : "Failed to update calendar project link."
+      );
+    } finally {
+      setCalendarLinkSaving(false);
     }
   };
 
@@ -254,6 +320,89 @@ export function ConnectorsPage() {
                       )}
                     </button>
                   </div>
+
+                  {key === "calendar" && (
+                    <div
+                      style={{
+                        marginTop: "14px",
+                        borderTop: "1px solid var(--border)",
+                        paddingTop: "14px",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "10px",
+                      }}
+                    >
+                      <label
+                        htmlFor="calendar-project-link"
+                        style={{
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          color: "var(--text-1)",
+                        }}
+                      >
+                        Linked project for calendar signals
+                      </label>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <select
+                          id="calendar-project-link"
+                          value={calendarLinkedProjectId}
+                          onChange={(event) => {
+                            setCalendarLinkedProjectId(event.target.value);
+                            setCalendarLinkMessage(null);
+                            setCalendarLinkError(null);
+                          }}
+                          disabled={!connected || loading || calendarLinkSaving || projects.length === 0}
+                          style={{
+                            minWidth: "220px",
+                            maxWidth: "320px",
+                            borderRadius: "8px",
+                            border: "1px solid var(--border)",
+                            background: "var(--surface)",
+                            padding: "8px 10px",
+                            fontSize: "12px",
+                            color: "var(--text-1)",
+                          }}
+                        >
+                          <option value="">Not linked (ingest hints only)</option>
+                          {projects.map((project) => (
+                            <option key={project.id} value={project.id}>
+                              {project.name}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          className="pm-btn pm-btn-secondary pm-btn-sm"
+                          disabled={!connected || loading || calendarLinkSaving}
+                          onClick={() => void handleSaveCalendarProjectLink()}
+                        >
+                          {calendarLinkSaving ? "Saving..." : "Save link"}
+                        </button>
+                      </div>
+                      {projects.length === 0 && (
+                        <p className="text-body-sm">
+                          No projects found yet. Create a project to enable calendar linking.
+                        </p>
+                      )}
+                      {calendarLinkMessage && (
+                        <p className="text-body-sm" style={{ color: "#166534" }}>
+                          {calendarLinkMessage}
+                        </p>
+                      )}
+                      {calendarLinkError && (
+                        <p className="text-body-sm" style={{ color: "#b91c1c" }}>
+                          {calendarLinkError}
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   {/* Recent events */}
                   {status?.recentEvents && status.recentEvents.length > 0 && (

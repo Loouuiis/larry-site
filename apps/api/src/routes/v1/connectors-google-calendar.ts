@@ -44,9 +44,19 @@ const GoogleStatusQuerySchema = z.object({
   calendarId: z.string().min(1).default("primary"),
 });
 
+const GoogleProjectLinkQuerySchema = z.object({
+  calendarId: z.string().min(1).default("primary"),
+});
+
+const GoogleProjectLinkBodySchema = z.object({
+  calendarId: z.string().min(1).default("primary"),
+  projectId: z.string().uuid().nullable().optional().default(null),
+});
+
 interface GoogleInstallationRow {
   id: string;
   tenant_id: string;
+  project_id: string | null;
   google_calendar_id: string;
   google_access_token: string;
   google_refresh_token: string | null;
@@ -145,7 +155,7 @@ async function lookupGoogleInstallationByChannelId(
   return app.db.tx(async (client) => {
     await client.query("SELECT set_config('app.tenant_id', $1, true)", ["__system__"]);
     const rows = await client.query<GoogleInstallationRow>(
-      `SELECT id, tenant_id, google_calendar_id, google_access_token, google_refresh_token, token_expires_at,
+      `SELECT id, tenant_id, project_id, google_calendar_id, google_access_token, google_refresh_token, token_expires_at,
               webhook_channel_id, webhook_resource_id, webhook_expiration
        FROM google_calendar_installations
        WHERE webhook_channel_id = $1
@@ -163,7 +173,7 @@ async function loadTenantGoogleInstallation(
 ): Promise<GoogleInstallationRow | null> {
   const rows = await app.db.queryTenant<GoogleInstallationRow>(
     tenantId,
-    `SELECT id, tenant_id, google_calendar_id, google_access_token, google_refresh_token, token_expires_at,
+    `SELECT id, tenant_id, project_id, google_calendar_id, google_access_token, google_refresh_token, token_expires_at,
             webhook_channel_id, webhook_resource_id, webhook_expiration
      FROM google_calendar_installations
      WHERE tenant_id = $1 AND google_calendar_id = $2
@@ -171,6 +181,22 @@ async function loadTenantGoogleInstallation(
     [tenantId, calendarId]
   );
   return rows[0] ?? null;
+}
+
+async function tenantProjectExists(
+  app: Parameters<FastifyPluginAsync>[0],
+  tenantId: string,
+  projectId: string
+): Promise<boolean> {
+  const rows = await app.db.queryTenant<{ id: string }>(
+    tenantId,
+    `SELECT id
+     FROM projects
+     WHERE tenant_id = $1 AND id = $2
+     LIMIT 1`,
+    [tenantId, projectId]
+  );
+  return rows.length > 0;
 }
 
 async function ensureFreshGoogleAccessToken(
@@ -332,10 +358,89 @@ export const googleCalendarConnectorRoutes: FastifyPluginAsync = async (fastify)
       return {
         connected: true,
         calendarId: row.google_calendar_id,
+        projectId: row.project_id,
         watchActive: Boolean(row.webhook_channel_id && row.webhook_resource_id),
         webhookChannelId: row.webhook_channel_id,
         webhookResourceId: row.webhook_resource_id,
         webhookExpiration: row.webhook_expiration,
+      };
+    }
+  );
+
+  fastify.get(
+    "/project-link",
+    { preHandler: [fastify.authenticate] },
+    async (request) => {
+      const query = GoogleProjectLinkQuerySchema.parse(request.query);
+      const installation = await loadTenantGoogleInstallation(
+        fastify,
+        request.user.tenantId,
+        query.calendarId
+      );
+
+      if (!installation) {
+        return {
+          calendarId: query.calendarId,
+          projectId: null,
+          linked: false,
+        };
+      }
+
+      return {
+        calendarId: installation.google_calendar_id,
+        projectId: installation.project_id,
+        linked: Boolean(installation.project_id),
+      };
+    }
+  );
+
+  fastify.put(
+    "/project-link",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
+    async (request) => {
+      const body = GoogleProjectLinkBodySchema.parse(request.body);
+      const installation = await loadTenantGoogleInstallation(
+        fastify,
+        request.user.tenantId,
+        body.calendarId
+      );
+      if (!installation) {
+        throw fastify.httpErrors.notFound("Google Calendar installation not found for this calendar ID.");
+      }
+
+      if (body.projectId) {
+        const exists = await tenantProjectExists(fastify, request.user.tenantId, body.projectId);
+        if (!exists) {
+          throw fastify.httpErrors.notFound("Project not found for this tenant.");
+        }
+      }
+
+      await fastify.db.queryTenant(
+        request.user.tenantId,
+        `UPDATE google_calendar_installations
+         SET project_id = $3,
+             updated_at = NOW()
+         WHERE tenant_id = $1
+           AND id = $2`,
+        [request.user.tenantId, installation.id, body.projectId]
+      );
+
+      await writeAuditLog(fastify.db, {
+        tenantId: request.user.tenantId,
+        actorUserId: request.user.userId,
+        actionType: "connector.google_calendar.project_link.updated",
+        objectType: "google_calendar_installation",
+        objectId: installation.id,
+        details: {
+          calendarId: body.calendarId,
+          projectId: body.projectId,
+        },
+      });
+
+      return {
+        calendarId: body.calendarId,
+        projectId: body.projectId,
+        linked: Boolean(body.projectId),
       };
     }
   );
@@ -461,6 +566,7 @@ export const googleCalendarConnectorRoutes: FastifyPluginAsync = async (fastify)
 
     const bodyPayload = typeof request.body === "object" && request.body !== null ? request.body : null;
     const projectHint = readGoogleCalendarProjectHint(bodyPayload);
+    const resolvedProjectId = projectHint ?? installation.project_id ?? null;
     const sourceEventId = `gcal:${channelId}:${messageNumber ?? randomUUID()}`;
     const payload: Record<string, unknown> = {
       channelId,
@@ -470,8 +576,8 @@ export const googleCalendarConnectorRoutes: FastifyPluginAsync = async (fastify)
       expiration: typeof expirationHeader === "string" ? parseGoogExpiration(expirationHeader) : undefined,
       body: bodyPayload ?? {},
     };
-    if (projectHint) {
-      payload.projectId = projectHint;
+    if (resolvedProjectId) {
+      payload.projectId = resolvedProjectId;
     }
 
     const result = await ingestCanonicalEvent(fastify, installation.tenant_id, {

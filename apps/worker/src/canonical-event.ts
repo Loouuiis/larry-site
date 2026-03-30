@@ -253,6 +253,24 @@ async function loadSlackMappedProjectId(
   return rows[0]?.project_id ?? null;
 }
 
+async function loadCalendarMappedProjectId(
+  tenantId: string,
+  channelId: string
+): Promise<string | null> {
+  const rows = await db.queryTenant<{ project_id: string | null }>(
+    tenantId,
+    `SELECT project_id
+     FROM google_calendar_installations
+     WHERE tenant_id = $1
+       AND webhook_channel_id = $2
+     ORDER BY updated_at DESC
+     LIMIT 1`,
+    [tenantId, channelId]
+  );
+
+  return readOptionalString(rows[0]?.project_id ?? null);
+}
+
 async function upsertSlackChannelProjectMapping(
   tenantId: string,
   input: { slackTeamId: string; slackChannelId: string; projectId: string }
@@ -446,8 +464,14 @@ async function handleCalendarCanonicalEvent(
     return;
   }
 
-  const projectId = readCalendarProjectHint(calendarPayload);
-  if (!projectId) {
+  const hintedProjectId = readCalendarProjectHint(calendarPayload);
+  const calendarChannelId = readOptionalString(calendarPayload.channelId);
+  let resolvedProjectId = hintedProjectId;
+  if (!resolvedProjectId && calendarChannelId) {
+    resolvedProjectId = await loadCalendarMappedProjectId(tenantId, calendarChannelId);
+  }
+
+  if (!resolvedProjectId) {
     console.warn(
       `[canonical-event] calendar event ${canonicalEvent.id} has no resolvable project scope; skipping action generation`
     );
@@ -456,11 +480,11 @@ async function handleCalendarCanonicalEvent(
 
   let snapshot;
   try {
-    snapshot = await getProjectSnapshot(db, tenantId, projectId);
+    snapshot = await getProjectSnapshot(db, tenantId, resolvedProjectId);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     console.warn(
-      `[canonical-event] calendar event ${canonicalEvent.id} has invalid project scope ${projectId}; skipping (${reason})`
+      `[canonical-event] calendar event ${canonicalEvent.id} has invalid project scope ${resolvedProjectId}; skipping (${reason})`
     );
     return;
   }
@@ -476,7 +500,7 @@ async function handleCalendarCanonicalEvent(
     runAutoActions(
       db,
       tenantId,
-      projectId,
+      resolvedProjectId,
       "signal",
       intelligenceResult.autoActions,
       undefined,
@@ -485,14 +509,14 @@ async function handleCalendarCanonicalEvent(
     storeSuggestions(
       db,
       tenantId,
-      projectId,
+      resolvedProjectId,
       "signal",
       intelligenceResult.suggestedActions,
       undefined,
       ledgerContext
     ),
     Promise.resolve(
-      insertProjectMemoryEntry(db, tenantId, projectId, {
+      insertProjectMemoryEntry(db, tenantId, resolvedProjectId, {
         source: "Calendar signal",
         sourceKind: "calendar",
         sourceRecordId: canonicalEvent.id,

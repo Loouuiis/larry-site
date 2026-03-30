@@ -646,20 +646,91 @@ describe("processQueueJob canonical_event.created", () => {
     expect(insertProjectMemoryEntry).not.toHaveBeenCalled();
   });
 
-  it("skips calendar canonical events when no project hint can be resolved", async () => {
-    contextMocks.queryTenant.mockResolvedValueOnce([
-      {
-        id: CALENDAR_CANONICAL_EVENT_ID,
-        source: "calendar",
-        payload: {
-          channelId: "calendar-channel-1",
-          resourceState: "exists",
-          body: {
-            summary: "No project hint available",
+  it("processes calendar canonical events via mapped channel fallback when payload project hint is absent", async () => {
+    contextMocks.queryTenant
+      .mockResolvedValueOnce([
+        {
+          id: CALENDAR_CANONICAL_EVENT_ID,
+          source: "calendar",
+          payload: {
+            channelId: "calendar-channel-1",
+            resourceState: "exists",
+            body: {
+              summary: "Launch sync without project hint",
+            },
           },
         },
-      },
-    ]);
+      ])
+      .mockResolvedValueOnce([{ project_id: PROJECT_ID }]);
+
+    vi.mocked(listLarryEventIdsBySource).mockResolvedValueOnce([]);
+    vi.mocked(getProjectSnapshot).mockResolvedValue(createSnapshot());
+    vi.mocked(runIntelligence).mockResolvedValue({
+      briefing: "Calendar signal maps to the launch project through connector defaults.",
+      autoActions: [],
+      suggestedActions: [
+        {
+          type: "task_create",
+          displayText: "Create launch sync follow-up task",
+          reasoning: "Calendar signal mapped to project via connector link.",
+          payload: { title: "Follow up after mapped calendar sync" },
+        },
+      ],
+    });
+    vi.mocked(runAutoActions).mockResolvedValue({
+      executedCount: 0,
+      suggestedCount: 0,
+      eventIds: [],
+    });
+    vi.mocked(storeSuggestions).mockResolvedValue({
+      executedCount: 0,
+      suggestedCount: 1,
+      eventIds: ["ev-calendar-suggest-2"],
+    });
+
+    await processQueueJob(createCanonicalEventJob({ canonicalEventId: CALENDAR_CANONICAL_EVENT_ID }) as never);
+
+    expect(getProjectSnapshot).toHaveBeenCalledWith(expect.anything(), TENANT_ID, PROJECT_ID);
+    const mappingLookupCall = contextMocks.queryTenant.mock.calls.find(([, sql]) =>
+      String(sql).includes("FROM google_calendar_installations")
+    );
+    expect(mappingLookupCall?.[2]).toEqual([TENANT_ID, "calendar-channel-1"]);
+    expect(runAutoActions).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT_ID,
+      PROJECT_ID,
+      "signal",
+      expect.any(Array),
+      undefined,
+      {
+        sourceKind: "calendar",
+        sourceRecordId: CALENDAR_CANONICAL_EVENT_ID,
+      }
+    );
+    expect(insertProjectMemoryEntry).toHaveBeenCalledWith(expect.anything(), TENANT_ID, PROJECT_ID, {
+      source: "Calendar signal",
+      sourceKind: "calendar",
+      sourceRecordId: CALENDAR_CANONICAL_EVENT_ID,
+      content: expect.stringContaining("Calendar:"),
+    });
+  });
+
+  it("skips calendar canonical events when no project hint can be resolved", async () => {
+    contextMocks.queryTenant
+      .mockResolvedValueOnce([
+        {
+          id: CALENDAR_CANONICAL_EVENT_ID,
+          source: "calendar",
+          payload: {
+            channelId: "calendar-channel-1",
+            resourceState: "exists",
+            body: {
+              summary: "No project hint available",
+            },
+          },
+        },
+      ])
+      .mockResolvedValueOnce([]);
 
     vi.mocked(listLarryEventIdsBySource).mockResolvedValueOnce([]);
 
@@ -669,6 +740,10 @@ describe("processQueueJob canonical_event.created", () => {
     expect(runIntelligence).not.toHaveBeenCalled();
     expect(runAutoActions).not.toHaveBeenCalled();
     expect(storeSuggestions).not.toHaveBeenCalled();
+    const mappingLookupCall = contextMocks.queryTenant.mock.calls.find(([, sql]) =>
+      String(sql).includes("FROM google_calendar_installations")
+    );
+    expect(mappingLookupCall?.[2]).toEqual([TENANT_ID, "calendar-channel-1"]);
   });
 
   it("skips Slack canonical events when no project hint or channel mapping can be resolved", async () => {

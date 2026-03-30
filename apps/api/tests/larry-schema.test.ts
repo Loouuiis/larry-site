@@ -202,6 +202,23 @@ describe("Larry ledger schema", () => {
     expect(schema).toContain("CREATE POLICY tenant_isolation_project_notes");
   });
 
+  it("adds google calendar default-project linkage with additive migration and lookup index", () => {
+    const googleInstallationsTable = schema.match(
+      /CREATE TABLE IF NOT EXISTS google_calendar_installations \([\s\S]*?\n\);/
+    );
+    expect(googleInstallationsTable).not.toBeNull();
+
+    const googleInstallationsTableSql = googleInstallationsTable?.[0] ?? "";
+    expect(googleInstallationsTableSql).toContain("project_id UUID REFERENCES projects(id) ON DELETE SET NULL");
+    expect(schema).toContain(
+      "ADD COLUMN IF NOT EXISTS project_id UUID REFERENCES projects(id) ON DELETE SET NULL;"
+    );
+    expect(schema).toContain("CREATE INDEX IF NOT EXISTS idx_google_calendar_installations_tenant_project");
+    expect(schema).toContain("ALTER TABLE google_calendar_installations ENABLE ROW LEVEL SECURITY;");
+    expect(schema).toContain("CREATE POLICY tenant_isolation_google_calendar_installations");
+    expect(schema).toContain("CREATE POLICY google_calendar_installations_system_lookup");
+  });
+
   it("extends documents into an asset model with source/version/metadata fields and indexes", () => {
     expect(schema).toContain("CREATE TABLE IF NOT EXISTS documents (");
     expect(schema).toContain("source_kind TEXT");
