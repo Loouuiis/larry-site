@@ -114,6 +114,105 @@ function buildAcceptedActionMemoryEntry(input: {
   return parts.join(" ").slice(0, 4_000);
 }
 
+const MUTATING_VERB_PATTERN =
+  /\b(mark|set|change|move|assign|reassign|create|add|delete|remove|send|draft|close|complete|extend|flag)\b/i;
+const DIRECT_UPDATE_PATTERN = /\bupdate\b.{0,40}\b(task|deadline|owner|assignee|risk|status)\b/i;
+const DATE_HINT_PATTERN =
+  /\b\d{4}-\d{2}-\d{2}\b|\b(today|tomorrow|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i;
+
+function hasMutationIntent(message: string): boolean {
+  const trimmed = message.trim();
+  if (!trimmed) return false;
+
+  const lower = trimmed.toLowerCase();
+  const readOnlyQuestion =
+    (trimmed.endsWith("?") || /\b(what|which|how|any|show|list|summary|summarize)\b/i.test(trimmed)) &&
+    !MUTATING_VERB_PATTERN.test(trimmed) &&
+    !DIRECT_UPDATE_PATTERN.test(trimmed);
+
+  if (readOnlyQuestion) return false;
+  if (MUTATING_VERB_PATTERN.test(trimmed)) return true;
+  return DIRECT_UPDATE_PATTERN.test(trimmed);
+}
+
+function findMentionedTaskIds(message: string, tasks: Array<{ id: string; title: string }>): string[] {
+  const lowerMessage = message.toLowerCase();
+  const matched = new Set<string>();
+
+  for (const task of tasks) {
+    const taskId = task.id.toLowerCase();
+    const taskTitle = task.title.toLowerCase();
+
+    if (lowerMessage.includes(taskId) || lowerMessage.includes(taskTitle)) {
+      matched.add(task.id);
+      continue;
+    }
+
+    const titleTokens = taskTitle.split(/[^a-z0-9]+/).filter((token) => token.length > 3);
+    const matchedTokenCount = titleTokens.filter((token) => lowerMessage.includes(token)).length;
+    if (matchedTokenCount >= 2) {
+      matched.add(task.id);
+    }
+  }
+
+  return Array.from(matched);
+}
+
+function detectClarificationNeed(input: {
+  message: string;
+  tasks: Array<{ id: string; title: string }>;
+}): { question: string; reason: string } | null {
+  if (!hasMutationIntent(input.message)) return null;
+
+  const message = input.message.trim();
+  const lower = message.toLowerCase();
+  const mentionedTaskIds = findMentionedTaskIds(message, input.tasks);
+
+  if (/\b(create|add)\b/.test(lower) && /\btask\b/.test(lower)) {
+    const detailMatch = lower.match(/(?:create|add)\s+(?:a\s+)?task(?:\s+(?:for|to)\s+)?(.+)/);
+    const detailText = detailMatch?.[1]?.trim() ?? "";
+    if (detailText.length < 4) {
+      return {
+        question:
+          "I can do that. What task should I create? Reply with a task title and, if you have them, an owner or due date.",
+        reason: "task_create_missing_details",
+      };
+    }
+  }
+
+  if (/\b(deadline|due date|due)\b/i.test(message) && !DATE_HINT_PATTERN.test(message)) {
+    return {
+      question: "I can prepare that deadline change. What new date should I use?",
+      reason: "deadline_change_missing_date",
+    };
+  }
+
+  if (/\b(assign|reassign|owner|ownership)\b/i.test(message) && !/\bto\s+[a-z][a-z .'-]{1,80}\b/i.test(message)) {
+    return {
+      question: "I can make that ownership update. Who should this be assigned to?",
+      reason: "owner_change_missing_assignee",
+    };
+  }
+
+  if (input.tasks.length > 1 && mentionedTaskIds.length === 0) {
+    return {
+      question:
+        "I can apply that update, but I need the target task first. Reply with the task name or task ID you want me to change.",
+      reason: "missing_task_target",
+    };
+  }
+
+  if (mentionedTaskIds.length > 1) {
+    return {
+      question:
+        "I found multiple matching tasks for that request. Which exact task should I use? Please reply with one task name or ID.",
+      reason: "ambiguous_task_target",
+    };
+  }
+
+  return null;
+}
+
 export const larryRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/conversations",
@@ -538,6 +637,99 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         throw fastify.httpErrors.notFound(messageText);
       }
 
+      const clarificationNeed = detectClarificationNeed({
+        message,
+        tasks: snapshot.tasks.map((task) => ({ id: task.id, title: task.title })),
+      });
+
+      if (clarificationNeed) {
+        const conversation =
+          existingConversation ??
+          await createLarryConversation(fastify.db, tenantId, actorUserId, {
+            projectId,
+            title: message.slice(0, 80),
+          });
+
+        const userMessageInsert = await insertLarryMessage(fastify.db, tenantId, conversation.id, {
+          role: "user",
+          content: message,
+          actorUserId,
+        });
+
+        const assistantMessageInsert = await insertLarryMessage(fastify.db, tenantId, conversation.id, {
+          role: "larry",
+          content: clarificationNeed.question,
+        });
+
+        await touchLarryConversation(fastify.db, tenantId, conversation.id, message.slice(0, 80));
+
+        const persistedMessages = await listLarryMessagesByIds(fastify.db, tenantId, [
+          userMessageInsert.id,
+          assistantMessageInsert.id,
+        ]);
+
+        const userMessage =
+          persistedMessages.find((entry) => entry.id === userMessageInsert.id) ??
+          fallbackMessage({
+            id: userMessageInsert.id,
+            role: "user",
+            content: message,
+            createdAt: userMessageInsert.createdAt,
+            actorUserId,
+          });
+
+        const assistantMessage =
+          persistedMessages.find((entry) => entry.id === assistantMessageInsert.id) ??
+          fallbackMessage({
+            id: assistantMessageInsert.id,
+            role: "larry",
+            content: clarificationNeed.question,
+            createdAt: assistantMessageInsert.createdAt,
+          });
+
+        await Promise.all([
+          writeAuditLog(fastify.db, {
+            tenantId,
+            actorUserId,
+            actionType: "larry.chat.clarification_requested",
+            objectType: "project",
+            objectId: projectId,
+            details: {
+              conversationId: conversation.id,
+              clarificationReason: clarificationNeed.reason,
+            },
+          }),
+          Promise.resolve(
+            insertProjectMemoryEntry(fastify.db, tenantId, projectId, {
+              source: "Larry chat",
+              sourceKind: "chat",
+              sourceRecordId: userMessageInsert.id,
+              content: buildChatMemoryEntry(message, clarificationNeed.question),
+            })
+          ).catch((error) => {
+            request.log.warn(
+              { err: error, tenantId, projectId, conversationId: conversation.id },
+              "project memory write failed for clarification chat turn"
+            );
+          }),
+        ]);
+
+        return reply.code(200).send({
+          conversationId: conversation.id,
+          message: clarificationNeed.question,
+          userMessage,
+          assistantMessage: {
+            ...assistantMessage,
+            linkedActions: [],
+          },
+          linkedActions: [],
+          actionsExecuted: 0,
+          suggestionCount: 0,
+          requiresClarification: true,
+          clarificationQuestions: [clarificationNeed.question],
+        });
+      }
+
       const pendingTexts = await getPendingSuggestionTexts(fastify.db, tenantId, projectId).catch(
         () => [] as string[]
       );
@@ -642,7 +834,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         },
         linkedActions,
         actionsExecuted: autoResult.executedCount,
-        suggestionCount: suggestResult.suggestedCount,
+        suggestionCount: suggestResult.suggestedCount + autoResult.suggestedCount,
       };
 
       await Promise.all([
@@ -655,7 +847,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           details: {
             conversationId: conversation.id,
             actionsExecuted: autoResult.executedCount,
-            suggestionCount: suggestResult.suggestedCount,
+            suggestionCount: suggestResult.suggestedCount + autoResult.suggestedCount,
             linkedActionCount: linkedActions.length,
           },
         }),

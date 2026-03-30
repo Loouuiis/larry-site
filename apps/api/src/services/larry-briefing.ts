@@ -108,8 +108,8 @@ export async function generateBriefing(
       statusLabel: deriveStatusLabel(project.risk_level),
       summary: result.briefing,
       actionsCount: autoResult.executedCount,
-      needsYou: suggestResult.suggestedCount > 0,
-      suggestionCount: suggestResult.suggestedCount,
+      needsYou: suggestResult.suggestedCount + autoResult.suggestedCount > 0,
+      suggestionCount: suggestResult.suggestedCount + autoResult.suggestedCount,
     });
   }
 

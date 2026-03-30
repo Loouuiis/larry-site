@@ -46,7 +46,7 @@ export async function runLarryScan(): Promise<void> {
 
         processed++;
         totalExecuted += autoResult.executedCount;
-        totalSuggested += suggestResult.suggestedCount;
+        totalSuggested += suggestResult.suggestedCount + autoResult.suggestedCount;
       } catch (err) {
         console.error(
           `[larry-scan] project ${projectId} (tenant ${tenantId}) failed`,

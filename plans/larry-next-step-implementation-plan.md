@@ -393,6 +393,19 @@ These are not optional cleanups; they are part of the implementation strategy:
     - `apps/api/tests/project-intake-runtime.test.ts`
     - extended `apps/api/tests/larry-schema.test.ts`
   - Test gate passed: `cd apps/api && npm test` -> 21 files / 85 tests passing.
+- **Phase 6 - Clarification-Before-Action And Governed Auto-Execution (starter slice) (completed)**:
+  - Added clarification-first gating on canonical `POST /v1/larry/chat` so ambiguous mutation requests persist the turn but return a clarification prompt and skip intelligence/action mutation.
+  - Hardened canonical auto-action execution in `runAutoActions` with tenant policy, requester authority, and required-payload guardrails; disallowed auto actions now policy-route into `suggested` ledger events instead of executing.
+  - Preserved one execution-policy path across chat, login briefing, connector signals, and fallback scheduled scans by applying governed routing in shared DB executor orchestration.
+  - Updated chat/briefing/scheduled-scan suggestion accounting so policy-routed auto actions are reflected in surfaced pending-approval counts.
+  - Added regression coverage:
+    - `apps/api/tests/governed-auto-execution.test.ts`
+    - extended `apps/api/tests/larry-chat.test.ts`
+    - extended `apps/api/tests/larry-briefing.test.ts`
+  - Updated core runtime docs:
+    - `docs/BACKEND-API.md`
+    - `docs/BACKEND-WORKER.md`
+  - Test gate passed: `cd apps/api && npm test` -> 22 files / 91 tests passing.
 - **Phase 1 - Legacy Dashboard Retirement And Snapshot Fence (completed)**:
   - Replaced legacy `GET /api/workspace/snapshot` behavior with an explicit `410 Gone` retired-contract payload that points callers to canonical scoped workspace routes.
   - Added a `/dashboard/* -> /workspace` catch-all redirect route so legacy dashboard entry paths no longer expose runtime behavior.
@@ -469,12 +482,30 @@ None. Phase 2 is fully closed as of 2026-03-30.
 
 None. Phase 5 starter slice is fully closed as of 2026-03-30.
 
+### Phase 6 Closure Snapshot (2026-03-30 UTC)
+
+- Done:
+  - **Phase 6 - Clarification-Before-Action And Governed Auto-Execution (starter slice) (completed)**:
+    - ambiguous mutation chat requests now trigger clarification prompts before any action mutation
+    - governed auto-action routing now enforces tenant policy + requester authority + payload completeness checks
+    - disallowed auto actions are rerouted into Action Centre suggestions rather than executed
+    - chat, briefing, connector-signal, and scheduled-scan runtimes now share this policy path
+    - test gate passed: 22 files / 91 tests
+- Remaining in current phase:
+  - None. Phase 6 starter slice is closed.
+- Next concrete milestone:
+  - Not opened in this update (phase discipline: no next-phase kickoff).
+
+### Still To Do For Phase 6
+
+None. Phase 6 starter slice is fully closed as of 2026-03-30.
+
 ### Recommended Next Slice
 
 - Closed in this update:
-  - **Phase 5 - Unified Project Intake** starter slice (completed).
+  - **Phase 6 - Clarification-Before-Action And Governed Auto-Execution** starter slice (completed).
 - Candidate milestone for the next update (not opened in this change):
-  - **Phase 6 - Clarification-Before-Action And Governed Auto-Execution** starter slice.
+  - **Phase 7 - Project Collaboration, Shared Larry, And Notes** starter slice.
 
 ---
 

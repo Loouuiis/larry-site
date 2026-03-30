@@ -97,6 +97,44 @@ const MOCK_SNAPSHOT: ProjectSnapshot = {
   generatedAt: new Date().toISOString(),
 };
 
+const SNAPSHOT_WITH_MULTIPLE_TASKS: ProjectSnapshot = {
+  ...MOCK_SNAPSHOT,
+  tasks: [
+    {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      title: "QA sign-off on checkout flow",
+      description: null,
+      status: "in_progress",
+      priority: "high",
+      assigneeId: USER_ID,
+      assigneeName: "pm",
+      progressPercent: 40,
+      riskScore: 62,
+      riskLevel: "medium",
+      dueDate: "2026-04-10",
+      startDate: "2026-03-20",
+      lastActivityAt: "2026-03-28T10:00:00.000Z",
+      dependsOnTitles: [],
+    },
+    {
+      id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      title: "Prepare investor demo deck",
+      description: null,
+      status: "not_started",
+      priority: "medium",
+      assigneeId: USER_ID,
+      assigneeName: "pm",
+      progressPercent: 10,
+      riskScore: 45,
+      riskLevel: "medium",
+      dueDate: "2026-04-15",
+      startDate: "2026-03-22",
+      lastActivityAt: "2026-03-27T08:00:00.000Z",
+      dependsOnTitles: [],
+    },
+  ],
+};
+
 function createMockDb() {
   return {
     queryTenant: vi.fn().mockResolvedValue([]),
@@ -395,6 +433,172 @@ describe("POST /larry/chat", () => {
         sourceRecordId: "77777777-7777-4777-8777-777777777777",
       })
     );
+  });
+
+  it("returns a clarification prompt for ambiguous mutation requests and skips action execution", async () => {
+    vi.mocked(getLarryConversationForUser).mockResolvedValue(null);
+    vi.mocked(getProjectSnapshot).mockResolvedValue(SNAPSHOT_WITH_MULTIPLE_TASKS);
+    vi.mocked(createLarryConversation).mockResolvedValue({
+      id: CONVERSATION_ID,
+      projectId: PROJECT_ID,
+      title: "Please mark this as complete",
+      createdAt: "2026-03-28T10:00:00.000Z",
+      updatedAt: "2026-03-28T10:00:00.000Z",
+      lastMessagePreview: null,
+      lastMessageAt: null,
+    });
+    vi.mocked(insertLarryMessage)
+      .mockResolvedValueOnce({ id: "clarify-user-1", createdAt: "2026-03-28T10:04:00.000Z" })
+      .mockResolvedValueOnce({ id: "clarify-assistant-1", createdAt: "2026-03-28T10:04:01.000Z" });
+    vi.mocked(listLarryMessagesByIds).mockResolvedValue([
+      {
+        id: "clarify-user-1",
+        role: "user",
+        content: "Please mark this as complete",
+        reasoning: null,
+        createdAt: "2026-03-28T10:04:00.000Z",
+        actorUserId: USER_ID,
+        actorDisplayName: "pm",
+        linkedActions: [],
+      },
+      {
+        id: "clarify-assistant-1",
+        role: "larry",
+        content: "I can apply that update, but I need the target task first.",
+        reasoning: null,
+        createdAt: "2026-03-28T10:04:01.000Z",
+        actorUserId: null,
+        actorDisplayName: null,
+        linkedActions: [],
+      },
+    ]);
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/larry/chat",
+      payload: { projectId: PROJECT_ID, message: "Please mark this as complete" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      conversationId: CONVERSATION_ID,
+      actionsExecuted: 0,
+      suggestionCount: 0,
+      requiresClarification: true,
+      clarificationQuestions: [expect.stringContaining("target task")],
+    });
+    expect(runIntelligence).not.toHaveBeenCalled();
+    expect(getPendingSuggestionTexts).not.toHaveBeenCalled();
+    expect(runAutoActions).not.toHaveBeenCalled();
+    expect(storeSuggestions).not.toHaveBeenCalled();
+  });
+
+  it("includes rerouted auto-actions in suggestionCount", async () => {
+    vi.mocked(getLarryConversationForUser).mockResolvedValue(null);
+    vi.mocked(getProjectSnapshot).mockResolvedValue(MOCK_SNAPSHOT);
+    vi.mocked(getPendingSuggestionTexts).mockResolvedValue([]);
+    vi.mocked(runIntelligence).mockResolvedValue({
+      briefing: "I prepared one routed action and two fresh suggestions.",
+      autoActions: [],
+      suggestedActions: [],
+    });
+    vi.mocked(createLarryConversation).mockResolvedValue({
+      id: CONVERSATION_ID,
+      projectId: PROJECT_ID,
+      title: "Review actions",
+      createdAt: "2026-03-28T10:00:00.000Z",
+      updatedAt: "2026-03-28T10:00:00.000Z",
+      lastMessagePreview: null,
+      lastMessageAt: null,
+    });
+    vi.mocked(insertLarryMessage)
+      .mockResolvedValueOnce({ id: "route-user-1", createdAt: "2026-03-28T10:05:00.000Z" })
+      .mockResolvedValueOnce({ id: "route-assistant-1", createdAt: "2026-03-28T10:05:01.000Z" });
+    vi.mocked(runAutoActions).mockResolvedValue({
+      executedCount: 0,
+      suggestedCount: 1,
+      eventIds: ["ev-rerouted-1"],
+    });
+    vi.mocked(storeSuggestions).mockResolvedValue({
+      executedCount: 0,
+      suggestedCount: 2,
+      eventIds: ["ev-suggest-1", "ev-suggest-2"],
+    });
+    vi.mocked(listLarryMessagesByIds).mockResolvedValue([
+      {
+        id: "route-user-1",
+        role: "user",
+        content: "Review actions",
+        reasoning: null,
+        createdAt: "2026-03-28T10:05:00.000Z",
+        actorUserId: USER_ID,
+        actorDisplayName: "pm",
+        linkedActions: [],
+      },
+      {
+        id: "route-assistant-1",
+        role: "larry",
+        content: "I prepared one routed action and two fresh suggestions.",
+        reasoning: null,
+        createdAt: "2026-03-28T10:05:01.000Z",
+        actorUserId: null,
+        actorDisplayName: null,
+        linkedActions: [
+          {
+            id: "ev-rerouted-1",
+            projectId: PROJECT_ID,
+            projectName: "Alpha Launch",
+            eventType: "suggested",
+            actionType: "risk_flag",
+            displayText: "Review this routed action",
+            reasoning: "Policy routed this for approval",
+            payload: {},
+            executedAt: null,
+            triggeredBy: "chat",
+            chatMessage: "Review actions",
+            createdAt: "2026-03-28T10:05:02.000Z",
+            conversationId: CONVERSATION_ID,
+            requestMessageId: "route-user-1",
+            responseMessageId: "route-assistant-1",
+            requestedByUserId: USER_ID,
+            requestedByName: "pm",
+            approvedByUserId: null,
+            approvedByName: null,
+            approvedAt: null,
+            dismissedByUserId: null,
+            dismissedByName: null,
+            dismissedAt: null,
+            executedByKind: null,
+            executedByUserId: null,
+            executedByName: null,
+            executionMode: "approval",
+            sourceKind: "chat",
+            sourceRecordId: "route-user-1",
+            conversationTitle: "Review actions",
+            requestMessagePreview: "Review actions",
+            responseMessagePreview: "I prepared one routed action and two fresh suggestions.",
+          },
+        ],
+      },
+    ]);
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/larry/chat",
+      payload: { projectId: PROJECT_ID, message: "Review actions" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      suggestionCount: 3,
+      actionsExecuted: 0,
+    });
   });
 
   it("reuses an existing conversation when conversationId is supplied", async () => {

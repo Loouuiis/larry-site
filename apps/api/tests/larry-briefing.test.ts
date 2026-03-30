@@ -92,7 +92,7 @@ describe("generateBriefing", () => {
     });
     vi.mocked(runAutoActions).mockResolvedValue({
       executedCount: 1,
-      suggestedCount: 0,
+      suggestedCount: 1,
       eventIds: ["ev-auto-1"],
     });
     vi.mocked(storeSuggestions).mockResolvedValue({
@@ -115,6 +115,13 @@ describe("generateBriefing", () => {
       content: {
         greeting: expect.stringContaining("Taylor"),
         totalNeedsYou: 1,
+        projects: [
+          {
+            projectId: PROJECT_ID,
+            suggestionCount: 2,
+            needsYou: true,
+          },
+        ],
       },
     });
     expect(runAutoActions).toHaveBeenCalledWith(

@@ -5,6 +5,7 @@ import type {
   LarryEventType,
   LarryExecutionMode,
   LarryTriggeredBy,
+  Role,
 } from "@larry/shared";
 import { createHash } from "node:crypto";
 import { Db } from "./client.js";
@@ -98,6 +99,27 @@ interface ProjectCreatePayload {
   tasks: Array<{ title: string; assigneeName: string | null; dueDate: string | null }>;
 }
 
+interface TenantPolicySettings {
+  autoExecuteLowImpact: boolean;
+}
+
+interface AutoExecutionDecision {
+  decision: "auto_execute" | "approval_required";
+  reason: string;
+  rule: string;
+}
+
+const APPROVAL_ONLY_ACTION_TYPES = new Set<LarryActionType>([
+  "task_create",
+  "deadline_change",
+  "owner_change",
+  "scope_change",
+  "email_draft",
+  "project_create",
+]);
+
+const DESTRUCTIVE_KEYWORD_PATTERN = /\b(delete|remove|drop|destroy|terminate|cancel)\b/i;
+
 const SOURCE_KINDS_REQUIRING_RECORD_ID = new Set([
   "chat",
   "meeting",
@@ -114,6 +136,147 @@ function normalizeContextValue(value: string | null | undefined): string | null 
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function hasPayloadValue(payload: Record<string, unknown>, key: string): boolean {
+  const value = payload[key];
+  if (value === null || value === undefined) return false;
+  if (typeof value === "string") return value.trim().length > 0;
+  return true;
+}
+
+function missingPayloadFields(action: LarryAction): string[] {
+  switch (action.type) {
+    case "task_create":
+      return ["title", "priority"].filter((field) => !hasPayloadValue(action.payload, field));
+    case "status_update":
+      return ["taskId", "newStatus", "newRiskLevel"].filter((field) => !hasPayloadValue(action.payload, field));
+    case "risk_flag":
+      return ["taskId", "riskLevel"].filter((field) => !hasPayloadValue(action.payload, field));
+    case "reminder_send":
+      return ["assigneeName", "taskId", "message"].filter((field) => !hasPayloadValue(action.payload, field));
+    case "deadline_change":
+      return ["taskId", "newDeadline"].filter((field) => !hasPayloadValue(action.payload, field));
+    case "owner_change":
+      return ["taskId", "newOwnerName"].filter((field) => !hasPayloadValue(action.payload, field));
+    case "scope_change":
+      return ["entityId", "entityType", "newDescription"].filter((field) => !hasPayloadValue(action.payload, field));
+    case "email_draft":
+      return ["to", "subject", "body"].filter((field) => !hasPayloadValue(action.payload, field));
+    case "project_create":
+      return ["name", "description"].filter((field) => !hasPayloadValue(action.payload, field));
+    default:
+      return [];
+  }
+}
+
+async function getTenantPolicySettings(db: Db, tenantId: string): Promise<TenantPolicySettings> {
+  const rows = await db
+    .queryTenant<{ auto_execute_low_impact: boolean }>(
+      tenantId,
+      `SELECT auto_execute_low_impact
+       FROM tenant_policy_settings
+       WHERE tenant_id = $1
+       LIMIT 1`,
+      [tenantId]
+    )
+    .catch(() => [] as Array<{ auto_execute_low_impact: boolean }>);
+
+  return {
+    autoExecuteLowImpact: rows[0]?.auto_execute_low_impact ?? true,
+  };
+}
+
+async function getRequesterRole(
+  db: Db,
+  tenantId: string,
+  requesterUserId: string | null
+): Promise<Role | null> {
+  if (!requesterUserId) return null;
+  const rows = await db
+    .queryTenant<{ role: Role }>(
+      tenantId,
+      `SELECT role
+       FROM memberships
+       WHERE tenant_id = $1
+         AND user_id = $2
+       LIMIT 1`,
+      [tenantId, requesterUserId]
+    )
+    .catch(() => [] as Array<{ role: Role }>);
+
+  return rows[0]?.role ?? null;
+}
+
+function decideAutoExecution(input: {
+  action: LarryAction;
+  policy: TenantPolicySettings;
+  triggeredBy: TriggeredBy;
+  requesterRole: Role | null;
+}): AutoExecutionDecision {
+  const { action, policy, triggeredBy, requesterRole } = input;
+
+  if (!policy.autoExecuteLowImpact) {
+    return {
+      decision: "approval_required",
+      reason: "Tenant policy disables low-impact auto execution.",
+      rule: "tenant_policy:auto_execute_low_impact=false",
+    };
+  }
+
+  if (triggeredBy === "chat" && requesterRole === "member") {
+    return {
+      decision: "approval_required",
+      reason: "Members must route chat-initiated actions for PM or admin approval.",
+      rule: "authority:member_requires_approval",
+    };
+  }
+
+  if (APPROVAL_ONLY_ACTION_TYPES.has(action.type)) {
+    return {
+      decision: "approval_required",
+      reason: `Action type "${action.type}" requires explicit approval.`,
+      rule: `action_type:${action.type}`,
+    };
+  }
+
+  const missingFields = missingPayloadFields(action);
+  if (missingFields.length > 0) {
+    return {
+      decision: "approval_required",
+      reason: `Action payload is missing required fields: ${missingFields.join(", ")}.`,
+      rule: "payload:missing_required_fields",
+    };
+  }
+
+  if (DESTRUCTIVE_KEYWORD_PATTERN.test(`${action.displayText} ${action.reasoning}`)) {
+    return {
+      decision: "approval_required",
+      reason: "Potentially destructive language detected in action details.",
+      rule: "keyword:destructive_language",
+    };
+  }
+
+  return {
+    decision: "auto_execute",
+    reason: "Low-risk operational action eligible for automatic execution.",
+    rule: "policy:auto_execute_allowed",
+  };
+}
+
+function withPolicyMetadata(action: LarryAction, decision: AutoExecutionDecision): LarryAction {
+  return {
+    ...action,
+    payload: {
+      ...action.payload,
+      governance: {
+        decision: decision.decision,
+        reason: decision.reason,
+        rule: decision.rule,
+        evaluatedAt: new Date().toISOString(),
+      },
+    },
+  };
 }
 
 function normalizeLarryEventContext(
@@ -581,10 +744,48 @@ export async function runAutoActions(
   chatMessage?: string,
   context?: LarryEventContext
 ): Promise<ExecutorResult> {
+  const requesterUserId = normalizeContextValue(context?.requesterUserId);
+  const [policy, requesterRole] = await Promise.all([
+    getTenantPolicySettings(db, tenantId),
+    getRequesterRole(db, tenantId, requesterUserId),
+  ]);
+
+  const autoExecutableActions: LarryAction[] = [];
+  const reroutedSuggestionActions: LarryAction[] = [];
+
+  for (const action of actions) {
+    const decision = decideAutoExecution({
+      action,
+      policy,
+      triggeredBy,
+      requesterRole,
+    });
+
+    if (decision.decision === "auto_execute") {
+      autoExecutableActions.push(action);
+      continue;
+    }
+
+    reroutedSuggestionActions.push(withPolicyMetadata(action, decision));
+  }
+
+  const reroutedSuggestionResult =
+    reroutedSuggestionActions.length > 0
+      ? await storeSuggestions(
+          db,
+          tenantId,
+          projectId,
+          triggeredBy,
+          reroutedSuggestionActions,
+          chatMessage,
+          context
+        )
+      : { executedCount: 0, suggestedCount: 0, eventIds: [] };
+
   const eventIds: string[] = [];
   let executedCount = 0;
 
-  for (const action of actions) {
+  for (const action of autoExecutableActions) {
     // Insert the event record FIRST (executed_at = null) so that if the action
     // throws, we can delete it and avoid leaving an invisible mutation with no audit trail.
     let eventId: string;
@@ -641,7 +842,11 @@ export async function runAutoActions(
     }
   }
 
-  return { executedCount, suggestedCount: 0, eventIds };
+  return {
+    executedCount,
+    suggestedCount: reroutedSuggestionResult.suggestedCount,
+    eventIds: [...eventIds, ...reroutedSuggestionResult.eventIds],
+  };
 }
 
 /**
