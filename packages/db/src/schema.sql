@@ -835,15 +835,89 @@ CREATE TABLE IF NOT EXISTS documents (
   title TEXT NOT NULL,
   content TEXT NOT NULL,
   doc_type TEXT NOT NULL DEFAULT 'general',
+  source_kind TEXT,
+  source_record_id TEXT,
+  version INT NOT NULL DEFAULT 1,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_by_user_id UUID REFERENCES users(id),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE documents
+  ADD COLUMN IF NOT EXISTS source_kind TEXT;
+ALTER TABLE documents
+  ADD COLUMN IF NOT EXISTS source_record_id TEXT;
+ALTER TABLE documents
+  ADD COLUMN IF NOT EXISTS version INT;
+ALTER TABLE documents
+  ADD COLUMN IF NOT EXISTS metadata JSONB;
+ALTER TABLE documents
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;
+
+UPDATE documents
+SET version = 1
+WHERE version IS NULL;
+
+UPDATE documents
+SET metadata = '{}'::jsonb
+WHERE metadata IS NULL;
+
+UPDATE documents
+SET updated_at = created_at
+WHERE updated_at IS NULL;
+
+ALTER TABLE documents
+  ALTER COLUMN version SET DEFAULT 1;
+ALTER TABLE documents
+  ALTER COLUMN version SET NOT NULL;
+ALTER TABLE documents
+  ALTER COLUMN metadata SET DEFAULT '{}'::jsonb;
+ALTER TABLE documents
+  ALTER COLUMN metadata SET NOT NULL;
+ALTER TABLE documents
+  ALTER COLUMN updated_at SET DEFAULT NOW();
+ALTER TABLE documents
+  ALTER COLUMN updated_at SET NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_documents_tenant_project_updated
+  ON documents (tenant_id, project_id, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_documents_tenant_doc_type_updated
+  ON documents (tenant_id, doc_type, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_documents_tenant_source
+  ON documents (tenant_id, source_kind, source_record_id, updated_at DESC);
 
 ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
 
 DO $$ BEGIN
   CREATE POLICY tenant_isolation_documents
     ON documents
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+CREATE TABLE IF NOT EXISTS task_document_attachments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  attached_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (tenant_id, task_id, document_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_document_attachments_tenant_task_created
+  ON task_document_attachments (tenant_id, task_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_task_document_attachments_tenant_document_created
+  ON task_document_attachments (tenant_id, document_id, created_at DESC);
+
+ALTER TABLE task_document_attachments ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_task_document_attachments
+    ON task_document_attachments
     USING (tenant_id::text = current_setting('app.tenant_id', true));
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 

@@ -13,11 +13,13 @@ import { notificationRoutes } from "./notifications.js";
 import { meetingRoutes } from "./meetings.js";
 import { orgRoutes } from "./orgs.js";
 import { projectIntakeRoutes } from "./project-intake.js";
+import { documentRoutes } from "./documents.js";
 
 export const v1Routes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(authRoutes, { prefix: "/auth" });
   await fastify.register(projectRoutes, { prefix: "/projects" });
   await fastify.register(projectIntakeRoutes, { prefix: "/projects" });
+  await fastify.register(documentRoutes, { prefix: "/documents" });
   await fastify.register(taskRoutes, { prefix: "/tasks" });
   await fastify.register(ingestRoutes, { prefix: "/ingest" });
   await fastify.register(slackConnectorRoutes, { prefix: "/connectors/slack" });

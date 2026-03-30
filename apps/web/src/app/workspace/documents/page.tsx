@@ -1,40 +1,162 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { FileText, Upload } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { FileSpreadsheet, FileText, Loader2 } from "lucide-react";
 import Link from "next/link";
 
-interface MeetingDocument {
+type WorkspaceProject = {
   id: string;
-  title: string | null;
-  summary: string | null;
-  actionCount: number;
-  meetingDate: string | null;
+  name: string;
+};
+
+type WorkspaceDocument = {
+  id: string;
+  projectId: string | null;
+  title: string;
+  content: string;
+  docType: string;
+  sourceKind: string | null;
+  sourceRecordId: string | null;
+  version: number;
+  metadata: Record<string, unknown>;
   createdAt: string;
-  projectId?: string | null;
+  updatedAt: string;
+};
+
+type WorkspaceDocumentListResponse = {
+  items?: WorkspaceDocument[];
+  error?: string;
+};
+
+type WorkspaceProjectListResponse = {
+  items?: WorkspaceProject[];
+};
+
+function formatDate(raw: string): string {
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
-function formatDate(meetingDate: string | null, createdAt: string): string {
-  const raw = meetingDate ?? createdAt;
-  const d = new Date(raw);
-  if (isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+function labelForDocType(docType: string): string {
+  if (docType === "docx_template") return ".docx template";
+  if (docType === "xlsx_template") return ".xlsx template";
+  if (docType === "email_draft") return "Email draft";
+  return docType.replace(/_/g, " ");
+}
+
+function isWorkspaceDocumentListResponse(value: unknown): value is WorkspaceDocumentListResponse {
+  return Boolean(value && typeof value === "object");
 }
 
 export default function DocumentsPage() {
-  const [docs, setDocs] = useState<MeetingDocument[]>([]);
+  const [docs, setDocs] = useState<WorkspaceDocument[]>([]);
+  const [projects, setProjects] = useState<WorkspaceProject[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState("");
   const [loading, setLoading] = useState(true);
+  const [busyTemplateType, setBusyTemplateType] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const projectsById = useMemo(() => {
+    return new Map(projects.map((project) => [project.id, project.name]));
+  }, [projects]);
 
   useEffect(() => {
-    fetch("/api/workspace/meetings?limit=50", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((data: { meetings?: MeetingDocument[] }) => {
-        const withSummary = (data.meetings ?? []).filter((m) => m.summary != null);
-        setDocs(withSummary);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    let cancelled = false;
+
+    async function load() {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const [docsResponse, projectsResponse] = await Promise.all([
+          fetch("/api/workspace/documents?limit=100", { cache: "no-store" }),
+          fetch("/api/workspace/projects", { cache: "no-store" }),
+        ]);
+
+        const docsJson = await docsResponse.json().catch(() => ({}));
+        const projectsJson = await projectsResponse.json().catch(() => ({}));
+
+        if (cancelled) return;
+
+        const nextDocs = isWorkspaceDocumentListResponse(docsJson) && Array.isArray(docsJson.items)
+          ? docsJson.items
+          : [];
+        const nextProjects = Array.isArray(projectsJson?.items)
+          ? projectsJson.items
+          : [];
+
+        setDocs(nextDocs);
+        setProjects(nextProjects);
+        setSelectedProjectId((current) => current || nextProjects[0]?.id || "");
+      } catch {
+        if (!cancelled) {
+          setDocs([]);
+          setProjects([]);
+          setError("Failed to load documents.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  async function createTemplate(docType: "docx_template" | "xlsx_template") {
+    if (!selectedProjectId) {
+      setError("Select a project first.");
+      return;
+    }
+
+    setBusyTemplateType(docType);
+    setError(null);
+
+    const body =
+      docType === "docx_template"
+        ? {
+            projectId: selectedProjectId,
+            title: "Project Brief Template",
+            content:
+              "# Project Brief\n\n## Objective\n- \n\n## Scope\n- In scope\n- Out of scope\n\n## Risks\n- \n",
+            docType,
+            sourceKind: "template",
+            metadata: { format: "docx", templateCategory: "project_brief" },
+          }
+        : {
+            projectId: selectedProjectId,
+            title: "Milestone Tracker Template",
+            content:
+              "Sheet: Milestones\nColumns: Milestone, Owner, Target Date, Status\n",
+            docType,
+            sourceKind: "template",
+            metadata: { format: "xlsx", templateCategory: "milestone_tracker" },
+          };
+
+    try {
+      const response = await fetch("/api/workspace/documents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.document) {
+        throw new Error(payload?.error ?? "Failed to create template.");
+      }
+
+      const createdDocument = payload.document as WorkspaceDocument;
+      setDocs((current) => [createdDocument, ...current.filter((doc) => doc.id !== createdDocument.id)]);
+    } catch (templateError) {
+      setError(templateError instanceof Error ? templateError.message : "Failed to create template.");
+    } finally {
+      setBusyTemplateType(null);
+    }
+  }
 
   return (
     <div
@@ -45,31 +167,85 @@ export default function DocumentsPage() {
         padding: "24px",
       }}
     >
-      {/* Page header */}
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
-          alignItems: "center",
+          alignItems: "flex-start",
+          gap: "16px",
           marginBottom: "24px",
+          flexWrap: "wrap",
         }}
       >
         <div>
           <h1 className="text-h1">Documents</h1>
           <p className="text-body-sm" style={{ marginTop: "4px" }}>
-            Meeting summaries, reports, and workspace knowledge.
+            Project assets, email drafts, and starter templates.
           </p>
         </div>
-        <button
-          className="pm-btn pm-btn-primary pm-btn-sm"
-          style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
-        >
-          <Upload size={13} />
-          Upload
-        </button>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+          <select
+            value={selectedProjectId}
+            onChange={(event) => setSelectedProjectId(event.target.value)}
+            style={{
+              height: "36px",
+              borderRadius: "10px",
+              border: "1px solid var(--border)",
+              background: "var(--surface)",
+              color: "var(--text-1)",
+              padding: "0 10px",
+              minWidth: "200px",
+            }}
+          >
+            <option value="">Select project...</option>
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
+          </select>
+
+          <button
+            type="button"
+            className="pm-btn pm-btn-sm"
+            onClick={() => void createTemplate("docx_template")}
+            disabled={busyTemplateType !== null}
+            style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+          >
+            {busyTemplateType === "docx_template" ? <Loader2 size={13} className="animate-spin" /> : <FileText size={13} />}
+            New .docx template
+          </button>
+
+          <button
+            type="button"
+            className="pm-btn pm-btn-sm"
+            onClick={() => void createTemplate("xlsx_template")}
+            disabled={busyTemplateType !== null}
+            style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+          >
+            {busyTemplateType === "xlsx_template" ? <Loader2 size={13} className="animate-spin" /> : <FileSpreadsheet size={13} />}
+            New .xlsx template
+          </button>
+        </div>
       </div>
 
-      {/* Loading state */}
+      {error && (
+        <div
+          style={{
+            marginBottom: "16px",
+            borderRadius: "12px",
+            border: "1px solid #fecaca",
+            background: "#fef2f2",
+            color: "#b91c1c",
+            padding: "10px 12px",
+            fontSize: "13px",
+          }}
+        >
+          {error}
+        </div>
+      )}
+
       {loading && (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 0" }}>
           <div
@@ -83,7 +259,6 @@ export default function DocumentsPage() {
         </div>
       )}
 
-      {/* Document table */}
       {!loading && (
         <div
           style={{
@@ -93,26 +268,23 @@ export default function DocumentsPage() {
             background: "var(--surface)",
           }}
         >
-          {/* Table header */}
           <div
             className="pm-table-header"
-            style={{ gridTemplateColumns: "minmax(0,1fr) 100px 120px 100px 100px" }}
+            style={{ gridTemplateColumns: "minmax(0,1fr) 150px 180px 140px 100px" }}
           >
             <span>Document</span>
             <span>Type</span>
             <span>Project</span>
-            <span>Date</span>
-            <span>Author</span>
+            <span>Updated</span>
+            <span>Version</span>
           </div>
 
-          {/* Table rows */}
           {docs.map((doc) => (
             <div
               key={doc.id}
               className="pm-table-row"
-              style={{ gridTemplateColumns: "minmax(0,1fr) 100px 120px 100px 100px" }}
+              style={{ gridTemplateColumns: "minmax(0,1fr) 150px 180px 140px 100px" }}
             >
-              {/* Document name with icon */}
               <span style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
                 <div
                   style={{
@@ -136,14 +308,14 @@ export default function DocumentsPage() {
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {doc.title ?? "Meeting transcript"}
+                  {doc.title}
                 </span>
               </span>
 
-              {/* Type */}
-              <span className="text-body-sm">Meeting summary</span>
+              <span className="text-body-sm" style={{ textTransform: "capitalize" }}>
+                {labelForDocType(doc.docType)}
+              </span>
 
-              {/* Project */}
               <span
                 className="text-body-sm"
                 style={{
@@ -152,20 +324,14 @@ export default function DocumentsPage() {
                   whiteSpace: "nowrap",
                 }}
               >
-                {doc.projectId ? doc.projectId.slice(0, 8) + "…" : "—"}
+                {doc.projectId ? projectsById.get(doc.projectId) ?? doc.projectId.slice(0, 8) : "-"}
               </span>
 
-              {/* Date */}
-              <span className="text-body-sm">
-                {formatDate(doc.meetingDate, doc.createdAt)}
-              </span>
-
-              {/* Author */}
-              <span className="text-body-sm">Larry</span>
+              <span className="text-body-sm">{formatDate(doc.updatedAt)}</span>
+              <span className="text-body-sm">v{doc.version}</span>
             </div>
           ))}
 
-          {/* Empty state */}
           {!loading && docs.length === 0 && (
             <div style={{ padding: "48px", textAlign: "center" }}>
               <div
@@ -193,13 +359,13 @@ export default function DocumentsPage() {
                 No documents yet
               </p>
               <p className="text-body-sm" style={{ marginBottom: "16px" }}>
-                Process a meeting transcript to see summaries here.
+                Create a starter template or save an email draft to populate this list.
               </p>
               <Link
-                href="/workspace/meetings"
+                href="/workspace/projects/new"
                 style={{ color: "var(--cta)", fontSize: "14px", fontWeight: 500 }}
               >
-                Go to Meetings →
+                Start a project ->
               </Link>
             </div>
           )}

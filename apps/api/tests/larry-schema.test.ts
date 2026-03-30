@@ -201,4 +201,39 @@ describe("Larry ledger schema", () => {
     expect(schema).toContain("ALTER TABLE project_notes ENABLE ROW LEVEL SECURITY;");
     expect(schema).toContain("CREATE POLICY tenant_isolation_project_notes");
   });
+
+  it("extends documents into an asset model with source/version/metadata fields and indexes", () => {
+    expect(schema).toContain("CREATE TABLE IF NOT EXISTS documents (");
+    expect(schema).toContain("source_kind TEXT");
+    expect(schema).toContain("source_record_id TEXT");
+    expect(schema).toContain("version INT NOT NULL DEFAULT 1");
+    expect(schema).toContain("metadata JSONB NOT NULL DEFAULT '{}'::jsonb");
+    expect(schema).toContain("updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()");
+    expect(schema).toContain("ALTER TABLE documents");
+    expect(schema).toContain("ADD COLUMN IF NOT EXISTS source_kind TEXT;");
+    expect(schema).toContain("ADD COLUMN IF NOT EXISTS source_record_id TEXT;");
+    expect(schema).toContain("ADD COLUMN IF NOT EXISTS version INT;");
+    expect(schema).toContain("ADD COLUMN IF NOT EXISTS metadata JSONB;");
+    expect(schema).toContain("ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;");
+    expect(schema).toContain("CREATE INDEX IF NOT EXISTS idx_documents_tenant_project_updated");
+    expect(schema).toContain("CREATE INDEX IF NOT EXISTS idx_documents_tenant_doc_type_updated");
+    expect(schema).toContain("CREATE INDEX IF NOT EXISTS idx_documents_tenant_source");
+    expect(schema).toContain("ALTER TABLE documents ENABLE ROW LEVEL SECURITY;");
+    expect(schema).toContain("CREATE POLICY tenant_isolation_documents");
+  });
+
+  it("adds task_document_attachments with uniqueness, indexes, and tenant RLS", () => {
+    expect(schema).toContain("CREATE TABLE IF NOT EXISTS task_document_attachments (");
+    expect(schema).toContain("task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE");
+    expect(schema).toContain("document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE");
+    expect(schema).toContain("UNIQUE (tenant_id, task_id, document_id)");
+    expect(schema).toContain(
+      "CREATE INDEX IF NOT EXISTS idx_task_document_attachments_tenant_task_created"
+    );
+    expect(schema).toContain(
+      "CREATE INDEX IF NOT EXISTS idx_task_document_attachments_tenant_document_created"
+    );
+    expect(schema).toContain("ALTER TABLE task_document_attachments ENABLE ROW LEVEL SECURITY;");
+    expect(schema).toContain("CREATE POLICY tenant_isolation_task_document_attachments");
+  });
 });

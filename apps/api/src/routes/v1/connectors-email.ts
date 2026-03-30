@@ -268,6 +268,31 @@ export const emailConnectorRoutes: FastifyPluginAsync = async (fastify) => {
         ]
       );
 
+      const draftId = rows[0].id;
+      const draftState = body.sendNow ? "sent" : "draft";
+      await fastify.db.queryTenant<{ id: string }>(
+        tenantId,
+        `INSERT INTO documents
+          (tenant_id, project_id, title, content, doc_type, source_kind, source_record_id, version, metadata, created_by_user_id)
+         VALUES
+          ($1, $2, $3, $4, 'email_draft', 'email_draft', $5, 1, $6::jsonb, $7)
+         RETURNING id`,
+        [
+          tenantId,
+          body.projectId ?? null,
+          body.subject,
+          body.body,
+          draftId,
+          JSON.stringify({
+            recipient: body.to,
+            state: draftState,
+            provider: fastify.config.EMAIL_CONNECTOR_PROVIDER,
+            actionId: body.actionId ?? null,
+          }),
+          request.user.userId,
+        ]
+      );
+
       if (body.sendNow) {
         // Real email sending via Resend when API key is configured
         const resendKey = fastify.config.RESEND_API_KEY;
@@ -315,8 +340,8 @@ export const emailConnectorRoutes: FastifyPluginAsync = async (fastify) => {
 
       return {
         success: true,
-        draftId: rows[0].id,
-        state: body.sendNow ? "sent" : "draft",
+        draftId,
+        state: draftState,
       };
     }
   );

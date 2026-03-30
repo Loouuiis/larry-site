@@ -536,10 +536,47 @@ None. Phase 6 starter slice is fully closed as of 2026-03-30.
 
 None. Phase 7 is fully closed.
 
+### Phase 8 Closure Snapshot (2026-03-30 UTC)
+
+- Done:
+  - **Phase 8 - Communications, Documents, Templates, And Task Attachments (starter slice) (completed)**:
+    - extended `documents` into a real asset model with additive source/version/metadata columns and recency/source indexes
+    - added `task_document_attachments` with tenant/task/document linkage, uniqueness guard, lookup indexes, and tenant RLS policy
+    - seeded deterministic Phase 8 starter fixtures:
+      - one `email_draft` document asset
+      - one `docx_template` document asset
+      - one `xlsx_template` document asset
+      - one task-document attachment linking seeded task + document
+    - shipped additive document routes under `/v1/documents`:
+      - `GET /v1/documents?projectId=&docType=&limit=`
+      - `POST /v1/documents` with optional `attachTaskId` one-shot create+attach support
+    - shipped additive task attachment routes under `/v1/tasks/:id/attachments`:
+      - `GET /v1/tasks/:id/attachments`
+      - `POST /v1/tasks/:id/attachments` with idempotent duplicate attach behavior
+    - extended `POST /v1/connectors/email/draft/send` to mirror each saved draft into `documents` as `doc_type='email_draft'` while preserving existing response contract
+    - registered `documents` v1 route module in `apps/api/src/routes/v1/index.ts`
+    - shipped workspace proxy routes:
+      - `GET/POST /api/workspace/documents`
+      - `GET/POST /api/workspace/tasks/:id/attachments`
+    - cut `/workspace/documents` over to the new documents assets API and removed meeting-summary dependency from that page path
+    - added lightweight `.docx` and `.xlsx` template creation actions on `/workspace/documents`
+    - extended task detail drawer UI to list task attachments and attach existing project documents
+    - added/extended API test coverage for schema, documents routes, task attachment routes, and email draft mirror behavior
+    - updated `docs/BACKEND-API.md`, `docs/FRONTEND.md`, and `docs/DATABASE.md` for additive Phase 8 starter contracts
+    - test gate passed: `cd apps/api && npm test`
+- Remaining in current phase:
+  - None. Phase 8 starter slice is closed.
+- Next concrete milestone:
+  - Not opened in this update (phase discipline: no next-phase kickoff).
+
+### Still To Do For Phase 8
+
+None. Phase 8 starter slice is fully closed as of 2026-03-30.
+
 ### Recommended Next Slice
 
 - Closed in this update:
-  - **Phase 7 - Project Collaboration, Shared Larry, And Notes** follow-up slice: notes flows and collaborator-update Larry action types.
+  - **Phase 8 - Communications, Documents, Templates, And Task Attachments (starter slice)**: document assets, templates, and task attachments.
 - Candidate milestone for the next update:
   - Not opened in this change (phase discipline: no next-phase kickoff).
 

@@ -72,6 +72,10 @@ const PMEM3 = "f1000003-0000-4000-8000-000000000003"; // Project memory: meeting
 const PN1 = "f3000001-0000-4000-8000-000000000001"; // Shared project note
 const PN2 = "f3000002-0000-4000-8000-000000000002"; // Personal project note
 const INTAKE_DRAFT_ID = "f2000001-0000-4000-8000-000000000001"; // Intake draft fixture
+const DOC_EMAIL_DRAFT_ID = "f4000001-0000-4000-8000-000000000001"; // Document asset: email draft
+const DOC_TEMPLATE_DOCX_ID = "f4000002-0000-4000-8000-000000000002"; // Document asset: docx template
+const DOC_TEMPLATE_XLSX_ID = "f4000003-0000-4000-8000-000000000003"; // Document asset: xlsx template
+const TASK_DOC_ATTACHMENT_ID = "f4000004-0000-4000-8000-000000000004"; // Task-document attachment fixture
 
 // ─── bcrypt hash for "DevPass123!" at 12 rounds ───────────────────────────────
 // Pre-computed so the seed doesn't require bcryptjs as a dep.
@@ -258,6 +262,80 @@ We will send a further update once QA sign-off is confirmed.
     ON CONFLICT DO NOTHING
   `, [TENANT_ID, PROJECT_ID, COMPAT_ACTION_ID_EMAIL_DRAFT, U_ADMIN, daysAgo(1)]);
   console.log("✓  Email outbound draft: stakeholder update (canonical runtime + compatibility action_id)");
+
+  await q(`
+    INSERT INTO documents
+      (id, tenant_id, project_id, title, content, doc_type, source_kind, source_record_id, version, metadata, created_by_user_id, created_at, updated_at)
+    VALUES
+      (
+        $1, $2, $3,
+        'Stakeholder delay update draft',
+        'Subject: Q2 Launch - Checkout Delay Update\n\nHi team,\n\nWanted to flag that checkout QA remains blocked pending Stripe.js regression fixes. We are currently projecting up to a 7-day shift in launch readiness.\n\nI will send another update once QA sign-off is confirmed.\n\nThanks,\nAlex',
+        'email_draft',
+        'email_draft',
+        $4,
+        1,
+        $5::jsonb,
+        $6,
+        $7,
+        $7
+      ),
+      (
+        $8, $2, $3,
+        'Q2 Launch Brief Template',
+        '# Q2 Launch Brief\n\n## Objective\n- Define launch objective\n\n## Scope\n- In scope\n- Out of scope\n\n## Risks\n- Top three risks\n',
+        'docx_template',
+        'template',
+        'seed-template-docx',
+        1,
+        '{"templateCategory":"project_brief","format":"docx"}'::jsonb,
+        $6,
+        $7,
+        $7
+      ),
+      (
+        $9, $2, $3,
+        'Q2 Launch Milestones Template',
+        'Sheet: Milestones\nColumns: Milestone, Owner, Target Date, Status\n',
+        'xlsx_template',
+        'template',
+        'seed-template-xlsx',
+        1,
+        '{"templateCategory":"milestone_tracker","format":"xlsx"}'::jsonb,
+        $6,
+        $7,
+        $7
+      )
+    ON CONFLICT (id) DO UPDATE SET
+      title = EXCLUDED.title,
+      content = EXCLUDED.content,
+      doc_type = EXCLUDED.doc_type,
+      source_kind = EXCLUDED.source_kind,
+      source_record_id = EXCLUDED.source_record_id,
+      version = EXCLUDED.version,
+      metadata = EXCLUDED.metadata,
+      updated_at = EXCLUDED.updated_at
+  `, [
+    DOC_EMAIL_DRAFT_ID,
+    TENANT_ID,
+    PROJECT_ID,
+    COMPAT_ACTION_ID_EMAIL_DRAFT,
+    JSON.stringify({ recipient: "stakeholders@acme.com", state: "sent", provider: "seed" }),
+    U_ADMIN,
+    daysAgo(1),
+    DOC_TEMPLATE_DOCX_ID,
+    DOC_TEMPLATE_XLSX_ID,
+  ]);
+
+  await q(`
+    INSERT INTO task_document_attachments
+      (id, tenant_id, task_id, document_id, attached_by_user_id, created_at)
+    VALUES
+      ($1, $2, $3, $4, $5, $6)
+    ON CONFLICT (tenant_id, task_id, document_id) DO UPDATE SET
+      attached_by_user_id = EXCLUDED.attached_by_user_id
+  `, [TASK_DOC_ATTACHMENT_ID, TENANT_ID, T1, DOC_TEMPLATE_DOCX_ID, U_ADMIN, daysAgo(0)]);
+  console.log("✓  Document assets + task attachment fixtures seeded");
 
   // ── 11. Meeting notes ────────────────────────────────────────────────────────
   await q(`

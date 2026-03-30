@@ -11,7 +11,8 @@ Fastify v5 REST API at `apps/api/`. Product routes are registered in `apps/api/s
 | `auth.ts` | `POST /v1/auth/login`, `POST /v1/auth/refresh`, `GET /v1/auth/me` |
 | `projects.ts` | CRUD `/v1/projects`, project timeline/health utilities, project collaborator routes (`GET/POST/PATCH/DELETE /v1/projects/:id/members...`), and project notes routes (`GET/POST /v1/projects/:id/notes`) |
 | `project-intake.ts` | `POST /v1/projects/intake/drafts`, `POST /v1/projects/intake/drafts/:id/bootstrap`, `POST /v1/projects/intake/drafts/:id/finalize` |
-| `tasks.ts` | CRUD `/v1/tasks` and task status/dependency helpers |
+| `documents.ts` | `GET /v1/documents`, `POST /v1/documents` (optional create+attach via `attachTaskId`) |
+| `tasks.ts` | CRUD `/v1/tasks`, task status/dependency helpers, and task document attachments (`GET/POST /v1/tasks/:id/attachments`) |
 | `ingest.ts` | `POST /v1/ingest/slack`, `/email`, `/calendar`, `/transcript` (transcript shim) |
 | `larry.ts` | `POST /v1/larry/chat`, `GET /v1/larry/briefing`, `GET /v1/larry/action-centre`, `GET /v1/larry/memory`, `POST /v1/larry/events/:id/accept`, `POST /v1/larry/events/:id/dismiss`, `POST /v1/larry/transcript` |
 | `meetings.ts` | Meeting read surfaces and meeting data contracts |
@@ -21,7 +22,7 @@ Fastify v5 REST API at `apps/api/`. Product routes are registered in `apps/api/s
 | `orgs.ts` | Organization access request/admin approval routes |
 | `connectors-slack.ts` | Slack connector install/status/events |
 | `connectors-google-calendar.ts` | Google Calendar connector install/status/watch/webhook |
-| `connectors-email.ts` | Email connector status/install/inbound/send |
+| `connectors-email.ts` | Email connector status/install/inbound/send; draft send mirrors `email_draft` assets into `documents` |
 
 ## Canonical Larry Contracts
 
@@ -84,6 +85,22 @@ Visibility semantics:
 - Shared notes are visible to all project collaborators with read access.
 - Personal notes are visible only to the note author and recipient.
 - Personal note create requires `recipientUserId` and validates recipient project membership.
+
+## Documents And Task Attachment Contracts
+
+- `GET /v1/documents?projectId=&docType=&limit=`
+  - Lists tenant documents with optional project/doc-type filters and recency ordering.
+- `POST /v1/documents`
+  - Creates a document asset with structured metadata fields (`sourceKind`, `sourceRecordId`, `version`, `metadata`).
+  - Supports optional one-shot create+attach via `attachTaskId` (same-project enforced).
+- `GET /v1/tasks/:id/attachments`
+  - Lists task attachments with joined document metadata.
+- `POST /v1/tasks/:id/attachments`
+  - Attaches an existing project document to a task.
+  - Idempotent for duplicate task+document pairs (`duplicate` flag in response).
+- `POST /v1/connectors/email/draft/send`
+  - Existing response contract is unchanged.
+  - Additively mirrors each saved email draft to `documents` as `doc_type='email_draft'`.
 
 ## Unified Project Intake Contracts
 

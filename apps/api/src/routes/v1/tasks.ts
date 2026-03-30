@@ -23,6 +23,14 @@ const UpdateStatusSchema = z.object({
   progressPercent: z.number().int().min(0).max(100).optional(),
 });
 
+const TaskIdParamSchema = z.object({
+  id: z.string().uuid(),
+});
+
+const AttachDocumentSchema = z.object({
+  documentId: z.string().uuid(),
+});
+
 export const taskRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/",
@@ -147,6 +155,174 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
         progressPercent: r.progress_percent, riskScore: r.risk_score, riskLevel: r.risk_level,
         startDate: r.start_date, dueDate: r.due_date, createdAt: r.created_at, updatedAt: r.updated_at,
       };
+    }
+  );
+
+  fastify.get(
+    "/:id/attachments",
+    { preHandler: [fastify.authenticate] },
+    async (request) => {
+      const params = TaskIdParamSchema.parse(request.params);
+      const tenantId = request.user.tenantId;
+
+      const taskRows = await fastify.db.queryTenant<{ id: string }>(
+        tenantId,
+        `SELECT id
+           FROM tasks
+          WHERE tenant_id = $1
+            AND id = $2
+          LIMIT 1`,
+        [tenantId, params.id]
+      );
+      if (!taskRows[0]) {
+        throw fastify.httpErrors.notFound("Task not found.");
+      }
+
+      const rows = await fastify.db.queryTenant<{
+        id: string;
+        taskId: string;
+        documentId: string;
+        createdAt: string;
+        title: string;
+        docType: string;
+        projectId: string | null;
+        sourceKind: string | null;
+        sourceRecordId: string | null;
+        version: number;
+        metadata: Record<string, unknown>;
+        documentCreatedAt: string;
+        documentUpdatedAt: string;
+      }>(
+        tenantId,
+        `SELECT tda.id,
+                tda.task_id as "taskId",
+                tda.document_id as "documentId",
+                tda.created_at as "createdAt",
+                d.title,
+                d.doc_type as "docType",
+                d.project_id as "projectId",
+                d.source_kind as "sourceKind",
+                d.source_record_id as "sourceRecordId",
+                d.version,
+                d.metadata,
+                d.created_at as "documentCreatedAt",
+                d.updated_at as "documentUpdatedAt"
+           FROM task_document_attachments tda
+           JOIN documents d
+             ON d.tenant_id = tda.tenant_id
+            AND d.id = tda.document_id
+          WHERE tda.tenant_id = $1
+            AND tda.task_id = $2
+          ORDER BY tda.created_at DESC`,
+        [tenantId, params.id]
+      );
+
+      return { items: rows };
+    }
+  );
+
+  fastify.post(
+    "/:id/attachments",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
+    async (request, reply) => {
+      const params = TaskIdParamSchema.parse(request.params);
+      const body = AttachDocumentSchema.parse(request.body);
+      const tenantId = request.user.tenantId;
+      const actorUserId = request.user.userId;
+
+      const taskRows = await fastify.db.queryTenant<{ id: string; project_id: string }>(
+        tenantId,
+        `SELECT id, project_id
+           FROM tasks
+          WHERE tenant_id = $1
+            AND id = $2
+          LIMIT 1`,
+        [tenantId, params.id]
+      );
+      if (!taskRows[0]) {
+        throw fastify.httpErrors.notFound("Task not found.");
+      }
+
+      const documentRows = await fastify.db.queryTenant<{ id: string; project_id: string | null }>(
+        tenantId,
+        `SELECT id, project_id
+           FROM documents
+          WHERE tenant_id = $1
+            AND id = $2
+          LIMIT 1`,
+        [tenantId, body.documentId]
+      );
+      if (!documentRows[0]) {
+        throw fastify.httpErrors.notFound("Document not found.");
+      }
+      if (documentRows[0].project_id !== taskRows[0].project_id) {
+        throw fastify.httpErrors.conflict(
+          "Cannot attach a document from a different project."
+        );
+      }
+
+      const insertedRows = await fastify.db.queryTenant<{
+        id: string;
+        taskId: string;
+        documentId: string;
+        createdAt: string;
+      }>(
+        tenantId,
+        `INSERT INTO task_document_attachments
+           (tenant_id, task_id, document_id, attached_by_user_id)
+         VALUES
+           ($1, $2, $3, $4)
+         ON CONFLICT (tenant_id, task_id, document_id) DO NOTHING
+         RETURNING id,
+                   task_id as "taskId",
+                   document_id as "documentId",
+                   created_at as "createdAt"`,
+        [tenantId, params.id, body.documentId, actorUserId]
+      );
+
+      let attachment = insertedRows[0];
+      let duplicate = false;
+
+      if (!attachment) {
+        const existingRows = await fastify.db.queryTenant<{
+          id: string;
+          taskId: string;
+          documentId: string;
+          createdAt: string;
+        }>(
+          tenantId,
+          `SELECT id,
+                  task_id as "taskId",
+                  document_id as "documentId",
+                  created_at as "createdAt"
+             FROM task_document_attachments
+            WHERE tenant_id = $1
+              AND task_id = $2
+              AND document_id = $3
+            LIMIT 1`,
+          [tenantId, params.id, body.documentId]
+        );
+        attachment = existingRows[0];
+        duplicate = true;
+      }
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId,
+        actionType: "task.document.attach",
+        objectType: "task_document_attachment",
+        objectId: `${params.id}:${body.documentId}`,
+        details: {
+          taskId: params.id,
+          documentId: body.documentId,
+          duplicate,
+        },
+      });
+
+      return reply.code(201).send({
+        attachment,
+        duplicate,
+      });
     }
   );
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { X, MessageSquare } from "lucide-react";
+import { MessageSquare, Paperclip, X } from "lucide-react";
 import { BoardTaskRow, TaskStatus } from "@/app/dashboard/types";
 
 interface Comment {
@@ -28,6 +28,23 @@ interface TaskDetail {
 interface TaskDetailDrawerProps {
   task: BoardTaskRow | null;
   onClose: () => void;
+}
+
+interface TaskAttachment {
+  id: string;
+  taskId: string;
+  documentId: string;
+  createdAt: string;
+  title?: string;
+  docType?: string;
+  version?: number;
+}
+
+interface ProjectDocumentOption {
+  id: string;
+  title: string;
+  docType: string;
+  version: number;
 }
 
 const STATUS_OPTIONS: { value: TaskStatus; label: string; pillClass: string }[] = [
@@ -64,9 +81,22 @@ function sourceLabel(type: string | null | undefined): string {
   }
 }
 
+function documentTypeLabel(docType: string | undefined): string {
+  if (!docType) return "document";
+  if (docType === "docx_template") return ".docx template";
+  if (docType === "xlsx_template") return ".xlsx template";
+  if (docType === "email_draft") return "email draft";
+  return docType.replace(/_/g, " ");
+}
+
 export function TaskDetailDrawer({ task, onClose }: TaskDetailDrawerProps) {
   const [detail, setDetail] = useState<TaskDetail | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
+  const [attachments, setAttachments] = useState<TaskAttachment[]>([]);
+  const [projectDocuments, setProjectDocuments] = useState<ProjectDocumentOption[]>([]);
+  const [selectedDocumentId, setSelectedDocumentId] = useState("");
+  const [attachBusy, setAttachBusy] = useState(false);
+  const [attachError, setAttachError] = useState<string | null>(null);
   const [commentText, setCommentText] = useState("");
   const [commentBusy, setCommentBusy] = useState(false);
   const [saveBusy, setSaveBusy] = useState(false);
@@ -78,18 +108,30 @@ export function TaskDetailDrawer({ task, onClose }: TaskDetailDrawerProps) {
   const drawerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!task) { setDetail(null); return; }
+    if (!task) {
+      setDetail(null);
+      return;
+    }
     setEditTitle(task.title);
     setEditStatus(task.status);
     setEditProgress(task.progressPercent ?? 0);
     setStatusOpen(false);
     setDetail(null);
     setComments([]);
+    setAttachments([]);
+    setProjectDocuments([]);
+    setSelectedDocumentId("");
+    setAttachError(null);
 
     void (async () => {
       try {
-        const res = await fetch(`/api/workspace/tasks/${task.id}`);
-        const data = await readJson<{ task?: TaskDetail; comments?: Comment[] }>(res);
+        const [taskResponse, attachmentResponse, projectDocsResponse] = await Promise.all([
+          fetch(`/api/workspace/tasks/${task.id}`),
+          fetch(`/api/workspace/tasks/${task.id}/attachments`),
+          fetch(`/api/workspace/documents?projectId=${encodeURIComponent(task.projectId)}&limit=100`),
+        ]);
+
+        const data = await readJson<{ task?: TaskDetail; comments?: Comment[] }>(taskResponse);
         if (data.task) {
           setDetail(data.task);
           setEditTitle(data.task.title);
@@ -98,6 +140,14 @@ export function TaskDetailDrawer({ task, onClose }: TaskDetailDrawerProps) {
           setEditDescription(data.task.description ?? "");
         }
         setComments(data.comments ?? []);
+
+        const attachmentData = await readJson<{ items?: TaskAttachment[] }>(attachmentResponse);
+        const attachmentsList = Array.isArray(attachmentData.items) ? attachmentData.items : [];
+        setAttachments(attachmentsList);
+
+        const docsData = await readJson<{ items?: ProjectDocumentOption[] }>(projectDocsResponse);
+        const docsList = Array.isArray(docsData.items) ? docsData.items : [];
+        setProjectDocuments(docsList);
       } catch {
         // use row data as fallback
       }
@@ -160,12 +210,61 @@ export function TaskDetailDrawer({ task, onClose }: TaskDetailDrawerProps) {
     }
   };
 
+  const handleAttachDocument = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!task || !selectedDocumentId || attachBusy) return;
+
+    setAttachBusy(true);
+    setAttachError(null);
+    try {
+      const response = await fetch(`/api/workspace/tasks/${task.id}/attachments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentId: selectedDocumentId }),
+      });
+      const payload = await readJson<{
+        attachment?: TaskAttachment;
+        error?: string;
+      }>(response);
+      if (!response.ok || !payload.attachment) {
+        throw new Error(payload.error ?? "Failed to attach document.");
+      }
+
+      const option = projectDocuments.find((entry) => entry.id === payload.attachment?.documentId);
+      const hydrated: TaskAttachment = {
+        ...payload.attachment,
+        title: payload.attachment.title ?? option?.title ?? "Document",
+        docType: payload.attachment.docType ?? option?.docType,
+        version: payload.attachment.version ?? option?.version,
+      };
+
+      setAttachments((current) => [
+        hydrated,
+        ...current.filter((entry) => entry.documentId !== hydrated.documentId),
+      ]);
+      setSelectedDocumentId("");
+      window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
+    } catch (attachDocumentError) {
+      setAttachError(
+        attachDocumentError instanceof Error
+          ? attachDocumentError.message
+          : "Failed to attach document."
+      );
+    } finally {
+      setAttachBusy(false);
+    }
+  };
+
   if (!task) return null;
 
   const currentStatus = STATUS_OPTIONS.find((s) => s.value === editStatus) ?? STATUS_OPTIONS[0];
+  const attachedDocumentIds = new Set(attachments.map((entry) => entry.documentId));
+  const attachableDocuments = projectDocuments.filter(
+    (entry) => !attachedDocumentIds.has(entry.id)
+  );
 
   return (
-    /* No backdrop overlay — drawer uses shadow-3 instead */
+    /* No backdrop overlay - drawer uses shadow-3 instead */
     <div
       ref={drawerRef}
       className="fixed right-0 top-0 z-50 flex h-full flex-col"
@@ -213,7 +312,7 @@ export function TaskDetailDrawer({ task, onClose }: TaskDetailDrawerProps) {
           />
         </div>
 
-        {/* Status — coloured pill selector */}
+        {/* Status - coloured pill selector */}
         <div className="relative">
           <label className="text-caption block mb-2">Status</label>
           <button
@@ -272,7 +371,7 @@ export function TaskDetailDrawer({ task, onClose }: TaskDetailDrawerProps) {
           <div>
             <p className="text-caption mb-1">Due Date</p>
             <p className="text-[14px]" style={{ color: "var(--text-2)" }}>
-              {task.dueDate?.slice(0, 10) ?? "—"}
+              {task.dueDate?.slice(0, 10) ?? "-"}
             </p>
           </div>
           <div>
@@ -290,7 +389,7 @@ export function TaskDetailDrawer({ task, onClose }: TaskDetailDrawerProps) {
             value={editDescription}
             onChange={(e) => setEditDescription(e.target.value)}
             rows={3}
-            placeholder="Add a description…"
+            placeholder="Add a description..."
             className="w-full px-3 py-2 text-[13px] outline-none resize-none transition-colors"
             style={{
               borderRadius: "var(--radius-input)",
@@ -310,9 +409,8 @@ export function TaskDetailDrawer({ task, onClose }: TaskDetailDrawerProps) {
           className="pm-btn pm-btn-primary w-full"
           style={{ borderRadius: "var(--radius-btn)" }}
         >
-          {saveBusy ? "Saving…" : "Save changes"}
+          {saveBusy ? "Saving..." : "Save changes"}
         </button>
-
         {/* Source section */}
         <div style={{ borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
           <p className="text-caption mb-2">Source</p>
@@ -330,7 +428,109 @@ export function TaskDetailDrawer({ task, onClose }: TaskDetailDrawerProps) {
           </div>
         </div>
 
-        {/* Activity feed — comments + timeline */}
+        {/* Attachments */}
+        <div style={{ borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
+          <h3 className="text-caption mb-3 flex items-center gap-1.5">
+            <Paperclip size={12} />
+            Attachments ({attachments.length})
+          </h3>
+
+          <div className="space-y-2 mb-3">
+            {attachments.map((attachment) => (
+              <div
+                key={attachment.id}
+                className="flex items-start justify-between gap-3 px-3 py-2"
+                style={{
+                  border: "1px solid var(--border)",
+                  borderRadius: "var(--radius-card)",
+                  background: "var(--surface-2)",
+                }}
+              >
+                <div className="min-w-0">
+                  <p
+                    className="text-[13px] font-medium"
+                    style={{
+                      color: "var(--text-1)",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {attachment.title ?? "Document"}
+                  </p>
+                  <p className="text-[11px]" style={{ color: "var(--text-disabled)" }}>
+                    {documentTypeLabel(attachment.docType)}
+                    {typeof attachment.version === "number" ? ` - v${attachment.version}` : ""}
+                    {attachment.createdAt ? ` - attached ${timeAgo(attachment.createdAt)}` : ""}
+                  </p>
+                </div>
+              </div>
+            ))}
+            {attachments.length === 0 && (
+              <p className="text-[13px]" style={{ color: "var(--text-disabled)" }}>
+                No documents attached yet.
+              </p>
+            )}
+          </div>
+
+          <form onSubmit={(e) => void handleAttachDocument(e)} className="space-y-2">
+            <p className="text-caption">Attach existing project document</p>
+            <div className="flex gap-2">
+              <select
+                value={selectedDocumentId}
+                onChange={(e) => setSelectedDocumentId(e.target.value)}
+                className="flex-1 h-8 px-3 text-[13px] outline-none transition-colors"
+                style={{
+                  borderRadius: "var(--radius-input)",
+                  border: "1px solid var(--border)",
+                  background: "var(--surface)",
+                  color: "var(--text-2)",
+                }}
+              >
+                <option value="">Select document...</option>
+                {attachableDocuments.map((documentOption) => (
+                  <option key={documentOption.id} value={documentOption.id}>
+                    {documentOption.title} ({documentTypeLabel(documentOption.docType)})
+                  </option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                disabled={
+                  attachBusy ||
+                  !selectedDocumentId ||
+                  attachableDocuments.length === 0
+                }
+                className="pm-btn pm-btn-sm"
+                style={{
+                  background: "var(--brand)",
+                  color: "#fff",
+                  borderRadius: "var(--radius-btn)",
+                  border: "none",
+                }}
+              >
+                {attachBusy ? "Attaching..." : "Attach"}
+              </button>
+            </div>
+            {projectDocuments.length === 0 && (
+              <p className="text-[12px]" style={{ color: "var(--text-disabled)" }}>
+                No project documents available yet.
+              </p>
+            )}
+            {projectDocuments.length > 0 && attachableDocuments.length === 0 && (
+              <p className="text-[12px]" style={{ color: "var(--text-disabled)" }}>
+                All project documents are already attached.
+              </p>
+            )}
+            {attachError && (
+              <p className="text-[12px]" style={{ color: "#b91c1c" }}>
+                {attachError}
+              </p>
+            )}
+          </form>
+        </div>
+
+        {/* Activity feed - comments + timeline */}
         <div style={{ borderTop: "1px solid var(--border)", paddingTop: "16px" }}>
           <h3 className="text-caption mb-3 flex items-center gap-1.5">
             <MessageSquare size={12} />
@@ -372,7 +572,7 @@ export function TaskDetailDrawer({ task, onClose }: TaskDetailDrawerProps) {
             <input
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
-              placeholder="Add a comment…"
+              placeholder="Add a comment..."
               className="flex-1 h-8 px-3 text-[13px] outline-none transition-colors"
               style={{
                 borderRadius: "var(--radius-input)",

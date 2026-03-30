@@ -16,6 +16,7 @@ Next.js 16 App Router at `apps/web/`. Two distinct surfaces:
 /workspace/chats              Chat history grouped by project, deep-linkable from Action Centre
 /workspace/my-work            Cross-project task view for current user
 /workspace/meetings           Meetings overview
+/workspace/documents          Project document assets and template creation surface
 /workspace/settings           Connector settings (Slack, Google Calendar)
 ```
 
@@ -26,11 +27,13 @@ Next.js 16 App Router at `apps/web/`. Two distinct surfaces:
 | `apps/web/src/app/workspace/WorkspaceShell.tsx` | Root workspace layout (sidebar + topbar) |
 | `apps/web/src/app/workspace/WorkspaceHome.tsx` | Dashboard: project grid, action strip, notifications |
 | `apps/web/src/app/workspace/projects/[projectId]/ProjectWorkspaceView.tsx` | Active project detail: context, notes panel, context timeline, collaborators panel, Action Centre rail, Larry chat |
+| `apps/web/src/app/workspace/projects/[projectId]/TaskDetailDrawer.tsx` | Task slide-over editor with comments and document attachment UI |
 | `apps/web/src/app/workspace/projects/[projectId]/CollaboratorsPanel.tsx` | Basic collaborators UI (list/add/update/remove members with inline permission or validation errors) |
 | `apps/web/src/app/workspace/projects/[projectId]/ProjectNotesPanel.tsx` | Shared/personal project notes composer and feed with visibility filtering |
 | `apps/web/src/app/workspace/projects/new/WorkspaceProjectIntake.tsx` | 3-mode unified intake draft lifecycle (manual / guided chat / meeting-led create-or-attach) |
 | `apps/web/src/app/workspace/actions/page.tsx` | Global Action Centre page (canonical ledger, accept/dismiss) |
 | `apps/web/src/app/workspace/chats/page.tsx` | Chat history with project grouping, actor attribution labels, and Action Centre deep-link context |
+| `apps/web/src/app/workspace/documents/page.tsx` | Documents asset list (from `/api/workspace/documents`) with lightweight `.docx` / `.xlsx` template creation |
 | `apps/web/src/app/workspace/NotificationBell.tsx` | Bell with unread badge, dismiss flow |
 | `apps/web/src/hooks/useLarryActionCentre.ts` | Shared Action Centre fetch, accept, dismiss, and background refresh for project and global surfaces |
 | `apps/web/src/hooks/useProjectData.ts` | Fetches `/api/workspace/projects/:id/overview` (scoped), refreshes every 30s |
@@ -66,6 +69,10 @@ Web proxy routes (`apps/web/src/app/api/workspace/`):
 - `POST /projects/intake/drafts` — create/update intake draft (manual/chat/meeting)
 - `POST /projects/intake/drafts/:id/bootstrap` — generate chat bootstrap preview (summary/tasks/actions/seed message)
 - `POST /projects/intake/drafts/:id/finalize` — finalize intake draft into project creation or meeting attach path
+- `GET /documents` — workspace document assets with `projectId`, `docType`, and `limit` filters
+- `POST /documents` — create document assets (optionally create+attach with `attachTaskId`)
+- `GET /tasks/:id/attachments` — task attachment list with joined document metadata
+- `POST /tasks/:id/attachments` — attach existing project documents to tasks (idempotent duplicates)
 
 **Other active routes:**
 - `GET /projects/:id/overview` — scoped project read model (project + tasks + health + timeline + outcomes + meetings)
