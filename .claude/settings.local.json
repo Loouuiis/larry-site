@@ -28,7 +28,9 @@
       "Bash(systemctl is-active:*)",
       "Read(//etc/**)",
       "Bash(npm install:*)",
-      "Bash(git:*)"
+      "Bash(git:*)",
+      "Bash(lsof -i :8080 -sTCP:LISTEN)",
+      "Bash(ls /home/augustus/Work/larry/larry-site/apps/web/src/app/workspace/projects/[projectId]/)"
     ]
   }
 }

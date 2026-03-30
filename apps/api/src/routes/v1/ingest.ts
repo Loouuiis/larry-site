@@ -2,7 +2,7 @@ import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { ingestCanonicalEvent } from "../../services/ingest/pipeline.js";
 import { writeAuditLog } from "../../lib/audit.js";
-import { runIntelligence } from "@larry/ai";
+import { runIntelligence, createLlmProvider } from "@larry/ai";
 import { getProjectSnapshot, runAutoActions, storeSuggestions } from "@larry/db";
 import { getApiEnv } from "@larry/config";
 import type { IntelligenceConfig } from "@larry/shared";
@@ -134,7 +134,41 @@ export const ingestRoutes: FastifyPluginAsync = async (fastify) => {
       );
       const meetingNoteId = meetingNoteRows[0]?.id;
 
-      // 3. Run intelligence on the transcript if a project is provided — best-effort
+      // 3. Generate summary and write to documents — best-effort
+      if (meetingNoteId) {
+        try {
+          const llm = createLlmProvider({
+            provider: fastify.config.MODEL_PROVIDER === "anthropic" ? "anthropic"
+              : fastify.config.MODEL_PROVIDER === "gemini" ? "gemini"
+              : "openai",
+            openAiApiKey: fastify.config.OPENAI_API_KEY,
+            openAiModel: fastify.config.OPENAI_MODEL,
+            anthropicApiKey: fastify.config.ANTHROPIC_API_KEY,
+            anthropicModel: fastify.config.ANTHROPIC_MODEL,
+            geminiApiKey: fastify.config.GEMINI_API_KEY,
+            geminiModel: fastify.config.GEMINI_MODEL,
+          });
+          const { title: aiTitle, summary } = await llm.summarizeTranscript({ transcript: body.transcript });
+          const resolvedTitle = body.meetingTitle ?? aiTitle;
+
+          await fastify.db.queryTenant(
+            tenantId,
+            `UPDATE meeting_notes SET title = $1, summary = $2 WHERE tenant_id = $3 AND id = $4`,
+            [resolvedTitle, summary, tenantId, meetingNoteId]
+          );
+
+          await fastify.db.queryTenant(
+            tenantId,
+            `INSERT INTO documents (tenant_id, project_id, title, content, doc_type, created_by_user_id)
+             VALUES ($1, $2, $3, $4, 'meeting_summary', $5)`,
+            [tenantId, body.projectId ?? null, resolvedTitle, summary, request.user.userId]
+          );
+        } catch (err) {
+          request.log.warn({ err, tenantId, meetingNoteId }, "transcript summarization failed");
+        }
+      }
+
+      // 4. Run intelligence on the transcript if a project is provided — best-effort
       if (body.projectId) {
         try {
           const config = buildIntelligenceConfig(fastify.config);
