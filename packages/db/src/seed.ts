@@ -69,6 +69,7 @@ const LC1 = "f0000001-0000-4000-8000-000000000001"; // Larry conversation
 const PMEM1 = "f1000001-0000-4000-8000-000000000001"; // Project memory: chat
 const PMEM2 = "f1000002-0000-4000-8000-000000000002"; // Project memory: accepted action
 const PMEM3 = "f1000003-0000-4000-8000-000000000003"; // Project memory: meeting
+const INTAKE_DRAFT_ID = "f2000001-0000-4000-8000-000000000001"; // Intake draft fixture
 
 // ─── bcrypt hash for "DevPass123!" at 12 rounds ───────────────────────────────
 // Pre-computed so the seed doesn't require bcryptjs as a dep.
@@ -361,6 +362,83 @@ We will send a further update once QA sign-off is confirmed.
     PMEM1, TENANT_ID, PROJECT_ID, LC1, memoryChatContent, contentHash(memoryChatContent), daysAgo(1),
     PMEM2, "ev-demo-accepted-1", memoryActionContent, contentHash(memoryActionContent), daysAgo(0),
     PMEM3, MN1, memoryMeetingContent, contentHash(memoryMeetingContent), daysAgo(0),
+  ]);
+
+  await q(`
+    INSERT INTO project_intake_drafts
+      (id, tenant_id, mode, status,
+       project_name, project_description, project_start_date, project_target_date, attach_to_project_id,
+       chat_answers, meeting_title, meeting_transcript,
+       bootstrap_summary, bootstrap_tasks, bootstrap_actions, bootstrap_seed_message,
+       created_by_user_id, created_at, updated_at)
+    VALUES
+      ($1, $2, 'chat', 'bootstrapped',
+       'Market Expansion Sprint',
+       'Prepare launch operations for the market expansion sprint with sales, legal, and content readiness.',
+       $3::date, $4::date, NULL,
+       $5::jsonb,
+       NULL,
+       NULL,
+       'Larry prepared starter tasks from intake context.',
+       $6::jsonb,
+       $7::jsonb,
+       'I created this project from guided intake answers.',
+       $8, $9, $9)
+    ON CONFLICT (id) DO UPDATE SET
+      mode = EXCLUDED.mode,
+      status = EXCLUDED.status,
+      project_name = EXCLUDED.project_name,
+      project_description = EXCLUDED.project_description,
+      project_start_date = EXCLUDED.project_start_date,
+      project_target_date = EXCLUDED.project_target_date,
+      chat_answers = EXCLUDED.chat_answers,
+      bootstrap_summary = EXCLUDED.bootstrap_summary,
+      bootstrap_tasks = EXCLUDED.bootstrap_tasks,
+      bootstrap_actions = EXCLUDED.bootstrap_actions,
+      bootstrap_seed_message = EXCLUDED.bootstrap_seed_message,
+      updated_at = EXCLUDED.updated_at
+  `, [
+    INTAKE_DRAFT_ID,
+    TENANT_ID,
+    daysAgo(2).slice(0, 10),
+    daysFromNow(20),
+    JSON.stringify([
+      "Market Expansion Sprint",
+      "Launch in one new market with legal and sales readiness.",
+      "Go-live target in five weeks.",
+      "Finalize launch checklist; Prepare legal review pack; Coordinate sales enablement deck",
+      "Risk: legal sign-off may slip by one week.",
+    ]),
+    JSON.stringify([
+      {
+        title: "Finalize launch checklist",
+        description: null,
+        dueDate: daysFromNow(14),
+        assigneeName: null,
+        priority: "medium",
+      },
+      {
+        title: "Prepare legal review pack",
+        description: null,
+        dueDate: daysFromNow(10),
+        assigneeName: null,
+        priority: "medium",
+      },
+    ]),
+    JSON.stringify([
+      {
+        type: "scope_change",
+        displayText: "Refine project scope from intake context",
+        reasoning: "Intake responses include scope and risk details worth preserving as editable scope text",
+        payload: {
+          entityId: "__PROJECT_ID__",
+          entityType: "project",
+          newDescription: "Launch in one new market with legal and sales readiness. Risk: legal sign-off may slip by one week.",
+        },
+      },
+    ]),
+    U_ADMIN,
+    daysAgo(1),
   ]);
   console.log("✓  Project memory entries seeded");
 

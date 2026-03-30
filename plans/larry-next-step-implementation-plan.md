@@ -377,6 +377,22 @@ These are not optional cleanups; they are part of the implementation strategy:
   - Expanded worker canonical event handling to write one project memory entry for transcript, email, slack, and calendar sources after successful scope resolution/intelligence, with non-blocking failure handling.
   - Extended regression coverage across API schema/runtime helpers and worker canonical-event replay behavior; added Playwright transcript smoke assertion that project timeline shows a non-chat memory entry after worker processing.
   - Updated project timeline copy and core runtime docs (`BACKEND-API.md`, `BACKEND-WORKER.md`) to reflect worker-driven memory ingestion and replay-safe dedup semantics.
+- **Phase 5 - Unified Project Intake (starter slice) (completed)**:
+  - Added durable intake schema `project_intake_drafts` with mode/status checks, project/chat/meeting payload fields, bootstrap preview fields, finalized metadata, recency/status/mode indexes, and tenant RLS policy.
+  - Added deterministic intake draft seed fixture in `packages/db/src/seed.ts` so local demo data exercises the new intake contract.
+  - Added additive intake API routes under `/v1/projects/intake/drafts`:
+    - `POST /v1/projects/intake/drafts` create/update durable draft for manual/chat/meeting.
+    - `POST /v1/projects/intake/drafts/:id/bootstrap` generate chat bootstrap preview without existing project.
+    - `POST /v1/projects/intake/drafts/:id/finalize` with:
+      - manual/chat create-project + starter tasks + project memory + non-task Action Centre suggestions
+      - meeting create-new project + canonical transcript enqueue
+      - meeting attach-existing canonical transcript enqueue without project insert
+  - Added web proxy routes under `/api/workspace/projects/intake/drafts...` and moved `WorkspaceProjectIntake` to draft lifecycle across manual/chat/meeting modes.
+  - Added chat bootstrap preview UI and meeting `Create new` vs `Attach existing` toggle with project picker.
+  - Added API/runtime and schema coverage:
+    - `apps/api/tests/project-intake-runtime.test.ts`
+    - extended `apps/api/tests/larry-schema.test.ts`
+  - Test gate passed: `cd apps/api && npm test` -> 21 files / 85 tests passing.
 - **Phase 1 - Legacy Dashboard Retirement And Snapshot Fence (completed)**:
   - Replaced legacy `GET /api/workspace/snapshot` behavior with an explicit `410 Gone` retired-contract payload that points callers to canonical scoped workspace routes.
   - Added a `/dashboard/* -> /workspace` catch-all redirect route so legacy dashboard entry paths no longer expose runtime behavior.
@@ -430,12 +446,35 @@ None. Phase 1 is fully closed as of 2026-03-30.
 
 None. Phase 2 is fully closed as of 2026-03-30.
 
+### Phase 5 Closure Snapshot (2026-03-30 UTC)
+
+- Done:
+  - **Phase 5 - Unified Project Intake (starter slice) (completed)**:
+    - durable `project_intake_drafts` schema + tenant RLS + access indexes shipped
+    - deterministic intake draft seed fixture shipped
+    - additive intake API routes shipped under `/v1/projects/intake/drafts...`
+    - additive workspace proxy routes shipped under `/api/workspace/projects/intake/drafts...`
+    - active `/workspace/projects/new` intake moved to unified draft lifecycle for manual/chat/meeting
+    - chat bootstrap preview shipped (tasks/actions/seed message)
+    - meeting mode shipped with explicit `Create new` vs `Attach existing` toggle and project picker
+    - API schema/runtime coverage shipped for draft create/update/bootstrap/finalize and idempotent finalize guard
+    - additive contract guarantee preserved (`/v1/projects`, `/v1/larry/chat`, `/v1/larry/transcript` unchanged)
+    - API test gate passed: 21 files / 85 tests passing
+- Remaining in current phase:
+  - None. Phase 5 starter slice is closed.
+- Next concrete milestone:
+  - Not opened in this update (phase discipline: no next-phase kickoff).
+
+### Still To Do For Phase 5
+
+None. Phase 5 starter slice is fully closed as of 2026-03-30.
+
 ### Recommended Next Slice
 
 - Closed in this update:
-  - **Phase 1 - Legacy Dashboard Retirement And Snapshot Fence** (completed).
+  - **Phase 5 - Unified Project Intake** starter slice (completed).
 - Candidate milestone for the next update (not opened in this change):
-  - **Phase 5 - Unified Project Intake** starter slice.
+  - **Phase 6 - Clarification-Before-Action And Governed Auto-Execution** starter slice.
 
 ---
 

@@ -149,4 +149,27 @@ describe("Larry ledger schema", () => {
     expect(schema).toContain("WHERE source_record_id IS NOT NULL");
     expect(schema).toContain("AND content_hash IS NOT NULL;");
   });
+
+  it("adds project_intake_drafts with mode/status checks, indexes, and tenant RLS", () => {
+    expect(schema).toContain("CREATE TABLE IF NOT EXISTS project_intake_drafts (");
+    expect(schema).toContain("mode TEXT NOT NULL CHECK (mode IN ('manual', 'chat', 'meeting'))");
+    expect(schema).toContain(
+      "status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'bootstrapped', 'finalized'))"
+    );
+    expect(schema).toContain("chat_answers JSONB NOT NULL DEFAULT '[]'::jsonb");
+    expect(schema).toContain("bootstrap_tasks JSONB NOT NULL DEFAULT '[]'::jsonb");
+    expect(schema).toContain("bootstrap_actions JSONB NOT NULL DEFAULT '[]'::jsonb");
+    expect(schema).toContain(
+      "finalized_meeting_note_id UUID REFERENCES meeting_notes(id) ON DELETE SET NULL"
+    );
+    expect(schema).toContain(
+      "finalized_canonical_event_id UUID REFERENCES canonical_events(id) ON DELETE SET NULL"
+    );
+    expect(schema).toContain("CREATE INDEX IF NOT EXISTS idx_project_intake_drafts_tenant_created");
+    expect(schema).toContain("CREATE INDEX IF NOT EXISTS idx_project_intake_drafts_tenant_status");
+    expect(schema).toContain("CREATE INDEX IF NOT EXISTS idx_project_intake_drafts_tenant_mode");
+    expect(schema).toContain("CREATE INDEX IF NOT EXISTS idx_project_intake_drafts_attach_project");
+    expect(schema).toContain("ALTER TABLE project_intake_drafts ENABLE ROW LEVEL SECURITY;");
+    expect(schema).toContain("CREATE POLICY tenant_isolation_project_intake_drafts");
+  });
 });

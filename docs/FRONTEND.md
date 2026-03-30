@@ -11,7 +11,7 @@ Next.js 16 App Router at `apps/web/`. Two distinct surfaces:
 ```
 /workspace                    WorkspaceHome — project grid, Action Centre summary strip
 /workspace/projects/:id       ProjectPageClient → ProjectWorkspaceView
-/workspace/projects/new       WorkspaceProjectIntake — manual, chat, and meeting creation modes
+/workspace/projects/new       WorkspaceProjectIntake — unified draft lifecycle for manual/chat/meeting intake
 /workspace/actions            Global Action Centre — cross-project Larry ledger (accept/dismiss)
 /workspace/chats              Chat history grouped by project, deep-linkable from Action Centre
 /workspace/my-work            Cross-project task view for current user
@@ -26,7 +26,7 @@ Next.js 16 App Router at `apps/web/`. Two distinct surfaces:
 | `apps/web/src/app/workspace/WorkspaceShell.tsx` | Root workspace layout (sidebar + topbar) |
 | `apps/web/src/app/workspace/WorkspaceHome.tsx` | Dashboard: project grid, action strip, notifications |
 | `apps/web/src/app/workspace/projects/[projectId]/ProjectWorkspaceView.tsx` | Active project detail: context, context timeline, Action Centre rail, Larry chat |
-| `apps/web/src/app/workspace/projects/new/WorkspaceProjectIntake.tsx` | 3-mode project creation (manual / guided chat / meeting-led) |
+| `apps/web/src/app/workspace/projects/new/WorkspaceProjectIntake.tsx` | 3-mode unified intake draft lifecycle (manual / guided chat / meeting-led create-or-attach) |
 | `apps/web/src/app/workspace/actions/page.tsx` | Global Action Centre page (canonical ledger, accept/dismiss) |
 | `apps/web/src/app/workspace/chats/page.tsx` | Chat history with project grouping and Action Centre deep-link context |
 | `apps/web/src/app/workspace/NotificationBell.tsx` | Bell with unread badge, dismiss flow |
@@ -54,6 +54,9 @@ Web proxy routes (`apps/web/src/app/api/workspace/`):
 - `POST /larry/events/:id/dismiss` — dismiss a suggested Larry event
 - `GET /larry/briefing` — login briefing for current user
 - `POST /meetings/transcript` — canonical transcript ingest (enqueues worker job, returns 202)
+- `POST /projects/intake/drafts` — create/update intake draft (manual/chat/meeting)
+- `POST /projects/intake/drafts/:id/bootstrap` — generate chat bootstrap preview (summary/tasks/actions/seed message)
+- `POST /projects/intake/drafts/:id/finalize` — finalize intake draft into project creation or meeting attach path
 
 **Other active routes:**
 - `GET /projects/:id/overview` — scoped project read model (project + tasks + health + timeline + outcomes + meetings)

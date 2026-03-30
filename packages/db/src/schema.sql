@@ -654,6 +654,58 @@ DO $$ BEGIN
     USING (tenant_id::text = current_setting('app.tenant_id', true));
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 
+-- Phase 5: unified project intake draft model
+CREATE TABLE IF NOT EXISTS project_intake_drafts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  mode TEXT NOT NULL CHECK (mode IN ('manual', 'chat', 'meeting')),
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'bootstrapped', 'finalized')),
+
+  project_name TEXT,
+  project_description TEXT,
+  project_start_date DATE,
+  project_target_date DATE,
+  attach_to_project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+
+  chat_answers JSONB NOT NULL DEFAULT '[]'::jsonb,
+  meeting_title TEXT,
+  meeting_transcript TEXT,
+
+  bootstrap_summary TEXT,
+  bootstrap_tasks JSONB NOT NULL DEFAULT '[]'::jsonb,
+  bootstrap_actions JSONB NOT NULL DEFAULT '[]'::jsonb,
+  bootstrap_seed_message TEXT,
+
+  finalized_project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+  finalized_meeting_note_id UUID REFERENCES meeting_notes(id) ON DELETE SET NULL,
+  finalized_canonical_event_id UUID REFERENCES canonical_events(id) ON DELETE SET NULL,
+  finalized_at TIMESTAMPTZ,
+
+  created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_intake_drafts_tenant_created
+  ON project_intake_drafts (tenant_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_project_intake_drafts_tenant_status
+  ON project_intake_drafts (tenant_id, status, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_project_intake_drafts_tenant_mode
+  ON project_intake_drafts (tenant_id, mode, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_project_intake_drafts_attach_project
+  ON project_intake_drafts (tenant_id, attach_to_project_id, updated_at DESC);
+
+ALTER TABLE project_intake_drafts ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_project_intake_drafts
+    ON project_intake_drafts
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
 -- Phase 1.2: Larry conversation tables
 CREATE TABLE IF NOT EXISTS larry_conversations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

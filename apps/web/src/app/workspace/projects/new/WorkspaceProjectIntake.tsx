@@ -1,15 +1,74 @@
 ﻿"use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, CalendarRange, Check, FileText, Loader2, MessageSquare, Sparkles } from "lucide-react";
-import { sendLarryChat } from "@/lib/larry";
 import { triggerBoundedWorkspaceRefresh } from "@/app/workspace/refresh";
 
 type IntakeMode = "manual" | "chat" | "meeting";
+type IntakeDraftStatus = "draft" | "bootstrapped" | "finalized";
+type MeetingTargetMode = "create" | "attach";
 
-type CreateProjectResponse = { id?: string; error?: string };
-type TranscriptResponse = { error?: string; meetingNoteId?: string };
+type IntakeBootstrapTask = {
+  title: string;
+  description?: string | null;
+  dueDate?: string | null;
+  assigneeName?: string | null;
+  priority?: "low" | "medium" | "high" | "critical";
+};
+
+type IntakeBootstrapAction = {
+  type: string;
+  displayText: string;
+  reasoning: string;
+  payload: Record<string, unknown>;
+};
+
+type IntakeDraft = {
+  id: string;
+  mode: IntakeMode;
+  status: IntakeDraftStatus;
+  project: {
+    name: string | null;
+    description: string | null;
+    startDate: string | null;
+    targetDate: string | null;
+    attachToProjectId: string | null;
+  };
+  chat: {
+    answers: string[];
+  };
+  meeting: {
+    meetingTitle: string | null;
+    transcriptPresent: boolean;
+  };
+  bootstrap: {
+    summary: string | null;
+    tasks: IntakeBootstrapTask[];
+    actions: IntakeBootstrapAction[];
+    seedMessage: string | null;
+  };
+  finalized: {
+    projectId: string | null;
+    meetingNoteId: string | null;
+    canonicalEventId: string | null;
+    finalizedAt: string | null;
+  };
+};
+
+type IntakeDraftResponse = {
+  draft?: IntakeDraft;
+  error?: string;
+};
+
+type WorkspaceProjectOption = {
+  id: string;
+  name: string;
+};
+
+type WorkspaceProjectListResponse = {
+  items?: WorkspaceProjectOption[];
+};
 
 const CHAT_QUESTIONS = [
   "What is the working name of this project?",
@@ -30,15 +89,6 @@ function buildProjectIntake(answers: string[]) {
   ].join("\n");
 }
 
-function buildIntakeSeedMessage(answers: string[]) {
-  const intake = buildProjectIntake(answers);
-  return [
-    "I just created a new project from guided intake answers.",
-    "Use this context to bootstrap the project chat: summarize the setup and propose the most useful next actions.",
-    intake,
-  ].join("\n\n");
-}
-
 async function readJson<T>(response: Response): Promise<T> {
   const text = await response.text();
   if (!text) return {} as T;
@@ -47,6 +97,60 @@ async function readJson<T>(response: Response): Promise<T> {
   } catch {
     return {} as T;
   }
+}
+
+type UpsertDraftPayload = {
+  draftId?: string;
+  mode: IntakeMode;
+  project?: {
+    name?: string | null;
+    description?: string | null;
+    startDate?: string | null;
+    targetDate?: string | null;
+    attachToProjectId?: string | null;
+  };
+  chat?: {
+    answers?: string[];
+  };
+  meeting?: {
+    meetingTitle?: string | null;
+    transcript?: string | null;
+  };
+};
+
+async function upsertIntakeDraft(payload: UpsertDraftPayload): Promise<IntakeDraft> {
+  const response = await fetch("/api/workspace/projects/intake/drafts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await readJson<IntakeDraftResponse>(response);
+  if (!response.ok || !data.draft) {
+    throw new Error(data.error ?? "Failed to save intake draft.");
+  }
+  return data.draft;
+}
+
+async function bootstrapIntakeDraft(draftId: string): Promise<IntakeDraft> {
+  const response = await fetch(`/api/workspace/projects/intake/drafts/${encodeURIComponent(draftId)}/bootstrap`, {
+    method: "POST",
+  });
+  const data = await readJson<IntakeDraftResponse>(response);
+  if (!response.ok || !data.draft) {
+    throw new Error(data.error ?? "Failed to generate bootstrap preview.");
+  }
+  return data.draft;
+}
+
+async function finalizeIntakeDraft(draftId: string): Promise<IntakeDraft> {
+  const response = await fetch(`/api/workspace/projects/intake/drafts/${encodeURIComponent(draftId)}/finalize`, {
+    method: "POST",
+  });
+  const data = await readJson<IntakeDraftResponse>(response);
+  if (!response.ok || !data.draft) {
+    throw new Error(data.error ?? "Failed to finalize intake draft.");
+  }
+  return data.draft;
 }
 
 const MODE_META: Record<IntakeMode, { label: string; title: string; description: string; icon: typeof Sparkles }> = {
@@ -145,7 +249,9 @@ function SectionCard({ title, description, children }: { title: string; descript
 export function WorkspaceProjectIntake() {
   const router = useRouter();
   const [mode, setMode] = useState<IntakeMode>("manual");
+  const [projects, setProjects] = useState<WorkspaceProjectOption[]>([]);
 
+  const [manualDraftId, setManualDraftId] = useState<string | null>(null);
   const [manualName, setManualName] = useState("");
   const [manualDescription, setManualDescription] = useState("");
   const [manualStartDate, setManualStartDate] = useState("");
@@ -153,6 +259,7 @@ export function WorkspaceProjectIntake() {
   const [manualBusy, setManualBusy] = useState(false);
   const [manualError, setManualError] = useState<string | null>(null);
 
+  const [chatDraft, setChatDraft] = useState<IntakeDraft | null>(null);
   const [chatMessages, setChatMessages] = useState<Array<{ id: string; role: "larry" | "user"; text: string }>>([
     { id: "q0", role: "larry", text: CHAT_QUESTIONS[0] },
   ]);
@@ -160,38 +267,49 @@ export function WorkspaceProjectIntake() {
   const [chatAnswers, setChatAnswers] = useState<string[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
+  const [chatFinalizeBusy, setChatFinalizeBusy] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
   const [chatCreatedProjectId, setChatCreatedProjectId] = useState<string | null>(null);
   const [chatCreatedProjectName, setChatCreatedProjectName] = useState<string | null>(null);
-  const [chatSeedWarning, setChatSeedWarning] = useState<string | null>(null);
 
+  const [meetingDraftId, setMeetingDraftId] = useState<string | null>(null);
+  const [meetingTargetMode, setMeetingTargetMode] = useState<MeetingTargetMode>("create");
   const [meetingName, setMeetingName] = useState("");
   const [meetingDescription, setMeetingDescription] = useState("");
+  const [meetingStartDate, setMeetingStartDate] = useState("");
+  const [meetingTargetDate, setMeetingTargetDate] = useState("");
+  const [meetingAttachProjectId, setMeetingAttachProjectId] = useState("");
+  const [meetingTitle, setMeetingTitle] = useState("");
   const [meetingTranscript, setMeetingTranscript] = useState("");
   const [meetingBusy, setMeetingBusy] = useState(false);
   const [meetingError, setMeetingError] = useState<string | null>(null);
   const [meetingCreatedProjectId, setMeetingCreatedProjectId] = useState<string | null>(null);
-  const [meetingStatus, setMeetingStatus] = useState<"created" | "queued" | "partial" | null>(null);
+  const [meetingNoteId, setMeetingNoteId] = useState<string | null>(null);
+  const [meetingCanonicalEventId, setMeetingCanonicalEventId] = useState<string | null>(null);
 
   const chatProgress = useMemo(() => ((chatQuestionIndex + 1) / CHAT_QUESTIONS.length) * 100, [chatQuestionIndex]);
+  const chatBootstrapReady = Boolean(chatDraft?.bootstrap.tasks.length || chatDraft?.bootstrap.actions.length);
 
-  async function createProject(payload: {
-    name: string;
-    description?: string;
-    startDate?: string;
-    targetDate?: string;
-  }) {
-    const response = await fetch("/api/workspace/projects", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const data = await readJson<CreateProjectResponse>(response);
-    if (!response.ok || !data.id) {
-      throw new Error(data.error ?? "Failed to create the project.");
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadProjects() {
+      try {
+        const response = await fetch("/api/workspace/projects", { cache: "no-store" });
+        const payload = await readJson<WorkspaceProjectListResponse>(response);
+        if (cancelled || !response.ok) return;
+        const nextProjects = Array.isArray(payload.items) ? payload.items : [];
+        setProjects(nextProjects.map((project) => ({ id: project.id, name: project.name })));
+      } catch {
+        if (!cancelled) setProjects([]);
+      }
     }
-    return data.id;
-  }
+
+    void loadProjects();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function handleManualSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -204,13 +322,26 @@ export function WorkspaceProjectIntake() {
     setManualBusy(true);
     setManualError(null);
     try {
-      const projectId = await createProject({
-        name: manualName.trim(),
-        description: manualDescription.trim() || undefined,
-        startDate: manualStartDate || undefined,
-        targetDate: manualTargetDate || undefined,
+      const draft = await upsertIntakeDraft({
+        draftId: manualDraftId ?? undefined,
+        mode: "manual",
+        project: {
+          name: manualName.trim(),
+          description: manualDescription.trim() || null,
+          startDate: manualStartDate || null,
+          targetDate: manualTargetDate || null,
+          attachToProjectId: null,
+        },
       });
-      window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
+      setManualDraftId(draft.id);
+
+      const finalized = await finalizeIntakeDraft(draft.id);
+      const projectId = finalized.finalized.projectId;
+      if (!projectId) {
+        throw new Error("Draft finalized but no project id was returned.");
+      }
+
+      triggerBoundedWorkspaceRefresh();
       router.push(`/workspace/projects/${projectId}`);
     } catch (submitError) {
       setManualError(submitError instanceof Error ? submitError.message : "Failed to create the project.");
@@ -241,39 +372,38 @@ export function WorkspaceProjectIntake() {
         return;
       }
 
-      setChatMessages((current) => current.concat({ id: "processing", role: "larry", text: "Creating the project..." }));
-      const projectName = nextAnswers[0]?.trim() || "New Project";
-      const description = buildProjectIntake(nextAnswers);
-      const projectId = await createProject({ name: projectName, description });
-      setChatSeedWarning(null);
-
-      let seedSucceeded = false;
-      try {
-        const seedMessage = buildIntakeSeedMessage(nextAnswers);
-        const { response } = await sendLarryChat({
-          projectId,
-          message: seedMessage,
-        });
-        seedSucceeded = response.ok;
-      } catch {
-        seedSucceeded = false;
-      }
-
-      const replyText = seedSucceeded
-        ? `Project created. Open ${projectName} and keep building with Larry from the project workspace.`
-        : `Project created. Open ${projectName}. Larry intake context could not be auto-seeded, so start by sharing the setup in project chat.`;
       setChatMessages((current) =>
-        current.filter((message) => message.id !== "processing").concat({ id: crypto.randomUUID(), role: "larry", text: replyText }),
+        current.concat({
+          id: "processing",
+          role: "larry",
+          text: "Saving the draft and generating a bootstrap preview...",
+        }),
       );
 
-      if (!seedSucceeded) {
-        setChatSeedWarning("The project is live, but intake context was not auto-seeded in Larry chat.");
-      }
-      setChatCreatedProjectId(projectId);
-      setChatCreatedProjectName(projectName);
-      window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
+      const projectName = nextAnswers[0]?.trim() || "New Project";
+      const description = buildProjectIntake(nextAnswers);
+      const draft = await upsertIntakeDraft({
+        draftId: chatDraft?.id ?? undefined,
+        mode: "chat",
+        project: {
+          name: projectName,
+          description,
+          attachToProjectId: null,
+        },
+        chat: { answers: nextAnswers },
+      });
+      const bootstrappedDraft = await bootstrapIntakeDraft(draft.id);
+      setChatDraft(bootstrappedDraft);
+
+      setChatMessages((current) =>
+        current.filter((message) => message.id !== "processing").concat({
+          id: crypto.randomUUID(),
+          role: "larry",
+          text: "Bootstrap preview is ready. Review starter tasks and suggested actions, then finalize.",
+        }),
+      );
     } catch (submitError) {
-      const message = submitError instanceof Error ? submitError.message : "Failed to create the project via chat.";
+      const message = submitError instanceof Error ? submitError.message : "Failed to prepare chat intake.";
       setChatMessages((current) =>
         current.filter((entry) => entry.id !== "processing").concat({ id: crypto.randomUUID(), role: "larry", text: message }),
       );
@@ -283,39 +413,90 @@ export function WorkspaceProjectIntake() {
     }
   }
 
+  async function handleChatFinalize() {
+    if (!chatDraft?.id || chatFinalizeBusy) return;
+
+    setChatFinalizeBusy(true);
+    setChatError(null);
+    try {
+      const finalized = await finalizeIntakeDraft(chatDraft.id);
+      const projectId = finalized.finalized.projectId;
+      if (!projectId) {
+        throw new Error("Draft finalized but no project id was returned.");
+      }
+
+      setChatDraft(finalized);
+      setChatCreatedProjectId(projectId);
+      setChatCreatedProjectName(finalized.project.name ?? (chatAnswers[0]?.trim() || "New Project"));
+      triggerBoundedWorkspaceRefresh();
+    } catch (submitError) {
+      setChatError(submitError instanceof Error ? submitError.message : "Failed to finalize chat intake.");
+    } finally {
+      setChatFinalizeBusy(false);
+    }
+  }
+
   async function handleMeetingSubmit(event: React.FormEvent) {
     event.preventDefault();
-    if (!meetingName.trim() || meetingTranscript.trim().length < 20) return;
+    if (meetingTranscript.trim().length < 20) {
+      setMeetingError("Transcript must include at least 20 characters.");
+      return;
+    }
+    if (meetingTargetMode === "create" && meetingName.trim().length < 2) {
+      setMeetingError("Project name is required for create-new mode.");
+      return;
+    }
+    if (meetingTargetMode === "attach" && !meetingAttachProjectId) {
+      setMeetingError("Select an existing project to attach this transcript.");
+      return;
+    }
 
     setMeetingBusy(true);
     setMeetingError(null);
     setMeetingCreatedProjectId(null);
-    setMeetingStatus(null);
+    setMeetingNoteId(null);
+    setMeetingCanonicalEventId(null);
 
     try {
-      const projectId = await createProject({
-        name: meetingName.trim(),
-        description: meetingDescription.trim() || undefined,
+      const draft = await upsertIntakeDraft({
+        draftId: meetingDraftId ?? undefined,
+        mode: "meeting",
+        project:
+          meetingTargetMode === "create"
+            ? {
+                name: meetingName.trim(),
+                description: meetingDescription.trim() || null,
+                startDate: meetingStartDate || null,
+                targetDate: meetingTargetDate || null,
+                attachToProjectId: null,
+              }
+            : {
+                name: null,
+                description: null,
+                startDate: null,
+                targetDate: null,
+                attachToProjectId: meetingAttachProjectId,
+              },
+        meeting: {
+          meetingTitle: meetingTitle.trim() || null,
+          transcript: meetingTranscript.trim(),
+        },
       });
-      setMeetingCreatedProjectId(projectId);
-      setMeetingStatus("created");
+      setMeetingDraftId(draft.id);
 
-      const transcriptResponse = await fetch("/api/workspace/meetings/transcript", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript: meetingTranscript.trim(), projectId }),
-      });
-      const transcriptData = await readJson<TranscriptResponse>(transcriptResponse);
-
-      if (!transcriptResponse.ok) {
-        setMeetingStatus("partial");
-        throw new Error(transcriptData.error ?? "Project created, but transcript processing failed.");
+      const finalized = await finalizeIntakeDraft(draft.id);
+      const projectId = finalized.finalized.projectId;
+      if (!projectId) {
+        throw new Error("Draft finalized but no project id was returned.");
       }
 
-      setMeetingStatus("queued");
+      setMeetingDraftId(finalized.id);
+      setMeetingCreatedProjectId(projectId);
+      setMeetingNoteId(finalized.finalized.meetingNoteId);
+      setMeetingCanonicalEventId(finalized.finalized.canonicalEventId);
       triggerBoundedWorkspaceRefresh();
     } catch (submitError) {
-      setMeetingError(submitError instanceof Error ? submitError.message : "Failed to create the project from the meeting.");
+      setMeetingError(submitError instanceof Error ? submitError.message : "Failed to finalize meeting intake.");
     } finally {
       setMeetingBusy(false);
     }
@@ -424,7 +605,7 @@ export function WorkspaceProjectIntake() {
                     style={{ background: "var(--cta)", opacity: manualBusy || manualName.trim().length < 2 ? 0.7 : 1 }}
                   >
                     {manualBusy ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-                    {manualBusy ? "Creating..." : "Create project"}
+                    {manualBusy ? "Finalizing..." : "Finalize and create project"}
                   </button>
                 </div>
               </form>
@@ -468,50 +649,16 @@ export function WorkspaceProjectIntake() {
                 </div>
               </div>
 
-              <form onSubmit={handleChatSubmit} className="mt-5 space-y-4">
-                <textarea
-                  value={chatInput}
-                  onChange={(event) => setChatInput(event.target.value)}
-                  rows={4}
-                  placeholder="Type your answer here..."
-                  className="w-full rounded-[22px] border px-4 py-3 text-[14px] outline-none"
-                  style={{ borderColor: "var(--border)", background: "var(--surface-2)", color: "var(--text-1)" }}
-                />
-
-                {chatError && (
-                  <div className="rounded-2xl border px-4 py-3 text-[13px]" style={{ borderColor: "#fecaca", background: "#fef2f2", color: "#b91c1c" }}>
-                    {chatError}
-                  </div>
-                )}
-
-                {chatCreatedProjectId && chatCreatedProjectName && (
-                  <div className="rounded-2xl border px-4 py-4" style={{ borderColor: "#bbf7d0", background: "#f0fdf4" }}>
-                    <p className="text-[14px] font-semibold" style={{ color: "#166534" }}>
-                      {chatCreatedProjectName} is ready
-                    </p>
-                    <p className="mt-2 text-[13px]" style={{ color: "#166534" }}>
-                      {chatSeedWarning
-                        ? "The project is now live on the workspace path."
-                        : "The project is now live on the workspace path with Larry chat ready inside the project."}
-                    </p>
-                    {chatSeedWarning && (
-                      <p className="mt-2 text-[12px]" style={{ color: "#166534" }}>
-                        {chatSeedWarning}
-                      </p>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => router.push(`/workspace/projects/${chatCreatedProjectId}`)}
-                      className="mt-4 inline-flex h-10 items-center gap-2 rounded-full px-4 text-[13px] font-semibold text-white"
-                      style={{ background: "#16a34a" }}
-                    >
-                      Open project
-                      <ArrowRight size={14} />
-                    </button>
-                  </div>
-                )}
-
-                {!chatCreatedProjectId && (
+              {!chatBootstrapReady && !chatCreatedProjectId && (
+                <form onSubmit={handleChatSubmit} className="mt-5 space-y-4">
+                  <textarea
+                    value={chatInput}
+                    onChange={(event) => setChatInput(event.target.value)}
+                    rows={4}
+                    placeholder="Type your answer here..."
+                    className="w-full rounded-[22px] border px-4 py-3 text-[14px] outline-none"
+                    style={{ borderColor: "var(--border)", background: "var(--surface-2)", color: "var(--text-1)" }}
+                  />
                   <div className="flex justify-end">
                     <button
                       type="submit"
@@ -520,45 +667,243 @@ export function WorkspaceProjectIntake() {
                       style={{ background: "var(--cta)", opacity: chatBusy || chatInput.trim().length < 2 ? 0.7 : 1 }}
                     >
                       {chatBusy ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-                      {chatQuestionIndex === CHAT_QUESTIONS.length - 1 ? "Create project" : "Next answer"}
+                      {chatQuestionIndex === CHAT_QUESTIONS.length - 1 ? "Generate bootstrap preview" : "Next answer"}
                     </button>
                   </div>
-                )}
-              </form>
+                </form>
+              )}
+
+              {chatBootstrapReady && chatDraft && (
+                <div className="mt-5 space-y-4 rounded-[24px] border p-5" style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}>
+                  <div>
+                    <p className="text-[12px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--text-muted)" }}>
+                      Bootstrap preview
+                    </p>
+                    <p className="mt-2 text-[14px] leading-7" style={{ color: "var(--text-1)" }}>
+                      {chatDraft.bootstrap.summary ?? "Starter tasks and suggested actions are ready."}
+                    </p>
+                  </div>
+
+                  {chatDraft.bootstrap.tasks.length > 0 && (
+                    <div>
+                      <p className="text-[12px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--text-muted)" }}>
+                        Starter tasks
+                      </p>
+                      <div className="mt-2 space-y-2">
+                        {chatDraft.bootstrap.tasks.map((task, index) => (
+                          <div key={`${task.title}-${index}`} className="rounded-xl border px-3 py-2 text-[13px]" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+                            <p className="font-medium" style={{ color: "var(--text-1)" }}>
+                              {task.title}
+                            </p>
+                            {task.dueDate && (
+                              <p className="mt-1" style={{ color: "var(--text-2)" }}>
+                                Due: {task.dueDate}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {chatDraft.bootstrap.actions.length > 0 && (
+                    <div>
+                      <p className="text-[12px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--text-muted)" }}>
+                        Suggested actions
+                      </p>
+                      <div className="mt-2 space-y-2">
+                        {chatDraft.bootstrap.actions.map((action, index) => (
+                          <div key={`${action.type}-${index}`} className="rounded-xl border px-3 py-2 text-[13px]" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+                            <p className="font-medium" style={{ color: "var(--text-1)" }}>
+                              {action.displayText}
+                            </p>
+                            <p className="mt-1" style={{ color: "var(--text-2)" }}>
+                              {action.reasoning}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {!chatCreatedProjectId && (
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => void handleChatFinalize()}
+                        disabled={chatFinalizeBusy}
+                        className="inline-flex h-11 items-center gap-2 rounded-full px-5 text-[14px] font-semibold text-white"
+                        style={{ background: "var(--cta)", opacity: chatFinalizeBusy ? 0.7 : 1 }}
+                      >
+                        {chatFinalizeBusy ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                        {chatFinalizeBusy ? "Finalizing..." : "Finalize and create project"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {chatCreatedProjectId && chatCreatedProjectName && (
+                <div className="mt-5 rounded-2xl border px-4 py-4" style={{ borderColor: "#bbf7d0", background: "#f0fdf4" }}>
+                  <p className="text-[14px] font-semibold" style={{ color: "#166534" }}>
+                    {chatCreatedProjectName} is ready
+                  </p>
+                  <p className="mt-2 text-[13px]" style={{ color: "#166534" }}>
+                    Project created from the intake draft with bootstrap tasks and suggestions persisted.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/workspace/projects/${chatCreatedProjectId}`)}
+                    className="mt-4 inline-flex h-10 items-center gap-2 rounded-full px-4 text-[13px] font-semibold text-white"
+                    style={{ background: "#16a34a" }}
+                  >
+                    Open project
+                    <ArrowRight size={14} />
+                  </button>
+                </div>
+              )}
+
+              {chatError && (
+                <div className="mt-5 rounded-2xl border px-4 py-3 text-[13px]" style={{ borderColor: "#fecaca", background: "#fef2f2", color: "#b91c1c" }}>
+                  {chatError}
+                </div>
+              )}
             </SectionCard>
           )}
 
           {mode === "meeting" && (
             <SectionCard
               title="Meeting-led intake"
-              description="Create the project on the workspace path first, then process the transcript straight into that project so Larry starts with the right context."
+              description="Use one durable meeting draft with Create New or Attach Existing, then finalize to enqueue canonical transcript ingest."
             >
-              <form onSubmit={handleMeetingSubmit} className="grid gap-4 md:grid-cols-2">
-                <label className="block md:col-span-2">
-                  <span className="text-[12px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--text-muted)" }}>
-                    Project name
-                  </span>
-                  <input
-                    required
-                    value={meetingName}
-                    onChange={(event) => setMeetingName(event.target.value)}
-                    className="mt-2 h-12 w-full rounded-2xl border px-4 text-[15px] outline-none"
-                    style={{ borderColor: "var(--border)", background: "var(--surface-2)", color: "var(--text-1)" }}
-                    placeholder="Q3 board prep"
-                  />
-                </label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setMeetingTargetMode("create")}
+                  style={{
+                    borderRadius: "14px",
+                    border: meetingTargetMode === "create" ? "1px solid var(--cta)" : "1px solid var(--border)",
+                    background: meetingTargetMode === "create" ? "#ebf5ff" : "var(--surface-2)",
+                    padding: "12px",
+                    textAlign: "left",
+                  }}
+                >
+                  <p className="text-[13px] font-semibold" style={{ color: "var(--text-1)" }}>
+                    Create new project
+                  </p>
+                  <p className="mt-1 text-[12px]" style={{ color: "var(--text-2)" }}>
+                    Finalize by creating a new project, then enqueue transcript ingest.
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMeetingTargetMode("attach")}
+                  style={{
+                    borderRadius: "14px",
+                    border: meetingTargetMode === "attach" ? "1px solid var(--cta)" : "1px solid var(--border)",
+                    background: meetingTargetMode === "attach" ? "#ebf5ff" : "var(--surface-2)",
+                    padding: "12px",
+                    textAlign: "left",
+                  }}
+                >
+                  <p className="text-[13px] font-semibold" style={{ color: "var(--text-1)" }}>
+                    Attach existing project
+                  </p>
+                  <p className="mt-1 text-[12px]" style={{ color: "var(--text-2)" }}>
+                    Pick an existing project and enqueue transcript ingest without creating a new project.
+                  </p>
+                </button>
+              </div>
+
+              <form onSubmit={handleMeetingSubmit} className="mt-5 grid gap-4 md:grid-cols-2">
+                {meetingTargetMode === "create" ? (
+                  <>
+                    <label className="block md:col-span-2">
+                      <span className="text-[12px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--text-muted)" }}>
+                        Project name
+                      </span>
+                      <input
+                        required
+                        value={meetingName}
+                        onChange={(event) => setMeetingName(event.target.value)}
+                        className="mt-2 h-12 w-full rounded-2xl border px-4 text-[15px] outline-none"
+                        style={{ borderColor: "var(--border)", background: "var(--surface-2)", color: "var(--text-1)" }}
+                        placeholder="Q3 board prep"
+                      />
+                    </label>
+
+                    <label className="block md:col-span-2">
+                      <span className="text-[12px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--text-muted)" }}>
+                        Initial project brief
+                      </span>
+                      <textarea
+                        value={meetingDescription}
+                        onChange={(event) => setMeetingDescription(event.target.value)}
+                        rows={4}
+                        className="mt-2 w-full rounded-[22px] border px-4 py-3 text-[15px] outline-none"
+                        style={{ borderColor: "var(--border)", background: "var(--surface-2)", color: "var(--text-1)" }}
+                        placeholder="Optional summary that should sit on the project before transcript processing finishes."
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="text-[12px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--text-muted)" }}>
+                        Start date
+                      </span>
+                      <input
+                        type="date"
+                        value={meetingStartDate}
+                        onChange={(event) => setMeetingStartDate(event.target.value)}
+                        className="mt-2 h-12 w-full rounded-2xl border px-4 text-[15px] outline-none"
+                        style={{ borderColor: "var(--border)", background: "var(--surface-2)", color: "var(--text-1)" }}
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="text-[12px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--text-muted)" }}>
+                        Target date
+                      </span>
+                      <input
+                        type="date"
+                        value={meetingTargetDate}
+                        onChange={(event) => setMeetingTargetDate(event.target.value)}
+                        className="mt-2 h-12 w-full rounded-2xl border px-4 text-[15px] outline-none"
+                        style={{ borderColor: "var(--border)", background: "var(--surface-2)", color: "var(--text-1)" }}
+                      />
+                    </label>
+                  </>
+                ) : (
+                  <label className="block md:col-span-2">
+                    <span className="text-[12px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--text-muted)" }}>
+                      Project to attach
+                    </span>
+                    <select
+                      required
+                      value={meetingAttachProjectId}
+                      onChange={(event) => setMeetingAttachProjectId(event.target.value)}
+                      className="mt-2 h-12 w-full rounded-2xl border px-4 text-[15px] outline-none"
+                      style={{ borderColor: "var(--border)", background: "var(--surface-2)", color: "var(--text-1)" }}
+                    >
+                      <option value="">Select a project...</option>
+                      {projects.map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
 
                 <label className="block md:col-span-2">
                   <span className="text-[12px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--text-muted)" }}>
-                    Initial project brief
+                    Meeting title (optional)
                   </span>
-                  <textarea
-                    value={meetingDescription}
-                    onChange={(event) => setMeetingDescription(event.target.value)}
-                    rows={4}
-                    className="mt-2 w-full rounded-[22px] border px-4 py-3 text-[15px] outline-none"
+                  <input
+                    value={meetingTitle}
+                    onChange={(event) => setMeetingTitle(event.target.value)}
+                    className="mt-2 h-12 w-full rounded-2xl border px-4 text-[15px] outline-none"
                     style={{ borderColor: "var(--border)", background: "var(--surface-2)", color: "var(--text-1)" }}
-                    placeholder="Optional summary that should sit on the project before transcript processing finishes."
+                    placeholder="Weekly team sync"
                   />
                 </label>
 
@@ -582,27 +927,22 @@ export function WorkspaceProjectIntake() {
                   </div>
                 )}
 
-                {meetingCreatedProjectId && meetingStatus && (
-                  <div className="md:col-span-2 rounded-2xl border px-4 py-4" style={{ borderColor: meetingStatus === "queued" ? "#bbf7d0" : "#fde68a", background: meetingStatus === "queued" ? "#f0fdf4" : "#fffbeb" }}>
-                    <p className="text-[14px] font-semibold" style={{ color: meetingStatus === "queued" ? "#166534" : "#92400e" }}>
-                      {meetingStatus === "queued"
-                        ? "Project created and transcript queued"
-                        : meetingStatus === "partial"
-                          ? "Project created, transcript still needs attention"
-                        : "Project created"}
+                {meetingCreatedProjectId && (
+                  <div className="md:col-span-2 rounded-2xl border px-4 py-4" style={{ borderColor: "#bbf7d0", background: "#f0fdf4" }}>
+                    <p className="text-[14px] font-semibold" style={{ color: "#166534" }}>
+                      Transcript queued on canonical intake path
                     </p>
-                    <p className="mt-2 text-[13px]" style={{ color: meetingStatus === "queued" ? "#166534" : "#92400e" }}>
-                      {meetingStatus === "queued"
-                        ? "Larry saved the transcript and queued background processing. The project context and Action Centre will update shortly."
-                        : meetingStatus === "created"
-                          ? "The project exists on the workspace path and the transcript is being queued now."
-                          : "The project exists on the workspace path even though transcript processing did not finish cleanly yet."}
+                    <p className="mt-2 text-[13px]" style={{ color: "#166534" }}>
+                      Project {meetingTargetMode === "attach" ? "attached" : "created"} and transcript ingest enqueued.
+                    </p>
+                    <p className="mt-2 text-[12px]" style={{ color: "#166534" }}>
+                      Meeting note: {meetingNoteId ?? "pending"} | Canonical event: {meetingCanonicalEventId ?? "pending"}
                     </p>
                     <button
                       type="button"
                       onClick={() => router.push(`/workspace/projects/${meetingCreatedProjectId}`)}
                       className="mt-4 inline-flex h-10 items-center gap-2 rounded-full px-4 text-[13px] font-semibold text-white"
-                      style={{ background: meetingStatus === "queued" ? "#16a34a" : "#d97706" }}
+                      style={{ background: "#16a34a" }}
                     >
                       Open project
                       <ArrowRight size={14} />
@@ -613,12 +953,24 @@ export function WorkspaceProjectIntake() {
                 <div className="md:col-span-2 flex justify-end">
                   <button
                     type="submit"
-                    disabled={meetingBusy || meetingName.trim().length < 2 || meetingTranscript.trim().length < 20}
+                    disabled={
+                      meetingBusy ||
+                      meetingTranscript.trim().length < 20 ||
+                      (meetingTargetMode === "create" ? meetingName.trim().length < 2 : !meetingAttachProjectId)
+                    }
                     className="inline-flex h-11 items-center gap-2 rounded-full px-5 text-[14px] font-semibold text-white"
-                    style={{ background: "var(--cta)", opacity: meetingBusy || meetingName.trim().length < 2 || meetingTranscript.trim().length < 20 ? 0.7 : 1 }}
+                    style={{
+                      background: "var(--cta)",
+                      opacity:
+                        meetingBusy ||
+                        meetingTranscript.trim().length < 20 ||
+                        (meetingTargetMode === "create" ? meetingName.trim().length < 2 : !meetingAttachProjectId)
+                          ? 0.7
+                          : 1,
+                    }}
                   >
                     {meetingBusy ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />}
-                    {meetingBusy ? "Creating project..." : "Create and queue transcript"}
+                    {meetingBusy ? "Finalizing..." : "Finalize and queue transcript"}
                   </button>
                 </div>
               </form>

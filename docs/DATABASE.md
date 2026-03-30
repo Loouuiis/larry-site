@@ -26,6 +26,7 @@ npm run seed
 | Table | Purpose |
 |-------|---------|
 | `projects` | Project records |
+| `project_intake_drafts` | Durable unified intake drafts (manual/chat/meeting, bootstrap preview, finalization metadata) |
 | `tasks` | Project tasks |
 | `task_dependencies` | Task dependency graph |
 | `task_comments` | Task-level discussion |
@@ -70,3 +71,5 @@ Use tenant-aware query helpers consistently in API and worker code.
 - Run schema migration before API/worker deployment.
 - Restart API and worker after schema changes.
 - For remote databases, validate connectivity before migration execution.
+- `project_intake_drafts` includes tenant RLS policy (`tenant_isolation_project_intake_drafts`) and recency/status/mode indexes for intake runtime access paths.
+- Seed data includes one deterministic `project_intake_drafts` fixture row so local/demo environments exercise the new intake contract.

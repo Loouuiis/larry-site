@@ -10,6 +10,7 @@ Fastify v5 REST API at `apps/api/`. Product routes are registered in `apps/api/s
 |------|----------------|
 | `auth.ts` | `POST /v1/auth/login`, `POST /v1/auth/refresh`, `GET /v1/auth/me` |
 | `projects.ts` | CRUD ` /v1/projects` and project timeline/health utilities |
+| `project-intake.ts` | `POST /v1/projects/intake/drafts`, `POST /v1/projects/intake/drafts/:id/bootstrap`, `POST /v1/projects/intake/drafts/:id/finalize` |
 | `tasks.ts` | CRUD `/v1/tasks` and task status/dependency helpers |
 | `ingest.ts` | `POST /v1/ingest/slack`, `/email`, `/calendar`, `/transcript` (transcript shim) |
 | `larry.ts` | `POST /v1/larry/chat`, `GET /v1/larry/briefing`, `GET /v1/larry/action-centre`, `GET /v1/larry/memory`, `POST /v1/larry/events/:id/accept`, `POST /v1/larry/events/:id/dismiss`, `POST /v1/larry/transcript` |
@@ -40,6 +41,28 @@ Compatibility and retirement behavior:
 - `POST /v1/ingest/transcript` proxies to `/v1/larry/transcript` and returns deprecation metadata.
 - `POST /v1/larry/conversations` and `POST /v1/larry/conversations/:id/messages` return `410`.
 - `GET /v1/larry/events` returns `410` and points callers to `/v1/larry/action-centre`.
+
+## Unified Project Intake Contracts
+
+- `POST /v1/projects/intake/drafts`
+  - Create or update a durable intake draft for `manual`, `chat`, or `meeting` mode.
+- `POST /v1/projects/intake/drafts/:id/bootstrap`
+  - Generates chat bootstrap preview (`summary`, `tasks`, `actions`, `seedMessage`) without requiring an existing project.
+- `POST /v1/projects/intake/drafts/:id/finalize`
+  - `manual` / `chat`: create project, create starter tasks, write project memory entry, and persist non-task suggestions to Action Centre.
+  - `meeting` + create-new: create project and enqueue canonical transcript ingest.
+  - `meeting` + attach-existing: enqueue canonical transcript ingest directly to selected project without project insert.
+- Intake responses return a canonical draft shape:
+  - `draft.id`, `draft.mode`, `draft.status`
+  - `draft.project` (`name`, `description`, `startDate`, `targetDate`, `attachToProjectId`)
+  - `draft.chat.answers`
+  - `draft.meeting` (`meetingTitle`, `transcriptPresent`)
+  - `draft.bootstrap` (`summary`, `tasks`, `actions`, `seedMessage`)
+  - `draft.finalized` (`projectId`, `meetingNoteId`, `canonicalEventId`, `finalizedAt`)
+- Existing contracts remain unchanged:
+  - `POST /v1/projects`
+  - `POST /v1/larry/chat`
+  - `POST /v1/larry/transcript`
 
 ## Non-Negotiables
 
