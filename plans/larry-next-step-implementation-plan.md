@@ -371,6 +371,12 @@ These are not optional cleanups; they are part of the implementation strategy:
     - schema guardrails for `project_memory_entries`
   - Updated `packages/db/src/seed.ts` with deterministic project memory entries so local demo data immediately exercises the new timeline surface.
   - Test gate passed: `cd apps/api && npm test` -> 18 files / 68 tests passing.
+- **Phase 4 - Project Memory ingestion expansion (worker and connectors) (completed)**:
+  - Added `project_memory_entries.content_hash` with migration backfill, source-kind alias normalization (`meeting`/`email`/`slack`/`calendar`), replay-key duplicate cleanup, and partial unique replay dedup index on `(tenant_id, project_id, source_kind, source_record_id, content_hash)` for non-null source records.
+  - Hardened DB memory helpers so memory writes normalize source kinds, hash normalized content, and perform idempotent insert-or-return behavior for replay-identical source records.
+  - Expanded worker canonical event handling to write one project memory entry for transcript, email, slack, and calendar sources after successful scope resolution/intelligence, with non-blocking failure handling.
+  - Extended regression coverage across API schema/runtime helpers and worker canonical-event replay behavior; added Playwright transcript smoke assertion that project timeline shows a non-chat memory entry after worker processing.
+  - Updated project timeline copy and core runtime docs (`BACKEND-API.md`, `BACKEND-WORKER.md`) to reflect worker-driven memory ingestion and replay-safe dedup semantics.
 
 ### Phase 2 Closure Snapshot (2026-03-30 UTC)
 
@@ -400,9 +406,9 @@ These are not optional cleanups; they are part of the implementation strategy:
     - All 65 API tests pass (18 test files).
 
 - Remaining in current phase:
-  - Expand project memory writes beyond chat + accepted actions to transcript and connector-led paths (meeting/email/slack/calendar) with replay-safe dedup behavior.
-  - Add focused regression coverage for worker-driven memory writes on canonical event replay paths.
-- Next concrete milestone: Phase 4 - Project Memory ingestion expansion (worker and connectors).
+  - None. Phase 4 memory-ingestion expansion slice is closed.
+- Next concrete milestone:
+  - Not opened in this update (phase discipline: no next-phase kickoff).
 
 ### Still To Do For Phase 1
 
@@ -420,12 +426,8 @@ None. Phase 2 is fully closed as of 2026-03-30.
 
 ### Recommended Next Slice
 
-- **Phase 4 - Project Memory ingestion expansion (worker and connectors)**:
-  - Write `project_memory_entries` rows from transcript worker outputs and connector-led canonical events when project scope resolves.
-  - Add replay-safe dedup guardrails for memory writes keyed by `(tenant_id, project_id, source_kind, source_record_id, content hash or equivalent)`.
-  - Ensure memory source labels for `meeting`, `email`, `slack`, and `calendar` are normalized in read payloads and web timeline rendering.
-  - Extend API/worker regression coverage proving replayed canonical events do not create duplicate memory rows.
-  - Add one end-to-end smoke assertion that project context timeline shows at least one non-chat source entry after worker processing.
+- Closed in this update:
+  - **Phase 4 - Project Memory ingestion expansion (worker and connectors)** (completed).
 
 ---
 

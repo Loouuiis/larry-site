@@ -24,7 +24,8 @@ For each `canonical_event.created` job in `apps/worker/src/canonical-event.ts`:
 4. Build a source-aware prompt.
 5. Run `runIntelligence()`.
 6. Persist `auto_executed` and `suggested` Larry actions through `runAutoActions()` and `storeSuggestions()`.
-7. Enforce replay safety by source linkage checks before writing duplicate actions.
+7. Persist one `project_memory_entries` row for transcript/email/slack/calendar with canonical source labels when scope resolves.
+8. Enforce replay safety by source linkage checks before writing duplicate actions; memory writes are additionally deduped on `(tenant_id, project_id, source_kind, source_record_id, content_hash)`.
 
 Supported source handlers:
 - Transcript

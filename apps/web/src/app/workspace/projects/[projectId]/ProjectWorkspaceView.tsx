@@ -459,7 +459,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
                     Project Context Timeline
                   </p>
                   <p className="mt-1 text-[13px]" style={{ color: "var(--text-2)" }}>
-                    Durable memory from recent Larry chat turns and accepted actions.
+                    Durable memory from chat, accepted actions, and worker-processed meeting/email/slack/calendar signals.
                   </p>
                 </div>
                 <label className="text-[12px] font-semibold" style={{ color: "var(--text-muted)" }}>

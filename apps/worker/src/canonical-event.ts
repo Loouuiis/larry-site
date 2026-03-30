@@ -1,6 +1,7 @@
 import { runIntelligence } from "@larry/ai";
 import {
   getProjectSnapshot,
+  insertProjectMemoryEntry,
   listLarryEventIdsBySource,
   runAutoActions,
   storeSuggestions,
@@ -225,6 +226,13 @@ function buildSlackPrompt(payload: SlackCanonicalPayload, event: SlackEventPaylo
   ].join("\n");
 }
 
+function buildMemorySummary(prefix: string, briefing: string): string {
+  const cleanBriefing = briefing.replace(/\s+/g, " ").trim();
+  const fallback = `${prefix}: Larry processed this source and generated project updates.`;
+  if (!cleanBriefing) return fallback.slice(0, 4_000);
+  return `${prefix}: ${cleanBriefing}`.slice(0, 4_000);
+}
+
 async function loadSlackMappedProjectId(
   tenantId: string,
   slackTeamId: string,
@@ -334,6 +342,19 @@ async function handleTranscriptCanonicalEvent(
       undefined,
       ledgerContext
     ),
+    Promise.resolve(
+      insertProjectMemoryEntry(db, tenantId, resolvedProjectId, {
+        source: "Meeting transcript",
+        sourceKind: "meeting",
+        sourceRecordId: meetingNoteId,
+        content: buildMemorySummary("Meeting", intelligenceResult.briefing),
+      })
+    ).catch((error) => {
+      const reason = error instanceof Error ? error.message : String(error);
+      console.warn(
+        `[canonical-event] transcript event ${canonicalEvent.id} failed to write project memory; continuing (${reason})`
+      );
+    }),
   ]);
 
   const finalEventIds = await listLarryEventIdsBySource(db, tenantId, "meeting", meetingNoteId);
@@ -399,6 +420,19 @@ async function handleEmailCanonicalEvent(
       undefined,
       ledgerContext
     ),
+    Promise.resolve(
+      insertProjectMemoryEntry(db, tenantId, projectId, {
+        source: "Email signal",
+        sourceKind: "email",
+        sourceRecordId: canonicalEvent.id,
+        content: buildMemorySummary("Email", intelligenceResult.briefing),
+      })
+    ).catch((error) => {
+      const reason = error instanceof Error ? error.message : String(error);
+      console.warn(
+        `[canonical-event] email event ${canonicalEvent.id} failed to write project memory; continuing (${reason})`
+      );
+    }),
   ]);
 }
 
@@ -457,6 +491,19 @@ async function handleCalendarCanonicalEvent(
       undefined,
       ledgerContext
     ),
+    Promise.resolve(
+      insertProjectMemoryEntry(db, tenantId, projectId, {
+        source: "Calendar signal",
+        sourceKind: "calendar",
+        sourceRecordId: canonicalEvent.id,
+        content: buildMemorySummary("Calendar", intelligenceResult.briefing),
+      })
+    ).catch((error) => {
+      const reason = error instanceof Error ? error.message : String(error);
+      console.warn(
+        `[canonical-event] calendar event ${canonicalEvent.id} failed to write project memory; continuing (${reason})`
+      );
+    }),
   ]);
 }
 
@@ -562,6 +609,19 @@ async function handleSlackCanonicalEvent(
       undefined,
       ledgerContext
     ),
+    Promise.resolve(
+      insertProjectMemoryEntry(db, tenantId, resolvedProjectId, {
+        source: "Slack signal",
+        sourceKind: "slack",
+        sourceRecordId: canonicalEvent.id,
+        content: buildMemorySummary("Slack", intelligenceResult.briefing),
+      })
+    ).catch((error) => {
+      const reason = error instanceof Error ? error.message : String(error);
+      console.warn(
+        `[canonical-event] slack event ${canonicalEvent.id} failed to write project memory; continuing (${reason})`
+      );
+    }),
   ]);
 }
 

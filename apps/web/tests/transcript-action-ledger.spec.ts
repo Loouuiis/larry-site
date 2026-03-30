@@ -186,6 +186,26 @@ test("queues transcript intake and surfaces non-chat meeting provenance in the p
     });
   });
 
+  await page.route(`**/api/workspace/projects/${PROJECT_ID}/memory**`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      json: {
+        items: transcriptQueued
+          ? [
+              {
+                id: "99999999-9999-4999-8999-999999999999",
+                source: "Meeting transcript",
+                sourceKind: "meeting",
+                sourceRecordId: MEETING_ID,
+                content: "Meeting: The team agreed on one launch follow-up and one communications checkpoint.",
+                createdAt: "2026-03-29T10:06:00.000Z",
+              },
+            ]
+          : [],
+      },
+    });
+  });
+
   await page.goto("/login");
   await page.getByRole("button", { name: "Enter Dashboard (Dev)" }).click();
   await page.waitForURL("**/workspace");
@@ -205,4 +225,8 @@ test("queues transcript intake and surfaces non-chat meeting provenance in the p
   await expect(page.getByText("Create launch follow-up task")).toBeVisible();
   await expect(page.getByText("Origin: Meeting transcript")).toBeVisible();
   await expect(page.getByRole("button", { name: "Open linked chat" })).toHaveCount(0);
+  await expect(page.getByText("Meeting - Meeting transcript")).toBeVisible();
+  await expect(
+    page.getByText("Meeting: The team agreed on one launch follow-up and one communications checkpoint.")
+  ).toBeVisible();
 });

@@ -32,7 +32,9 @@ Fastify v5 REST API at `apps/api/`. Product routes are registered in `apps/api/s
 - `POST /v1/larry/events/:id/dismiss`
 - `POST /v1/larry/transcript`
 - `POST /v1/larry/transcript` is queue-only: it persists canonical ingest metadata and meeting linkage, returns `202`, and defers intelligence/action execution to worker `canonical_event.created`.
-- `POST /v1/larry/chat` and `POST /v1/larry/events/:id/accept` now write durable rows into `project_memory_entries` for project timeline context.
+- `POST /v1/larry/chat` and `POST /v1/larry/events/:id/accept` write durable rows into `project_memory_entries` for project timeline context.
+- Worker-driven `canonical_event.created` handling for transcript/email/slack/calendar now also writes `project_memory_entries` rows when project scope resolves.
+- Project memory writes with non-null `source_record_id` are replay-safe via `(tenant_id, project_id, source_kind, source_record_id, content_hash)` dedup semantics.
 
 Compatibility and retirement behavior:
 - `POST /v1/ingest/transcript` proxies to `/v1/larry/transcript` and returns deprecation metadata.

@@ -126,9 +126,27 @@ describe("Larry ledger schema", () => {
     expect(schema).toContain("project_id       UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE");
     expect(schema).toContain("source_kind      VARCHAR NOT NULL");
     expect(schema).toContain("source_record_id TEXT");
+    expect(schema).toContain("content_hash     TEXT");
+    expect(schema).toContain("ALTER TABLE project_memory_entries");
+    expect(schema).toContain("ADD COLUMN IF NOT EXISTS content_hash TEXT;");
     expect(schema).toContain("CREATE INDEX IF NOT EXISTS idx_project_memory_entries_project");
     expect(schema).toContain("CREATE INDEX IF NOT EXISTS idx_project_memory_entries_source_kind");
+    expect(schema).toContain("CREATE UNIQUE INDEX IF NOT EXISTS idx_project_memory_entries_replay_dedup");
     expect(schema).toContain("ALTER TABLE project_memory_entries ENABLE ROW LEVEL SECURITY;");
     expect(schema).toContain("CREATE POLICY tenant_isolation_project_memory_entries");
+  });
+
+  it("normalizes project memory source aliases and backfills replay dedup metadata", () => {
+    expect(schema).toContain("UPDATE project_memory_entries");
+    expect(schema).toContain("SET source_kind = 'meeting'");
+    expect(schema).toContain("SET source_kind = 'email'");
+    expect(schema).toContain("SET source_kind = 'slack'");
+    expect(schema).toContain("SET source_kind = 'calendar'");
+    expect(schema).toContain("SET content_hash = encode(digest(");
+    expect(schema).toContain("DELETE FROM project_memory_entries pme");
+    expect(schema).toContain("ROW_NUMBER() OVER (");
+    expect(schema).toContain("PARTITION BY tenant_id, project_id, source_kind, source_record_id, content_hash");
+    expect(schema).toContain("WHERE source_record_id IS NOT NULL");
+    expect(schema).toContain("AND content_hash IS NOT NULL;");
   });
 });

@@ -28,6 +28,7 @@ vi.mock("@larry/db", async (importOriginal) => {
   return {
     ...actual,
     getProjectSnapshot: vi.fn(),
+    insertProjectMemoryEntry: vi.fn(),
     listLarryEventIdsBySource: vi.fn(),
     runAutoActions: vi.fn(),
     storeSuggestions: vi.fn(),
@@ -37,6 +38,7 @@ vi.mock("@larry/db", async (importOriginal) => {
 import { runIntelligence } from "@larry/ai";
 import {
   getProjectSnapshot,
+  insertProjectMemoryEntry,
   listLarryEventIdsBySource,
   runAutoActions,
   storeSuggestions,
@@ -174,6 +176,12 @@ describe("processQueueJob canonical_event.created", () => {
         sourceRecordId: MEETING_NOTE_ID,
       }
     );
+    expect(insertProjectMemoryEntry).toHaveBeenCalledWith(expect.anything(), TENANT_ID, PROJECT_ID, {
+      source: "Meeting transcript",
+      sourceKind: "meeting",
+      sourceRecordId: MEETING_NOTE_ID,
+      content: expect.stringContaining("Meeting:"),
+    });
 
     const updateCalls = contextMocks.queryTenant.mock.calls.filter(([, sql]) =>
       String(sql).includes("UPDATE meeting_notes")
@@ -218,6 +226,7 @@ describe("processQueueJob canonical_event.created", () => {
     expect(runIntelligence).not.toHaveBeenCalled();
     expect(runAutoActions).not.toHaveBeenCalled();
     expect(storeSuggestions).not.toHaveBeenCalled();
+    expect(insertProjectMemoryEntry).not.toHaveBeenCalled();
 
     const updateCall = contextMocks.queryTenant.mock.calls.find(([, sql]) =>
       String(sql).includes("UPDATE meeting_notes")
@@ -313,6 +322,12 @@ describe("processQueueJob canonical_event.created", () => {
         sourceRecordId: EMAIL_CANONICAL_EVENT_ID,
       }
     );
+    expect(insertProjectMemoryEntry).toHaveBeenCalledWith(expect.anything(), TENANT_ID, PROJECT_ID, {
+      source: "Email signal",
+      sourceKind: "email",
+      sourceRecordId: EMAIL_CANONICAL_EVENT_ID,
+      content: expect.stringContaining("Email:"),
+    });
   });
 
   it("skips replayed email canonical events when source-linked email events already exist", async () => {
@@ -337,6 +352,7 @@ describe("processQueueJob canonical_event.created", () => {
     expect(runIntelligence).not.toHaveBeenCalled();
     expect(runAutoActions).not.toHaveBeenCalled();
     expect(storeSuggestions).not.toHaveBeenCalled();
+    expect(insertProjectMemoryEntry).not.toHaveBeenCalled();
   });
 
   it("processes Slack canonical events, auto-learns channel mapping, and writes source-linked ledger rows", async () => {
@@ -403,6 +419,12 @@ describe("processQueueJob canonical_event.created", () => {
         sourceRecordId: SLACK_CANONICAL_EVENT_ID,
       }
     );
+    expect(insertProjectMemoryEntry).toHaveBeenCalledWith(expect.anything(), TENANT_ID, PROJECT_ID, {
+      source: "Slack signal",
+      sourceKind: "slack",
+      sourceRecordId: SLACK_CANONICAL_EVENT_ID,
+      content: expect.stringContaining("Slack:"),
+    });
     expect(storeSuggestions).toHaveBeenCalledWith(
       expect.anything(),
       TENANT_ID,
@@ -508,6 +530,7 @@ describe("processQueueJob canonical_event.created", () => {
     expect(runIntelligence).not.toHaveBeenCalled();
     expect(runAutoActions).not.toHaveBeenCalled();
     expect(storeSuggestions).not.toHaveBeenCalled();
+    expect(insertProjectMemoryEntry).not.toHaveBeenCalled();
   });
 
   it("processes calendar canonical events with project scope into the Larry ledger", async () => {
@@ -591,6 +614,12 @@ describe("processQueueJob canonical_event.created", () => {
         sourceRecordId: CALENDAR_CANONICAL_EVENT_ID,
       }
     );
+    expect(insertProjectMemoryEntry).toHaveBeenCalledWith(expect.anything(), TENANT_ID, PROJECT_ID, {
+      source: "Calendar signal",
+      sourceKind: "calendar",
+      sourceRecordId: CALENDAR_CANONICAL_EVENT_ID,
+      content: expect.stringContaining("Calendar:"),
+    });
   });
 
   it("skips replayed calendar canonical events when source-linked calendar events already exist", async () => {
@@ -614,6 +643,7 @@ describe("processQueueJob canonical_event.created", () => {
     expect(runIntelligence).not.toHaveBeenCalled();
     expect(runAutoActions).not.toHaveBeenCalled();
     expect(storeSuggestions).not.toHaveBeenCalled();
+    expect(insertProjectMemoryEntry).not.toHaveBeenCalled();
   });
 
   it("skips calendar canonical events when no project hint can be resolved", async () => {

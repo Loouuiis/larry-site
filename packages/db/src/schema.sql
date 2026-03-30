@@ -866,14 +866,65 @@ CREATE TABLE IF NOT EXISTS project_memory_entries (
   source_kind      VARCHAR NOT NULL,
   source_record_id TEXT,
   content          TEXT NOT NULL,
+  content_hash     TEXT,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE project_memory_entries
+  ADD COLUMN IF NOT EXISTS content_hash TEXT;
+
+UPDATE project_memory_entries
+SET source_kind = 'meeting'
+WHERE lower(regexp_replace(source_kind, '[\s_-]+', '', 'g'))
+  IN ('meeting', 'meetings', 'transcript', 'meetingtranscript', 'meetingsignal');
+
+UPDATE project_memory_entries
+SET source_kind = 'email'
+WHERE lower(regexp_replace(source_kind, '[\s_-]+', '', 'g'))
+  IN ('email', 'emails', 'emailsignal');
+
+UPDATE project_memory_entries
+SET source_kind = 'slack'
+WHERE lower(regexp_replace(source_kind, '[\s_-]+', '', 'g'))
+  IN ('slack', 'slacksignal');
+
+UPDATE project_memory_entries
+SET source_kind = 'calendar'
+WHERE lower(regexp_replace(source_kind, '[\s_-]+', '', 'g'))
+  IN ('calendar', 'calendarsignal', 'googlecalendar');
+
+UPDATE project_memory_entries
+SET content_hash = encode(digest(regexp_replace(trim(content), '\s+', ' ', 'g'), 'sha256'), 'hex')
+WHERE content_hash IS NULL;
+
+DELETE FROM project_memory_entries pme
+USING (
+  SELECT id
+  FROM (
+    SELECT
+      id,
+      ROW_NUMBER() OVER (
+        PARTITION BY tenant_id, project_id, source_kind, source_record_id, content_hash
+        ORDER BY created_at DESC, id DESC
+      ) AS duplicate_rank
+    FROM project_memory_entries
+    WHERE source_record_id IS NOT NULL
+      AND content_hash IS NOT NULL
+  ) ranked
+  WHERE duplicate_rank > 1
+) duplicates
+WHERE pme.id = duplicates.id;
 
 CREATE INDEX IF NOT EXISTS idx_project_memory_entries_project
   ON project_memory_entries (tenant_id, project_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_project_memory_entries_source_kind
   ON project_memory_entries (tenant_id, source_kind, created_at DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_project_memory_entries_replay_dedup
+  ON project_memory_entries (tenant_id, project_id, source_kind, source_record_id, content_hash)
+  WHERE source_record_id IS NOT NULL
+    AND content_hash IS NOT NULL;
 
 ALTER TABLE project_memory_entries ENABLE ROW LEVEL SECURITY;
 

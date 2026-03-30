@@ -91,6 +91,12 @@ function daysFromNow(n: number) {
   return d.toISOString().slice(0, 10); // date only
 }
 
+function contentHash(content: string): string {
+  return createHash("sha256")
+    .update(content.replace(/\s+/g, " ").trim())
+    .digest("hex");
+}
+
 async function seed() {
   console.log("🌱  Seeding demo data for Larry PM…\n");
 
@@ -330,29 +336,31 @@ We will send a further update once QA sign-off is confirmed.
   `, [TENANT_ID, LC1, daysAgo(1), daysAgo(1), daysAgo(0)]);
   console.log("✓  Larry conversation seeded for Chats demo");
 
+  const memoryChatContent =
+    "User asked for launch risk summary. Larry highlighted checkout QA as the critical blocker and proposed mitigation actions.";
+  const memoryActionContent =
+    "Accepted action: extend checkout QA deadline by 7 days while Stripe.js regression fixes are verified.";
+  const memoryMeetingContent =
+    "Standup summary captured QA regression, pricing sign-off delay, and investor deck dependencies with owners.";
+
   await q(`
     INSERT INTO project_memory_entries
-      (id, tenant_id, project_id, source, source_kind, source_record_id, content, created_at)
+      (id, tenant_id, project_id, source, source_kind, source_record_id, content, content_hash, created_at)
     VALUES
-      ($1, $2, $3, 'Larry chat', 'chat', $4,
-       'User asked for launch risk summary. Larry highlighted checkout QA as the critical blocker and proposed mitigation actions.',
-       $5),
-      ($6, $2, $3, 'Action Centre', 'action', $7,
-       'Accepted action: extend checkout QA deadline by 7 days while Stripe.js regression fixes are verified.',
-       $8),
-      ($9, $2, $3, 'Meeting transcript', 'meeting', $10,
-       'Standup summary captured QA regression, pricing sign-off delay, and investor deck dependencies with owners.',
-       $11)
+      ($1, $2, $3, 'Larry chat', 'chat', $4, $5, $6, $7),
+      ($8, $2, $3, 'Action Centre', 'action', $9, $10, $11, $12),
+      ($13, $2, $3, 'Meeting transcript', 'meeting', $14, $15, $16, $17)
     ON CONFLICT (id) DO UPDATE
       SET source = EXCLUDED.source,
           source_kind = EXCLUDED.source_kind,
           source_record_id = EXCLUDED.source_record_id,
           content = EXCLUDED.content,
+          content_hash = EXCLUDED.content_hash,
           created_at = EXCLUDED.created_at
   `, [
-    PMEM1, TENANT_ID, PROJECT_ID, LC1, daysAgo(1),
-    PMEM2, "ev-demo-accepted-1", daysAgo(0),
-    PMEM3, MN1, daysAgo(0),
+    PMEM1, TENANT_ID, PROJECT_ID, LC1, memoryChatContent, contentHash(memoryChatContent), daysAgo(1),
+    PMEM2, "ev-demo-accepted-1", memoryActionContent, contentHash(memoryActionContent), daysAgo(0),
+    PMEM3, MN1, memoryMeetingContent, contentHash(memoryMeetingContent), daysAgo(0),
   ]);
   console.log("✓  Project memory entries seeded");
 

@@ -6,6 +6,7 @@ import type {
   LarryExecutionMode,
   LarryTriggeredBy,
 } from "@larry/shared";
+import { createHash } from "node:crypto";
 import { Db } from "./client.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -690,6 +691,65 @@ export async function listLarryEventIdsBySource(
 
 // ── Project memory ────────────────────────────────────────────────────────────
 
+const PROJECT_MEMORY_SOURCE_KIND_ALIASES: Record<string, string[]> = {
+  meeting: ["meeting", "meetings", "transcript", "meetingtranscript", "meetingsignal"],
+  email: ["email", "emails", "emailsignal"],
+  slack: ["slack", "slacksignal"],
+  calendar: ["calendar", "calendarsignal", "googlecalendar"],
+  chat: ["chat", "larrychat"],
+  action: ["action", "acceptedaction", "actioncentre", "actioncenter"],
+  briefing: ["briefing", "loginbriefing"],
+  schedule: ["schedule", "scheduledscan"],
+};
+
+function normalizeProjectMemorySourceKind(value: string | null | undefined): string | null {
+  const normalized = normalizeContextValue(value);
+  if (!normalized) return null;
+
+  const compact = normalized.toLowerCase().replace(/[\s_-]+/g, "");
+  for (const [canonical, aliases] of Object.entries(PROJECT_MEMORY_SOURCE_KIND_ALIASES)) {
+    if (aliases.includes(compact)) return canonical;
+  }
+
+  return normalized.toLowerCase();
+}
+
+function getProjectMemorySourceKindFilterVariants(value: string): string[] {
+  const normalized = normalizeProjectMemorySourceKind(value);
+  if (!normalized) return [];
+
+  const aliases = PROJECT_MEMORY_SOURCE_KIND_ALIASES[normalized] ?? [];
+  const variants = new Set<string>([normalized]);
+  for (const alias of aliases) {
+    variants.add(alias);
+  }
+
+  if (normalized === "meeting") {
+    variants.add("meeting transcript");
+    variants.add("meeting_transcript");
+  }
+  if (normalized === "email") {
+    variants.add("email signal");
+    variants.add("email_signal");
+  }
+  if (normalized === "slack") {
+    variants.add("slack signal");
+    variants.add("slack_signal");
+  }
+  if (normalized === "calendar") {
+    variants.add("calendar signal");
+    variants.add("calendar_signal");
+    variants.add("google_calendar");
+  }
+
+  return Array.from(variants);
+}
+
+function hashProjectMemoryContent(content: string): string {
+  const normalized = content.replace(/\s+/g, " ").trim();
+  return createHash("sha256").update(normalized).digest("hex");
+}
+
 export interface ProjectMemoryEntryInsert {
   source: string;
   sourceKind: string;
@@ -712,14 +772,68 @@ export async function insertProjectMemoryEntry(
   projectId: string,
   entry: ProjectMemoryEntryInsert
 ): Promise<string> {
-  const rows = await db.queryTenant<{ id: string }>(
-    tenantId,
-    `INSERT INTO project_memory_entries (tenant_id, project_id, source, source_kind, source_record_id, content)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING id`,
-    [tenantId, projectId, entry.source, entry.sourceKind, entry.sourceRecordId ?? null, entry.content]
-  );
-  return rows[0].id;
+  const normalizedSourceKind = normalizeProjectMemorySourceKind(entry.sourceKind) ?? "chat";
+  const sourceRecordId = normalizeContextValue(entry.sourceRecordId);
+  const contentHash = hashProjectMemoryContent(entry.content);
+
+  if (sourceRecordId) {
+    const existingRows = await db.queryTenant<{ id: string }>(
+      tenantId,
+      `SELECT id
+       FROM project_memory_entries
+       WHERE tenant_id = $1
+         AND project_id = $2
+         AND source_kind = $3
+         AND source_record_id = $4
+         AND content_hash = $5
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [tenantId, projectId, normalizedSourceKind, sourceRecordId, contentHash]
+    );
+    if (existingRows[0]?.id) return existingRows[0].id;
+  }
+
+  const insertSql = `INSERT INTO project_memory_entries
+      (tenant_id, project_id, source, source_kind, source_record_id, content, content_hash)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING id`;
+
+  try {
+    const rows = await db.queryTenant<{ id: string }>(tenantId, insertSql, [
+      tenantId,
+      projectId,
+      entry.source,
+      normalizedSourceKind,
+      sourceRecordId,
+      entry.content,
+      contentHash,
+    ]);
+    return rows[0].id;
+  } catch (error) {
+    if (
+      sourceRecordId &&
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: string }).code === "23505"
+    ) {
+      const existingRows = await db.queryTenant<{ id: string }>(
+        tenantId,
+        `SELECT id
+         FROM project_memory_entries
+         WHERE tenant_id = $1
+           AND project_id = $2
+           AND source_kind = $3
+           AND source_record_id = $4
+           AND content_hash = $5
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [tenantId, projectId, normalizedSourceKind, sourceRecordId, contentHash]
+      );
+      if (existingRows[0]?.id) return existingRows[0].id;
+    }
+    throw error;
+  }
 }
 
 export async function listProjectMemoryEntries(
@@ -729,6 +843,11 @@ export async function listProjectMemoryEntries(
   opts?: { sourceKind?: string; limit?: number }
 ): Promise<ProjectMemoryEntryRow[]> {
   const limit = Math.min(opts?.limit ?? 20, 100);
+  const sourceFilterVariants =
+    typeof opts?.sourceKind === "string"
+      ? getProjectMemorySourceKindFilterVariants(opts.sourceKind)
+      : [];
+
   const rows = await db.queryTenant<{
     id: string;
     source: string;
@@ -738,10 +857,12 @@ export async function listProjectMemoryEntries(
     created_at: string;
   }>(
     tenantId,
-    opts?.sourceKind
+    sourceFilterVariants.length > 0
       ? `SELECT id, source, source_kind, source_record_id, content, created_at::text
          FROM project_memory_entries
-         WHERE tenant_id = $1 AND project_id = $2 AND source_kind = $3
+         WHERE tenant_id = $1
+           AND project_id = $2
+           AND source_kind = ANY($3::text[])
          ORDER BY created_at DESC
          LIMIT $4`
       : `SELECT id, source, source_kind, source_record_id, content, created_at::text
@@ -749,14 +870,14 @@ export async function listProjectMemoryEntries(
          WHERE tenant_id = $1 AND project_id = $2
          ORDER BY created_at DESC
          LIMIT $3`,
-    opts?.sourceKind
-      ? [tenantId, projectId, opts.sourceKind, limit]
+    sourceFilterVariants.length > 0
+      ? [tenantId, projectId, sourceFilterVariants, limit]
       : [tenantId, projectId, limit]
   );
   return rows.map((r) => ({
     id: r.id,
     source: r.source,
-    sourceKind: r.source_kind,
+    sourceKind: normalizeProjectMemorySourceKind(r.source_kind) ?? r.source_kind,
     sourceRecordId: r.source_record_id,
     content: r.content,
     createdAt: r.created_at,
