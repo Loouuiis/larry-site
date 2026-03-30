@@ -9,7 +9,7 @@ Fastify v5 REST API at `apps/api/`. Product routes are registered in `apps/api/s
 | File | Primary Routes |
 |------|----------------|
 | `auth.ts` | `POST /v1/auth/login`, `POST /v1/auth/refresh`, `GET /v1/auth/me` |
-| `projects.ts` | CRUD ` /v1/projects` and project timeline/health utilities |
+| `projects.ts` | CRUD `/v1/projects`, project timeline/health utilities, and project collaborator routes (`GET/POST/PATCH/DELETE /v1/projects/:id/members...`) |
 | `project-intake.ts` | `POST /v1/projects/intake/drafts`, `POST /v1/projects/intake/drafts/:id/bootstrap`, `POST /v1/projects/intake/drafts/:id/finalize` |
 | `tasks.ts` | CRUD `/v1/tasks` and task status/dependency helpers |
 | `ingest.ts` | `POST /v1/ingest/slack`, `/email`, `/calendar`, `/transcript` (transcript shim) |
@@ -35,6 +35,10 @@ Fastify v5 REST API at `apps/api/`. Product routes are registered in `apps/api/s
 - `POST /v1/larry/transcript` is queue-only: it persists canonical ingest metadata and meeting linkage, returns `202`, and defers intelligence/action execution to worker `canonical_event.created`.
 - `POST /v1/larry/chat` and `POST /v1/larry/events/:id/accept` write durable rows into `project_memory_entries` for project timeline context.
 - `POST /v1/larry/chat` applies a clarification-first gate for ambiguous mutation requests and returns a clarification reply without executing/storing actions when task target/details are under-specified.
+- Project-scoped Larry visibility is membership-scoped:
+  - project conversations and project conversation message history are visible to project members
+  - project action-centre reads/mutations and project memory reads require project membership access (with tenant-admin override in route guards)
+  - global/no-project conversations remain user-scoped
 - `POST /v1/larry/chat` response `suggestionCount` includes both:
   - actions produced directly as suggestions by intelligence, and
   - actions originally classified as auto but policy-routed to approval.
@@ -45,6 +49,25 @@ Compatibility and retirement behavior:
 - `POST /v1/ingest/transcript` proxies to `/v1/larry/transcript` and returns deprecation metadata.
 - `POST /v1/larry/conversations` and `POST /v1/larry/conversations/:id/messages` return `410`.
 - `GET /v1/larry/events` returns `410` and points callers to `/v1/larry/action-centre`.
+
+## Project Collaborator Contracts
+
+- `GET /v1/projects/:id/members`
+- `POST /v1/projects/:id/members` with `{ userId, role }`
+- `PATCH /v1/projects/:id/members/:userId` with `{ role }`
+- `DELETE /v1/projects/:id/members/:userId`
+
+Permission model for this starter slice:
+- Read members: any project member, plus tenant admin override.
+- Mutate members: `owner` or `editor`, plus tenant admin override.
+- `viewer` remains read-only.
+
+Safety and compatibility:
+- Last-owner protection is enforced in API logic for role downgrade/remove attempts.
+- New projects create an owner membership row on:
+  - `POST /v1/projects`
+  - intake finalize create-new paths in `/v1/projects/intake/drafts/:id/finalize`
+  - Larry `project_create` execution path when accepted through `/v1/larry/events/:id/accept`
 
 ## Unified Project Intake Contracts
 

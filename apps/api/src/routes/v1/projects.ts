@@ -1,6 +1,16 @@
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { writeAuditLog } from "../../lib/audit.js";
+import {
+  countProjectOwners,
+  createProjectOwnerMembership,
+  deleteProjectMembership,
+  getProjectMembershipAccess,
+  getProjectMembershipRole,
+  hasTenantMembership,
+  listProjectMembers,
+  upsertProjectMembership,
+} from "../../lib/project-memberships.js";
 
 const CreateProjectSchema = z.object({
   name: z.string().min(1).max(200),
@@ -10,12 +20,86 @@ const CreateProjectSchema = z.object({
   targetDate: z.string().date().optional(),
 });
 
+const ProjectIdParamSchema = z.object({ id: z.string().uuid() });
+const ProjectMemberRoleSchema = z.enum(["owner", "editor", "viewer"]);
+const ProjectMemberParamsSchema = z.object({ id: z.string().uuid(), userId: z.string().uuid() });
+const UpsertProjectMemberSchema = z.object({
+  userId: z.string().uuid(),
+  role: ProjectMemberRoleSchema,
+});
+const UpdateProjectMemberRoleSchema = z.object({
+  role: ProjectMemberRoleSchema,
+});
+
 export const projectRoutes: FastifyPluginAsync = async (fastify) => {
+  function parseOrBadRequest<T>(schema: z.ZodType<T>, value: unknown): T {
+    const parsed = schema.safeParse(value);
+    if (!parsed.success) {
+      throw fastify.httpErrors.badRequest(
+        parsed.error.issues[0]?.message ?? "Invalid request payload."
+      );
+    }
+    return parsed.data;
+  }
+
+  async function getProjectAccessOrThrow(input: {
+    tenantId: string;
+    userId: string;
+    tenantRole: string;
+    projectId: string;
+    mode: "read" | "manage";
+  }) {
+    const access = await getProjectMembershipAccess({
+      db: fastify.db,
+      tenantId: input.tenantId,
+      projectId: input.projectId,
+      userId: input.userId,
+      tenantRole: input.tenantRole,
+    });
+
+    if (!access.projectExists) {
+      throw fastify.httpErrors.notFound("Project not found.");
+    }
+
+    if (input.mode === "read" && !access.canRead) {
+      throw fastify.httpErrors.forbidden("Project access denied.");
+    }
+
+    if (input.mode === "manage" && !access.canManage) {
+      throw fastify.httpErrors.forbidden(
+        "Project collaborator management requires owner or editor access."
+      );
+    }
+
+    return access;
+  }
+
+  async function buildProjectMembersResponse(input: {
+    tenantId: string;
+    userId: string;
+    tenantRole: string;
+    projectId: string;
+  }) {
+    const [members, currentUserRole] = await Promise.all([
+      listProjectMembers(fastify.db, input.tenantId, input.projectId),
+      getProjectMembershipRole(fastify.db, input.tenantId, input.projectId, input.userId),
+    ]);
+    const canManage =
+      input.tenantRole === "admin" || currentUserRole === "owner" || currentUserRole === "editor";
+
+    return {
+      projectId: input.projectId,
+      currentUserRole,
+      canManage,
+      members,
+    };
+  }
+
   fastify.get(
     "/:id/timeline",
     { preHandler: [fastify.authenticate] },
     async (request) => {
-      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const params = ProjectIdParamSchema.parse(request.params);
       const tenantId = request.user.tenantId;
 
       const taskRows = await fastify.db.queryTenant<{
@@ -99,6 +183,7 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
     { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
     async (request, reply) => {
       const body = CreateProjectSchema.parse(request.body);
+      const ownerUserId = body.ownerUserId ?? request.user.userId;
       const rows = await fastify.db.queryTenant<{ id: string }>(
         request.user.tenantId,
         `INSERT INTO projects (tenant_id, name, description, owner_user_id, start_date, target_date)
@@ -108,13 +193,19 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
           request.user.tenantId,
           body.name,
           body.description ?? null,
-          body.ownerUserId ?? request.user.userId,
+          ownerUserId,
           body.startDate ?? null,
           body.targetDate ?? null,
         ]
       );
 
       const projectId = rows[0].id;
+      await createProjectOwnerMembership(
+        fastify.db,
+        request.user.tenantId,
+        projectId,
+        ownerUserId
+      );
 
       await writeAuditLog(fastify.db, {
         tenantId: request.user.tenantId,
@@ -126,6 +217,209 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
       });
 
       return reply.code(201).send({ id: projectId });
+    }
+  );
+
+  fastify.get(
+    "/:id/members",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
+    async (request) => {
+      const params = parseOrBadRequest(ProjectIdParamSchema, request.params);
+      const tenantId = request.user.tenantId;
+      const userId = request.user.userId;
+
+      await getProjectAccessOrThrow({
+        tenantId,
+        userId,
+        tenantRole: request.user.role,
+        projectId: params.id,
+        mode: "read",
+      });
+
+      return buildProjectMembersResponse({
+        tenantId,
+        userId,
+        tenantRole: request.user.role,
+        projectId: params.id,
+      });
+    }
+  );
+
+  fastify.post(
+    "/:id/members",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
+    async (request) => {
+      const params = parseOrBadRequest(ProjectIdParamSchema, request.params);
+      const body = parseOrBadRequest(UpsertProjectMemberSchema, request.body);
+      const tenantId = request.user.tenantId;
+      const userId = request.user.userId;
+
+      await getProjectAccessOrThrow({
+        tenantId,
+        userId,
+        tenantRole: request.user.role,
+        projectId: params.id,
+        mode: "manage",
+      });
+
+      const userInTenant = await hasTenantMembership(fastify.db, tenantId, body.userId);
+      if (!userInTenant) {
+        throw fastify.httpErrors.notFound("User is not a tenant member.");
+      }
+
+      const existingRole = await getProjectMembershipRole(
+        fastify.db,
+        tenantId,
+        params.id,
+        body.userId
+      );
+
+      await upsertProjectMembership(fastify.db, tenantId, params.id, body.userId, body.role);
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId: userId,
+        actionType: existingRole ? "project.member.role_updated" : "project.member.added",
+        objectType: "project_membership",
+        objectId: `${params.id}:${body.userId}`,
+        details: {
+          projectId: params.id,
+          userId: body.userId,
+          previousRole: existingRole,
+          role: body.role,
+        },
+      });
+
+      return buildProjectMembersResponse({
+        tenantId,
+        userId,
+        tenantRole: request.user.role,
+        projectId: params.id,
+      });
+    }
+  );
+
+  fastify.patch(
+    "/:id/members/:userId",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
+    async (request) => {
+      const params = parseOrBadRequest(ProjectMemberParamsSchema, request.params);
+      const body = parseOrBadRequest(UpdateProjectMemberRoleSchema, request.body);
+      const tenantId = request.user.tenantId;
+      const userId = request.user.userId;
+
+      await getProjectAccessOrThrow({
+        tenantId,
+        userId,
+        tenantRole: request.user.role,
+        projectId: params.id,
+        mode: "manage",
+      });
+
+      const existingRole = await getProjectMembershipRole(
+        fastify.db,
+        tenantId,
+        params.id,
+        params.userId
+      );
+      if (!existingRole) {
+        throw fastify.httpErrors.notFound("Project collaborator not found.");
+      }
+
+      if (existingRole === "owner" && body.role !== "owner") {
+        const ownerCount = await countProjectOwners(fastify.db, tenantId, params.id);
+        if (ownerCount <= 1) {
+          throw fastify.httpErrors.conflict("Cannot demote the last project owner.");
+        }
+      }
+
+      await upsertProjectMembership(fastify.db, tenantId, params.id, params.userId, body.role);
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId: userId,
+        actionType: "project.member.role_updated",
+        objectType: "project_membership",
+        objectId: `${params.id}:${params.userId}`,
+        details: {
+          projectId: params.id,
+          userId: params.userId,
+          previousRole: existingRole,
+          role: body.role,
+        },
+      });
+
+      return buildProjectMembersResponse({
+        tenantId,
+        userId,
+        tenantRole: request.user.role,
+        projectId: params.id,
+      });
+    }
+  );
+
+  fastify.delete(
+    "/:id/members/:userId",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
+    async (request) => {
+      const params = parseOrBadRequest(ProjectMemberParamsSchema, request.params);
+      const tenantId = request.user.tenantId;
+      const userId = request.user.userId;
+
+      await getProjectAccessOrThrow({
+        tenantId,
+        userId,
+        tenantRole: request.user.role,
+        projectId: params.id,
+        mode: "manage",
+      });
+
+      const existingRole = await getProjectMembershipRole(
+        fastify.db,
+        tenantId,
+        params.id,
+        params.userId
+      );
+      if (!existingRole) {
+        throw fastify.httpErrors.notFound("Project collaborator not found.");
+      }
+
+      if (existingRole === "owner") {
+        const ownerCount = await countProjectOwners(fastify.db, tenantId, params.id);
+        if (ownerCount <= 1) {
+          throw fastify.httpErrors.conflict("Cannot remove the last project owner.");
+        }
+      }
+
+      const deleted = await deleteProjectMembership(
+        fastify.db,
+        tenantId,
+        params.id,
+        params.userId
+      );
+      if (!deleted) {
+        throw fastify.httpErrors.notFound("Project collaborator not found.");
+      }
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId: userId,
+        actionType: "project.member.removed",
+        objectType: "project_membership",
+        objectId: `${params.id}:${params.userId}`,
+        details: {
+          projectId: params.id,
+          userId: params.userId,
+          previousRole: existingRole,
+        },
+      });
+
+      return buildProjectMembersResponse({
+        tenantId,
+        userId,
+        tenantRole: request.user.role,
+        projectId: params.id,
+      });
     }
   );
 };

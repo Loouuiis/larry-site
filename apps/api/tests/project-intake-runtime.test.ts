@@ -9,6 +9,10 @@ vi.mock("../src/services/ingest/pipeline.js", () => ({
   publishCanonicalEventCreated: vi.fn(),
 }));
 
+vi.mock("../src/lib/project-memberships.js", () => ({
+  createProjectOwnerMembership: vi.fn(),
+}));
+
 vi.mock("@larry/db", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@larry/db")>();
   return {
@@ -31,6 +35,7 @@ import {
   insertCanonicalEventRecords,
   publishCanonicalEventCreated,
 } from "../src/services/ingest/pipeline.js";
+import { createProjectOwnerMembership } from "../src/lib/project-memberships.js";
 import { projectIntakeRoutes } from "../src/routes/v1/project-intake.js";
 
 const TENANT_ID = "11111111-1111-4111-8111-111111111111";
@@ -377,6 +382,12 @@ describe("Project intake runtime routes", () => {
     expect(suggestedActions).toHaveLength(1);
     expect((suggestedActions?.[0] as { payload: { entityId: string } }).payload.entityId).toBe(PROJECT_ID);
     expect(insertProjectMemoryEntry).toHaveBeenCalledTimes(1);
+    expect(createProjectOwnerMembership).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT_ID,
+      PROJECT_ID,
+      USER_ID
+    );
   });
 
   it("finalizes meeting draft (create-new path) by creating project and enqueuing canonical transcript processing", async () => {
@@ -419,6 +430,12 @@ describe("Project intake runtime routes", () => {
     });
     expect(insertCanonicalEventRecords).toHaveBeenCalledTimes(1);
     expect(publishCanonicalEventCreated).toHaveBeenCalledTimes(1);
+    expect(createProjectOwnerMembership).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT_ID,
+      PROJECT_ID,
+      USER_ID
+    );
   });
 
   it("finalizes meeting draft (attach-existing path) without creating a new project", async () => {
@@ -463,6 +480,7 @@ describe("Project intake runtime routes", () => {
       (call) => String(call[1]).includes("INSERT INTO projects")
     );
     expect(insertProjectCalls).toHaveLength(0);
+    expect(createProjectOwnerMembership).not.toHaveBeenCalled();
   });
 
   it("enforces validation on draft payloads and meeting finalize prerequisites", async () => {

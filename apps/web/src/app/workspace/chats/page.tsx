@@ -184,6 +184,12 @@ function LinkedActionChips({ actions }: { actions: WorkspaceLarryEvent[] }) {
 function MessageBubble({ message }: { message: LarryMessage }) {
   const isLarry = message.role === "larry";
   const isProcessing = message.id === "processing";
+  const actorLabel =
+    typeof message.actorDisplayName === "string" && message.actorDisplayName.trim().length > 0
+      ? message.actorDisplayName.trim()
+      : isLarry
+        ? "Larry"
+        : "You";
   const executedCount = message.linkedActions.filter(
     (action) => action.eventType === "auto_executed" || action.eventType === "accepted"
   ).length;
@@ -230,7 +236,19 @@ function MessageBubble({ message }: { message: LarryMessage }) {
             />
           </span>
         ) : (
-          <p>{message.content}</p>
+          <>
+            <p
+              style={{
+                marginBottom: "6px",
+                fontSize: "11px",
+                fontWeight: 600,
+                color: isLarry ? "var(--text-muted)" : "rgba(255,255,255,0.85)",
+              }}
+            >
+              {actorLabel}
+            </p>
+            <p>{message.content}</p>
+          </>
         )}
         {isLarry && !isProcessing && (executedCount > 0 || suggestionCount > 0) && (
           <p style={{ marginTop: "8px", fontSize: "11px", color: "var(--cta)" }}>

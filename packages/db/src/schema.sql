@@ -127,6 +127,38 @@ CREATE TABLE IF NOT EXISTS projects (
 
 CREATE INDEX IF NOT EXISTS idx_projects_tenant ON projects (tenant_id, created_at DESC);
 
+-- Phase 7: project-scoped collaboration membership model
+CREATE TABLE IF NOT EXISTS project_memberships (
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK (role IN ('owner', 'editor', 'viewer')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (tenant_id, project_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_memberships_tenant_project
+  ON project_memberships (tenant_id, project_id, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_project_memberships_tenant_user
+  ON project_memberships (tenant_id, user_id, updated_at DESC);
+
+-- Backfill owner memberships from existing projects.
+INSERT INTO project_memberships (tenant_id, project_id, user_id, role)
+SELECT p.tenant_id, p.id, p.owner_user_id, 'owner'
+FROM projects p
+WHERE p.owner_user_id IS NOT NULL
+ON CONFLICT (tenant_id, project_id, user_id)
+DO UPDATE SET role = 'owner', updated_at = NOW();
+
+-- Backfill viewer memberships so current tenant members retain project access.
+INSERT INTO project_memberships (tenant_id, project_id, user_id, role)
+SELECT p.tenant_id, p.id, m.user_id, 'viewer'
+FROM projects p
+JOIN memberships m ON m.tenant_id = p.tenant_id
+ON CONFLICT (tenant_id, project_id, user_id) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS tasks (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -495,6 +527,7 @@ CREATE TABLE IF NOT EXISTS kpi_snapshots (
 
 -- Row level security toggles. Policies assume app sets SET app.tenant_id before query.
 ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
+ALTER TABLE project_memberships ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE task_dependencies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE task_comments ENABLE ROW LEVEL SECURITY;
@@ -516,6 +549,11 @@ ALTER TABLE tenant_policy_settings ENABLE ROW LEVEL SECURITY;
 
 DO $$ BEGIN
   CREATE POLICY tenant_isolation_projects ON projects USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_project_memberships
+    ON project_memberships
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 DO $$ BEGIN
   CREATE POLICY tenant_isolation_tasks ON tasks USING (tenant_id::text = current_setting('app.tenant_id', true));

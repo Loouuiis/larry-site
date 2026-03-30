@@ -10,7 +10,7 @@ Next.js 16 App Router at `apps/web/`. Two distinct surfaces:
 
 ```
 /workspace                    WorkspaceHome — project grid, Action Centre summary strip
-/workspace/projects/:id       ProjectPageClient → ProjectWorkspaceView
+/workspace/projects/:id       ProjectPageClient → ProjectWorkspaceView (context, collaborators, Action Centre, project chat)
 /workspace/projects/new       WorkspaceProjectIntake — unified draft lifecycle for manual/chat/meeting intake
 /workspace/actions            Global Action Centre — cross-project Larry ledger (accept/dismiss)
 /workspace/chats              Chat history grouped by project, deep-linkable from Action Centre
@@ -25,10 +25,11 @@ Next.js 16 App Router at `apps/web/`. Two distinct surfaces:
 |------|---------|
 | `apps/web/src/app/workspace/WorkspaceShell.tsx` | Root workspace layout (sidebar + topbar) |
 | `apps/web/src/app/workspace/WorkspaceHome.tsx` | Dashboard: project grid, action strip, notifications |
-| `apps/web/src/app/workspace/projects/[projectId]/ProjectWorkspaceView.tsx` | Active project detail: context, context timeline, Action Centre rail, Larry chat |
+| `apps/web/src/app/workspace/projects/[projectId]/ProjectWorkspaceView.tsx` | Active project detail: context, context timeline, collaborators panel, Action Centre rail, Larry chat |
+| `apps/web/src/app/workspace/projects/[projectId]/CollaboratorsPanel.tsx` | Basic collaborators UI (list/add/update/remove members with inline permission or validation errors) |
 | `apps/web/src/app/workspace/projects/new/WorkspaceProjectIntake.tsx` | 3-mode unified intake draft lifecycle (manual / guided chat / meeting-led create-or-attach) |
 | `apps/web/src/app/workspace/actions/page.tsx` | Global Action Centre page (canonical ledger, accept/dismiss) |
-| `apps/web/src/app/workspace/chats/page.tsx` | Chat history with project grouping and Action Centre deep-link context |
+| `apps/web/src/app/workspace/chats/page.tsx` | Chat history with project grouping, actor attribution labels, and Action Centre deep-link context |
 | `apps/web/src/app/workspace/NotificationBell.tsx` | Bell with unread badge, dismiss flow |
 | `apps/web/src/hooks/useLarryActionCentre.ts` | Shared Action Centre fetch, accept, dismiss, and background refresh for project and global surfaces |
 | `apps/web/src/hooks/useProjectData.ts` | Fetches `/api/workspace/projects/:id/overview` (scoped), refreshes every 30s |
@@ -47,6 +48,10 @@ Web proxy routes (`apps/web/src/app/api/workspace/`):
 - `GET /larry/action-centre` - tenant-wide Larry action ledger (suggestions + activity + conversation previews)
 - `GET /projects/:id/action-centre` - project-scoped action ledger
 - `GET /projects/:id/memory` - project memory timeline entries with optional `?sourceKind=` filter
+- `GET /projects/:id/members` - project collaborator list + caller role/canManage metadata
+- `POST /projects/:id/members` - add collaborator with `{ userId, role }`
+- `PATCH /projects/:id/members/:userId` - update collaborator role with `{ role }`
+- `DELETE /projects/:id/members/:userId` - remove collaborator
 - `POST /larry/chat` - canonical chat persistence: persists user + assistant turn, writes linked `larry_events`
 - `GET /larry/conversations` — conversation list with optional `?projectId=` filter
 - `GET /larry/conversations/:id/messages` — message history for a conversation

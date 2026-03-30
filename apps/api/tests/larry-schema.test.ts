@@ -172,4 +172,17 @@ describe("Larry ledger schema", () => {
     expect(schema).toContain("ALTER TABLE project_intake_drafts ENABLE ROW LEVEL SECURITY;");
     expect(schema).toContain("CREATE POLICY tenant_isolation_project_intake_drafts");
   });
+
+  it("adds project_memberships with role checks, backfill, indexes, and tenant RLS", () => {
+    expect(schema).toContain("CREATE TABLE IF NOT EXISTS project_memberships (");
+    expect(schema).toContain("role TEXT NOT NULL CHECK (role IN ('owner', 'editor', 'viewer'))");
+    expect(schema).toContain("PRIMARY KEY (tenant_id, project_id, user_id)");
+    expect(schema).toContain("CREATE INDEX IF NOT EXISTS idx_project_memberships_tenant_project");
+    expect(schema).toContain("CREATE INDEX IF NOT EXISTS idx_project_memberships_tenant_user");
+    expect(schema).toContain("INSERT INTO project_memberships (tenant_id, project_id, user_id, role)");
+    expect(schema).toContain("SELECT p.tenant_id, p.id, p.owner_user_id, 'owner'");
+    expect(schema).toContain("SELECT p.tenant_id, p.id, m.user_id, 'viewer'");
+    expect(schema).toContain("ALTER TABLE project_memberships ENABLE ROW LEVEL SECURITY;");
+    expect(schema).toContain("CREATE POLICY tenant_isolation_project_memberships");
+  });
 });

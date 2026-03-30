@@ -34,6 +34,7 @@ import {
   markLarryEventDismissed,
   touchLarryConversation,
 } from "../../lib/larry-ledger.js";
+import { getProjectMembershipAccess } from "../../lib/project-memberships.js";
 import { getOrGenerateBriefing } from "../../services/larry-briefing.js";
 import {
   insertCanonicalEventRecords,
@@ -214,6 +215,36 @@ function detectClarificationNeed(input: {
 }
 
 export const larryRoutes: FastifyPluginAsync = async (fastify) => {
+  async function assertProjectAccessOrThrow(input: {
+    tenantId: string;
+    userId: string;
+    tenantRole: string;
+    projectId: string;
+    mode: "read" | "manage";
+  }) {
+    const access = await getProjectMembershipAccess({
+      db: fastify.db,
+      tenantId: input.tenantId,
+      projectId: input.projectId,
+      userId: input.userId,
+      tenantRole: input.tenantRole,
+    });
+
+    if (!access.projectExists) {
+      throw fastify.httpErrors.notFound("Project not found.");
+    }
+
+    if (input.mode === "read" && !access.canRead) {
+      throw fastify.httpErrors.forbidden("Project access denied.");
+    }
+
+    if (input.mode === "manage" && !access.canManage) {
+      throw fastify.httpErrors.forbidden(
+        "Project action updates require owner or editor access."
+      );
+    }
+  }
+
   fastify.get(
     "/conversations",
     { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
@@ -294,6 +325,16 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         throw fastify.httpErrors.badRequest(parseResult.error.issues[0]?.message ?? "Invalid query params");
       }
 
+      if (parseResult.data.projectId) {
+        await assertProjectAccessOrThrow({
+          tenantId: request.user.tenantId,
+          userId: request.user.userId,
+          tenantRole: request.user.role,
+          projectId: parseResult.data.projectId,
+          mode: "read",
+        });
+      }
+
       return getLarryActionCentreData(
         fastify.db,
         request.user.tenantId,
@@ -313,6 +354,14 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const sourceKind = parseResult.data.sourceKind ?? parseResult.data.source;
+      await assertProjectAccessOrThrow({
+        tenantId: request.user.tenantId,
+        userId: request.user.userId,
+        tenantRole: request.user.role,
+        projectId: parseResult.data.projectId,
+        mode: "read",
+      });
+
       const items = await listProjectMemoryEntries(
         fastify.db,
         request.user.tenantId,
@@ -338,6 +387,13 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       if (!event) {
         throw fastify.httpErrors.notFound("Event not found.");
       }
+      await assertProjectAccessOrThrow({
+        tenantId,
+        userId: actorUserId,
+        tenantRole: request.user.role,
+        projectId: event.projectId,
+        mode: "manage",
+      });
       if (event.eventType !== "suggested") {
         throw fastify.httpErrors.conflict("Only suggested events can be accepted.");
       }
@@ -349,7 +405,8 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           tenantId,
           event.projectId,
           event.actionType as LarryActionType,
-          event.payload
+          event.payload,
+          actorUserId
         );
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -403,6 +460,13 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       if (!event) {
         throw fastify.httpErrors.notFound("Event not found.");
       }
+      await assertProjectAccessOrThrow({
+        tenantId,
+        userId: actorUserId,
+        tenantRole: request.user.role,
+        projectId: event.projectId,
+        mode: "manage",
+      });
       if (event.eventType !== "suggested") {
         throw fastify.httpErrors.conflict("Only suggested events can be dismissed.");
       }
@@ -613,6 +677,14 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       const tenantId = request.user.tenantId;
       const actorUserId = request.user.userId;
       let existingConversation = null;
+
+      await assertProjectAccessOrThrow({
+        tenantId,
+        userId: actorUserId,
+        tenantRole: request.user.role,
+        projectId,
+        mode: "read",
+      });
 
       if (conversationId) {
         existingConversation = await getLarryConversationForUser(

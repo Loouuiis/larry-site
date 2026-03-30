@@ -1,0 +1,67 @@
+import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { getSession } from "@/lib/auth";
+import { persistSession, proxyApiRequest } from "@/lib/workspace-proxy";
+
+const UpdateMemberRoleSchema = z.object({
+  role: z.enum(["owner", "editor", "viewer"]),
+});
+
+export async function PATCH(
+  request: NextRequest,
+  context: { params: Promise<{ id: string; userId: string }> }
+) {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  let payload: z.infer<typeof UpdateMemberRoleSchema>;
+  try {
+    payload = UpdateMemberRoleSchema.parse(await request.json());
+  } catch {
+    return NextResponse.json({ error: "Invalid collaborator payload." }, { status: 400 });
+  }
+
+  const { id, userId } = await context.params;
+  const result = await proxyApiRequest(
+    session,
+    `/v1/projects/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (result.session) {
+    await persistSession(result.session);
+  }
+
+  return NextResponse.json(result.body, { status: result.status });
+}
+
+export async function DELETE(
+  _request: Request,
+  context: { params: Promise<{ id: string; userId: string }> }
+) {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id, userId } = await context.params;
+  const result = await proxyApiRequest(
+    session,
+    `/v1/projects/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}`,
+    {
+      method: "DELETE",
+    }
+  );
+
+  if (result.session) {
+    await persistSession(result.session);
+  }
+
+  return NextResponse.json(result.body, { status: result.status });
+}
+

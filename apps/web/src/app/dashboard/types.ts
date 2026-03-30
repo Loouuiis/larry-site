@@ -21,6 +21,25 @@ export interface WorkspaceProject {
   updatedAt?: string | null;
 }
 
+export type ProjectMembershipRole = "owner" | "editor" | "viewer";
+
+export interface WorkspaceProjectMember {
+  userId: string;
+  name: string;
+  email: string;
+  tenantRole: string;
+  projectRole: ProjectMembershipRole;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkspaceProjectMembers {
+  projectId: string;
+  currentUserRole: ProjectMembershipRole | null;
+  canManage: boolean;
+  members: WorkspaceProjectMember[];
+}
+
 export interface WorkspaceTask {
   id: string;
   projectId: string;

@@ -22,6 +22,7 @@ import type {
 import { useProjectData } from "@/hooks/useProjectData";
 import { useProjectActionCentre } from "@/hooks/useProjectActionCentre";
 import { useProjectMemory } from "@/hooks/useProjectMemory";
+import { CollaboratorsPanel } from "./CollaboratorsPanel";
 
 function formatDate(value?: string | null): string {
   if (!value) return "No date set";
@@ -393,6 +394,8 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
 
         <section className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(360px,1fr)]">
           <div className="space-y-6">
+            <CollaboratorsPanel projectId={projectId} />
+
             <div
               style={{
                 borderRadius: "var(--radius-card)",

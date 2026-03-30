@@ -9,6 +9,7 @@ import type {
 
 export interface LarryEventListOptions {
   projectId?: string;
+  userId?: string;
   eventTypes?: LarryEventType[];
   ids?: string[];
   responseMessageIds?: string[];
@@ -100,7 +101,22 @@ export async function listLarryConversationPreviews(
   options: { projectId?: string; limit?: number } = {}
 ): Promise<LarryConversationPreview[]> {
   const params: unknown[] = [tenantId, userId];
-  const filters = ["c.tenant_id = $1", "c.user_id = $2"];
+  const filters = [
+    "c.tenant_id = $1",
+    `((
+        c.project_id IS NULL
+        AND c.user_id = $2
+      ) OR (
+        c.project_id IS NOT NULL
+        AND EXISTS (
+          SELECT 1
+          FROM project_memberships pm
+          WHERE pm.tenant_id = c.tenant_id
+            AND pm.project_id = c.project_id
+            AND pm.user_id = $2
+        )
+      ))`,
+  ];
 
   if (options.projectId) {
     params.push(options.projectId);
@@ -175,7 +191,19 @@ export async function getLarryConversationForUser(
        FROM larry_conversations
       WHERE tenant_id = $1
         AND id = $2
-        AND user_id = $3
+        AND ((
+              project_id IS NULL
+              AND user_id = $3
+            ) OR (
+              project_id IS NOT NULL
+              AND EXISTS (
+                SELECT 1
+                FROM project_memberships pm
+                WHERE pm.tenant_id = larry_conversations.tenant_id
+                  AND pm.project_id = larry_conversations.project_id
+                  AND pm.user_id = $3
+              )
+            ))
       LIMIT 1`,
     [tenantId, conversationId, userId]
   );
@@ -330,6 +358,19 @@ export async function listLarryEventSummaries(
     filters.push(`e.project_id = $${params.length}`);
   }
 
+  if (options.userId) {
+    params.push(options.userId);
+    filters.push(
+      `EXISTS (
+         SELECT 1
+         FROM project_memberships pm
+         WHERE pm.tenant_id = e.tenant_id
+           AND pm.project_id = e.project_id
+           AND pm.user_id = $${params.length}
+       )`
+    );
+  }
+
   if (options.eventTypes && options.eventTypes.length > 0) {
     params.push(options.eventTypes);
     filters.push(`e.event_type = ANY($${params.length}::text[])`);
@@ -375,11 +416,13 @@ export async function getLarryActionCentreData(
   const [suggested, activity, conversations] = await Promise.all([
     listLarryEventSummaries(db, tenantId, {
       projectId,
+      userId,
       eventTypes: ["suggested"],
       limit: 25,
     }),
     listLarryEventSummaries(db, tenantId, {
       projectId,
+      userId,
       eventTypes: ["auto_executed", "accepted"],
       limit: 10,
     }),

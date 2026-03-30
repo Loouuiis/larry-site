@@ -500,12 +500,35 @@ None. Phase 5 starter slice is fully closed as of 2026-03-30.
 
 None. Phase 6 starter slice is fully closed as of 2026-03-30.
 
+### Phase 7 Closure Snapshot (2026-03-30 UTC)
+
+- Done:
+  - **Phase 7 - Project Collaboration, Shared Larry, And Notes (starter slice) (completed)**:
+    - added `project_memberships` schema with `owner|editor|viewer` role model, tenant RLS, and membership indexes
+    - shipped idempotent membership backfill for existing projects (owner -> `owner`, tenant members -> `viewer`)
+    - seeded deterministic project collaborator rows (including multi-user project membership) for local/demo visibility
+    - added additive collaborator routes under `/v1/projects/:id/members...` with role validation and last-owner protection
+    - enforced project membership checks for project-scoped Larry chat/action-centre/memory access paths
+    - updated Larry shared visibility semantics so project conversations are member-visible while global/no-project conversations remain user-scoped
+    - ensured owner-membership creation on project creation paths (`POST /v1/projects`, intake finalize create-new paths, Larry `project_create` accept execution path)
+    - added workspace proxy collaborator routes and basic project collaborators panel UI (list/add/update/remove with inline errors)
+    - added visible actor attribution labels in `/workspace/chats` message bubbles
+    - test gate passed: 24 files / 109 tests
+- Remaining in current phase:
+  - None. Phase 7 starter slice is closed.
+- Next concrete milestone:
+  - Not opened in this update (phase discipline: no next-phase kickoff).
+
+### Still To Do For Phase 7
+
+None for the starter slice. Deferred items remain notes flows and collaborator-update Larry action types.
+
 ### Recommended Next Slice
 
 - Closed in this update:
-  - **Phase 6 - Clarification-Before-Action And Governed Auto-Execution** starter slice (completed).
+  - **Phase 7 - Project Collaboration, Shared Larry, And Notes** starter slice (completed).
 - Candidate milestone for the next update (not opened in this change):
-  - **Phase 7 - Project Collaboration, Shared Larry, And Notes** starter slice.
+  - **Phase 7 - Project Collaboration, Shared Larry, And Notes** follow-up slice: notes flows and collaborator-update Larry action types.
 
 ---
 

@@ -1,4 +1,4 @@
-import { vi, describe, it, expect, afterEach } from "vitest";
+import { vi, describe, it, expect, afterEach, beforeEach } from "vitest";
 
 vi.mock("@larry/ai", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@larry/ai")>();
@@ -42,6 +42,10 @@ vi.mock("../src/services/larry-briefing.js", () => ({
   getOrGenerateBriefing: vi.fn(),
 }));
 
+vi.mock("../src/lib/project-memberships.js", () => ({
+  getProjectMembershipAccess: vi.fn(),
+}));
+
 import Fastify from "fastify";
 import sensible from "@fastify/sensible";
 import type { ApiEnv } from "@larry/config";
@@ -58,6 +62,7 @@ import {
   markLarryEventAccepted,
   markLarryEventDismissed,
 } from "../src/lib/larry-ledger.js";
+import { getProjectMembershipAccess } from "../src/lib/project-memberships.js";
 import { larryRoutes } from "../src/routes/v1/larry.js";
 
 const TENANT_ID = "11111111-1111-4111-8111-111111111111";
@@ -102,6 +107,15 @@ async function createTestApp() {
 }
 
 const appsToClose: Array<ReturnType<typeof Fastify>> = [];
+
+beforeEach(() => {
+  vi.mocked(getProjectMembershipAccess).mockResolvedValue({
+    projectExists: true,
+    projectRole: "owner",
+    canRead: true,
+    canManage: true,
+  });
+});
 
 afterEach(async () => {
   vi.clearAllMocks();
@@ -231,6 +245,26 @@ describe("Larry action centre routes", () => {
       USER_ID,
       PROJECT_ID
     );
+  });
+
+  it("returns 403 for project action-centre reads when caller is not a project member", async () => {
+    vi.mocked(getProjectMembershipAccess).mockResolvedValue({
+      projectExists: true,
+      projectRole: null,
+      canRead: false,
+      canManage: false,
+    });
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/larry/action-centre?projectId=${PROJECT_ID}`,
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(getLarryActionCentreData).not.toHaveBeenCalled();
   });
 
   it("returns tenant-wide action-centre data with project names when projectId is omitted", async () => {
@@ -403,6 +437,14 @@ describe("Larry action centre routes", () => {
       EVENT_ID,
       USER_ID
     );
+    expect(executeAction).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT_ID,
+      PROJECT_ID,
+      "deadline_change",
+      { taskId: "task-1", newDeadline: "2026-04-10" },
+      USER_ID
+    );
     expect(insertProjectMemoryEntry).toHaveBeenCalledWith(
       expect.anything(),
       TENANT_ID,
@@ -413,6 +455,33 @@ describe("Larry action centre routes", () => {
         sourceRecordId: EVENT_ID,
       })
     );
+  });
+
+  it("blocks accept when caller cannot manage project collaborators/actions", async () => {
+    vi.mocked(getProjectMembershipAccess).mockResolvedValue({
+      projectExists: true,
+      projectRole: "viewer",
+      canRead: true,
+      canManage: false,
+    });
+    vi.mocked(getLarryEventForMutation).mockResolvedValue({
+      id: EVENT_ID,
+      projectId: PROJECT_ID,
+      eventType: "suggested",
+      actionType: "project_create",
+      payload: { name: "New project from suggestion", description: "desc", tasks: [] },
+    });
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/larry/events/${EVENT_ID}/accept`,
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(executeAction).not.toHaveBeenCalled();
   });
 
   it("dismisses a suggested event and returns the updated attribution", async () => {

@@ -7,6 +7,7 @@ import {
 } from "@larry/db";
 import type { LarryAction } from "@larry/shared";
 import { writeAuditLog } from "../../lib/audit.js";
+import { createProjectOwnerMembership } from "../../lib/project-memberships.js";
 import {
   insertCanonicalEventRecords,
   publishCanonicalEventCreated,
@@ -597,6 +598,13 @@ export const projectIntakeRoutes: FastifyPluginAsync = async (fastify) => {
             throw fastify.httpErrors.internalServerError("Failed to create project from meeting intake.");
           }
 
+          await createProjectOwnerMembership(
+            fastify.db,
+            tenantId,
+            finalizedProjectId,
+            actorUserId
+          );
+
           await writeAuditLog(fastify.db, {
             tenantId,
             actorUserId,
@@ -720,6 +728,13 @@ export const projectIntakeRoutes: FastifyPluginAsync = async (fastify) => {
         if (!finalizedProjectId) {
           throw fastify.httpErrors.internalServerError("Failed to create project from intake draft.");
         }
+
+        await createProjectOwnerMembership(
+          fastify.db,
+          tenantId,
+          finalizedProjectId,
+          actorUserId
+        );
 
         await writeAuditLog(fastify.db, {
           tenantId,

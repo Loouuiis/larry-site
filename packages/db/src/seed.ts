@@ -467,6 +467,20 @@ We will send a further update once QA sign-off is confirmed.
   `, [PROJECT2_ID, TENANT_ID, U_SARAH, daysAgo(14).slice(0, 10), daysFromNow(30)]);
   console.log("✓  Project 2: Customer Onboarding Redesign");
 
+  await q(`
+    INSERT INTO project_memberships (tenant_id, project_id, user_id, role)
+    VALUES
+      ($1, $2, $3, 'owner'),
+      ($1, $2, $4, 'editor'),
+      ($1, $2, $5, 'viewer'),
+      ($1, $6, $4, 'owner'),
+      ($1, $6, $3, 'editor'),
+      ($1, $6, $5, 'viewer')
+    ON CONFLICT (tenant_id, project_id, user_id)
+    DO UPDATE SET role = EXCLUDED.role, updated_at = NOW()
+  `, [TENANT_ID, PROJECT_ID, U_ADMIN, U_SARAH, U_MARCUS, PROJECT2_ID]);
+  console.log("✓  Project memberships seeded");
+
   const p2tasks = [
     [P2T1, 'Map current onboarding UX',         'Document every step of the current onboarding flow, including drop-off points and time-on-step data from Amplitude.',         'completed',   'medium',   U_SARAH,  100,  0.0, 'low',    daysAgo(12).slice(0,10), daysAgo(7).slice(0,10)],
     [P2T2, 'Design new flow in Figma',           'Create high-fidelity mockups for the revised onboarding. Focus on reducing steps from 11 to 5 and removing the mandatory credit card screen.', 'in_progress', 'high',     U_SARAH,   70,  8.0, 'low',    daysAgo(7).slice(0,10),  daysFromNow(5)],

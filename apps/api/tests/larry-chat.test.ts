@@ -1,4 +1,4 @@
-import { vi, describe, it, expect, afterEach } from "vitest";
+import { vi, describe, it, expect, afterEach, beforeEach } from "vitest";
 
 vi.mock("@larry/ai", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@larry/ai")>();
@@ -46,6 +46,10 @@ vi.mock("../src/services/ingest/pipeline.js", () => ({
   publishCanonicalEventCreated: vi.fn(),
 }));
 
+vi.mock("../src/lib/project-memberships.js", () => ({
+  getProjectMembershipAccess: vi.fn(),
+}));
+
 import Fastify from "fastify";
 import sensible from "@fastify/sensible";
 import type { ApiEnv } from "@larry/config";
@@ -70,6 +74,7 @@ import {
   insertCanonicalEventRecords,
   publishCanonicalEventCreated,
 } from "../src/services/ingest/pipeline.js";
+import { getProjectMembershipAccess } from "../src/lib/project-memberships.js";
 import { ingestRoutes } from "../src/routes/v1/ingest.js";
 import { larryRoutes } from "../src/routes/v1/larry.js";
 
@@ -213,6 +218,15 @@ async function createV1PrefixedTestApp() {
 }
 
 const appsToClose: Array<ReturnType<typeof Fastify>> = [];
+
+beforeEach(() => {
+  vi.mocked(getProjectMembershipAccess).mockResolvedValue({
+    projectExists: true,
+    projectRole: "owner",
+    canRead: true,
+    canManage: true,
+  });
+});
 
 afterEach(async () => {
   vi.clearAllMocks();
@@ -679,6 +693,48 @@ describe("POST /larry/chat", () => {
 
     expect(response.statusCode).toBe(404);
     expect(runIntelligence).not.toHaveBeenCalled();
+  });
+
+  it("returns 403 when user lacks project membership for project chat", async () => {
+    vi.mocked(getProjectMembershipAccess).mockResolvedValue({
+      projectExists: true,
+      projectRole: null,
+      canRead: false,
+      canManage: false,
+    });
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/larry/chat",
+      payload: { projectId: PROJECT_ID, message: "Status update?" },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(getProjectSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when project does not exist in membership access check", async () => {
+    vi.mocked(getProjectMembershipAccess).mockResolvedValue({
+      projectExists: false,
+      projectRole: null,
+      canRead: false,
+      canManage: false,
+    });
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/larry/chat",
+      payload: { projectId: PROJECT_ID, message: "Status update?" },
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(getProjectSnapshot).not.toHaveBeenCalled();
   });
 
   it("returns 404 when the provided conversation does not exist", async () => {

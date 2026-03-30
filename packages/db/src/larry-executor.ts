@@ -642,17 +642,29 @@ export async function executeEmailDraft(
 export async function executeProjectCreate(
   db: Db,
   tenantId: string,
-  payload: ProjectCreatePayload
+  payload: ProjectCreatePayload,
+  actorUserId?: string | null
 ): Promise<{ project: Record<string, unknown>; tasks: Array<Record<string, unknown>> }> {
   const projectRows = await db.queryTenant<Record<string, unknown>>(
     tenantId,
-    `INSERT INTO projects (tenant_id, name, description, status)
-     VALUES ($1, $2, $3, 'active')
+    `INSERT INTO projects (tenant_id, name, description, owner_user_id, status)
+     VALUES ($1, $2, $3, $4, 'active')
      RETURNING id, tenant_id, name, description, status, created_at`,
-    [tenantId, payload.name, payload.description ?? null]
+    [tenantId, payload.name, payload.description ?? null, actorUserId ?? null]
   );
   const project = projectRows[0];
   const projectId = project.id as string;
+
+  if (actorUserId) {
+    await db.queryTenant(
+      tenantId,
+      `INSERT INTO project_memberships (tenant_id, project_id, user_id, role)
+       VALUES ($1, $2, $3, 'owner')
+       ON CONFLICT (tenant_id, project_id, user_id)
+       DO UPDATE SET role = 'owner', updated_at = NOW()`,
+      [tenantId, projectId, actorUserId]
+    );
+  }
 
   await logActivity(db, tenantId, projectId, null, {
     action: "project_create",
@@ -689,7 +701,8 @@ export async function executeAction(
   tenantId: string,
   projectId: string,
   actionType: LarryActionType,
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
+  actorUserId?: string | null
 ): Promise<unknown> {
   switch (actionType) {
     case "task_create":
@@ -721,7 +734,12 @@ export async function executeAction(
       return executeEmailDraft(db, tenantId, projectId, payload as unknown as EmailDraftPayload);
 
     case "project_create":
-      return executeProjectCreate(db, tenantId, payload as unknown as ProjectCreatePayload);
+      return executeProjectCreate(
+        db,
+        tenantId,
+        payload as unknown as ProjectCreatePayload,
+        actorUserId ?? null
+      );
 
     default:
       throw new Error(`executeAction: unknown action type "${actionType as string}"`);
@@ -815,7 +833,14 @@ export async function runAutoActions(
     }
 
     try {
-      await executeAction(db, tenantId, projectId, action.type, action.payload);
+      await executeAction(
+        db,
+        tenantId,
+        projectId,
+        action.type,
+        action.payload,
+        context?.requesterUserId ?? null
+      );
       await db.queryTenant(
         tenantId,
         `UPDATE larry_events
