@@ -78,5 +78,6 @@ describe("Non-core docs boundary sweep", () => {
 
     // useProjectData was previously described as calling /snapshot — must stay corrected
     expect(frontendText).not.toMatch(/useProjectData[^\n]*snapshot/i);
+    expect(frontendText).not.toContain("remaining usage is legacy dashboard only");
   });
 });

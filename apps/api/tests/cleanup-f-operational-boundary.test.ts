@@ -1,14 +1,26 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const openApiPath = resolve(process.cwd(), "openapi.yaml");
 const demoSmokeScriptPath = resolve(process.cwd(), "..", "..", "scripts", "demo-smoke-test.sh");
 const pmApiPath = resolve(process.cwd(), "..", "web", "src", "lib", "pm-api.ts");
+const workspaceSnapshotRoutePath = resolve(
+  process.cwd(),
+  "..",
+  "web",
+  "src",
+  "app",
+  "api",
+  "workspace",
+  "snapshot",
+  "route.ts"
+);
 
 const openApiSource = readFileSync(openApiPath, "utf8");
 const demoSmokeScriptSource = readFileSync(demoSmokeScriptPath, "utf8");
 const pmApiSource = readFileSync(pmApiPath, "utf8");
+const workspaceSnapshotRouteSource = readFileSync(workspaceSnapshotRoutePath, "utf8");
 
 describe("Cleanup F operational contract boundary", () => {
   it("keeps OpenAPI on canonical Larry contracts and excludes legacy action/agent paths", () => {
@@ -39,5 +51,29 @@ describe("Cleanup F operational contract boundary", () => {
     expect(pmApiSource).toContain("/v1/larry/action-centre");
     expect(pmApiSource).not.toContain("/v1/agent/");
     expect(pmApiSource).not.toContain("/v1/actions/");
+  });
+
+  it("fences the legacy workspace snapshot route with explicit 410 contract guidance", () => {
+    expect(workspaceSnapshotRouteSource).toContain("status: 410");
+    expect(workspaceSnapshotRouteSource).toContain("retiredEndpoint: \"/api/workspace/snapshot\"");
+    expect(workspaceSnapshotRouteSource).toContain("/api/workspace/home");
+    expect(workspaceSnapshotRouteSource).toContain("/api/workspace/projects/:id/overview");
+    expect(workspaceSnapshotRouteSource).toContain("/api/workspace/larry/action-centre");
+  });
+
+  it("keeps legacy dashboard runtime modules retired from active codebase", () => {
+    const retiredPaths = [
+      resolve(process.cwd(), "..", "web", "src", "app", "dashboard", "WorkspaceDashboard.tsx"),
+      resolve(process.cwd(), "..", "web", "src", "app", "dashboard", "useWorkspaceDashboard.ts"),
+      resolve(process.cwd(), "..", "web", "src", "components", "dashboard", "ProjectWorkspace.tsx"),
+      resolve(process.cwd(), "..", "web", "src", "components", "dashboard", "StartProjectFlow.tsx"),
+      resolve(process.cwd(), "..", "web", "src", "components", "dashboard", "LarryTabSection.tsx"),
+      resolve(process.cwd(), "..", "web", "src", "components", "dashboard", "LarryActivityRail.tsx"),
+      resolve(process.cwd(), "..", "web", "src", "hooks", "useLarryEvents.ts"),
+    ];
+
+    for (const filePath of retiredPaths) {
+      expect(existsSync(filePath), `${filePath} should be retired`).toBe(false);
+    }
   });
 });

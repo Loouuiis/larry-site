@@ -377,6 +377,18 @@ These are not optional cleanups; they are part of the implementation strategy:
   - Expanded worker canonical event handling to write one project memory entry for transcript, email, slack, and calendar sources after successful scope resolution/intelligence, with non-blocking failure handling.
   - Extended regression coverage across API schema/runtime helpers and worker canonical-event replay behavior; added Playwright transcript smoke assertion that project timeline shows a non-chat memory entry after worker processing.
   - Updated project timeline copy and core runtime docs (`BACKEND-API.md`, `BACKEND-WORKER.md`) to reflect worker-driven memory ingestion and replay-safe dedup semantics.
+- **Phase 1 - Legacy Dashboard Retirement And Snapshot Fence (completed)**:
+  - Replaced legacy `GET /api/workspace/snapshot` behavior with an explicit `410 Gone` retired-contract payload that points callers to canonical scoped workspace routes.
+  - Added a `/dashboard/* -> /workspace` catch-all redirect route so legacy dashboard entry paths no longer expose runtime behavior.
+  - Removed inactive legacy dashboard runtime modules from `apps/web/src/app/dashboard` (retaining `page.tsx` redirect + shared `types.ts`) and retired legacy `ProjectWorkspace` / `StartProjectFlow` / event-tab stack code plus `useLarryEvents`.
+  - Added scoped workspace cutover contract coverage in `apps/api/tests/workspace-cutover-contracts.test.ts` for:
+    - `GET /projects`
+    - `POST /projects`
+    - `GET /projects/:id/timeline`
+    - `GET /tasks?projectId=...`
+  - Extended retirement boundary coverage in `apps/api/tests/cleanup-f-operational-boundary.test.ts` to lock snapshot 410 fencing and assert retired legacy dashboard modules remain deleted.
+  - Updated `docs/FRONTEND.md` snapshot-route guidance to reflect full retirement/fencing.
+  - Test gate passed: `cd apps/api && npm test` -> 20 files / 78 tests passing.
 
 ### Phase 2 Closure Snapshot (2026-03-30 UTC)
 
@@ -393,8 +405,8 @@ These are not optional cleanups; they are part of the implementation strategy:
       - `POST /v1/larry/conversations` and `POST .../messages` fenced 410; `/v1/larry/chat` is canonical.
       - `GET /api/workspace/larry/events` fenced 410 at workspace boundary.
       - `POST /api/workspace/actions/:id/approve|reject|correct` fenced 410 at workspace boundary.
-      - `GET /api/workspace/snapshot` still present but only consumed by legacy `/dashboard` components; active `/workspace` routes use scoped read models.
-      - `useLarryEvents` hook (calls fenced `/api/workspace/larry/events`) only imported by legacy `components/dashboard/ProjectWorkspace.tsx`, which is not referenced by active workspace routes.
+      - At this Phase 2 snapshot point, `GET /api/workspace/snapshot` was still present but only consumed by legacy `/dashboard` components; active `/workspace` routes already used scoped read models.
+      - At this Phase 2 snapshot point, `useLarryEvents` (calls fenced `/api/workspace/larry/events`) was only imported by legacy `components/dashboard/ProjectWorkspace.tsx`, not by active workspace routes.
       - Active workspace project view uses `ProjectWorkspaceView` (scoped overview endpoint); active Action Centre uses `useLarryActionCentre` (canonical ledger).
     - Closed non-core docs sweep:
       - Updated `docs/FRONTEND.md`: replaced stale component table, corrected `useProjectData` endpoint description, replaced legacy proxy entries with canonical Larry paths and fenced-410 notation.
@@ -406,19 +418,13 @@ These are not optional cleanups; they are part of the implementation strategy:
     - All 65 API tests pass (18 test files).
 
 - Remaining in current phase:
-  - None. Phase 4 memory-ingestion expansion slice is closed.
+  - None. Phase 1 legacy-dashboard retirement + snapshot-fence slice is closed.
 - Next concrete milestone:
   - Not opened in this update (phase discipline: no next-phase kickoff).
 
 ### Still To Do For Phase 1
 
-- Remove or fully fence the remaining legacy dashboard shell and dashboard-only create flows from production behavior, not just from active navigation.
-- Retire `/api/workspace/snapshot` after all remaining legacy dashboard consumers are migrated or deleted.
-- Remove or archive workspace code that is now inactive on the production path:
-  - legacy `ProjectWorkspace`
-  - legacy `StartProjectFlow`
-  - legacy dashboard data hooks and route-driven state composition
-- Add targeted tests for the remaining scoped workspace contracts and the new intake flows; the active project Larry chat and Action Centre path now has smoke coverage, but the workspace cutover is not fully covered yet.
+None. Phase 1 is fully closed as of 2026-03-30.
 
 ### Still To Do For Phase 2
 
@@ -427,7 +433,9 @@ None. Phase 2 is fully closed as of 2026-03-30.
 ### Recommended Next Slice
 
 - Closed in this update:
-  - **Phase 4 - Project Memory ingestion expansion (worker and connectors)** (completed).
+  - **Phase 1 - Legacy Dashboard Retirement And Snapshot Fence** (completed).
+- Candidate milestone for the next update (not opened in this change):
+  - **Phase 5 - Unified Project Intake** starter slice.
 
 ---
 

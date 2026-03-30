@@ -67,7 +67,7 @@ Web proxy routes (`apps/web/src/app/api/workspace/`):
 - `POST /larry/conversations` — retired; use `/larry/chat`
 - `POST /larry/conversations/:id/messages` — retired; use `/larry/chat`
 - `POST /actions/:id/approve`, `/reject`, `/correct` — retired; use `/larry/events/:id/accept` or `/dismiss`
-- `GET /snapshot` — retired for active workspace; remaining usage is legacy dashboard only
+- `GET /snapshot` - retired and fenced with `410 Gone`; use scoped `/home`, `/projects/:id/overview`, and `/larry/action-centre` routes
 
 ## Auth Bridge
 
