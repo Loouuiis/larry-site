@@ -136,6 +136,28 @@ function hasMutationIntent(message: string): boolean {
   return DIRECT_UPDATE_PATTERN.test(trimmed);
 }
 
+function isCollaboratorMutationIntent(message: string): boolean {
+  return (
+    /\b(collaborator|member|members|teammate|team member)\b/i.test(message) ||
+    (/\b(owner|editor|viewer)\b/i.test(message) &&
+      /\b(role|access|permission|collaborator|member|teammate)\b/i.test(message))
+  );
+}
+
+function isNoteMutationIntent(message: string): boolean {
+  return /\b(note|notes)\b/i.test(message);
+}
+
+function requiresTaskTargetClarification(message: string): boolean {
+  if (isCollaboratorMutationIntent(message) || isNoteMutationIntent(message)) {
+    return false;
+  }
+
+  return /\b(task|tasks|deadline|due date|due|assignee|owner|ownership|risk|status|complete|blocked|backlog)\b/i.test(
+    message
+  );
+}
+
 function findMentionedTaskIds(message: string, tasks: Array<{ id: string; title: string }>): string[] {
   const lowerMessage = message.toLowerCase();
   const matched = new Set<string>();
@@ -168,6 +190,7 @@ function detectClarificationNeed(input: {
   const message = input.message.trim();
   const lower = message.toLowerCase();
   const mentionedTaskIds = findMentionedTaskIds(message, input.tasks);
+  const taskTargetIntent = requiresTaskTargetClarification(message);
 
   if (/\b(create|add)\b/.test(lower) && /\btask\b/.test(lower)) {
     const detailMatch = lower.match(/(?:create|add)\s+(?:a\s+)?task(?:\s+(?:for|to)\s+)?(.+)/);
@@ -181,21 +204,25 @@ function detectClarificationNeed(input: {
     }
   }
 
-  if (/\b(deadline|due date|due)\b/i.test(message) && !DATE_HINT_PATTERN.test(message)) {
+  if (taskTargetIntent && /\b(deadline|due date|due)\b/i.test(message) && !DATE_HINT_PATTERN.test(message)) {
     return {
       question: "I can prepare that deadline change. What new date should I use?",
       reason: "deadline_change_missing_date",
     };
   }
 
-  if (/\b(assign|reassign|owner|ownership)\b/i.test(message) && !/\bto\s+[a-z][a-z .'-]{1,80}\b/i.test(message)) {
+  if (
+    taskTargetIntent &&
+    /\b(assign|reassign|owner|ownership)\b/i.test(message) &&
+    !/\bto\s+[a-z][a-z .'-]{1,80}\b/i.test(message)
+  ) {
     return {
       question: "I can make that ownership update. Who should this be assigned to?",
       reason: "owner_change_missing_assignee",
     };
   }
 
-  if (input.tasks.length > 1 && mentionedTaskIds.length === 0) {
+  if (taskTargetIntent && input.tasks.length > 1 && mentionedTaskIds.length === 0) {
     return {
       question:
         "I can apply that update, but I need the target task first. Reply with the task name or task ID you want me to change.",
@@ -203,7 +230,7 @@ function detectClarificationNeed(input: {
     };
   }
 
-  if (mentionedTaskIds.length > 1) {
+  if (taskTargetIntent && mentionedTaskIds.length > 1) {
     return {
       question:
         "I found multiple matching tasks for that request. Which exact task should I use? Please reply with one task name or ID.",
@@ -398,6 +425,15 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         throw fastify.httpErrors.conflict("Only suggested events can be accepted.");
       }
 
+      const actionPayload =
+        event.actionType === "project_note_send"
+          ? {
+              ...event.payload,
+              sourceKind: "action",
+              sourceRecordId: id,
+            }
+          : event.payload;
+
       let entity: unknown;
       try {
         entity = await executeAction(
@@ -405,7 +441,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           tenantId,
           event.projectId,
           event.actionType as LarryActionType,
-          event.payload,
+          actionPayload,
           actorUserId
         );
       } catch (error) {

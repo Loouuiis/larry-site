@@ -99,6 +99,34 @@ interface ProjectCreatePayload {
   tasks: Array<{ title: string; assigneeName: string | null; dueDate: string | null }>;
 }
 
+type ProjectMembershipRole = "owner" | "editor" | "viewer";
+
+interface CollaboratorAddPayload {
+  userId: string;
+  role: ProjectMembershipRole;
+  displayName?: string | null;
+}
+
+interface CollaboratorRoleUpdatePayload {
+  userId: string;
+  role: ProjectMembershipRole;
+  displayName?: string | null;
+}
+
+interface CollaboratorRemovePayload {
+  userId: string;
+  displayName?: string | null;
+}
+
+interface ProjectNoteSendPayload {
+  visibility: "shared" | "personal";
+  content: string;
+  recipientUserId: string | null;
+  recipientName?: string | null;
+  sourceKind?: string | null;
+  sourceRecordId?: string | null;
+}
+
 interface TenantPolicySettings {
   autoExecuteLowImpact: boolean;
 }
@@ -116,6 +144,10 @@ const APPROVAL_ONLY_ACTION_TYPES = new Set<LarryActionType>([
   "scope_change",
   "email_draft",
   "project_create",
+  "collaborator_add",
+  "collaborator_role_update",
+  "collaborator_remove",
+  "project_note_send",
 ]);
 
 const DESTRUCTIVE_KEYWORD_PATTERN = /\b(delete|remove|drop|destroy|terminate|cancel)\b/i;
@@ -165,6 +197,14 @@ function missingPayloadFields(action: LarryAction): string[] {
       return ["to", "subject", "body"].filter((field) => !hasPayloadValue(action.payload, field));
     case "project_create":
       return ["name", "description"].filter((field) => !hasPayloadValue(action.payload, field));
+    case "collaborator_add":
+      return ["userId", "role"].filter((field) => !hasPayloadValue(action.payload, field));
+    case "collaborator_role_update":
+      return ["userId", "role"].filter((field) => !hasPayloadValue(action.payload, field));
+    case "collaborator_remove":
+      return ["userId"].filter((field) => !hasPayloadValue(action.payload, field));
+    case "project_note_send":
+      return ["visibility", "content"].filter((field) => !hasPayloadValue(action.payload, field));
     default:
       return [];
   }
@@ -696,6 +736,287 @@ export async function executeProjectCreate(
 /**
  * Execute a single action by type. Used by runAutoActions and the accept endpoint.
  */
+function normalizeProjectMembershipRole(value: unknown): ProjectMembershipRole {
+  if (value === "owner" || value === "editor" || value === "viewer") {
+    return value;
+  }
+  throw new Error(`Invalid collaborator role "${String(value)}".`);
+}
+
+async function assertTenantMembership(
+  db: Db,
+  tenantId: string,
+  userId: string
+): Promise<void> {
+  const rows = await db.queryTenant<{ user_id: string }>(
+    tenantId,
+    `SELECT user_id
+       FROM memberships
+      WHERE tenant_id = $1
+        AND user_id = $2
+      LIMIT 1`,
+    [tenantId, userId]
+  );
+
+  if (!rows[0]?.user_id) {
+    throw new Error("Collaborator target is not a tenant member.");
+  }
+}
+
+async function getProjectMembershipRoleForUser(
+  db: Db,
+  tenantId: string,
+  projectId: string,
+  userId: string
+): Promise<ProjectMembershipRole | null> {
+  const rows = await db.queryTenant<{ role: ProjectMembershipRole }>(
+    tenantId,
+    `SELECT role
+       FROM project_memberships
+      WHERE tenant_id = $1
+        AND project_id = $2
+        AND user_id = $3
+      LIMIT 1`,
+    [tenantId, projectId, userId]
+  );
+  return rows[0]?.role ?? null;
+}
+
+async function countProjectOwnerMemberships(
+  db: Db,
+  tenantId: string,
+  projectId: string
+): Promise<number> {
+  const rows = await db.queryTenant<{ owner_count: string | number }>(
+    tenantId,
+    `SELECT COUNT(*)::int AS owner_count
+       FROM project_memberships
+      WHERE tenant_id = $1
+        AND project_id = $2
+        AND role = 'owner'`,
+    [tenantId, projectId]
+  );
+
+  const value = rows[0]?.owner_count;
+  if (typeof value === "number") return value;
+  const parsed = Number.parseInt(String(value ?? "0"), 10);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+async function executeCollaboratorAdd(
+  db: Db,
+  tenantId: string,
+  projectId: string,
+  payload: CollaboratorAddPayload
+): Promise<Record<string, unknown>> {
+  const role = normalizeProjectMembershipRole(payload.role);
+  const userId = normalizeContextValue(payload.userId);
+  if (!userId) {
+    throw new Error("Collaborator add requires userId.");
+  }
+
+  const existingRole = await getProjectMembershipRoleForUser(db, tenantId, projectId, userId);
+  if (existingRole === "owner" && role !== "owner") {
+    const ownerCount = await countProjectOwnerMemberships(db, tenantId, projectId);
+    if (ownerCount <= 1) {
+      throw new Error("Cannot demote the last project owner.");
+    }
+  }
+
+  await assertTenantMembership(db, tenantId, userId);
+
+  await db.queryTenant(
+    tenantId,
+    `INSERT INTO project_memberships (tenant_id, project_id, user_id, role)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (tenant_id, project_id, user_id)
+     DO UPDATE SET role = EXCLUDED.role, updated_at = NOW()`,
+    [tenantId, projectId, userId, role]
+  );
+
+  await logActivity(db, tenantId, projectId, null, {
+    action: "collaborator_add",
+    userId,
+    previousRole: existingRole,
+    role,
+    triggeredBy: "larry",
+  });
+
+  return { projectId, userId, previousRole: existingRole, role };
+}
+
+async function executeCollaboratorRoleUpdate(
+  db: Db,
+  tenantId: string,
+  projectId: string,
+  payload: CollaboratorRoleUpdatePayload
+): Promise<Record<string, unknown>> {
+  const role = normalizeProjectMembershipRole(payload.role);
+  const userId = normalizeContextValue(payload.userId);
+  if (!userId) {
+    throw new Error("Collaborator role update requires userId.");
+  }
+
+  const existingRole = await getProjectMembershipRoleForUser(db, tenantId, projectId, userId);
+  if (!existingRole) {
+    throw new Error("Project collaborator not found.");
+  }
+
+  if (existingRole === "owner" && role !== "owner") {
+    const ownerCount = await countProjectOwnerMemberships(db, tenantId, projectId);
+    if (ownerCount <= 1) {
+      throw new Error("Cannot demote the last project owner.");
+    }
+  }
+
+  await db.queryTenant(
+    tenantId,
+    `UPDATE project_memberships
+        SET role = $4, updated_at = NOW()
+      WHERE tenant_id = $1
+        AND project_id = $2
+        AND user_id = $3`,
+    [tenantId, projectId, userId, role]
+  );
+
+  await logActivity(db, tenantId, projectId, null, {
+    action: "collaborator_role_update",
+    userId,
+    previousRole: existingRole,
+    role,
+    triggeredBy: "larry",
+  });
+
+  return { projectId, userId, previousRole: existingRole, role };
+}
+
+async function executeCollaboratorRemove(
+  db: Db,
+  tenantId: string,
+  projectId: string,
+  payload: CollaboratorRemovePayload
+): Promise<Record<string, unknown>> {
+  const userId = normalizeContextValue(payload.userId);
+  if (!userId) {
+    throw new Error("Collaborator remove requires userId.");
+  }
+
+  const existingRole = await getProjectMembershipRoleForUser(db, tenantId, projectId, userId);
+  if (!existingRole) {
+    throw new Error("Project collaborator not found.");
+  }
+
+  if (existingRole === "owner") {
+    const ownerCount = await countProjectOwnerMemberships(db, tenantId, projectId);
+    if (ownerCount <= 1) {
+      throw new Error("Cannot remove the last project owner.");
+    }
+  }
+
+  await db.queryTenant(
+    tenantId,
+    `DELETE FROM project_memberships
+      WHERE tenant_id = $1
+        AND project_id = $2
+        AND user_id = $3`,
+    [tenantId, projectId, userId]
+  );
+
+  await logActivity(db, tenantId, projectId, null, {
+    action: "collaborator_remove",
+    userId,
+    previousRole: existingRole,
+    triggeredBy: "larry",
+  });
+
+  return { projectId, userId, previousRole: existingRole };
+}
+
+function normalizeNoteVisibility(value: unknown): "shared" | "personal" {
+  if (value === "shared" || value === "personal") return value;
+  throw new Error(`Invalid note visibility "${String(value)}".`);
+}
+
+async function executeProjectNoteSend(
+  db: Db,
+  tenantId: string,
+  projectId: string,
+  payload: ProjectNoteSendPayload,
+  actorUserId?: string | null
+): Promise<Record<string, unknown>> {
+  const authorUserId = normalizeContextValue(actorUserId);
+  if (!authorUserId) {
+    throw new Error("project_note_send requires an acting user.");
+  }
+
+  const visibility = normalizeNoteVisibility(payload.visibility);
+  const content = payload.content?.trim();
+  if (!content) {
+    throw new Error("project_note_send requires non-empty content.");
+  }
+
+  const recipientUserId = normalizeContextValue(payload.recipientUserId);
+  if (visibility === "shared" && recipientUserId) {
+    throw new Error("Shared notes cannot target a recipient.");
+  }
+  if (visibility === "personal" && !recipientUserId) {
+    throw new Error("Personal notes require recipientUserId.");
+  }
+
+  if (recipientUserId) {
+    const recipientRole = await getProjectMembershipRoleForUser(
+      db,
+      tenantId,
+      projectId,
+      recipientUserId
+    );
+    if (!recipientRole) {
+      throw new Error("Personal note recipient is not a project collaborator.");
+    }
+  }
+
+  const sourceKind = normalizeContextValue(payload.sourceKind) ?? "action";
+  const sourceRecordId = normalizeContextValue(payload.sourceRecordId);
+  const rows = await db.queryTenant<Record<string, unknown>>(
+    tenantId,
+    `INSERT INTO project_notes
+       (tenant_id, project_id, author_user_id, visibility, recipient_user_id, content, source_kind, source_record_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     RETURNING id,
+               tenant_id,
+               project_id,
+               author_user_id,
+               visibility,
+               recipient_user_id,
+               content,
+               source_kind,
+               source_record_id,
+               created_at,
+               updated_at`,
+    [
+      tenantId,
+      projectId,
+      authorUserId,
+      visibility,
+      visibility === "personal" ? recipientUserId : null,
+      content,
+      sourceKind,
+      sourceRecordId,
+    ]
+  );
+
+  const note = rows[0];
+  await logActivity(db, tenantId, projectId, null, {
+    action: "project_note_send",
+    noteId: note?.id,
+    visibility,
+    recipientUserId: visibility === "personal" ? recipientUserId : null,
+    triggeredBy: "larry",
+  });
+
+  return note;
+}
+
 export async function executeAction(
   db: Db,
   tenantId: string,
@@ -738,6 +1059,39 @@ export async function executeAction(
         db,
         tenantId,
         payload as unknown as ProjectCreatePayload,
+        actorUserId ?? null
+      );
+
+    case "collaborator_add":
+      return executeCollaboratorAdd(
+        db,
+        tenantId,
+        projectId,
+        payload as unknown as CollaboratorAddPayload
+      );
+
+    case "collaborator_role_update":
+      return executeCollaboratorRoleUpdate(
+        db,
+        tenantId,
+        projectId,
+        payload as unknown as CollaboratorRoleUpdatePayload
+      );
+
+    case "collaborator_remove":
+      return executeCollaboratorRemove(
+        db,
+        tenantId,
+        projectId,
+        payload as unknown as CollaboratorRemovePayload
+      );
+
+    case "project_note_send":
+      return executeProjectNoteSend(
+        db,
+        tenantId,
+        projectId,
+        payload as unknown as ProjectNoteSendPayload,
         actorUserId ?? null
       );
 

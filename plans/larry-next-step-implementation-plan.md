@@ -513,22 +513,35 @@ None. Phase 6 starter slice is fully closed as of 2026-03-30.
     - ensured owner-membership creation on project creation paths (`POST /v1/projects`, intake finalize create-new paths, Larry `project_create` accept execution path)
     - added workspace proxy collaborator routes and basic project collaborators panel UI (list/add/update/remove with inline errors)
     - added visible actor attribution labels in `/workspace/chats` message bubbles
-    - test gate passed: 24 files / 109 tests
+  - **Phase 7 - Project Collaboration, Shared Larry, And Notes (follow-up slice) (completed)**:
+    - added `project_notes` schema with `shared|personal` visibility checks, collaborator-recipient constraints, indexes, tenant RLS, and deterministic seed rows
+    - shipped additive notes API routes under `/v1/projects/:id/notes` with visibility filtering, collaborator-recipient validation for personal notes, and audit logging
+    - extended canonical Larry action model with collaborator and notes action types:
+      - `collaborator_add`
+      - `collaborator_role_update`
+      - `collaborator_remove`
+      - `project_note_send`
+    - extended intelligence action schema/prompt payload contracts for collaborator and notes action types
+    - extended executor dispatch/validation and policy routing so collaborator and note actions run through canonical approval-governed action execution
+    - fixed chat clarification gating so task-target clarification is applied only for task-targeted mutation intents (not collaborator/note intents)
+    - added workspace project notes proxy/hook/panel UI with shared vs personal filtering and composer support
+    - updated backend/frontend/database docs for notes routes, schema semantics, and additive Larry action-type contracts
+    - test gate passed: `cd apps/api && npm test`
 - Remaining in current phase:
-  - None. Phase 7 starter slice is closed.
+  - None. Phase 7 is fully closed.
 - Next concrete milestone:
   - Not opened in this update (phase discipline: no next-phase kickoff).
 
 ### Still To Do For Phase 7
 
-None for the starter slice. Deferred items remain notes flows and collaborator-update Larry action types.
+None. Phase 7 is fully closed.
 
 ### Recommended Next Slice
 
 - Closed in this update:
-  - **Phase 7 - Project Collaboration, Shared Larry, And Notes** starter slice (completed).
-- Candidate milestone for the next update (not opened in this change):
   - **Phase 7 - Project Collaboration, Shared Larry, And Notes** follow-up slice: notes flows and collaborator-update Larry action types.
+- Candidate milestone for the next update:
+  - Not opened in this change (phase discipline: no next-phase kickoff).
 
 ---
 

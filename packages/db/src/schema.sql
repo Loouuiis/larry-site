@@ -144,6 +144,31 @@ CREATE INDEX IF NOT EXISTS idx_project_memberships_tenant_project
 CREATE INDEX IF NOT EXISTS idx_project_memberships_tenant_user
   ON project_memberships (tenant_id, user_id, updated_at DESC);
 
+-- Phase 7 follow-up: project shared/personal notes
+CREATE TABLE IF NOT EXISTS project_notes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  author_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  visibility TEXT NOT NULL CHECK (visibility IN ('shared', 'personal')),
+  recipient_user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  source_kind TEXT,
+  source_record_id TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT project_notes_visibility_recipient_check CHECK (
+    (visibility = 'shared' AND recipient_user_id IS NULL)
+    OR (visibility = 'personal' AND recipient_user_id IS NOT NULL)
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_notes_tenant_project_created
+  ON project_notes (tenant_id, project_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_project_notes_tenant_recipient_created
+  ON project_notes (tenant_id, recipient_user_id, created_at DESC);
+
 -- Backfill owner memberships from existing projects.
 INSERT INTO project_memberships (tenant_id, project_id, user_id, role)
 SELECT p.tenant_id, p.id, p.owner_user_id, 'owner'
@@ -528,6 +553,7 @@ CREATE TABLE IF NOT EXISTS kpi_snapshots (
 -- Row level security toggles. Policies assume app sets SET app.tenant_id before query.
 ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE project_memberships ENABLE ROW LEVEL SECURITY;
+ALTER TABLE project_notes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE task_dependencies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE task_comments ENABLE ROW LEVEL SECURITY;
@@ -553,6 +579,11 @@ EXCEPTION WHEN duplicate_object THEN null; END $$;
 DO $$ BEGIN
   CREATE POLICY tenant_isolation_project_memberships
     ON project_memberships
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_project_notes
+    ON project_notes
     USING (tenant_id::text = current_setting('app.tenant_id', true));
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 DO $$ BEGIN

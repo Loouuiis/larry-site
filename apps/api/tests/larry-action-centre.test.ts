@@ -457,6 +457,128 @@ describe("Larry action centre routes", () => {
     );
   });
 
+  it("accepts collaborator and note action types through the same accept flow", async () => {
+    const scenarios = [
+      {
+        eventId: "77777777-1111-4111-8111-111111111111",
+        actionType: "collaborator_add",
+        payload: {
+          userId: "99999999-1111-4111-8111-111111111111",
+          role: "viewer",
+          displayName: "Alex",
+        },
+      },
+      {
+        eventId: "77777777-2222-4222-8222-222222222222",
+        actionType: "collaborator_role_update",
+        payload: {
+          userId: "99999999-2222-4222-8222-222222222222",
+          role: "editor",
+          displayName: "Marcus",
+        },
+      },
+      {
+        eventId: "77777777-3333-4333-8333-333333333333",
+        actionType: "collaborator_remove",
+        payload: {
+          userId: "99999999-3333-4333-8333-333333333333",
+          displayName: "Taylor",
+        },
+      },
+      {
+        eventId: "77777777-4444-4444-8444-444444444444",
+        actionType: "project_note_send",
+        payload: {
+          visibility: "personal",
+          content: "Please share your latest QA status update by EOD.",
+          recipientUserId: "99999999-4444-4444-8444-444444444444",
+          recipientName: "Jordan",
+        },
+      },
+    ] as const;
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    for (const scenario of scenarios) {
+      vi.mocked(getLarryEventForMutation).mockResolvedValueOnce({
+        id: scenario.eventId,
+        projectId: PROJECT_ID,
+        eventType: "suggested",
+        actionType: scenario.actionType,
+        payload: scenario.payload,
+      });
+      vi.mocked(executeAction).mockResolvedValueOnce({ ok: true });
+      vi.mocked(markLarryEventAccepted).mockResolvedValueOnce(undefined);
+      vi.mocked(listLarryEventSummaries).mockResolvedValueOnce([
+        {
+          id: scenario.eventId,
+          projectId: PROJECT_ID,
+          projectName: "Alpha Launch",
+          eventType: "accepted",
+          actionType: scenario.actionType,
+          displayText: "Accepted action",
+          reasoning: "User approved suggestion.",
+          payload: scenario.payload,
+          executedAt: "2026-03-30T12:00:00.000Z",
+          triggeredBy: "chat",
+          chatMessage: "please do it",
+          createdAt: "2026-03-30T11:59:00.000Z",
+          conversationId: CONVERSATION_ID,
+          requestMessageId: null,
+          responseMessageId: null,
+          requestedByUserId: USER_ID,
+          requestedByName: "pm",
+          approvedByUserId: USER_ID,
+          approvedByName: "pm",
+          approvedAt: "2026-03-30T12:00:00.000Z",
+          dismissedByUserId: null,
+          dismissedByName: null,
+          dismissedAt: null,
+          executedByKind: "user",
+          executedByUserId: USER_ID,
+          executedByName: "pm",
+          executionMode: "approval",
+          sourceKind: "chat",
+          sourceRecordId: "source-new",
+          conversationTitle: "please do it",
+          requestMessagePreview: "please do it",
+          responseMessagePreview: "Accepted action",
+        },
+      ]);
+
+      const response = await app.inject({
+        method: "POST",
+        url: `/larry/events/${scenario.eventId}/accept`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        accepted: true,
+        event: {
+          id: scenario.eventId,
+          actionType: scenario.actionType,
+        },
+      });
+      const expectedPayload =
+        scenario.actionType === "project_note_send"
+          ? {
+              ...scenario.payload,
+              sourceKind: "action",
+              sourceRecordId: scenario.eventId,
+            }
+          : scenario.payload;
+      expect(executeAction).toHaveBeenCalledWith(
+        expect.anything(),
+        TENANT_ID,
+        PROJECT_ID,
+        scenario.actionType,
+        expectedPayload,
+        USER_ID
+      );
+    }
+  });
+
   it("blocks accept when caller cannot manage project collaborators/actions", async () => {
     vi.mocked(getProjectMembershipAccess).mockResolvedValue({
       projectExists: true,

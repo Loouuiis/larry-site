@@ -40,6 +40,30 @@ export interface WorkspaceProjectMembers {
   members: WorkspaceProjectMember[];
 }
 
+export type WorkspaceProjectNoteVisibility = "shared" | "personal";
+
+export interface WorkspaceProjectNote {
+  id: string;
+  projectId: string;
+  authorUserId: string;
+  authorName: string;
+  visibility: WorkspaceProjectNoteVisibility;
+  recipientUserId: string | null;
+  recipientName: string | null;
+  content: string;
+  sourceKind: string | null;
+  sourceRecordId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkspaceProjectNotesResponse {
+  projectId: string;
+  visibility: "all" | WorkspaceProjectNoteVisibility;
+  notes: WorkspaceProjectNote[];
+  error?: string;
+}
+
 export interface WorkspaceTask {
   id: string;
   projectId: string;

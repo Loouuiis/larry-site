@@ -510,6 +510,77 @@ describe("POST /larry/chat", () => {
     expect(storeSuggestions).not.toHaveBeenCalled();
   });
 
+  it("does not force task-target clarification for collaborator or note intents", async () => {
+    vi.mocked(getLarryConversationForUser).mockResolvedValue(null);
+    vi.mocked(getProjectSnapshot).mockResolvedValue(SNAPSHOT_WITH_MULTIPLE_TASKS);
+    vi.mocked(getPendingSuggestionTexts).mockResolvedValue([]);
+    vi.mocked(runIntelligence).mockResolvedValue({
+      briefing: "Prepared collaborator and note suggestions for review.",
+      autoActions: [],
+      suggestedActions: [],
+    });
+    vi.mocked(createLarryConversation).mockResolvedValue({
+      id: CONVERSATION_ID,
+      projectId: PROJECT_ID,
+      title: "Add Marcus as collaborator and send a note",
+      createdAt: "2026-03-28T10:00:00.000Z",
+      updatedAt: "2026-03-28T10:00:00.000Z",
+      lastMessagePreview: null,
+      lastMessageAt: null,
+    });
+    vi.mocked(insertLarryMessage)
+      .mockResolvedValueOnce({ id: "collab-user-1", createdAt: "2026-03-28T10:10:00.000Z" })
+      .mockResolvedValueOnce({ id: "collab-assistant-1", createdAt: "2026-03-28T10:10:01.000Z" });
+    vi.mocked(runAutoActions).mockResolvedValue({ executedCount: 0, suggestedCount: 0, eventIds: [] });
+    vi.mocked(storeSuggestions).mockResolvedValue({ executedCount: 0, suggestedCount: 0, eventIds: [] });
+    vi.mocked(listLarryMessagesByIds).mockResolvedValue([
+      {
+        id: "collab-user-1",
+        role: "user",
+        content: "Add Marcus as collaborator and send him a personal note.",
+        reasoning: null,
+        createdAt: "2026-03-28T10:10:00.000Z",
+        actorUserId: USER_ID,
+        actorDisplayName: "pm",
+        linkedActions: [],
+      },
+      {
+        id: "collab-assistant-1",
+        role: "larry",
+        content: "Prepared collaborator and note suggestions for review.",
+        reasoning: null,
+        createdAt: "2026-03-28T10:10:01.000Z",
+        actorUserId: null,
+        actorDisplayName: null,
+        linkedActions: [],
+      },
+    ]);
+    vi.mocked(touchLarryConversation).mockResolvedValue();
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/larry/chat",
+      payload: {
+        projectId: PROJECT_ID,
+        message: "Add Marcus as collaborator and send him a personal note.",
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      message: "Prepared collaborator and note suggestions for review.",
+      actionsExecuted: 0,
+      suggestionCount: 0,
+    });
+    expect(response.json()).not.toHaveProperty("requiresClarification");
+    expect(runIntelligence).toHaveBeenCalledTimes(1);
+    expect(runAutoActions).toHaveBeenCalledTimes(1);
+    expect(storeSuggestions).toHaveBeenCalledTimes(1);
+  });
+
   it("includes rerouted auto-actions in suggestionCount", async () => {
     vi.mocked(getLarryConversationForUser).mockResolvedValue(null);
     vi.mocked(getProjectSnapshot).mockResolvedValue(MOCK_SNAPSHOT);

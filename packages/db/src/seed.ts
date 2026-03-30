@@ -69,6 +69,8 @@ const LC1 = "f0000001-0000-4000-8000-000000000001"; // Larry conversation
 const PMEM1 = "f1000001-0000-4000-8000-000000000001"; // Project memory: chat
 const PMEM2 = "f1000002-0000-4000-8000-000000000002"; // Project memory: accepted action
 const PMEM3 = "f1000003-0000-4000-8000-000000000003"; // Project memory: meeting
+const PN1 = "f3000001-0000-4000-8000-000000000001"; // Shared project note
+const PN2 = "f3000002-0000-4000-8000-000000000002"; // Personal project note
 const INTAKE_DRAFT_ID = "f2000001-0000-4000-8000-000000000001"; // Intake draft fixture
 
 // ─── bcrypt hash for "DevPass123!" at 12 rounds ───────────────────────────────
@@ -365,6 +367,34 @@ We will send a further update once QA sign-off is confirmed.
   ]);
 
   await q(`
+    INSERT INTO project_notes
+      (id, tenant_id, project_id, author_user_id, visibility, recipient_user_id, content, source_kind, source_record_id, created_at, updated_at)
+    VALUES
+      ($1, $2, $3, $4, 'shared', NULL,
+       'Shared note: Keep checkout QA and investor deck updates synced in daily standup.',
+       'manual', NULL, $5, $5),
+      ($6, $2, $3, $4, 'personal', $7,
+       'Personal note for Marcus: please post an EOD checkpoint in #product-launch after QA rerun.',
+       'manual', NULL, $8, $8)
+    ON CONFLICT (id) DO UPDATE SET
+      visibility = EXCLUDED.visibility,
+      recipient_user_id = EXCLUDED.recipient_user_id,
+      content = EXCLUDED.content,
+      source_kind = EXCLUDED.source_kind,
+      source_record_id = EXCLUDED.source_record_id,
+      updated_at = EXCLUDED.updated_at
+  `, [
+    PN1,
+    TENANT_ID,
+    PROJECT_ID,
+    U_ADMIN,
+    daysAgo(1),
+    PN2,
+    U_MARCUS,
+    daysAgo(0),
+  ]);
+
+  await q(`
     INSERT INTO project_intake_drafts
       (id, tenant_id, mode, status,
        project_name, project_description, project_start_date, project_target_date, attach_to_project_id,
@@ -440,7 +470,7 @@ We will send a further update once QA sign-off is confirmed.
     U_ADMIN,
     daysAgo(1),
   ]);
-  console.log("✓  Project memory entries seeded");
+  console.log("✓  Project memory and notes entries seeded");
 
   // ── 15. Risk snapshots ───────────────────────────────────────────────────────
   await q(`

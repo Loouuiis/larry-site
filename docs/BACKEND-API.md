@@ -9,7 +9,7 @@ Fastify v5 REST API at `apps/api/`. Product routes are registered in `apps/api/s
 | File | Primary Routes |
 |------|----------------|
 | `auth.ts` | `POST /v1/auth/login`, `POST /v1/auth/refresh`, `GET /v1/auth/me` |
-| `projects.ts` | CRUD `/v1/projects`, project timeline/health utilities, and project collaborator routes (`GET/POST/PATCH/DELETE /v1/projects/:id/members...`) |
+| `projects.ts` | CRUD `/v1/projects`, project timeline/health utilities, project collaborator routes (`GET/POST/PATCH/DELETE /v1/projects/:id/members...`), and project notes routes (`GET/POST /v1/projects/:id/notes`) |
 | `project-intake.ts` | `POST /v1/projects/intake/drafts`, `POST /v1/projects/intake/drafts/:id/bootstrap`, `POST /v1/projects/intake/drafts/:id/finalize` |
 | `tasks.ts` | CRUD `/v1/tasks` and task status/dependency helpers |
 | `ingest.ts` | `POST /v1/ingest/slack`, `/email`, `/calendar`, `/transcript` (transcript shim) |
@@ -35,6 +35,7 @@ Fastify v5 REST API at `apps/api/`. Product routes are registered in `apps/api/s
 - `POST /v1/larry/transcript` is queue-only: it persists canonical ingest metadata and meeting linkage, returns `202`, and defers intelligence/action execution to worker `canonical_event.created`.
 - `POST /v1/larry/chat` and `POST /v1/larry/events/:id/accept` write durable rows into `project_memory_entries` for project timeline context.
 - `POST /v1/larry/chat` applies a clarification-first gate for ambiguous mutation requests and returns a clarification reply without executing/storing actions when task target/details are under-specified.
+- Clarification gating applies task-target checks only to task-targeted mutation intents; collaborator and note intents are not blocked by `missing_task_target`.
 - Project-scoped Larry visibility is membership-scoped:
   - project conversations and project conversation message history are visible to project members
   - project action-centre reads/mutations and project memory reads require project membership access (with tenant-admin override in route guards)
@@ -44,6 +45,11 @@ Fastify v5 REST API at `apps/api/`. Product routes are registered in `apps/api/s
   - actions originally classified as auto but policy-routed to approval.
 - Worker-driven `canonical_event.created` handling for transcript/email/slack/calendar now also writes `project_memory_entries` rows when project scope resolves.
 - Project memory writes with non-null `source_record_id` are replay-safe via `(tenant_id, project_id, source_kind, source_record_id, content_hash)` dedup semantics.
+- Canonical Larry action types now include collaborator and note mutations:
+  - `collaborator_add`
+  - `collaborator_role_update`
+  - `collaborator_remove`
+  - `project_note_send`
 
 Compatibility and retirement behavior:
 - `POST /v1/ingest/transcript` proxies to `/v1/larry/transcript` and returns deprecation metadata.
@@ -68,6 +74,16 @@ Safety and compatibility:
   - `POST /v1/projects`
   - intake finalize create-new paths in `/v1/projects/intake/drafts/:id/finalize`
   - Larry `project_create` execution path when accepted through `/v1/larry/events/:id/accept`
+
+## Project Notes Contracts
+
+- `GET /v1/projects/:id/notes?visibility=all|shared|personal&limit=...`
+- `POST /v1/projects/:id/notes` with `{ visibility, content, recipientUserId? }`
+
+Visibility semantics:
+- Shared notes are visible to all project collaborators with read access.
+- Personal notes are visible only to the note author and recipient.
+- Personal note create requires `recipientUserId` and validates recipient project membership.
 
 ## Unified Project Intake Contracts
 

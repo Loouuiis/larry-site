@@ -185,4 +185,20 @@ describe("Larry ledger schema", () => {
     expect(schema).toContain("ALTER TABLE project_memberships ENABLE ROW LEVEL SECURITY;");
     expect(schema).toContain("CREATE POLICY tenant_isolation_project_memberships");
   });
+
+  it("adds project_notes with visibility constraints, indexes, and tenant RLS", () => {
+    expect(schema).toContain("CREATE TABLE IF NOT EXISTS project_notes (");
+    expect(schema).toContain("author_user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE");
+    expect(schema).toContain("visibility TEXT NOT NULL CHECK (visibility IN ('shared', 'personal'))");
+    expect(schema).toContain("recipient_user_id UUID REFERENCES users(id) ON DELETE CASCADE");
+    expect(schema).toContain("source_kind TEXT");
+    expect(schema).toContain("source_record_id TEXT");
+    expect(schema).toContain("CONSTRAINT project_notes_visibility_recipient_check CHECK");
+    expect(schema).toContain("(visibility = 'shared' AND recipient_user_id IS NULL)");
+    expect(schema).toContain("(visibility = 'personal' AND recipient_user_id IS NOT NULL)");
+    expect(schema).toContain("CREATE INDEX IF NOT EXISTS idx_project_notes_tenant_project_created");
+    expect(schema).toContain("CREATE INDEX IF NOT EXISTS idx_project_notes_tenant_recipient_created");
+    expect(schema).toContain("ALTER TABLE project_notes ENABLE ROW LEVEL SECURITY;");
+    expect(schema).toContain("CREATE POLICY tenant_isolation_project_notes");
+  });
 });

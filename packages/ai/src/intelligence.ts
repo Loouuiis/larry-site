@@ -40,6 +40,10 @@ const LarryActionTypeEnum = z.enum([
   "scope_change",
   "email_draft",
   "project_create",
+  "collaborator_add",
+  "collaborator_role_update",
+  "collaborator_remove",
+  "project_note_send",
 ]);
 
 const LarryActionSchema = z.object({
@@ -92,6 +96,10 @@ NEVER put these in autoActions — they must always go in suggestedActions:
 - scope_change
 - email_draft
 - project_create
+- collaborator_add
+- collaborator_role_update
+- collaborator_remove
+- project_note_send
 - Any action that deletes data
 - Any action involving external integrations (email, Slack) unless the user explicitly triggered it
 
@@ -105,6 +113,8 @@ Include in suggestedActions when:
 - Project or task scope needs rewriting
 - An email needs to be drafted for external send
 - A new project needs to be created from scratch
+- A collaborator should be added, removed, or have role changed
+- A shared or personal project note should be drafted/sent to a collaborator
 
 Keep the Action Centre clean — only suggest when there is a specific, concrete signal.
 Do not suggest the same thing that is already pending approval (see ALREADY PENDING list).
@@ -155,10 +165,23 @@ Each action in autoActions and suggestedActions must have exactly these fields:
 "project_create" [ACTION CENTRE ONLY]
   payload: { "name": string, "description": string, "tasks": [{ "title": string, "assigneeName": string|null, "dueDate": "YYYY-MM-DD"|null }] }
 
+"collaborator_add" [ACTION CENTRE ONLY]
+  payload: { "userId": string (UUID from team snapshot), "role": "owner"|"editor"|"viewer", "displayName": string }
+
+"collaborator_role_update" [ACTION CENTRE ONLY]
+  payload: { "userId": string (UUID from team snapshot), "role": "owner"|"editor"|"viewer", "displayName": string }
+
+"collaborator_remove" [ACTION CENTRE ONLY]
+  payload: { "userId": string (UUID from team snapshot), "displayName": string }
+
+"project_note_send" [ACTION CENTRE ONLY]
+  payload: { "visibility": "shared"|"personal", "content": string, "recipientUserId": string|null, "recipientName": string|null }
+
 ---
 
 ## RULES
 - Use task IDs exactly as they appear in the snapshot. Never invent or guess an ID.
+- Use collaborator user IDs exactly as they appear in the team snapshot. Never invent or guess an ID.
 - If the user names a task in their message, find it in the snapshot by title and use its id.
 - Only flag a task as at risk if there is a real signal (inactivity days, deadline proximity, missed due date).
 - Do not generate noise. No action is better than a wrong action.
@@ -197,7 +220,7 @@ function buildUserPrompt(snapshot: ProjectSnapshot, hint: string | null): string
   });
 
   const teamLines = team.map(
-    (m) => `  ${m.name} (${m.role}) — ${m.activeTaskCount} active tasks`
+    (m) => `  id: "${m.id}" | name: "${m.name}" | role: ${m.role} | active tasks: ${m.activeTaskCount}`
   );
 
   const activityLines =
@@ -432,6 +455,73 @@ function mockIntelligence(snapshot: ProjectSnapshot, hint: string | null): Intel
       displayText: `Create task "${title}"`,
       reasoning: "User asked to create this task",
       payload: { title, description: null, dueDate: null, assigneeName: null, priority: "medium" },
+    });
+  }
+
+  if (hint && /\b(add|invite)\b/i.test(hint) && /\b(collaborator|member|teammate)\b/i.test(hint)) {
+    const candidate = snapshot.team[0];
+    if (candidate) {
+      suggestedActions.push({
+        type: "collaborator_add" as LarryActionType,
+        displayText: `Add ${candidate.name} as viewer`,
+        reasoning: "User asked to add a collaborator",
+        payload: {
+          userId: candidate.id,
+          role: "viewer",
+          displayName: candidate.name,
+        },
+      });
+    }
+  }
+
+  if (hint && /\b(update|change|set|promote|demote)\b/i.test(hint) && /\b(owner|editor|viewer|role)\b/i.test(hint)) {
+    const candidate = snapshot.team[0];
+    if (candidate) {
+      suggestedActions.push({
+        type: "collaborator_role_update" as LarryActionType,
+        displayText: `Update ${candidate.name}'s collaborator role`,
+        reasoning: "User asked to change a collaborator role",
+        payload: {
+          userId: candidate.id,
+          role: "editor",
+          displayName: candidate.name,
+        },
+      });
+    }
+  }
+
+  if (hint && /\b(remove|delete)\b/i.test(hint) && /\b(collaborator|member|teammate)\b/i.test(hint)) {
+    const candidate = snapshot.team[0];
+    if (candidate) {
+      suggestedActions.push({
+        type: "collaborator_remove" as LarryActionType,
+        displayText: `Remove ${candidate.name} from project collaborators`,
+        reasoning: "User asked to remove a collaborator",
+        payload: {
+          userId: candidate.id,
+          displayName: candidate.name,
+        },
+      });
+    }
+  }
+
+  if (hint && /\b(note|message)\b/i.test(hint) && /\b(collaborator|member|teammate|share|personal)\b/i.test(hint)) {
+    const candidate = snapshot.team[0] ?? null;
+    const isPersonal = /\b(personal|private)\b/i.test(hint);
+    suggestedActions.push({
+      type: "project_note_send" as LarryActionType,
+      displayText: isPersonal
+        ? `Send personal note to ${candidate?.name ?? "a collaborator"}`
+        : "Send shared project note",
+      reasoning: "User asked to draft/send a collaborator note",
+      payload: {
+        visibility: isPersonal ? "personal" : "shared",
+        content: isPersonal
+          ? `Please review the latest project update today, ${candidate?.name ?? "team member"}.`
+          : "Shared note: reviewed latest project status and next steps.",
+        recipientUserId: isPersonal ? (candidate?.id ?? null) : null,
+        recipientName: isPersonal ? (candidate?.name ?? null) : null,
+      },
     });
   }
 

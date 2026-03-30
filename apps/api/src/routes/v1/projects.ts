@@ -2,6 +2,11 @@ import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { writeAuditLog } from "../../lib/audit.js";
 import {
+  createProjectNote,
+  isProjectCollaborator,
+  listProjectNotesForUser,
+} from "../../lib/project-notes.js";
+import {
   countProjectOwners,
   createProjectOwnerMembership,
   deleteProjectMembership,
@@ -30,6 +35,32 @@ const UpsertProjectMemberSchema = z.object({
 const UpdateProjectMemberRoleSchema = z.object({
   role: ProjectMemberRoleSchema,
 });
+const ProjectNotesQuerySchema = z.object({
+  visibility: z.enum(["all", "shared", "personal"]).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+const CreateProjectNoteSchema = z
+  .object({
+    visibility: z.enum(["shared", "personal"]),
+    recipientUserId: z.string().uuid().optional(),
+    content: z.string().trim().min(1).max(4_000),
+  })
+  .superRefine((value, context) => {
+    if (value.visibility === "shared" && value.recipientUserId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Shared notes cannot target a specific recipient.",
+        path: ["recipientUserId"],
+      });
+    }
+    if (value.visibility === "personal" && !value.recipientUserId) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Personal notes require recipientUserId.",
+        path: ["recipientUserId"],
+      });
+    }
+  });
 
 export const projectRoutes: FastifyPluginAsync = async (fastify) => {
   function parseOrBadRequest<T>(schema: z.ZodType<T>, value: unknown): T {
@@ -420,6 +451,104 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
         tenantRole: request.user.role,
         projectId: params.id,
       });
+    }
+  );
+
+  fastify.get(
+    "/:id/notes",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
+    async (request) => {
+      const params = parseOrBadRequest(ProjectIdParamSchema, request.params);
+      const query = parseOrBadRequest(ProjectNotesQuerySchema, request.query);
+      const tenantId = request.user.tenantId;
+      const userId = request.user.userId;
+
+      await getProjectAccessOrThrow({
+        tenantId,
+        userId,
+        tenantRole: request.user.role,
+        projectId: params.id,
+        mode: "read",
+      });
+
+      const notes = await listProjectNotesForUser(
+        fastify.db,
+        tenantId,
+        params.id,
+        userId,
+        {
+          visibility: query.visibility ?? "all",
+          limit: query.limit,
+        }
+      );
+
+      return {
+        projectId: params.id,
+        visibility: query.visibility ?? "all",
+        notes,
+      };
+    }
+  );
+
+  fastify.post(
+    "/:id/notes",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
+    async (request, reply) => {
+      const params = parseOrBadRequest(ProjectIdParamSchema, request.params);
+      const body = parseOrBadRequest(CreateProjectNoteSchema, request.body);
+      const tenantId = request.user.tenantId;
+      const userId = request.user.userId;
+
+      await getProjectAccessOrThrow({
+        tenantId,
+        userId,
+        tenantRole: request.user.role,
+        projectId: params.id,
+        mode: "read",
+      });
+
+      if (body.visibility === "personal") {
+        const recipientUserId = body.recipientUserId ?? null;
+        if (!recipientUserId) {
+          throw fastify.httpErrors.badRequest("Personal notes require recipientUserId.");
+        }
+
+        const recipientIsCollaborator = await isProjectCollaborator(
+          fastify.db,
+          tenantId,
+          params.id,
+          recipientUserId
+        );
+        if (!recipientIsCollaborator) {
+          throw fastify.httpErrors.notFound("Recipient is not a project collaborator.");
+        }
+      }
+
+      const note = await createProjectNote(fastify.db, tenantId, {
+        projectId: params.id,
+        authorUserId: userId,
+        visibility: body.visibility,
+        recipientUserId: body.recipientUserId ?? null,
+        content: body.content,
+        sourceKind: "manual",
+        sourceRecordId: null,
+      });
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId: userId,
+        actionType: "project.note.created",
+        objectType: "project_note",
+        objectId: note.id,
+        details: {
+          projectId: params.id,
+          visibility: note.visibility,
+          recipientUserId: note.recipientUserId,
+          sourceKind: note.sourceKind,
+        },
+      });
+
+      return reply.code(201).send({ note });
     }
   );
 };

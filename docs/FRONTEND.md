@@ -25,8 +25,9 @@ Next.js 16 App Router at `apps/web/`. Two distinct surfaces:
 |------|---------|
 | `apps/web/src/app/workspace/WorkspaceShell.tsx` | Root workspace layout (sidebar + topbar) |
 | `apps/web/src/app/workspace/WorkspaceHome.tsx` | Dashboard: project grid, action strip, notifications |
-| `apps/web/src/app/workspace/projects/[projectId]/ProjectWorkspaceView.tsx` | Active project detail: context, context timeline, collaborators panel, Action Centre rail, Larry chat |
+| `apps/web/src/app/workspace/projects/[projectId]/ProjectWorkspaceView.tsx` | Active project detail: context, notes panel, context timeline, collaborators panel, Action Centre rail, Larry chat |
 | `apps/web/src/app/workspace/projects/[projectId]/CollaboratorsPanel.tsx` | Basic collaborators UI (list/add/update/remove members with inline permission or validation errors) |
+| `apps/web/src/app/workspace/projects/[projectId]/ProjectNotesPanel.tsx` | Shared/personal project notes composer and feed with visibility filtering |
 | `apps/web/src/app/workspace/projects/new/WorkspaceProjectIntake.tsx` | 3-mode unified intake draft lifecycle (manual / guided chat / meeting-led create-or-attach) |
 | `apps/web/src/app/workspace/actions/page.tsx` | Global Action Centre page (canonical ledger, accept/dismiss) |
 | `apps/web/src/app/workspace/chats/page.tsx` | Chat history with project grouping, actor attribution labels, and Action Centre deep-link context |
@@ -34,6 +35,7 @@ Next.js 16 App Router at `apps/web/`. Two distinct surfaces:
 | `apps/web/src/hooks/useLarryActionCentre.ts` | Shared Action Centre fetch, accept, dismiss, and background refresh for project and global surfaces |
 | `apps/web/src/hooks/useProjectData.ts` | Fetches `/api/workspace/projects/:id/overview` (scoped), refreshes every 30s |
 | `apps/web/src/hooks/useProjectMemory.ts` | Fetches `/api/workspace/projects/:id/memory` with source filtering for timeline context |
+| `apps/web/src/hooks/useProjectNotes.ts` | Fetches and creates `/api/workspace/projects/:id/notes` with visibility filtering |
 
 ## Web API Proxy Layer
 
@@ -52,6 +54,8 @@ Web proxy routes (`apps/web/src/app/api/workspace/`):
 - `POST /projects/:id/members` - add collaborator with `{ userId, role }`
 - `PATCH /projects/:id/members/:userId` - update collaborator role with `{ role }`
 - `DELETE /projects/:id/members/:userId` - remove collaborator
+- `GET /projects/:id/notes` - project notes feed (`shared` + caller-visible `personal` notes)
+- `POST /projects/:id/notes` - create shared/personal project note
 - `POST /larry/chat` - canonical chat persistence: persists user + assistant turn, writes linked `larry_events`
 - `GET /larry/conversations` — conversation list with optional `?projectId=` filter
 - `GET /larry/conversations/:id/messages` — message history for a conversation

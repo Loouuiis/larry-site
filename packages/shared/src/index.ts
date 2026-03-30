@@ -139,7 +139,11 @@ export type LarryActionType =
   | "owner_change"
   | "scope_change"
   | "email_draft"
-  | "project_create";
+  | "project_create"
+  | "collaborator_add"
+  | "collaborator_role_update"
+  | "collaborator_remove"
+  | "project_note_send";
 
 export type LarryEventType = "auto_executed" | "suggested" | "accepted" | "dismissed";
 export type LarryTriggeredBy = "schedule" | "login" | "chat" | "signal";

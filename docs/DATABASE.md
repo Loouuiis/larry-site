@@ -27,6 +27,7 @@ npm run seed
 |-------|---------|
 | `projects` | Project records |
 | `project_memberships` | Project-scoped collaborator membership (`owner` / `editor` / `viewer`) |
+| `project_notes` | Shared and personal project collaborator notes |
 | `project_intake_drafts` | Durable unified intake drafts (manual/chat/meeting, bootstrap preview, finalization metadata) |
 | `tasks` | Project tasks |
 | `task_dependencies` | Task dependency graph |
@@ -80,6 +81,12 @@ Use tenant-aware query helpers consistently in API and worker code.
   - idempotent backfill:
     - project owner -> `owner`
     - existing tenant members on each project -> `viewer`
+- `project_notes` includes:
+  - visibility check (`shared|personal`)
+  - recipient constraint: shared notes require `recipient_user_id IS NULL`; personal notes require non-null recipient
+  - indexes on `(tenant_id, project_id, created_at)` and `(tenant_id, recipient_user_id, created_at)`
+  - tenant RLS policy (`tenant_isolation_project_notes`)
 - `project_intake_drafts` includes tenant RLS policy (`tenant_isolation_project_intake_drafts`) and recency/status/mode indexes for intake runtime access paths.
 - Seed data includes one deterministic `project_intake_drafts` fixture row so local/demo environments exercise the new intake contract.
 - Seed data includes deterministic `project_memberships` rows (including a multi-user project) so collaboration access is visible in local/demo environments.
+- Seed data includes deterministic `project_notes` rows (shared and personal) for workspace-note demos.
