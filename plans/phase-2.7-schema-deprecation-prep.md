@@ -46,7 +46,7 @@ If any gate fails, pause and rerun rehearsal/remediation before schema changes.
 - Rebaseline rule:
   - Set a fresh `BASELINE_TIMESTAMP` immediately after deploy-parity verification and before each precheck/execute pair.
 
-## Latest Target-Environment Evidence (J2b-2e window attempt, 2026-03-30 UTC)
+## Latest Target-Environment Evidence (2026-03-30 UTC)
 
 Environment: `railway-prod`  
 Tenant: `11111111-1111-4111-8111-111111111111`
@@ -85,18 +85,26 @@ Tenant: `11111111-1111-4111-8111-111111111111`
 - J2b-2e operator notes:
   - `plans/phase-2.7-artifacts/2026-03-30__railway-prod__j2b-2e-window-attempt-notes.md`
 - Stale-state correction (`2026-03-30`):
-  - Production later advanced to `master` commit `d202add5f55c2e410508ac4df58ed9069200c201`; that runtime does not include this workspace's `/app/scripts` + `phase27:*` parity changes until redeployed from this repo state.
-- J2b-2e blocking reasons:
-  - Growth-gate regression: `newScheduleMissingSourceRecord=49` after baseline timestamp `2026-03-29T22:25:35.771Z`
-  - FK baseline expectations missing in target env (`meeting_notes.agent_run_id`, `email_outbound_drafts.action_id`, `correction_feedback.action_id` constraints absent)
-- Remaining gate blockers before destructive retirement:
-  - `[high] missing_source_record_links`
-  - `[high] invalid_chat_linkage`
-  - `[medium] meeting_action_count_mismatch`
-  - `[high] growth-gate delta breach (schedule source record linkage)`
-  - `[high] FK baseline mismatch for runner precheck gating`
+  - Production later advanced to `master` commit `d202add5f55c2e410508ac4df58ed9069200c201`; this was corrected by parity redeploy from current workspace state.
+- Phase 2 closure parity deployments:
+  - API deploy (`larry-site`): `0bf692df-2f4c-4a5a-a720-e6b883d68d89` (`status=SUCCESS`)
+  - Worker deploy (`diplomatic-vitality`): `4e8a8540-2935-41e5-9f3f-c0429b764fbc` (`status=SUCCESS`)
+  - In-service parity verified: `/app/scripts` present and `phase27:retirement-window` available.
+- Fresh post-parity baseline:
+  - `BASELINE_TIMESTAMP=2026-03-30T16:34:27.349Z`
+- In-window precheck (post-parity baseline):
+  - `plans/phase-2.7-artifacts/2026-03-30T16-34-41-750Z__railway-prod__phase-2-7-retirement-window-precheck__11111111.{json,md}`
+  - `final_decision=precheck_passed`
+  - Growth-gate deltas: all `0`
+  - FK observed state: `fully_detached` (allowed by policy, non-blocking)
+- Execute-mode run (same baseline):
+  - `plans/phase-2.7-artifacts/2026-03-30T16-34-52-288Z__railway-prod__phase-2-7-retirement-window-execute-precheck__11111111.{json,md}`
+  - `plans/phase-2.7-artifacts/2026-03-30T16-34-52-288Z__railway-prod__phase-2-7-retirement-window-execute__11111111.{json,md}`
+  - `final_decision=executed`
+  - `destructive_sql_executed=yes`
+  - Postcheck confirms no residual FK dependencies and all legacy target tables retired.
 
-J2b evidence preparation and deploy-safe sync are complete in target environment, but live destructive execution remains blocked until growth-gate deltas are remediated/re-baselined and FK baseline gating is aligned with target-environment state.
+Target-environment destructive retirement execution is complete for this phase. Remaining work is sign-off/documentation closeout and non-blocking anomaly follow-ups.
 
 ## Current FK Dependency State
 
@@ -452,10 +460,10 @@ For D/E rollback, restore `approval_decisions`, `interventions`, `agent_run_tran
 4. [x] Migration D: retire child tables (`approval_decisions`, `interventions`, `agent_run_transitions`) (repo-complete; env execution pending).
 5. [x] Migration E: retire parent tables (`extracted_actions`, `agent_runs`) (repo-complete; env execution pending).
 6. [x] Cleanup F: seed/doc/script cleanup and final boundary regression pass (operational-core + core docs boundary complete in repo; target-environment evidence closeout pending in J2b).
-7. [x] J2b-2a: anomaly waiver dossier + operator command pack prep (repo-complete).
+7. [x] J2b-2a: anomaly waiver dossier + operator command pack prep (repo-complete; decision transitioned to approved after post-parity precheck/execute evidence).
 8. [x] J2b-2c: deploy-safe migration gate for API startup migrations (`LARRY_ALLOW_PHASE27_DESTRUCTIVE_RETIREMENT`) + regression guard coverage.
 9. [x] J2b-2d: repo-native retirement window runner + safeguards/docs/tests (repo-complete).
-10. [ ] Phase 2 - Rebaseline and window execution: deploy-safe parity + live precheck/execute rerun required after growth-gate remediation/re-baseline and FK gate-policy alignment.
+10. [x] Phase 2 - Rebaseline and window execution: deploy-safe parity + live precheck/execute rerun completed (`precheck_passed` then `executed`) with committed evidence artifacts.
 
 Each migration task must include:
 

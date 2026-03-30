@@ -320,7 +320,7 @@ These are not optional cleanups; they are part of the implementation strategy:
 - **Phase 2 - FK gate alignment: repo-native retirement window runner (implemented)**:
   - Refactored `scripts/phase-2.7-extraction-rehearsal.mjs` onto an import-safe helper so Phase 2.7 query/artifact flow is reusable from other operator tooling.
   - Added `scripts/phase-2.7-retirement-window.mjs` with a read-only-by-default precheck mode plus explicit `--execute --confirm phase-2.7-retirement` destructive mode.
-  - Added hard safety guards so destructive execution is blocked if rehearsal is not `ok`, growth-gate counts are non-zero, required FK/table baselines are missing, or `LARRY_ALLOW_PHASE27_DESTRUCTIVE_RETIREMENT` is enabled.
+  - Added hard safety guards so destructive execution is blocked if rehearsal is not `ok`, growth-gate counts are non-zero, required legacy-table baselines are missing, or `LARRY_ALLOW_PHASE27_DESTRUCTIVE_RETIREMENT` is enabled.
   - Added repo convenience commands:
     - `npm run phase27:rehearsal -- ...`
     - `npm run phase27:retirement-window -- ...`
@@ -342,8 +342,30 @@ These are not optional cleanups; they are part of the implementation strategy:
   - Blocking reasons observed in both runs:
     - growth-gate delta failure (`newScheduleMissingSourceRecord=49` after baseline timestamp `2026-03-29T22:25:35.771Z`)
     - FK baseline expectations missing (A/B/C FK dependencies already detached in target environment)
-  - Stale-state correction (`2026-03-30`): production later advanced to `master` commit `d202add5f55c2e410508ac4df58ed9069200c201`, and that runtime does not yet include this workspace's `/app/scripts` + `phase27:*` runner parity changes.
+  - Stale-state correction (`2026-03-30`): production later advanced to `master` commit `d202add5f55c2e410508ac4df58ed9069200c201`, which temporarily removed this workspace's `/app/scripts` + `phase27:*` parity changes.
   - Dossier decision remains `blocked`; no destructive A/B/C/D/E statements were executed.
+- **Phase 2 - Rebaseline and window execution (completed)**:
+  - Applied FK gate-policy alignment in `scripts/phase-2.7-retirement-window-lib.mjs` so attached and already-detached A/B/C dependencies are both valid precheck states, while FK state remains fully reported in artifacts.
+  - Added/updated regression coverage in `apps/api/tests/phase-2.7-retirement-window.test.ts` for detached-FK execute success and continued blocking on true remaining gates.
+  - Restored production parity from this workspace state:
+    - API `larry-site` deployment `0bf692df-2f4c-4a5a-a720-e6b883d68d89` (`SUCCESS`)
+    - Worker `diplomatic-vitality` deployment `4e8a8540-2935-41e5-9f3f-c0429b764fbc` (`SUCCESS`)
+  - Verified in-service parity (`/app/scripts` present and `phase27:retirement-window` script available).
+  - Set fresh post-parity baseline timestamp: `2026-03-30T16:34:27.349Z`.
+  - Ran in-service precheck (`final_decision=precheck_passed`) and execute (`final_decision=executed`, `destructive_sql_executed=yes`) via Railway SSH.
+  - Captured and committed execution evidence:
+    - `plans/phase-2.7-artifacts/2026-03-30T16-34-41-750Z__railway-prod__phase-2-7-retirement-window-precheck__11111111.{json,md}`
+    - `plans/phase-2.7-artifacts/2026-03-30T16-34-52-288Z__railway-prod__phase-2-7-retirement-window-execute-precheck__11111111.{json,md}`
+    - `plans/phase-2.7-artifacts/2026-03-30T16-34-52-288Z__railway-prod__phase-2-7-retirement-window-execute__11111111.{json,md}`
+
+### Phase 2 Closure Snapshot (2026-03-30 UTC)
+
+- Done:
+  - Runner parity restored in production, FK gate policy aligned (detached-or-attached valid), precheck passed, and destructive retirement execute run completed successfully.
+- Remaining in current phase:
+  - Final sign-off metadata and runbook closeout, residual non-core docs sweep, and queue-only `/v1/larry/transcript` seam scheduling.
+- Next concrete milestone:
+  - Phase 2 post-retirement sign-off + residual seam closure.
 
 ### Still To Do For Phase 1
 
@@ -358,22 +380,17 @@ These are not optional cleanups; they are part of the implementation strategy:
 ### Still To Do For Phase 2
 
 - Continue consolidating connector-triggered Larry actions onto the same canonical Larry ledger contract as legacy paths are retired; chat, transcript, login briefing, scheduled scan, email, Slack, and calendar are now onboarded on the canonical path.
-- Remediate or re-baseline post-baseline growth-gate deltas (`newScheduleMissingSourceRecord=49`) and rerun precheck until growth-gate counts are zero.
-- Align runner and runbook FK gate policy to treat attached and already-detached A/B/C dependencies as valid pre-execution states while keeping FK baseline reporting for audit evidence.
-- Finalize the J2b-2a dossier decision state from `blocked` to `approved` only after a rerun precheck is green for growth/FK/table gates.
-- Execute the remaining destructive D/E retirement sequence in target environments via the repo-native runner's explicit `--execute --confirm phase-2.7-retirement` path once gates pass, and capture pre/post artifacts.
-- Record rollout sign-off metadata (engineer, reviewer, rollback owner, deploy window, evidence links) in Phase 2.7 runbook notes.
+- Finalize runbook/dossier metadata with completed-window sign-off (`approved`), including deployment IDs, baseline timestamp, and artifact links from the `2026-03-30T16:34:*Z` execution run.
 - Complete any residual non-core docs sweep work found during evidence closeout; core runtime docs sweep + guard are complete in J2a.
 - Continue retiring or fencing any remaining legacy Larry read/write paths beyond the now-fenced conversation writes and event-list reads as canonical contracts replace them.
 - Known residual seam to schedule: `/v1/larry/transcript` still performs inline intelligence writes alongside canonical event enqueue; queue-only transcript execution cutover remains pending.
 
 ### Recommended Next Slice
 
-- **Phase 2 - Rebaseline and window execution: growth-gate remediation + FK-baseline alignment rerun**:
-  - Investigate schedule-origin ledger growth after baseline (`newScheduleMissingSourceRecord=49`) and either remediate rows or formally reset baseline timestamp with reviewer sign-off.
-  - Decide and document FK baseline policy for target environments where A/B/C detaches are already applied (restore constraints before execution vs. treat already-detached as acceptable in runner gating).
-  - Rerun `npm run phase27:retirement-window -- ...` in precheck mode and require `final_decision=precheck_passed` before any execute attempt.
-  - Update the J2b-2a dossier and runbook notes with refreshed counts, gate outcomes, and explicit go/no-go decision metadata.
+- **Phase 2 - Post-retirement sign-off + residual seam closure**:
+  - Update the J2b dossier/runbook decision to `approved` with completed deployment + artifact evidence.
+  - Close remaining non-core docs sweep tasks and confirm no stale retire-window guidance remains.
+  - Schedule the queue-only `/v1/larry/transcript` cutover as the next concrete runtime-boundary milestone.
 
 ---
 

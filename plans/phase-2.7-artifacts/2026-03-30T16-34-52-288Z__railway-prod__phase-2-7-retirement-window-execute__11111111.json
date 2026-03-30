@@ -1,0 +1,416 @@
+{
+  "schemaVersion": "phase-2.7-retirement-window-v1",
+  "generatedAtUtc": "2026-03-30T16:34:52.288Z",
+  "environment": "railway-prod",
+  "tenantId": "11111111-1111-4111-8111-111111111111",
+  "baselineTimestamp": "2026-03-30T16:34:27.349Z",
+  "scriptPath": "scripts/phase-2.7-retirement-window.mjs",
+  "mode": "execute",
+  "destructiveSqlExecuted": true,
+  "safeguards": {
+    "destructiveRetirementEnv": {
+      "name": "LARRY_ALLOW_PHASE27_DESTRUCTIVE_RETIREMENT",
+      "value": null,
+      "enabled": false
+    },
+    "confirmation": {
+      "executeRequested": true,
+      "tokenRequired": "phase-2.7-retirement",
+      "tokenProvided": true
+    }
+  },
+  "operator": {
+    "engineer": "Fergus",
+    "reviewer": "Fergus-temp",
+    "rollbackOwner": "Fergus",
+    "windowStart": null,
+    "windowEnd": null
+  },
+  "precheck": {
+    "rehearsal": {
+      "summary": {
+        "status": "ok",
+        "preflightPassed": true,
+        "anomalyCodes": [
+          "missing_source_record_links",
+          "invalid_chat_linkage",
+          "meeting_action_count_mismatch"
+        ],
+        "anomalyCount": 3
+      },
+      "report": {
+        "schemaVersion": "phase-2.7-rehearsal-v2",
+        "status": "ok",
+        "generatedAtUtc": "2026-03-30T16:34:52.288Z",
+        "environment": "railway-prod",
+        "dataset": "phase-2.7-retirement-window-execute-precheck",
+        "tenantId": "11111111-1111-4111-8111-111111111111",
+        "scriptPath": "scripts/phase-2.7-extraction-rehearsal.mjs",
+        "preflight": {
+          "passed": true,
+          "requiredColumns": {
+            "larry_events": [
+              "source_kind",
+              "source_record_id",
+              "conversation_id",
+              "request_message_id",
+              "response_message_id",
+              "requested_by_user_id"
+            ],
+            "larry_messages": [
+              "id",
+              "tenant_id",
+              "conversation_id"
+            ]
+          },
+          "missing": []
+        },
+        "blockedReason": null,
+        "checks": {
+          "rowCountInventory": [
+            {
+              "tableName": "larry_events",
+              "tableStatus": "present",
+              "rowCount": 216
+            },
+            {
+              "tableName": "larry_messages",
+              "tableStatus": "present",
+              "rowCount": 102
+            },
+            {
+              "tableName": "agent_runs",
+              "tableStatus": "present",
+              "rowCount": 19
+            },
+            {
+              "tableName": "extracted_actions",
+              "tableStatus": "present",
+              "rowCount": 14
+            },
+            {
+              "tableName": "approval_decisions",
+              "tableStatus": "present",
+              "rowCount": 13
+            },
+            {
+              "tableName": "interventions",
+              "tableStatus": "present",
+              "rowCount": 58
+            }
+          ],
+          "linkageCompleteness": {
+            "missingSourceRecord": [
+              {
+                "sourceKind": "chat",
+                "missingSourceRecord": 14
+              },
+              {
+                "sourceKind": "schedule",
+                "missingSourceRecord": 201
+              }
+            ],
+            "invalidChatLinkage": 14,
+            "orphanedMessageLinks": 0
+          },
+          "meetingReconciliation": [
+            {
+              "meetingNoteId": "c5fec76b-59ee-4163-a379-16bb553abe88",
+              "meetingActionCount": 1,
+              "ledgerEventCount": 0
+            },
+            {
+              "meetingNoteId": "74a08f3e-ddf4-49a6-a54d-ff3fdef7431a",
+              "meetingActionCount": 1,
+              "ledgerEventCount": 0
+            },
+            {
+              "meetingNoteId": "8e399a3c-487a-4d89-a846-9c6fc5b5ace2",
+              "meetingActionCount": 8,
+              "ledgerEventCount": 0
+            },
+            {
+              "meetingNoteId": "e0000002-0000-4000-8000-000000000002",
+              "meetingActionCount": 2,
+              "ledgerEventCount": 0
+            },
+            {
+              "meetingNoteId": "e0000001-0000-4000-8000-000000000001",
+              "meetingActionCount": 3,
+              "ledgerEventCount": 0
+            }
+          ],
+          "replayIdempotency": {
+            "duplicateGroups": [],
+            "sourceCoverage": []
+          }
+        },
+        "anomalies": [
+          {
+            "code": "missing_source_record_links",
+            "severity": "high",
+            "summary": "Canonical source linkage is missing for one or more source kinds.",
+            "details": [
+              {
+                "sourceKind": "chat",
+                "missingSourceRecord": 14
+              },
+              {
+                "sourceKind": "schedule",
+                "missingSourceRecord": 201
+              }
+            ]
+          },
+          {
+            "code": "invalid_chat_linkage",
+            "severity": "high",
+            "summary": "Chat-origin events are missing required chat linkage fields.",
+            "details": {
+              "invalidChatLinkage": 14
+            }
+          },
+          {
+            "code": "meeting_action_count_mismatch",
+            "severity": "medium",
+            "summary": "Meeting note action counts differ from canonical ledger counts.",
+            "details": {
+              "mismatchCount": 5
+            }
+          }
+        ],
+        "followUpActions": [
+          "Triage anomaly list with owner assignments before scheduling any destructive schema steps.",
+          "Capture remediation status and rerun rehearsal to confirm anomaly closure."
+        ],
+        "signOff": {
+          "engineer": "Fergus",
+          "reviewer": "Fergus-temp",
+          "status": "execute-requested",
+          "notes": "Baseline timestamp: 2026-03-30T16:34:27.349Z"
+        }
+      },
+      "artifacts": {
+        "baseName": "2026-03-30T16-34-52-288Z__railway-prod__phase-2-7-retirement-window-execute-precheck__11111111",
+        "jsonPath": "/tmp/phase27-window/2026-03-30T16-34-52-288Z__railway-prod__phase-2-7-retirement-window-execute-precheck__11111111.json",
+        "markdownPath": "/tmp/phase27-window/2026-03-30T16-34-52-288Z__railway-prod__phase-2-7-retirement-window-execute-precheck__11111111.md"
+      }
+    },
+    "growthGate": {
+      "passed": true,
+      "counts": {
+        "newChatMissingSourceRecord": 0,
+        "newScheduleMissingSourceRecord": 0,
+        "newInvalidChatLinkage": 0
+      }
+    },
+    "fkBaseline": {
+      "policy": {
+        "id": "allow-attached-or-detached",
+        "description": "A/B/C dependencies may already be detached before the retirement window. Both attached and detached states are valid.",
+        "blocksOnMissingDependencies": false
+      },
+      "expectedDependencies": [
+        {
+          "tableName": "correction_feedback",
+          "columnName": "action_id",
+          "referencesTable": "extracted_actions",
+          "constraintName": "correction_feedback_action_id_fkey"
+        },
+        {
+          "tableName": "email_outbound_drafts",
+          "columnName": "action_id",
+          "referencesTable": "extracted_actions",
+          "constraintName": "email_outbound_drafts_action_id_fkey"
+        },
+        {
+          "tableName": "meeting_notes",
+          "columnName": "agent_run_id",
+          "referencesTable": "agent_runs",
+          "constraintName": "meeting_notes_agent_run_id_fkey"
+        }
+      ],
+      "expectedDependencyCount": 3,
+      "attachedDependencyCount": 0,
+      "observedState": "fully_detached",
+      "passed": true,
+      "rows": [],
+      "missingDependencies": [
+        {
+          "tableName": "correction_feedback",
+          "columnName": "action_id",
+          "referencesTable": "extracted_actions",
+          "expectedConstraintName": "correction_feedback_action_id_fkey"
+        },
+        {
+          "tableName": "email_outbound_drafts",
+          "columnName": "action_id",
+          "referencesTable": "extracted_actions",
+          "expectedConstraintName": "email_outbound_drafts_action_id_fkey"
+        },
+        {
+          "tableName": "meeting_notes",
+          "columnName": "agent_run_id",
+          "referencesTable": "agent_runs",
+          "expectedConstraintName": "meeting_notes_agent_run_id_fkey"
+        }
+      ]
+    },
+    "legacyTableBaseline": {
+      "passed": true,
+      "rows": [
+        {
+          "tableName": "approval_decisions",
+          "tableExists": true,
+          "rowCount": 13
+        },
+        {
+          "tableName": "interventions",
+          "tableExists": true,
+          "rowCount": 58
+        },
+        {
+          "tableName": "agent_run_transitions",
+          "tableExists": true,
+          "rowCount": 377
+        },
+        {
+          "tableName": "extracted_actions",
+          "tableExists": true,
+          "rowCount": 14
+        },
+        {
+          "tableName": "agent_runs",
+          "tableExists": true,
+          "rowCount": 19
+        }
+      ],
+      "missingTables": []
+    },
+    "passed": true,
+    "blockingReasons": []
+  },
+  "execution": {
+    "requested": true,
+    "executed": true,
+    "stages": [
+      {
+        "name": "migration_a_b_c_fk_detach",
+        "label": "Migration A/B/C FK detach",
+        "status": "completed",
+        "statements": [
+          "ALTER TABLE meeting_notes DROP CONSTRAINT IF EXISTS meeting_notes_agent_run_id_fkey;",
+          "ALTER TABLE email_outbound_drafts DROP CONSTRAINT IF EXISTS email_outbound_drafts_action_id_fkey;",
+          "ALTER TABLE correction_feedback DROP CONSTRAINT IF EXISTS correction_feedback_action_id_fkey;"
+        ]
+      },
+      {
+        "name": "migration_d_child_table_retirement",
+        "label": "Migration D child-table retirement",
+        "status": "completed",
+        "statements": [
+          "DROP TABLE IF EXISTS approval_decisions;",
+          "DROP TABLE IF EXISTS interventions;",
+          "DROP TABLE IF EXISTS agent_run_transitions;"
+        ]
+      },
+      {
+        "name": "migration_e_parent_table_retirement",
+        "label": "Migration E parent-table retirement",
+        "status": "completed",
+        "statements": [
+          "DROP TABLE IF EXISTS extracted_actions;",
+          "DROP TABLE IF EXISTS agent_runs;"
+        ]
+      }
+    ]
+  },
+  "postcheck": {
+    "executed": true,
+    "fkVerification": {
+      "policy": {
+        "id": "allow-attached-or-detached",
+        "description": "A/B/C dependencies may already be detached before the retirement window. Both attached and detached states are valid.",
+        "blocksOnMissingDependencies": false
+      },
+      "expectedDependencies": [
+        {
+          "tableName": "correction_feedback",
+          "columnName": "action_id",
+          "referencesTable": "extracted_actions",
+          "constraintName": "correction_feedback_action_id_fkey"
+        },
+        {
+          "tableName": "email_outbound_drafts",
+          "columnName": "action_id",
+          "referencesTable": "extracted_actions",
+          "constraintName": "email_outbound_drafts_action_id_fkey"
+        },
+        {
+          "tableName": "meeting_notes",
+          "columnName": "agent_run_id",
+          "referencesTable": "agent_runs",
+          "constraintName": "meeting_notes_agent_run_id_fkey"
+        }
+      ],
+      "expectedDependencyCount": 3,
+      "attachedDependencyCount": 0,
+      "observedState": "fully_detached",
+      "passed": true,
+      "rows": [],
+      "missingDependencies": [
+        {
+          "tableName": "correction_feedback",
+          "columnName": "action_id",
+          "referencesTable": "extracted_actions",
+          "expectedConstraintName": "correction_feedback_action_id_fkey"
+        },
+        {
+          "tableName": "email_outbound_drafts",
+          "columnName": "action_id",
+          "referencesTable": "extracted_actions",
+          "expectedConstraintName": "email_outbound_drafts_action_id_fkey"
+        },
+        {
+          "tableName": "meeting_notes",
+          "columnName": "agent_run_id",
+          "referencesTable": "agent_runs",
+          "expectedConstraintName": "meeting_notes_agent_run_id_fkey"
+        }
+      ]
+    },
+    "tableVerification": {
+      "passed": true,
+      "rows": [
+        {
+          "tableName": "approval_decisions",
+          "tableExists": false,
+          "rowCount": null
+        },
+        {
+          "tableName": "interventions",
+          "tableExists": false,
+          "rowCount": null
+        },
+        {
+          "tableName": "agent_run_transitions",
+          "tableExists": false,
+          "rowCount": null
+        },
+        {
+          "tableName": "extracted_actions",
+          "tableExists": false,
+          "rowCount": null
+        },
+        {
+          "tableName": "agent_runs",
+          "tableExists": false,
+          "rowCount": null
+        }
+      ],
+      "remainingTables": []
+    },
+    "passed": true
+  },
+  "finalDecision": "executed",
+  "failure": null
+}

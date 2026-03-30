@@ -31,7 +31,7 @@ Exit behavior:
 
 Artifacts are commit-safe JSON + Markdown files under `plans/phase-2.7-artifacts` by default.
 
-## Latest Deployed Snapshot (through J2b-2e, Railway Prod)
+## Latest Deployed Snapshot (through 2026-03-30 execution closure, Railway Prod)
 
 Environment: `railway-prod`  
 Tenant: `11111111-1111-4111-8111-111111111111`
@@ -57,15 +57,25 @@ Tenant: `11111111-1111-4111-8111-111111111111`
   - Both runs blocked; no destructive SQL executed.
 - J2b-2e window-attempt notes:
   - `plans/phase-2.7-artifacts/2026-03-30__railway-prod__j2b-2e-window-attempt-notes.md`
+- Post-parity closure deployments:
+  - API (`larry-site`) deployment `0bf692df-2f4c-4a5a-a720-e6b883d68d89` (`SUCCESS`)
+  - Worker (`diplomatic-vitality`) deployment `4e8a8540-2935-41e5-9f3f-c0429b764fbc` (`SUCCESS`)
+- Post-parity baseline + execution artifacts:
+  - `plans/phase-2.7-artifacts/2026-03-30T16-34-41-750Z__railway-prod__phase-2-7-retirement-window-precheck__11111111.{json,md}` (`final_decision=precheck_passed`)
+  - `plans/phase-2.7-artifacts/2026-03-30T16-34-52-288Z__railway-prod__phase-2-7-retirement-window-execute-precheck__11111111.{json,md}`
+  - `plans/phase-2.7-artifacts/2026-03-30T16-34-52-288Z__railway-prod__phase-2-7-retirement-window-execute__11111111.{json,md}` (`final_decision=executed`, `destructive_sql_executed=yes`)
+- Current state:
+  - A/B/C dependency constraints remain detached (expected).
+  - D/E legacy extraction tables are retired in target environment.
 
 ## Keep/Migrate/Fence Matrix
 
 | Legacy table | Current active-path usage | Decision | Notes |
 | --- | --- | --- | --- |
-| `agent_runs` | No active workspace/API/worker runtime reads or writes after task-triage cutover to canonical `POST /v1/larry/chat`. Compatibility placeholders still exist in nullable columns/metadata (`meeting_notes.agent_run_id`, notification metadata). | Retired in repo (Migration E) | Parent table is removed from repo schema with idempotent drop; environment execution and evidence capture are pending rollout window. |
-| `extracted_actions` | No active runtime reads/writes. Compatibility `action_id` columns remain nullable and detached from FK constraints in runtime tables. | Retired in repo (Migration E) | Parent table is removed from repo schema with idempotent drop; environment execution and evidence capture are pending rollout window. |
-| `approval_decisions` | No active runtime reads/writes in API/worker/web. | Retired in repo (Migration D) | Child table is removed from repo schema with idempotent drop; environment execution and evidence capture are pending rollout window. |
-| `interventions` | No active runtime reads/writes in API/worker/web. | Retired in repo (Migration D) | Child table is removed from repo schema with idempotent drop; environment execution and evidence capture are pending rollout window. |
+| `agent_runs` | No active workspace/API/worker runtime reads or writes after task-triage cutover to canonical `POST /v1/larry/chat`. Compatibility placeholders still exist in nullable columns/metadata (`meeting_notes.agent_run_id`, notification metadata). | Retired (Migration E complete) | Parent table retired in target environment during `2026-03-30T16:34:52Z` execute window artifact. |
+| `extracted_actions` | No active runtime reads/writes. Compatibility `action_id` columns remain nullable and detached from FK constraints in runtime tables. | Retired (Migration E complete) | Parent table retired in target environment during `2026-03-30T16:34:52Z` execute window artifact. |
+| `approval_decisions` | No active runtime reads/writes in API/worker/web. | Retired (Migration D complete) | Child table retired in target environment during `2026-03-30T16:34:52Z` execute window artifact. |
+| `interventions` | No active runtime reads/writes in API/worker/web. | Retired (Migration D complete) | Child table retired in target environment during `2026-03-30T16:34:52Z` execute window artifact. |
 
 ## Rehearsal SQL Checks
 

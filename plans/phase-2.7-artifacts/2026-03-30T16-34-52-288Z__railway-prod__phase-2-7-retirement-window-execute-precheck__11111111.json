@@ -1,0 +1,151 @@
+{
+  "schemaVersion": "phase-2.7-rehearsal-v2",
+  "status": "ok",
+  "generatedAtUtc": "2026-03-30T16:34:52.288Z",
+  "environment": "railway-prod",
+  "dataset": "phase-2.7-retirement-window-execute-precheck",
+  "tenantId": "11111111-1111-4111-8111-111111111111",
+  "scriptPath": "scripts/phase-2.7-extraction-rehearsal.mjs",
+  "preflight": {
+    "passed": true,
+    "requiredColumns": {
+      "larry_events": [
+        "source_kind",
+        "source_record_id",
+        "conversation_id",
+        "request_message_id",
+        "response_message_id",
+        "requested_by_user_id"
+      ],
+      "larry_messages": [
+        "id",
+        "tenant_id",
+        "conversation_id"
+      ]
+    },
+    "missing": []
+  },
+  "blockedReason": null,
+  "checks": {
+    "rowCountInventory": [
+      {
+        "tableName": "larry_events",
+        "tableStatus": "present",
+        "rowCount": 216
+      },
+      {
+        "tableName": "larry_messages",
+        "tableStatus": "present",
+        "rowCount": 102
+      },
+      {
+        "tableName": "agent_runs",
+        "tableStatus": "present",
+        "rowCount": 19
+      },
+      {
+        "tableName": "extracted_actions",
+        "tableStatus": "present",
+        "rowCount": 14
+      },
+      {
+        "tableName": "approval_decisions",
+        "tableStatus": "present",
+        "rowCount": 13
+      },
+      {
+        "tableName": "interventions",
+        "tableStatus": "present",
+        "rowCount": 58
+      }
+    ],
+    "linkageCompleteness": {
+      "missingSourceRecord": [
+        {
+          "sourceKind": "chat",
+          "missingSourceRecord": 14
+        },
+        {
+          "sourceKind": "schedule",
+          "missingSourceRecord": 201
+        }
+      ],
+      "invalidChatLinkage": 14,
+      "orphanedMessageLinks": 0
+    },
+    "meetingReconciliation": [
+      {
+        "meetingNoteId": "c5fec76b-59ee-4163-a379-16bb553abe88",
+        "meetingActionCount": 1,
+        "ledgerEventCount": 0
+      },
+      {
+        "meetingNoteId": "74a08f3e-ddf4-49a6-a54d-ff3fdef7431a",
+        "meetingActionCount": 1,
+        "ledgerEventCount": 0
+      },
+      {
+        "meetingNoteId": "8e399a3c-487a-4d89-a846-9c6fc5b5ace2",
+        "meetingActionCount": 8,
+        "ledgerEventCount": 0
+      },
+      {
+        "meetingNoteId": "e0000002-0000-4000-8000-000000000002",
+        "meetingActionCount": 2,
+        "ledgerEventCount": 0
+      },
+      {
+        "meetingNoteId": "e0000001-0000-4000-8000-000000000001",
+        "meetingActionCount": 3,
+        "ledgerEventCount": 0
+      }
+    ],
+    "replayIdempotency": {
+      "duplicateGroups": [],
+      "sourceCoverage": []
+    }
+  },
+  "anomalies": [
+    {
+      "code": "missing_source_record_links",
+      "severity": "high",
+      "summary": "Canonical source linkage is missing for one or more source kinds.",
+      "details": [
+        {
+          "sourceKind": "chat",
+          "missingSourceRecord": 14
+        },
+        {
+          "sourceKind": "schedule",
+          "missingSourceRecord": 201
+        }
+      ]
+    },
+    {
+      "code": "invalid_chat_linkage",
+      "severity": "high",
+      "summary": "Chat-origin events are missing required chat linkage fields.",
+      "details": {
+        "invalidChatLinkage": 14
+      }
+    },
+    {
+      "code": "meeting_action_count_mismatch",
+      "severity": "medium",
+      "summary": "Meeting note action counts differ from canonical ledger counts.",
+      "details": {
+        "mismatchCount": 5
+      }
+    }
+  ],
+  "followUpActions": [
+    "Triage anomaly list with owner assignments before scheduling any destructive schema steps.",
+    "Capture remediation status and rerun rehearsal to confirm anomaly closure."
+  ],
+  "signOff": {
+    "engineer": "Fergus",
+    "reviewer": "Fergus-temp",
+    "status": "execute-requested",
+    "notes": "Baseline timestamp: 2026-03-30T16:34:27.349Z"
+  }
+}

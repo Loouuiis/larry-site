@@ -3,7 +3,7 @@
 - Date (UTC): `2026-03-29`
 - Environment: `railway-prod`
 - Tenant: `11111111-1111-4111-8111-111111111111`
-- Slice: `J2b-2a` baseline with `J2b-2b` pre-check sign-off + `J2b-2e` live-window rerun update (no destructive migration execution)
+- Slice: `J2b-2a` baseline with `J2b-2b` pre-check sign-off + `J2b-2e` blocked attempt + `2026-03-30` post-parity rebaseline/execution closure
 - Baseline recheck timestamp (UTC): `2026-03-29T22:25:35.771Z`
 
 ## Evidence References
@@ -29,14 +29,22 @@
   - API (`larry-site`) deployment `65d6d39d-a2d2-4589-86f7-3c6d7d23030a` (`SUCCESS`)
   - Worker (`diplomatic-vitality`) deployment `8fd8b154-c912-4f5f-8f07-55222b4637f0` (`SUCCESS`)
   - `LARRY_ALLOW_PHASE27_DESTRUCTIVE_RETIREMENT` unset on both services.
+- Post-parity closure deployments:
+  - API (`larry-site`) deployment `0bf692df-2f4c-4a5a-a720-e6b883d68d89` (`SUCCESS`)
+  - Worker (`diplomatic-vitality`) deployment `4e8a8540-2935-41e5-9f3f-c0429b764fbc` (`SUCCESS`)
+- Post-parity baseline + window artifacts:
+  - Baseline timestamp: `2026-03-30T16:34:27.349Z`
+  - `plans/phase-2.7-artifacts/2026-03-30T16-34-41-750Z__railway-prod__phase-2-7-retirement-window-precheck__11111111.{json,md}` (`final_decision=precheck_passed`)
+  - `plans/phase-2.7-artifacts/2026-03-30T16-34-52-288Z__railway-prod__phase-2-7-retirement-window-execute-precheck__11111111.{json,md}`
+  - `plans/phase-2.7-artifacts/2026-03-30T16-34-52-288Z__railway-prod__phase-2-7-retirement-window-execute__11111111.{json,md}` (`final_decision=executed`, `destructive_sql_executed=yes`)
 
 ## Anomaly Triage Matrix
 
 | Anomaly code | Severity | Current count | Rationale | Decision | Owner | Reviewer | Due date (UTC) | Approval status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `missing_source_record_links` | high | `chat=14`, `schedule=194` (`total=208`) | Historical chat cohort remains unchanged, but schedule-origin missing source-record rows increased by `+49` vs baseline during J2b-2e window rerun. | Waive pre-baseline rows only; block while post-baseline growth remains unresolved. | `Fergus` | `Fergus (temporary)` | `2026-03-31` | `blocked (growth-gate delta detected in J2b-2e)` |
-| `invalid_chat_linkage` | high | `14` | Same historical chat-origin cohort as missing source-record links; rows remain unchanged at J2b-2e rerun. | Waive existing rows; block on any post-baseline growth. | `Fergus` | `Fergus (temporary)` | `2026-03-31` | `blocked (global gate still blocked by schedule growth/FK mismatch)` |
-| `meeting_action_count_mismatch` | medium | `5` | Legacy meeting notes with non-zero `action_count` and zero canonical meeting-linked events; unchanged at J2b-2e rerun. | Waive existing rows for retirement gate; track optional reconciliation separately. | `Fergus` | `Fergus (temporary)` | `2026-03-31` | `blocked (global gate still blocked by schedule growth/FK mismatch)` |
+| `missing_source_record_links` | high | `chat=14`, `schedule=201` (`total=215`) | Historical cohorts remain present; post-parity rebaseline (`2026-03-30T16:34:27.349Z`) produced zero growth-gate deltas and execute completed. | Waive historical rows; monitor separately from retirement window gating. | `Fergus` | `Fergus-temp` | `2026-03-31` | `approved (post-parity growth gate passed)` |
+| `invalid_chat_linkage` | high | `14` | Historical chat-origin cohort remains unchanged through execute-precheck run. | Waive existing rows; track cleanup separately. | `Fergus` | `Fergus-temp` | `2026-03-31` | `approved` |
+| `meeting_action_count_mismatch` | medium | `5` | Legacy meeting note mismatches unchanged through execute-precheck run. | Waive existing rows for retirement gate; track optional reconciliation separately. | `Fergus` | `Fergus-temp` | `2026-03-31` | `approved` |
 
 ## Explicit Waiver Rule (Gate Policy)
 
@@ -57,6 +65,13 @@ J2b-2e update:
   - `new_schedule_missing_source_record = 49`
   - `new_invalid_chat_linkage = 0`
 - Execute-mode runner attempt also returned `blocked`; no destructive SQL was executed.
+
+Post-parity closure update (`2026-03-30`):
+
+- Rebaseline timestamp reset to `2026-03-30T16:34:27.349Z` immediately after parity verification.
+- Precheck returned `final_decision=precheck_passed` with growth-gate deltas all `0`.
+- Execute returned `final_decision=executed`, `destructive_sql_executed=yes`.
+- Postcheck confirmed A/B/C dependencies detached and D/E legacy target tables retired.
 
 ## Growth-Gate Query (Pre-Window)
 
@@ -85,6 +100,6 @@ Expected pass condition: all returned values are `0`.
 - Engineer: `Fergus`
 - Reviewer: `Fergus (temporary)`
 - Rollback owner: `Fergus`
-- Decision (`approved`/`blocked`): `blocked`
-- Decision timestamp (UTC): `2026-03-30T15:15:30.000Z`
-- Notes: `J2b-2e deploy-safe sync landed and in-window runner was executed in both precheck and execute modes. Both runs blocked with no destructive SQL due growth-gate regression (new schedule missing source-record rows=49) and FK baseline mismatch; decision remains blocked pending remediation/re-baseline + gate policy alignment.`
+- Decision (`approved`/`blocked`): `approved`
+- Decision timestamp (UTC): `2026-03-30T16:35:30.000Z`
+- Notes: `Post-parity baseline reset and in-window runner completed successfully (precheck_passed -> executed). FK detached state accepted by policy, growth-gate deltas were zero for the new baseline, and destructive retirement stages completed with passing postcheck.`

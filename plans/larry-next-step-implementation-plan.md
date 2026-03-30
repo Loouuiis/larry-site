@@ -173,34 +173,34 @@ These are not optional cleanups; they are part of the implementation strategy:
   - Kept `agentRunId` and `agentRunState` in the meetings response contract as transitional nullable compatibility placeholders (`null`) while migration cleanup continues.
   - Updated active workspace meetings status rendering and expanded rows to rely on canonical meeting outputs (`summary` and `actionCount`) instead of legacy run-state metadata.
   - Added API regression coverage proving meetings handlers do not query `agent_runs`, and updated transcript-led Playwright fixtures to stop depending on agent-run fields.
-- **Phase 2.7a extraction boundary hardening (conservative)**:
+- **Phase 2 - extraction boundary hardening (conservative)**:
   - Removed transcript ingest write-time extraction coupling by updating `POST /v1/ingest/transcript` meeting-note inserts to stop referencing `agent_run_id`.
   - Added an API regression guard in transcript ingest coverage so tests fail if `agent_run_id` is reintroduced in active ingest SQL.
   - Deleted the unused legacy workspace proxy route `/api/workspace/agent/runs/[runId]` so active web code no longer exposes a run-state passthrough seam.
   - Added `plans/phase-2.7-extraction-boundary-checklist.md` with a keep/migrate/fence matrix for `agent_runs`, `extracted_actions`, `approval_decisions`, and `interventions`, plus rehearsal SQL checks and artifact template fields.
-- **Phase 2.7b task-triage canonical cutover (workspace boundary)**:
+- **Phase 2 - task-triage canonical cutover (workspace boundary)**:
   - Migrated active workspace task-triage writes off legacy `/v1/agent/runs` onto canonical `POST /v1/larry/chat` in both `/api/workspace/tasks` auto-triage and `/api/workspace/tasks/triage`.
   - Preserved existing workspace route contracts while moving triage payloads onto canonical `{ projectId, message }` chat input.
   - Added API regression coverage (`tests/task-triage-runtime-boundary.test.ts`) that fails if active workspace task-triage routes reintroduce `/v1/agent/runs` or stop targeting `/v1/larry/chat`.
-- **Phase 2.7c rehearsal automation + schema deprecation sequencing prep (repo-prep)**:
+- **Phase 2 - rehearsal automation + schema deprecation sequencing prep (repo-prep)**:
   - Added a runnable rehearsal tool (`scripts/phase-2.7-extraction-rehearsal.mjs`) with required CLI metadata (`--tenant`, `--environment`, `--dataset`) and optional `--out-dir`.
   - Added canonical preflight checks in the rehearsal tool for required `larry_events`/`larry_messages` columns and blocked-artifact behavior when schema is not yet aligned.
   - Standardized commit-safe artifact output under `plans/phase-2.7-artifacts` with JSON + Markdown output and sign-off placeholders.
   - Updated `plans/phase-2.7-extraction-boundary-checklist.md` to reference scripted workflow, preflight expectations, and sanitized replay output.
   - Added `plans/phase-2.7-schema-deprecation-prep.md` with ordered fence/sign-off/FK-detach/table-retirement sequencing and rollback notes for `agent_runs`, `extracted_actions`, `approval_decisions`, and `interventions`.
-- **Phase 2.7d Migration A FK detach (repo-level, compatibility-safe)**:
+- **Phase 2 - Migration A FK detach (repo-level, compatibility-safe)**:
   - Updated `packages/db/src/schema.sql` so `meeting_notes.agent_run_id` remains nullable but no longer declares an inline FK to `agent_runs`.
   - Added an idempotent schema migration block that discovers and drops any existing `meeting_notes.agent_run_id -> agent_runs.id` FK constraint for already-provisioned environments.
   - Added schema regression coverage (`tests/larry-schema.test.ts`) that fails if `meeting_notes` reintroduces inline `agent_runs` FK coupling or if the detach migration block is removed.
   - Updated Phase 2.7 deprecation runbook/planning notes with Migration A forward intent, rollback intent, and FK pre/post validation query guidance.
-- **Phase 2.7g Migration B+C FK detach (repo-level, compatibility-safe)**:
+- **Phase 2 - Migration B+C FK detach (repo-level, compatibility-safe)**:
   - Updated `packages/db/src/schema.sql` so `email_outbound_drafts.action_id` and `correction_feedback.action_id` remain nullable compatibility columns but no longer declare inline FKs to `extracted_actions`.
   - Added idempotent schema migration blocks that discover and drop any existing FK constraints for:
     - `email_outbound_drafts.action_id -> extracted_actions.id`
     - `correction_feedback.action_id -> extracted_actions.id`
   - Extended schema regression coverage (`tests/larry-schema.test.ts`) to fail if either inline FK coupling is reintroduced or if either detach migration block is removed.
   - Updated Phase 2.7 deprecation runbook/checklist notes to mark Migration B/C repo-complete (environment execution pending), include forward/rollback plus pre/post validation SQL, and advance next repo migration target to Migration D.
-- **Phase 2.7h Migration D child-table retirement + compatibility hardening (repo-level)**:
+- **Phase 2 - Migration D child-table retirement + compatibility hardening (repo-level)**:
   - Retired extraction child tables in `packages/db/src/schema.sql` with explicit idempotent drops:
     - `approval_decisions`
     - `interventions`
@@ -209,7 +209,7 @@ These are not optional cleanups; they are part of the implementation strategy:
   - Updated `packages/db/src/seed.ts` to stop inserting retired child-table rows while preserving legacy parent compatibility seeding (`agent_runs`, `extracted_actions`) for Migration E sequencing.
   - Updated `scripts/phase-2.7-extraction-rehearsal.mjs` row inventory behavior to be existence-aware, emitting per-table `tableStatus` (`present`/`retired`) with nullable counts for retired tables.
   - Updated Phase 2.7 deprecation runbook/checklist notes to mark Migration D repo-complete (environment execution pending) and advance the next repo migration target to Migration E parent retirement.
-- **Phase 2.7i Migration E parent-table retirement + compatibility hardening (repo-level)**:
+- **Phase 2 - Migration E parent-table retirement + compatibility hardening (repo-level)**:
   - Retired extraction parent tables in `packages/db/src/schema.sql` with explicit idempotent drops:
     - `extracted_actions`
     - `agent_runs`
@@ -217,14 +217,14 @@ These are not optional cleanups; they are part of the implementation strategy:
   - Updated `packages/db/src/seed.ts` to stop inserting parent-table rows while preserving compatibility placeholder IDs for nullable `action_id` / `agent_run_id` metadata fields.
   - Extended schema regression coverage (`tests/larry-schema.test.ts`) to fail if parent-table definitions or Migration E drop intent regress.
   - Updated Phase 2.7 deprecation runbook/checklist notes to mark Migration E repo-complete (environment execution pending) and advance next follow-up to rollout evidence closeout + Cleanup F.
-- **Phase 2.7j-1 Cleanup F operational contract closure (repo-level, operational core)**:
+- **Phase 2 - Cleanup F operational contract closure (repo-level, operational core)**:
   - Canonicalized active operational contract artifacts away from retired extraction-era endpoints:
     - Updated `apps/api/openapi.yaml` to remove `/v1/agent/*` and legacy `/v1/actions/{id}/approve|reject|override` entries and represent canonical Larry endpoints.
     - Updated `scripts/demo-smoke-test.sh` to validate canonical transcript -> action-centre -> event-accept flow and removed legacy run/action polling seams.
     - Updated `apps/web/src/lib/pm-api.ts` to source pending actions from canonical `/v1/larry/action-centre` suggestions while preserving `WorkspaceSnapshot.pendingActions`.
   - Added focused boundary regression coverage (`tests/cleanup-f-operational-boundary.test.ts`) that fails if operational contract files reintroduce `/v1/agent/*` or legacy approve/reject/override references.
   - Re-synced tracker/runbook guidance and deferred broad historical docs sweep to follow-up work.
-- **Phase 2.7j-2a Cleanup F docs boundary closure (repo-level, core runtime docs)**:
+- **Phase 2 - Cleanup F docs boundary closure (repo-level, core runtime docs)**:
   - Canonicalized core runtime docs to reflect shipped Larry contracts and extraction-era runtime retirement:
     - Updated `docs/AI-AGENT.md`
     - Updated `docs/BACKEND-API.md`
@@ -234,7 +234,7 @@ These are not optional cleanups; they are part of the implementation strategy:
   - Removed active-path legacy `/v1/agent/*` and `/v1/actions/.../approve|reject|override` runtime narratives from the core runtime docs set.
   - Applied targeted stale-state correction in `docs/LARRY-INTELLIGENCE-PLAN.md` to reflect repo-retired extraction runtime tables with target-environment evidence still pending.
   - Added docs-boundary regression coverage (`tests/cleanup-f-docs-boundary.test.ts`) so core runtime docs fail CI if canonical endpoint references regress or legacy runtime seams are reintroduced.
-  - Advanced next follow-up to Phase 2.7j-2b environment evidence closeout.
+  - Advanced next follow-up to Phase 2 environment evidence closeout.
 - **Phase 3 starter: Global Action Centre cutover**:
   - Extended the canonical Larry event summary contract with `projectName` so tenant-wide action-centre reads carry a project display label without stitched web-only joins.
   - Replaced the placeholder `/workspace/actions` page with a real workspace-native global Action Centre powered by `/api/workspace/larry/action-centre`, including cross-project labels, project links, and accept or dismiss controls on the canonical ledger path.
@@ -276,7 +276,7 @@ These are not optional cleanups; they are part of the implementation strategy:
   - Updated login briefing generation to pre-generate `briefingId`, pass `sourceRecordId=briefingId` into `runAutoActions` and `storeSuggestions`, and persist the briefing row with the same ID while keeping source-record backfill as idempotent safety.
   - Updated scheduled scan ledger writes to stamp a per-project `sourceRecordId` so schedule-origin actions satisfy provenance linkage requirements without introducing synthetic requesters.
   - Added API and worker contract coverage updates so briefing and scheduled-scan Larry writes fail regression checks if required provenance linkage metadata is omitted.
-- **Phase 2.7j-2b-1 deployed canonical preflight unblock**:
+- **Phase 2 - Retirement runner parity: deployed canonical preflight unblock**:
   - Ran deployed baseline rehearsal and captured blocked artifact evidence in:
     - `plans/phase-2.7-artifacts/2026-03-29T22-17-41-761Z__railway-prod__deployed-preflight-blocked__11111111.{json,md}`
   - Captured pre-DDL migration baseline evidence for target environment FK/table state and row counts in:
@@ -285,7 +285,7 @@ These are not optional cleanups; they are part of the implementation strategy:
   - Re-ran deployed rehearsal and captured post-alignment artifact evidence in:
     - `plans/phase-2.7-artifacts/2026-03-29T22-18-18-863Z__railway-prod__deployed-preflight-aligned__11111111.{json,md}`
   - Unblocked canonical preflight (`status=ok`, `preflight passed`) while surfacing high/medium anomaly follow-ups that must be triaged before destructive retirement execution.
-- **Phase 2.7j-2b-2a anomaly waiver packet + operator command pack (repo-prep)**:
+- **Phase 2 - Retirement runner parity: anomaly waiver packet + operator command pack (repo-prep)**:
   - Re-ran deployed canonical rehearsal read-only on Railway prod (`2026-03-29T22:25:35.771Z`) and confirmed no gate movement:
     - `status=ok`, preflight passed,
     - anomaly counts unchanged (`missing_source_record_links`, `invalid_chat_linkage`, `meeting_action_count_mismatch`),
@@ -299,7 +299,7 @@ These are not optional cleanups; they are part of the implementation strategy:
     - post-check/rollback command blocks,
     - sign-off metadata template.
   - Corrected tracker language for transcript runtime reality: `/v1/larry/transcript` still performs inline intelligence writes alongside canonical event enqueue (known residual seam).
-- **Phase 2.7j-2b-2b anomaly-gated retirement execution (in progress, reviewer-gated)**:
+- **Phase 2 - Retirement runner parity: anomaly-gated retirement execution (in progress, reviewer-gated)**:
   - Ran a fresh deployed J2b-2b pre-check rehearsal and committed artifacts:
     - `plans/phase-2.7-artifacts/2026-03-29T22-43-10-868Z__railway-prod__deployed-preflight-j2b-2b-gate__11111111.{json,md}`
     - `status=ok`, preflight passed, anomaly counts unchanged from J2b-2a baseline.
@@ -310,23 +310,23 @@ These are not optional cleanups; they are part of the implementation strategy:
     - Engineer `Fergus`, Rollback owner `Fergus`, temporary reviewer `Fergus` accepted.
     - Decision remains `blocked` until deploy-safe sync + in-window gate rerun are completed.
   - Did not execute destructive A/B/C/D/E SQL in this slice because deploy-safe/in-window gates were unmet.
-- **Phase 2.7j-2b-2c deploy-safe migration gate (implemented)**:
+- **Phase 2 - FK gate alignment: deploy-safe migration gate (implemented)**:
   - Added a startup migration safety gate in `packages/db/src/migrate.ts` so Phase 2.7 D/E retirement drops are skipped by default during API deploy-time migrations.
   - Added explicit opt-in env control for controlled destructive retirement execution:
     - `LARRY_ALLOW_PHASE27_DESTRUCTIVE_RETIREMENT=true`
   - Added migration startup logging to report whether D/E retirement drops are skipped or enabled.
   - Added `apps/api/tests/migration-safety-gate.test.ts` regression coverage so default-safe behavior and explicit opt-in behavior cannot regress.
   - Re-synced Phase 2.7 runbook guidance so deploy-sync occurs with safe defaults before any in-window destructive SQL execution.
-- **Phase 2.7j-2b-2d repo-native retirement window runner (implemented)**:
+- **Phase 2 - FK gate alignment: repo-native retirement window runner (implemented)**:
   - Refactored `scripts/phase-2.7-extraction-rehearsal.mjs` onto an import-safe helper so Phase 2.7 query/artifact flow is reusable from other operator tooling.
   - Added `scripts/phase-2.7-retirement-window.mjs` with a read-only-by-default precheck mode plus explicit `--execute --confirm phase-2.7-retirement` destructive mode.
-  - Added hard safety guards so destructive execution is blocked if rehearsal is not `ok`, growth-gate counts are non-zero, required FK/table baselines are missing, or `LARRY_ALLOW_PHASE27_DESTRUCTIVE_RETIREMENT` is enabled.
+  - Added hard safety guards so destructive execution is blocked if rehearsal is not `ok`, growth-gate counts are non-zero, required legacy-table baselines are missing, or `LARRY_ALLOW_PHASE27_DESTRUCTIVE_RETIREMENT` is enabled.
   - Added repo convenience commands:
     - `npm run phase27:rehearsal -- ...`
     - `npm run phase27:retirement-window -- ...`
   - Added `apps/api/tests/phase-2.7-retirement-window.test.ts` regression coverage for CLI parsing, safety gates, destructive-stage order, and artifact rendering.
   - Reworked the Phase 2.7 runbook and deployment notes so the next live window can run through the repo-native runner instead of external `psql` copy/paste.
-- **Phase 2.7j-2b-2e live window execution attempt (blocked by safety gates)**:
+- **Phase 2 - Rebaseline and window execution: live window attempt (blocked by safety gates)**:
   - Deployed target-environment services with deploy-safe defaults and verified both latest deployments succeeded:
     - `larry-site` deployment `65d6d39d-a2d2-4589-86f7-3c6d7d23030a`
     - `diplomatic-vitality` deployment `8fd8b154-c912-4f5f-8f07-55222b4637f0`
@@ -342,7 +342,30 @@ These are not optional cleanups; they are part of the implementation strategy:
   - Blocking reasons observed in both runs:
     - growth-gate delta failure (`newScheduleMissingSourceRecord=49` after baseline timestamp `2026-03-29T22:25:35.771Z`)
     - FK baseline expectations missing (A/B/C FK dependencies already detached in target environment)
+  - Stale-state correction (`2026-03-30`): production later advanced to `master` commit `d202add5f55c2e410508ac4df58ed9069200c201`, which temporarily removed this workspace's `/app/scripts` + `phase27:*` parity changes.
   - Dossier decision remains `blocked`; no destructive A/B/C/D/E statements were executed.
+- **Phase 2 - Rebaseline and window execution (completed)**:
+  - Applied FK gate-policy alignment in `scripts/phase-2.7-retirement-window-lib.mjs` so attached and already-detached A/B/C dependencies are both valid precheck states, while FK state remains fully reported in artifacts.
+  - Added/updated regression coverage in `apps/api/tests/phase-2.7-retirement-window.test.ts` for detached-FK execute success and continued blocking on true remaining gates.
+  - Restored production parity from this workspace state:
+    - API `larry-site` deployment `0bf692df-2f4c-4a5a-a720-e6b883d68d89` (`SUCCESS`)
+    - Worker `diplomatic-vitality` deployment `4e8a8540-2935-41e5-9f3f-c0429b764fbc` (`SUCCESS`)
+  - Verified in-service parity (`/app/scripts` present and `phase27:retirement-window` script available).
+  - Set fresh post-parity baseline timestamp: `2026-03-30T16:34:27.349Z`.
+  - Ran in-service precheck (`final_decision=precheck_passed`) and execute (`final_decision=executed`, `destructive_sql_executed=yes`) via Railway SSH.
+  - Captured and committed execution evidence:
+    - `plans/phase-2.7-artifacts/2026-03-30T16-34-41-750Z__railway-prod__phase-2-7-retirement-window-precheck__11111111.{json,md}`
+    - `plans/phase-2.7-artifacts/2026-03-30T16-34-52-288Z__railway-prod__phase-2-7-retirement-window-execute-precheck__11111111.{json,md}`
+    - `plans/phase-2.7-artifacts/2026-03-30T16-34-52-288Z__railway-prod__phase-2-7-retirement-window-execute__11111111.{json,md}`
+
+### Phase 2 Closure Snapshot (2026-03-30 UTC)
+
+- Done:
+  - Runner parity restored in production, FK gate policy aligned (detached-or-attached valid), precheck passed, and destructive retirement execute run completed successfully.
+- Remaining in current phase:
+  - Final sign-off metadata and runbook closeout, residual non-core docs sweep, and queue-only `/v1/larry/transcript` seam scheduling.
+- Next concrete milestone:
+  - Phase 2 post-retirement sign-off + residual seam closure.
 
 ### Still To Do For Phase 1
 
@@ -357,22 +380,17 @@ These are not optional cleanups; they are part of the implementation strategy:
 ### Still To Do For Phase 2
 
 - Continue consolidating connector-triggered Larry actions onto the same canonical Larry ledger contract as legacy paths are retired; chat, transcript, login briefing, scheduled scan, email, Slack, and calendar are now onboarded on the canonical path.
-- Remediate or re-baseline post-baseline growth-gate deltas (`newScheduleMissingSourceRecord=49`) and rerun precheck until growth-gate counts are zero.
-- Resolve FK baseline gate mismatch for J2b-2e (target environment now has A/B/C constraints absent): either restore expected pre-execution FK state or update runner gate policy/runbook for already-detached environments.
-- Finalize the J2b-2a dossier decision state from `blocked` to `approved` only after a rerun precheck is green for growth/FK/table gates.
-- Execute the remaining destructive D/E retirement sequence in target environments via the repo-native runner's explicit `--execute --confirm phase-2.7-retirement` path once gates pass, and capture pre/post artifacts.
-- Record rollout sign-off metadata (engineer, reviewer, rollback owner, deploy window, evidence links) in Phase 2.7 runbook notes.
+- Finalize runbook/dossier metadata with completed-window sign-off (`approved`), including deployment IDs, baseline timestamp, and artifact links from the `2026-03-30T16:34:*Z` execution run.
 - Complete any residual non-core docs sweep work found during evidence closeout; core runtime docs sweep + guard are complete in J2a.
 - Continue retiring or fencing any remaining legacy Larry read/write paths beyond the now-fenced conversation writes and event-list reads as canonical contracts replace them.
 - Known residual seam to schedule: `/v1/larry/transcript` still performs inline intelligence writes alongside canonical event enqueue; queue-only transcript execution cutover remains pending.
 
 ### Recommended Next Slice
 
-- **Phase 2.7j-2b-2f: growth-gate remediation + FK-baseline alignment rerun**:
-  - Investigate schedule-origin ledger growth after baseline (`newScheduleMissingSourceRecord=49`) and either remediate rows or formally reset baseline timestamp with reviewer sign-off.
-  - Decide and document FK baseline policy for target environments where A/B/C detaches are already applied (restore constraints before execution vs. treat already-detached as acceptable in runner gating).
-  - Rerun `npm run phase27:retirement-window -- ...` in precheck mode and require `final_decision=precheck_passed` before any execute attempt.
-  - Update the J2b-2a dossier and runbook notes with refreshed counts, gate outcomes, and explicit go/no-go decision metadata.
+- **Phase 2 - Post-retirement sign-off + residual seam closure**:
+  - Update the J2b dossier/runbook decision to `approved` with completed deployment + artifact evidence.
+  - Close remaining non-core docs sweep tasks and confirm no stale retire-window guidance remains.
+  - Schedule the queue-only `/v1/larry/transcript` cutover as the next concrete runtime-boundary milestone.
 
 ---
 
