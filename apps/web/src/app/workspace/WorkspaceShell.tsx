@@ -32,6 +32,7 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
   const [meetingBusy, setMeetingBusy] = useState(false);
   const [notifCount, setNotifCount] = useState(0);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const projectIdFromPath = pathname?.match(/^\/workspace\/projects\/([^/]+)/)?.[1] ?? "";
 
@@ -120,6 +121,8 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
           onMobileClose={() => setMobileOpen(false)}
           userEmail={userEmail}
           notifCount={notifCount}
+          collapsed={sidebarCollapsed}
+          onToggleCollapsed={() => setSidebarCollapsed((v) => !v)}
         />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <WorkspaceTopBar
