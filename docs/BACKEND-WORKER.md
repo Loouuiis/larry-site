@@ -15,6 +15,8 @@ BullMQ worker at `apps/worker/src/worker.ts`. Queue name: `larry-events`.
 
 ## Canonical Event Processing
 
+`POST /v1/larry/transcript` is queue-only on the API path; transcript intelligence and Larry event writes execute only in worker `canonical_event.created`.
+
 For each `canonical_event.created` job in `apps/worker/src/canonical-event.ts`:
 1. Load canonical event row.
 2. Resolve project scope from payload/mappings.

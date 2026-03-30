@@ -151,7 +151,7 @@ These are not optional cleanups; they are part of the implementation strategy:
   - Added active worker handling for `canonical_event.created` so transcript jobs load the canonical event, resolve project scope, run intelligence once, write the meeting summary, create source-linked `larry_events`, and reconcile `meeting_notes.action_count`.
   - Added replay safety for transcript-driven event creation by querying existing meeting-linked `larry_events` before generating actions and by indexing `(tenant_id, source_kind, source_record_id)` on the canonical ledger.
   - Extended non-chat `LarryEventContext` usage so login briefings stamp `requestedByUserId`, `sourceKind='briefing'`, and `sourceRecordId=briefingId`, while scheduled scans stamp `sourceKind='schedule'`.
-  - Updated active transcript entry points to return queued-style UX while preserving transitional inline intelligence writes in `/v1/larry/transcript`; full queue-only transcript execution remains a deferred seam.
+  - Completed queue-only transcript runtime closure: `/v1/larry/transcript` now performs canonical enqueue + meeting-note linkage only, and transcript intelligence/action writes execute solely through worker `canonical_event.created`.
   - Added API, worker, and Playwright coverage for transcript ingest, briefing attribution, transcript replay safety, scheduled scan stability, and meeting-led Action Centre provenance.
 - **Phase 2.3 intake chat-write migration boundary closure**:
   - Retired `saveLarryMessage` and ad hoc conversation writes in active `/workspace/projects/new` chat intake and legacy `StartProjectFlow` chat intake.
@@ -362,10 +362,14 @@ These are not optional cleanups; they are part of the implementation strategy:
 
 - Done:
   - Runner parity restored in production, FK gate policy aligned (detached-or-attached valid), precheck passed, and destructive retirement execute run completed successfully.
+  - Phase 2 - Post-retirement sign-off + residual seam closure completed:
+    - queue-only `/v1/larry/transcript` cutover shipped,
+    - runtime docs/runbook guidance updated to closure state,
+    - transcript execution path now canonical-worker-only.
 - Remaining in current phase:
-  - Final sign-off metadata and runbook closeout, residual non-core docs sweep, and queue-only `/v1/larry/transcript` seam scheduling.
+  - Residual non-core docs sweep and final legacy Larry runtime boundary fence verification.
 - Next concrete milestone:
-  - Phase 2 post-retirement sign-off + residual seam closure.
+  - Phase 2 - Legacy Larry runtime boundary final fence sweep.
 
 ### Still To Do For Phase 1
 
@@ -380,17 +384,15 @@ These are not optional cleanups; they are part of the implementation strategy:
 ### Still To Do For Phase 2
 
 - Continue consolidating connector-triggered Larry actions onto the same canonical Larry ledger contract as legacy paths are retired; chat, transcript, login briefing, scheduled scan, email, Slack, and calendar are now onboarded on the canonical path.
-- Finalize runbook/dossier metadata with completed-window sign-off (`approved`), including deployment IDs, baseline timestamp, and artifact links from the `2026-03-30T16:34:*Z` execution run.
 - Complete any residual non-core docs sweep work found during evidence closeout; core runtime docs sweep + guard are complete in J2a.
 - Continue retiring or fencing any remaining legacy Larry read/write paths beyond the now-fenced conversation writes and event-list reads as canonical contracts replace them.
-- Known residual seam to schedule: `/v1/larry/transcript` still performs inline intelligence writes alongside canonical event enqueue; queue-only transcript execution cutover remains pending.
 
 ### Recommended Next Slice
 
-- **Phase 2 - Post-retirement sign-off + residual seam closure**:
-  - Update the J2b dossier/runbook decision to `approved` with completed deployment + artifact evidence.
+- **Phase 2 - Legacy Larry runtime boundary final fence sweep**:
+  - Verify no active runtime write/read paths bypass canonical Larry contracts.
   - Close remaining non-core docs sweep tasks and confirm no stale retire-window guidance remains.
-  - Schedule the queue-only `/v1/larry/transcript` cutover as the next concrete runtime-boundary milestone.
+  - Keep regression gates green for migration safety and retirement-window tooling while fencing any residual legacy seams.
 
 ---
 

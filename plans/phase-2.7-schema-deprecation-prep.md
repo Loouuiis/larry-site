@@ -11,7 +11,7 @@ Target legacy surfaces:
 - `approval_decisions`
 - `interventions`
 
-Migration A/B/C/D/E are now repo-complete. Target-environment execution remains gated by rehearsal sign-off and rollout window controls.
+Migration A/B/C/D/E are now repo-complete and target-environment complete, with executed-window evidence captured on `2026-03-30` in committed Phase 2.7 artifacts.
 
 ## Preconditions (Hard Gates)
 
@@ -67,7 +67,7 @@ Tenant: `11111111-1111-4111-8111-111111111111`
   - `status=ok`, canonical preflight passed, anomaly counts still unchanged (`chat=14`, `schedule=145`, `invalid_chat_linkage=14`, `meeting_action_count_mismatch=5`).
 - J2b-2a anomaly triage + waiver dossier:
   - `plans/phase-2.7-artifacts/2026-03-29__railway-prod__j2b-2a-anomaly-waiver-dossier.md`
-  - Updated sign-off fields: Engineer `Fergus`, Rollback owner `Fergus`, temporary reviewer `Fergus` accepted for sign-off metadata, Decision remains `blocked` pending deploy-safe sync + in-window pre-check rerun.
+  - Updated sign-off fields: Engineer `Fergus`, Rollback owner `Fergus`, temporary reviewer `Fergus` accepted for sign-off metadata; this initial `blocked` state is superseded by post-parity approved execution evidence below.
 - J2b-2b pre-check SQL evidence notes:
   - `plans/phase-2.7-artifacts/2026-03-29__railway-prod__j2b-2b-precheck-notes.md`
   - Growth-gate query deltas are all `0`; A/B/C FK dependencies and D/E tables still present as expected pre-execution.
@@ -104,7 +104,7 @@ Tenant: `11111111-1111-4111-8111-111111111111`
   - `destructive_sql_executed=yes`
   - Postcheck confirms no residual FK dependencies and all legacy target tables retired.
 
-Target-environment destructive retirement execution is complete for this phase. Remaining work is sign-off/documentation closeout and non-blocking anomaly follow-ups.
+Target-environment destructive retirement execution is complete for this phase. Remaining work is limited to non-schema runtime/doc boundary closure and non-blocking anomaly follow-ups.
 
 ## Current FK Dependency State
 

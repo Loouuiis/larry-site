@@ -17,6 +17,8 @@ vi.mock("@larry/db", async (importOriginal) => {
 
 vi.mock("../src/services/ingest/pipeline.js", () => ({
   ingestCanonicalEvent: vi.fn(),
+  insertCanonicalEventRecords: vi.fn(),
+  publishCanonicalEventCreated: vi.fn(),
 }));
 
 vi.mock("../src/lib/audit.js", () => ({
@@ -29,7 +31,10 @@ import type { ApiEnv } from "@larry/config";
 import type { Db } from "@larry/db";
 import { runIntelligence } from "@larry/ai";
 import { getProjectSnapshot, runAutoActions, storeSuggestions } from "@larry/db";
-import { ingestCanonicalEvent } from "../src/services/ingest/pipeline.js";
+import {
+  insertCanonicalEventRecords,
+  publishCanonicalEventCreated,
+} from "../src/services/ingest/pipeline.js";
 import { writeAuditLog } from "../src/lib/audit.js";
 import { ingestRoutes } from "../src/routes/v1/ingest.js";
 import { larryRoutes } from "../src/routes/v1/larry.js";
@@ -83,43 +88,27 @@ async function createTestApp(params: {
 describe("POST /v1/ingest/transcript", () => {
   it("forwards to /v1/larry/transcript and returns deprecation metadata", async () => {
     const db = {
-      queryTenant: vi.fn(async (_tenantId: string, sql: string) => {
-        if (sql.includes("INSERT INTO meeting_notes")) {
-          return [{ id: MEETING_NOTE_ID }];
-        }
-        return [];
+      queryTenant: vi.fn().mockResolvedValue([]),
+      tx: vi.fn(async (fn: (client: { query: (sql: string, values?: unknown[]) => Promise<{ rows: unknown[] }> }) => Promise<unknown>) => {
+        const client = {
+          query: vi.fn(async (sql: string) => {
+            if (sql.includes("INSERT INTO meeting_notes")) {
+              return { rows: [{ id: MEETING_NOTE_ID }] };
+            }
+            return { rows: [] };
+          }),
+        };
+        return fn(client);
       }),
     } as unknown as Db;
 
-    vi.mocked(ingestCanonicalEvent).mockResolvedValue({
+    vi.mocked(insertCanonicalEventRecords).mockResolvedValue({
       canonicalEventId: "canon-event-1",
       idempotencyKey: "idem-1",
+      source: "transcript",
+      eventType: "commitment",
     });
-    vi.mocked(getProjectSnapshot).mockResolvedValue({
-      project: {
-        id: PROJECT_ID,
-        tenantId: TENANT_ID,
-        name: "Test Project",
-        description: null,
-        status: "active",
-        riskScore: 0,
-        riskLevel: "low",
-        startDate: null,
-        targetDate: null,
-      },
-      tasks: [],
-      team: [],
-      recentActivity: [],
-      signals: [],
-      generatedAt: new Date().toISOString(),
-    });
-    vi.mocked(runIntelligence).mockResolvedValue({
-      briefing: "Processed transcript",
-      autoActions: [],
-      suggestedActions: [],
-    });
-    vi.mocked(runAutoActions).mockResolvedValue({ executedCount: 0, suggestedCount: 0, eventIds: [] });
-    vi.mocked(storeSuggestions).mockResolvedValue({ executedCount: 0, suggestedCount: 0, eventIds: [] });
+    vi.mocked(publishCanonicalEventCreated).mockResolvedValue(undefined);
 
     const app = await createTestApp({ db });
     appsToClose.push(app);
@@ -141,12 +130,19 @@ describe("POST /v1/ingest/transcript", () => {
     expect(body).toMatchObject({
       accepted: true,
       canonicalEventId: "canon-event-1",
+      idempotencyKey: "idem-1",
+      meetingNoteId: MEETING_NOTE_ID,
       deprecatedEndpoint: "/v1/ingest/transcript",
       replacementEndpoint: "/v1/larry/transcript",
     });
 
     expect(response.headers["x-larry-deprecated-endpoint"]).toBe("/v1/ingest/transcript");
-    expect(ingestCanonicalEvent).toHaveBeenCalled();
+    expect(insertCanonicalEventRecords).toHaveBeenCalled();
+    expect(publishCanonicalEventCreated).toHaveBeenCalled();
+    expect(getProjectSnapshot).not.toHaveBeenCalled();
+    expect(runIntelligence).not.toHaveBeenCalled();
+    expect(runAutoActions).not.toHaveBeenCalled();
+    expect(storeSuggestions).not.toHaveBeenCalled();
     expect(writeAuditLog).toHaveBeenCalledWith(
       db,
       expect.objectContaining({
