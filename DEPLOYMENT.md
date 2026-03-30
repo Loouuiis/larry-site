@@ -58,6 +58,7 @@ Services:
 | `JWT_REFRESH_SECRET` | Generated 32+ char secret (different) |
 | `CORS_ORIGINS` | `https://larry-pm.com` |
 | `OPENAI_API_KEY` | OpenAI key |
+| `LARRY_ALLOW_PHASE27_DESTRUCTIVE_RETIREMENT` | Leave unset or `false` for normal deploys; only set `true` for controlled Phase 2.7 retirement work |
 
 ### Worker Service Settings
 - **Dockerfile:** `apps/worker/Dockerfile`
@@ -80,6 +81,20 @@ Services:
 3. **API dist path** — TypeScript compiles to `dist/src/server.js` (not `dist/server.js`) due to `rootDir: "."` in tsconfig. Fixed start command accordingly
 4. **node_modules resolution** — Simplified both Dockerfiles from multi-stage to single-stage to avoid npm workspace hoisting issues
 5. **@fastify/rate-limit version** — Upgraded from `^9.1.0` (Fastify 4.x only) to `^10.0.0` (Fastify 5.x compatible). Root cause of final crash loop
+
+---
+
+## Phase 2.7 Ops Notes
+
+- API deploys should keep `LARRY_ALLOW_PHASE27_DESTRUCTIVE_RETIREMENT` unset or `false` so startup migrations do not perform Phase 2.7 D/E destructive drops.
+- The approved migration-window flow is repo-native and should run in-service:
+  - `npm run phase27:rehearsal -- ...`
+  - `npm run phase27:retirement-window -- ...`
+- The retirement-window runner is read-only by default and only executes A/B/C/D/E when both `--execute` and `--confirm phase-2.7-retirement` are provided.
+- The runner requires a target `DATABASE_URL`; it does not auto-load local app `.env` files for live-window execution.
+- `railway run` from local workstations is not valid for this workflow when `DATABASE_URL` resolves to `postgres.railway.internal`; use `railway ssh --service larry-site --environment production` and execute the runner inside `/app`.
+- API image includes repo `scripts/` so operators can run Phase 2.7 commands in-service via `railway ssh`.
+- Set a fresh `BASELINE_TIMESTAMP` immediately after deploy-parity verification, then run precheck and execute against that timestamp.
 
 ---
 

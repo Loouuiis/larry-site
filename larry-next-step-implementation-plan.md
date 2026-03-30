@@ -1,152 +1,666 @@
-# Larry Next Step Implementation Plan (Mirror)
+# Plan: Larry Next-Step Workspace Expansion
 
-Canonical tracker: `plans/larry-next-step-implementation-plan.md`.
-This root mirror is intentionally synchronized to avoid stale or conflicting next-slice guidance.
+> Source PRD: user report in thread on 2026-03-28
 
-## Source Of Truth Check (Repo vs Plan)
+## Current Repo Reality
 
-- `runIntelligence(...)` exists in `packages/ai/src/intelligence.ts`.
-- Executor functions (`runAutoActions`, `storeSuggestions`, `executeAction`) live in `packages/db/src/larry-executor.ts`.
-- Canonical Larry runtime endpoints are live (`/v1/larry/chat`, `/v1/larry/briefing`, `/v1/larry/action-centre`, `/v1/larry/events/:id/accept`, `/v1/larry/events/:id/dismiss`, `/v1/larry/transcript`).
-- Scheduled worker scan (`larry.scan`) is active.
-- Legacy parent extraction-era tables are retired in repo schema via Migration E (`DROP TABLE IF EXISTS extracted_actions; DROP TABLE IF EXISTS agent_runs;`).
-- Migration A/B/C/D/E repo-side deprecation work is complete; target-environment execution remains pending rehearsal/sign-off.
+- The repo is not starting from zero. It already has real project/task CRUD, per-project Larry chat, transcript ingest, calendar watch and webhook ingestion, email draft storage, and project analytics.
+- The repo is also carrying structural overlap that should be treated as foundation work, not tolerated as background debt:
+  - The active product lives under `/workspace`, but a legacy `/dashboard` route tree and older dashboard shell still exist in-repo.
+  - The active workspace intake now supports manual, chat, and meeting modes on `/workspace/projects/new`, but a legacy `StartProjectFlow` still exists in dashboard-era code.
+  - Legacy dashboard surfaces still rely on one broad `/api/workspace/snapshot` aggregator, even though the active `/workspace` route tree has already been moved onto scoped read models.
+  - Legacy parent extraction tables (`agent_runs`, `extracted_actions`) are now retired in repo via Migration E, while target-environment execution evidence is still pending rollout windows.
+  - The worker now processes `canonical_event.created` for transcript-led meeting flows plus login briefing, scheduled scan, email, Slack, and calendar connector flows; connector-heavy behavior still leans on scheduled scans as fallback and hygiene.
+  - The canonical Larry Action Centre contract already supports both project-scoped and tenant-wide reads, and the active global `/workspace/actions` page now renders cross-project ledger entries with project display labels.
+  - Policy and ambiguity logic exist in `packages/ai`, but the active Larry chat path mostly bypasses them in favor of direct intelligence plus immediate auto-execution.
+- Because of that, the correct strategy is **restructure first, then expand**. Adding features directly on top of the current overlap would make the product harder to reason about, harder to delegate, and harder to stabilize.
 
-## Phase Status
+## Architectural Decisions
 
-- Phase 1 workspace cutover: largely complete, with residual legacy dashboard cleanup still pending.
-- Phase 2 Larry runtime consolidation: in progress; canonical runtime is active and legacy schema retirement is in migration sequencing.
-- Phase 3 action-centre/event-driven provenance: active and broadly implemented.
+Durable decisions that apply across all phases:
 
-## Recent Phase 2.7 Slice Log
+- **Single workspace surface**: `/workspace` is the only active product route tree. Legacy `/dashboard` flows are retired or fenced off from production behavior. No new feature lands on the legacy shell.
+- **Single workspace data plane**: Replace the current catch-all snapshot dependency with scoped read models and server-first loaders. Pages may still aggregate multiple sources, but they should not depend on one kitchen-sink snapshot for unrelated concerns.
+- **Single Larry runtime**: Unify project chat, transcript intake, connector-triggered actions, scheduled scans, approvals, and execution around one canonical Larry runtime. Extend the current `larry_events`, `larry_conversations`, and `larry_messages` path and migrate away from the older extraction-led path for new behavior.
+- **Single execution state machine**: All Larry requests move through a consistent lifecycle:
+  - request or signal received
+  - clarify if ambiguous
+  - plan actions
+  - enrich actions with project context
+  - decide auto-execute vs approval
+  - execute or await confirmation
+  - audit and write project memory
+- **Frontend architecture**: Follow a server-first Next.js approach for workspace reads. Parallelize data fetching where possible, minimize repeated client waterfalls, and keep client state focused on interaction, not primary data orchestration.
+- **Event-driven processing first**: Connector and transcript events should drive updates directly. Scheduled scans remain as fallback hygiene and recovery, not the primary mutation path.
+- **Schema boundaries**:
+  - `project_members` (or equivalent) becomes the project-scoped collaboration model.
+  - `project_memory_entries` (or equivalent) becomes Larry's durable project memory.
+  - `documents` becomes a storage-backed asset model with task and project linkage, versions, and artifact metadata.
+  - `project_notes` stores shared and personal notes.
+  - `larry_events` becomes the canonical action ledger with provenance, authority, linked outputs, and conversation linkage.
+- **Source taxonomy**: Normalize task, action, document, note, and memory provenance to `meeting`, `direct_chat`, `slack`, `recommendation_review`, and `manual`, with linked source record IDs where possible.
+- **Authorization**: Tenant membership controls workspace access. Project membership controls project collaboration. Auto-execution additionally requires action policy eligibility and authority to perform the underlying mutation.
+- **Migration rule**: Every foundational phase must retire, gate, or deprecate the path it supersedes. No phase is allowed to merely add a second way of doing the same thing.
+- **Testing rule**: Every phase must ship one demoable end-to-end path across schema, API, UI, background processing, and tests.
 
-### Slice 2026-03-29-A to 2026-03-29-D (implemented)
+## Product Rules To Lock In
 
-- Canonicalized transcript endpoint to `POST /v1/larry/transcript`.
-- Kept `POST /v1/ingest/transcript` as deprecated compatibility shim.
-- Aligned docs and regression tests around canonical contracts.
-- Added Migration A repo-side FK detach for `meeting_notes.agent_run_id -> agent_runs.id`.
+These rules resolve ambiguity in the report and must be implemented consistently:
 
-### Slice 2026-03-29-G (implemented)
+- **Project dashboard contract**: Every project dashboard must expose three first-class, database-backed surfaces: project context, a dedicated Action Centre, and a project-specific Larry chat with expandable history.
+- **Chat attribution contract**: Every conversation turn and every resulting action must persist requester, actor, approver, execution mode, and linked action IDs so the UI can show what Larry created and by whom.
+- **Clarification-before-action contract**: Larry never executes on vague intent, conflicting instructions, missing required fields, or unclear project scope. In those cases, follow-up questions are mandatory.
+- **Low-risk auto-execution contract**: Auto-execution is allowed only when intent is unambiguous, required context is present, the action class is marked low risk, the acting user has authority, and the change is reversible or strongly audit-safe. Everything else requires user confirmation.
+- **Action enrichment contract**: Before creating or updating a task, document, calendar event, note, or communication draft, Larry enriches the plan with available project memory, linked meetings or chats, owners, dates, and related records. If required fields cannot be inferred safely, Larry asks for them.
+- **Source-tagging contract**: Tasks, actions, documents, notes, calendar-derived memory, and project memory entries all carry normalized source taxonomy and linked source record IDs where available.
+- **Capability envelope**: The canonical Larry runtime must support task management, email and letter drafting, document skeleton generation, calendar reads and writes, collaborator management, and note drafting as first-class action types rather than ad hoc one-off flows.
+- **Project mutation contract**: Larry must be able to create or update project-scoped tasks, collaborators, documents, notes, and calendar entries through one governed action system rather than separate bespoke paths.
 
-- Completed repo-side Migration B/C FK detach prep:
-  - `email_outbound_drafts.action_id` detached from inline `extracted_actions` FK (nullable compatibility column retained).
-  - `correction_feedback.action_id` detached from inline `extracted_actions` FK (nullable compatibility column retained).
-  - Added idempotent FK-drop migration blocks for both constraints in `packages/db/src/schema.sql`.
-- Extended schema regression coverage in `apps/api/tests/larry-schema.test.ts` so B/C FK coupling cannot be reintroduced.
-- Updated migration runbook and extraction boundary docs:
-  - Marked Migration B/C repo-complete (environment execution pending).
-  - Added forward/rollback plus pre/post FK validation SQL for B/C.
-  - Advanced next repo migration target to Migration D (child-table retirement).
+## Cross-Cutting Quality Gates
 
-### Slice 2026-03-29-H (implemented)
+- **Security**:
+  - Tenant and project authorization must be enforced on every read, mutation, draft, approval, and deletion path.
+  - Auto-execution must verify both policy eligibility and user authority for the underlying mutation.
+  - Connector and calendar integrations must use least-privilege scopes, verified webhooks, and auditable token handling.
+  - Documents and notes must respect project membership and personal-note visibility rules.
+  - Project deletion must support confirmation, audit, and a recoverable archive window before destructive cleanup where product policy allows it.
+- **Performance**:
+  - Workspace and project dashboards must load from scoped server-side reads, not repeated full snapshots.
+  - Action Centre, chat history, notes, and documents must be paginated or cursor-based rather than unbounded lists.
+  - Canonical Larry tables must be indexed for project, conversation, state, source, actor, and recency access patterns.
+  - Long-running side effects such as document generation, email drafting, and connector writes must execute asynchronously with visible progress states.
+  - UI refresh must use targeted invalidation or event updates, not whole-workspace polling after each mutation.
+- **Reliability**:
+  - Larry events and execution jobs must be idempotent and replay-safe.
+  - Event publication and mutation writes must stay consistent so the action ledger cannot drift from the underlying project state.
+  - Background jobs need retries, dead-letter handling, and operator-visible failure states.
+  - Destructive flows such as deletion, membership changes, and connector writes require explicit audit trails and compensating recovery paths where feasible.
+- **Testing And Release**:
+  - Every report requirement must map to an automated test path before launch.
+  - Policy, permissions, source-tagging, and attribution rules need unit and contract coverage.
+  - Project chat, action execution, collaboration, documents, calendar, global chat, and deletion need end-to-end coverage.
+  - Backfills and migrations must be rehearsed on production-like data before canonical cutover.
 
-- Completed repo-side Migration D child-table retirement:
-  - Retired `approval_decisions`, `interventions`, and `agent_run_transitions` from `packages/db/src/schema.sql` with idempotent drop statements.
-  - Removed retired child-table RLS/policy declarations and added schema regression coverage so Migration D retirement cannot regress.
-- Applied compatibility hardening to keep local workflows stable after Migration D:
-  - Updated `packages/db/src/seed.ts` to stop inserting retired child-table rows.
-  - Updated `scripts/phase-2.7-extraction-rehearsal.mjs` row inventory to be existence-aware (`tableStatus` + nullable `rowCount`).
-- Updated runbook/tracking docs to mark Migration D repo-complete and advance next repo migration target to Migration E.
+## Restructuring Mandates
 
-### Slice 2026-03-29-I (implemented)
+These are not optional cleanups; they are part of the implementation strategy:
 
-- Completed repo-side Migration E parent-table retirement:
-  - Retired `extracted_actions` and `agent_runs` from `packages/db/src/schema.sql` with explicit idempotent drop statements.
-  - Removed retired parent-table baseline definitions plus associated RLS/policy declarations.
-- Applied compatibility hardening to keep local workflows stable after Migration E:
-  - Updated `packages/db/src/seed.ts` to stop inserting parent-table rows while preserving compatibility placeholder IDs for nullable `action_id` / `agent_run_id` metadata.
-  - Added schema regression coverage in `apps/api/tests/larry-schema.test.ts` so Migration E retirement cannot regress.
-- Updated runbook/tracking docs to mark Migration E repo-complete and advance next follow-up to rehearsal/evidence execution + Cleanup F.
+- Retire the legacy dashboard shell before broadening workspace behavior.
+- Break the web app's dependence on the broad snapshot endpoint for core product flows.
+- Unify Larry's runtime model before adding shared chat, project memory, or richer approvals.
+- Move from scan-led mutation to event-driven mutation before trusting connector-heavy behavior.
+- Remove dead or half-cut routes and proxies as the canonical flows replace them.
 
-### Slice 2026-03-29-J1 (implemented)
+## Requirement Coverage Matrix
 
-- Completed Cleanup F operational-core contract closure:
-  - Canonicalized `apps/api/openapi.yaml` away from retired `/v1/agent/*` and legacy `/v1/actions/{id}/approve|reject|override` entries.
-  - Reworked `scripts/demo-smoke-test.sh` to validate canonical transcript -> action-centre -> event-accept flow only.
-  - Updated `apps/web/src/lib/pm-api.ts` to source pending actions from canonical `/v1/larry/action-centre` suggestions while preserving `WorkspaceSnapshot.pendingActions`.
-- Added `apps/api/tests/cleanup-f-operational-boundary.test.ts` as a regression guard against reintroducing operational `/v1/agent/*` and legacy approve/reject/override seams.
-- Re-synced tracker/runbook guidance so next follow-up is rollout evidence closeout plus deferred broad docs sweep.
+| Report requirement | Planned phases | Non-negotiable implementation notes |
+| --- | --- | --- |
+| Larry retains context for each project | Phases 2, 4, 9 | Project memory must be durable, queryable, and fed by meetings, chat, actions, and calendar signals. |
+| Each project has its own dashboard, dedicated Action Centre, and unique Larry chat with history | Phases 1, 3, 7 | Project dashboard must have stable database-backed panels for context, actions, and chat history. |
+| Each chat shows what actions were created and by whom | Phases 2, 3, 7 | Conversation turns and actions must share attribution and linkage fields. |
+| Larry auto-creates low-risk actions without approval when authority allows | Phases 2, 6 | Auto-execution is allowed only for unambiguous, low-risk, authority-checked, audit-safe actions. |
+| Larry enriches tasks and actions with extra context and prompts for missing context | Phases 4, 6 | Enrichment is required before mutation; missing required fields trigger follow-up questions. |
+| All tasks and actions are tagged by source | Phases 2, 3 | Source taxonomy must be normalized and persisted at creation time, not inferred in the UI. |
+| Larry requests clarification before acting on vague actions | Phase 6 | Clarification is mandatory for ambiguity, missing fields, unclear scope, or conflicting instructions. |
+| Larry chat is conversational, expandable, and not one-shot | Phases 2, 6, 7 | Project chat must persist turn-by-turn planning, revisions, approvals, and history expansion. |
+| Larry asks follow-up questions before executing actions | Phase 6 | Medium-risk, high-risk, externally visible, or under-specified actions always require interaction before execution. |
+| Larry drafts emails and letters | Phase 8 | Drafts must be first-class action outputs tied to project context and review state. |
+| Larry creates `.docx` and `.xlsx` skeletons attached to tasks and stored in project docs | Phase 8 | Generated files must be storage-backed assets with task and project linkage plus version metadata. |
+| Larry syncs with Google Calendar for read and write use cases | Phase 9 | Calendar reads feed project context; calendar writes go through the same governed action system. |
+| Larry creates and updates tasks and project-related users or documents | Phases 6, 7, 8, 9 | Task, collaborator, document, note, and calendar mutations all need project scope, audit, and policy checks. |
+| Project creation supports manual, chat, and meeting modes | Phases 1, 5 | All three intake modes must land on one canonical route and draft model. |
+| Global chat works across all projects | Phase 9 | Retrieval, grouping, and permissions must be cross-project aware from the start. |
+| Projects can be deleted | Phase 10 | Deletion must be explicit, auditable, and safe for related artifacts. |
+| Multiple real users can collaborate and receive personal notes drafted by Larry | Phase 7 | Project membership, shared visibility, personal-note targeting, and Larry drafting all ship together. |
 
-### Slice 2026-03-29-J2a (implemented)
+## Implementation Progress
 
-- Completed deferred core runtime docs sweep for canonical Larry contracts:
-  - Updated `docs/AI-AGENT.md`, `docs/BACKEND-API.md`, `docs/BACKEND-WORKER.md`, `docs/DATABASE.md`, and `docs/ARCHITECTURE.md`.
-  - Removed active-path legacy `/v1/agent/*` and `/v1/actions/.../approve|reject|override` runtime narratives from those core docs.
-  - Removed extraction-era runtime table descriptions from those core docs.
-- Applied targeted stale-state correction in `docs/LARRY-INTELLIGENCE-PLAN.md` so data-model status reflects repo-retired extraction runtime tables with target-environment evidence still pending.
-- Added `apps/api/tests/cleanup-f-docs-boundary.test.ts` as a regression guard for canonical docs boundary expectations.
-- Re-synced tracker/runbook guidance so J2 is split into:
-  - J2a complete (docs + guard)
-  - J2b next (rehearsal artifacts + target-environment migration evidence closeout)
+### Done In Repo
 
-### Slice 2026-03-29-J2b-1 (implemented)
+- **Phase 1 workspace cutover, slice 1**:
+  - Added scoped workspace home reads and moved the active workspace home off the broad snapshot path.
+  - Added scoped project overview reads and moved the active `/workspace/projects/[projectId]` page off the legacy `ProjectWorkspace` component path.
+  - Moved the active workspace shell project list off the broad snapshot path.
+  - Added a workspace-native project surface with stable slots for project context, Action Centre, and project Larry chat.
+- **Phase 1 workspace cutover, slice 2**:
+  - Added a scoped `my-work` read model and moved `/workspace/my-work` off the broad snapshot path.
+  - Added a scoped meetings overview read model and moved `/workspace/meetings` off the broad snapshot path.
+  - Confirmed the active `/workspace` route tree no longer depends on `/api/workspace/snapshot`; remaining snapshot usage is now confined to legacy dashboard code.
+- **Phase 1 project intake cutover**:
+  - Added canonical `/workspace/projects/new` entry wiring from the active top bar and sidebar.
+  - Replaced the reused legacy `StartProjectFlow` on the active workspace route with a workspace-native intake page.
+  - The new intake page now supports:
+    - manual project creation
+    - guided chat-led project creation
+    - meeting-led creation that creates the project first and then processes the transcript into that project
+- **Phase 1 dead-seam cleanup**:
+  - Added an explicit placeholder `/workspace/actions` page so the active route tree no longer dead-ends while the real global Action Centre is still pending.
+  - Retired the legacy `/api/workspace/actions` handlers on the active app tree with explicit 410 behavior instead of leaving empty route folders behind.
+- **Phase 2 starter slice**:
+  - Added a project-scoped action-centre read model that aggregates Larry suggested actions, Larry activity, and project conversation previews behind one workspace contract.
+  - Moved the active project Action Centre and project chat preview area to this action-centre contract so the active project page no longer assembles that state from separate ad hoc Larry fetches.
+- **Phase 2.1 chat-linked action ledger slice**:
+  - Extended `larry_events` and `larry_messages` with conversation, message, requester, approver, executor, and source-linkage fields plus backfills and recency or linkage indexes.
+  - Updated the canonical Larry chat write path so `/v1/larry/chat` now persists the user turn, assistant turn, and linked action records together and returns that persisted contract to the web app.
+  - Added a canonical `/v1/larry/action-centre` backend contract and moved the project Action Centre proxy off stitched fan-out reads onto that single ledger-backed endpoint.
+  - Added the matching web-facing Larry contract updates so project chat, `/workspace/chats`, and project Action Centre cards can all render requester, approval, execution, and source provenance from one payload shape.
+  - Updated the active project chat panel and `/workspace/chats` to use the persisted chat response, render linked action chips beneath assistant replies, and remove the old fire-and-forget message persistence path for action-generating chats.
+  - Added API coverage for the upgraded chat and Action Centre routes, schema assertions for the ledger migration, a Playwright smoke test for project chat -> linked action -> accept flow, and a reusable `@larry/web` `test:e2e` script for the new smoke path.
+- **Phase 2.2 transcript and signal ledger cutover**:
+  - Consolidated transcript ingest onto canonical `/v1/larry/transcript` + `canonical_event.created` publishing, with transcript payload normalization (`projectId`, meeting metadata, submitter attribution) aligned to canonical worker handling.
+  - Added active worker handling for `canonical_event.created` so transcript jobs load the canonical event, resolve project scope, run intelligence once, write the meeting summary, create source-linked `larry_events`, and reconcile `meeting_notes.action_count`.
+  - Added replay safety for transcript-driven event creation by querying existing meeting-linked `larry_events` before generating actions and by indexing `(tenant_id, source_kind, source_record_id)` on the canonical ledger.
+  - Extended non-chat `LarryEventContext` usage so login briefings stamp `requestedByUserId`, `sourceKind='briefing'`, and `sourceRecordId=briefingId`, while scheduled scans stamp `sourceKind='schedule'`.
+  - Updated active transcript entry points to return queued-style UX while preserving transitional inline intelligence writes in `/v1/larry/transcript`; full queue-only transcript execution remains a deferred seam.
+  - Added API, worker, and Playwright coverage for transcript ingest, briefing attribution, transcript replay safety, scheduled scan stability, and meeting-led Action Centre provenance.
+- **Phase 2.3 intake chat-write migration boundary closure**:
+  - Retired `saveLarryMessage` and ad hoc conversation writes in active `/workspace/projects/new` chat intake and legacy `StartProjectFlow` chat intake.
+  - Kept guided intake Q&A local during questionnaire steps, then seeded one canonical project chat write via `/api/workspace/larry/chat` after project creation.
+  - Added non-blocking fallback behavior so project creation still succeeds when canonical seeding fails, with explicit UI copy guiding the user to continue in project chat.
+  - Added focused Playwright coverage for workspace chat intake project creation + canonical seed payload assertions, plus regression checks that legacy conversation/message write endpoints are not used by active intake flow.
+- **Phase 2.4 conversation write endpoint retirement/fencing**:
+  - Retired legacy manual write endpoints by fencing `POST /v1/larry/conversations` and `POST /v1/larry/conversations/:id/messages` with explicit `410 Gone` migration guidance to canonical `POST /v1/larry/chat`.
+  - Applied the same fencing at the workspace API boundary by returning `410` from `POST /api/workspace/larry/conversations` and `POST /api/workspace/larry/conversations/:id/messages` instead of proxying side-path writes.
+  - Removed now-dead web write helpers (`createLarryConversation`, `saveLarryMessage`) so new web code cannot accidentally reintroduce side-path chat persistence.
+  - Added API regression coverage for retired write endpoints and Playwright regression coverage proving active project chat persists through canonical `/api/workspace/larry/chat` without posting to legacy conversation/message write paths.
+- **Phase 2.5 legacy event-list read endpoint retirement/fencing**:
+  - Retired legacy event-list reads by fencing `GET /v1/larry/events` with explicit `410 Gone` migration guidance to canonical `GET /v1/larry/action-centre` project/global read contracts.
+  - Applied the same read fence at the workspace API boundary by returning `410` from `GET /api/workspace/larry/events` with migration guidance to `/api/workspace/projects/:id/action-centre` and `/api/workspace/larry/action-centre`.
+  - Added API regression coverage for retired `GET /larry/events` behavior, including assertion that legacy `listLarryEventSummaries` fan-out is not invoked by the fenced route.
+  - Added Playwright regression coverage proving active `/workspace/actions`, project workspace Action Centre, and linked chat launch flows do not call retired `/api/workspace/larry/events` reads.
+- **Phase 2.6 meetings read-path extraction runtime cutover (transitional)**:
+  - Removed `agent_runs` query and join dependencies from active `GET /v1/meetings` and `GET /v1/meetings/:id` handlers so meetings reads now run only from `meeting_notes`.
+  - Kept `agentRunId` and `agentRunState` in the meetings response contract as transitional nullable compatibility placeholders (`null`) while migration cleanup continues.
+  - Updated active workspace meetings status rendering and expanded rows to rely on canonical meeting outputs (`summary` and `actionCount`) instead of legacy run-state metadata.
+  - Added API regression coverage proving meetings handlers do not query `agent_runs`, and updated transcript-led Playwright fixtures to stop depending on agent-run fields.
+- **Phase 2 - extraction boundary hardening (conservative)**:
+  - Removed transcript ingest write-time extraction coupling by updating `POST /v1/ingest/transcript` meeting-note inserts to stop referencing `agent_run_id`.
+  - Added an API regression guard in transcript ingest coverage so tests fail if `agent_run_id` is reintroduced in active ingest SQL.
+  - Deleted the unused legacy workspace proxy route `/api/workspace/agent/runs/[runId]` so active web code no longer exposes a run-state passthrough seam.
+  - Added `plans/phase-2.7-extraction-boundary-checklist.md` with a keep/migrate/fence matrix for `agent_runs`, `extracted_actions`, `approval_decisions`, and `interventions`, plus rehearsal SQL checks and artifact template fields.
+- **Phase 2 - task-triage canonical cutover (workspace boundary)**:
+  - Migrated active workspace task-triage writes off legacy `/v1/agent/runs` onto canonical `POST /v1/larry/chat` in both `/api/workspace/tasks` auto-triage and `/api/workspace/tasks/triage`.
+  - Preserved existing workspace route contracts while moving triage payloads onto canonical `{ projectId, message }` chat input.
+  - Added API regression coverage (`tests/task-triage-runtime-boundary.test.ts`) that fails if active workspace task-triage routes reintroduce `/v1/agent/runs` or stop targeting `/v1/larry/chat`.
+- **Phase 2 - rehearsal automation + schema deprecation sequencing prep (repo-prep)**:
+  - Added a runnable rehearsal tool (`scripts/phase-2.7-extraction-rehearsal.mjs`) with required CLI metadata (`--tenant`, `--environment`, `--dataset`) and optional `--out-dir`.
+  - Added canonical preflight checks in the rehearsal tool for required `larry_events`/`larry_messages` columns and blocked-artifact behavior when schema is not yet aligned.
+  - Standardized commit-safe artifact output under `plans/phase-2.7-artifacts` with JSON + Markdown output and sign-off placeholders.
+  - Updated `plans/phase-2.7-extraction-boundary-checklist.md` to reference scripted workflow, preflight expectations, and sanitized replay output.
+  - Added `plans/phase-2.7-schema-deprecation-prep.md` with ordered fence/sign-off/FK-detach/table-retirement sequencing and rollback notes for `agent_runs`, `extracted_actions`, `approval_decisions`, and `interventions`.
+- **Phase 2 - Migration A FK detach (repo-level, compatibility-safe)**:
+  - Updated `packages/db/src/schema.sql` so `meeting_notes.agent_run_id` remains nullable but no longer declares an inline FK to `agent_runs`.
+  - Added an idempotent schema migration block that discovers and drops any existing `meeting_notes.agent_run_id -> agent_runs.id` FK constraint for already-provisioned environments.
+  - Added schema regression coverage (`tests/larry-schema.test.ts`) that fails if `meeting_notes` reintroduces inline `agent_runs` FK coupling or if the detach migration block is removed.
+  - Updated Phase 2.7 deprecation runbook/planning notes with Migration A forward intent, rollback intent, and FK pre/post validation query guidance.
+- **Phase 2 - Migration B+C FK detach (repo-level, compatibility-safe)**:
+  - Updated `packages/db/src/schema.sql` so `email_outbound_drafts.action_id` and `correction_feedback.action_id` remain nullable compatibility columns but no longer declare inline FKs to `extracted_actions`.
+  - Added idempotent schema migration blocks that discover and drop any existing FK constraints for:
+    - `email_outbound_drafts.action_id -> extracted_actions.id`
+    - `correction_feedback.action_id -> extracted_actions.id`
+  - Extended schema regression coverage (`tests/larry-schema.test.ts`) to fail if either inline FK coupling is reintroduced or if either detach migration block is removed.
+  - Updated Phase 2.7 deprecation runbook/checklist notes to mark Migration B/C repo-complete (environment execution pending), include forward/rollback plus pre/post validation SQL, and advance next repo migration target to Migration D.
+- **Phase 2 - Migration D child-table retirement + compatibility hardening (repo-level)**:
+  - Retired extraction child tables in `packages/db/src/schema.sql` with explicit idempotent drops:
+    - `approval_decisions`
+    - `interventions`
+    - `agent_run_transitions`
+  - Removed child-table RLS/policy declarations and added schema regression coverage so those tables cannot be reintroduced silently.
+  - Updated `packages/db/src/seed.ts` to stop inserting retired child-table rows while preserving legacy parent compatibility seeding (`agent_runs`, `extracted_actions`) for Migration E sequencing.
+  - Updated `scripts/phase-2.7-extraction-rehearsal.mjs` row inventory behavior to be existence-aware, emitting per-table `tableStatus` (`present`/`retired`) with nullable counts for retired tables.
+  - Updated Phase 2.7 deprecation runbook/checklist notes to mark Migration D repo-complete (environment execution pending) and advance the next repo migration target to Migration E parent retirement.
+- **Phase 2 - Migration E parent-table retirement + compatibility hardening (repo-level)**:
+  - Retired extraction parent tables in `packages/db/src/schema.sql` with explicit idempotent drops:
+    - `extracted_actions`
+    - `agent_runs`
+  - Removed retired parent-table baseline definitions and related RLS/policy declarations, while keeping Migration A/B/C detach blocks and compatibility columns in place.
+  - Updated `packages/db/src/seed.ts` to stop inserting parent-table rows while preserving compatibility placeholder IDs for nullable `action_id` / `agent_run_id` metadata fields.
+  - Extended schema regression coverage (`tests/larry-schema.test.ts`) to fail if parent-table definitions or Migration E drop intent regress.
+  - Updated Phase 2.7 deprecation runbook/checklist notes to mark Migration E repo-complete (environment execution pending) and advance next follow-up to rollout evidence closeout + Cleanup F.
+- **Phase 2 - Cleanup F operational contract closure (repo-level, operational core)**:
+  - Canonicalized active operational contract artifacts away from retired extraction-era endpoints:
+    - Updated `apps/api/openapi.yaml` to remove `/v1/agent/*` and legacy `/v1/actions/{id}/approve|reject|override` entries and represent canonical Larry endpoints.
+    - Updated `scripts/demo-smoke-test.sh` to validate canonical transcript -> action-centre -> event-accept flow and removed legacy run/action polling seams.
+    - Updated `apps/web/src/lib/pm-api.ts` to source pending actions from canonical `/v1/larry/action-centre` suggestions while preserving `WorkspaceSnapshot.pendingActions`.
+  - Added focused boundary regression coverage (`tests/cleanup-f-operational-boundary.test.ts`) that fails if operational contract files reintroduce `/v1/agent/*` or legacy approve/reject/override references.
+  - Re-synced tracker/runbook guidance and deferred broad historical docs sweep to follow-up work.
+- **Phase 2 - Cleanup F docs boundary closure (repo-level, core runtime docs)**:
+  - Canonicalized core runtime docs to reflect shipped Larry contracts and extraction-era runtime retirement:
+    - Updated `docs/AI-AGENT.md`
+    - Updated `docs/BACKEND-API.md`
+    - Updated `docs/BACKEND-WORKER.md`
+    - Updated `docs/DATABASE.md`
+    - Updated `docs/ARCHITECTURE.md`
+  - Removed active-path legacy `/v1/agent/*` and `/v1/actions/.../approve|reject|override` runtime narratives from the core runtime docs set.
+  - Applied targeted stale-state correction in `docs/LARRY-INTELLIGENCE-PLAN.md` to reflect repo-retired extraction runtime tables with target-environment evidence still pending.
+  - Added docs-boundary regression coverage (`tests/cleanup-f-docs-boundary.test.ts`) so core runtime docs fail CI if canonical endpoint references regress or legacy runtime seams are reintroduced.
+  - Advanced next follow-up to Phase 2 environment evidence closeout.
+- **Phase 3 starter: Global Action Centre cutover**:
+  - Extended the canonical Larry event summary contract with `projectName` so tenant-wide action-centre reads carry a project display label without stitched web-only joins.
+  - Replaced the placeholder `/workspace/actions` page with a real workspace-native global Action Centre powered by `/api/workspace/larry/action-centre`, including cross-project labels, project links, and accept or dismiss controls on the canonical ledger path.
+  - Added a shared project-or-global Larry action-centre hook so the project workspace and global Action Centre now reuse the same fetch, accept, dismiss, and targeted refresh behavior.
+  - Confirmed dismiss is already implemented on both project and global Action Centre surfaces through the shared canonical ledger mutation path.
+  - Wired the new surface into the active workspace shell and breadcrumb path without reviving the retired legacy `/api/workspace/actions` handlers.
+  - Fixed the active workspace transcript modal copy and JSX so the web app boots cleanly again and the transcript-led smoke path stays runnable.
+  - Added API coverage for tenant-wide action-centre reads plus a Playwright smoke that confirms the same suggestion appears in both `/workspace/actions` and the project Action Centre before and after acceptance.
+- **Phase 3 follow-up: Email connector ledger cutover**:
+  - Extended `/v1/connectors/email/inbound` to accept optional `projectId` and pass it through canonical ingest payloads.
+  - Extended worker `canonical_event.created` handling so canonical email events with valid project scope now run intelligence and write source-linked `larry_events` with `sourceKind='email'` and `sourceRecordId=canonicalEventId`.
+  - Added replay safety for email-driven ledger writes by skipping canonical email events that already have source-linked `larry_events`.
+  - Added API and worker coverage for email canonical ingest payload shape, canonical event publication, email-to-ledger provenance, and replay skip behavior.
+- **Phase 3 follow-up: Action Centre refresh convergence and coverage polish**:
+  - Added shared Action Centre background refresh behavior in the active workspace hook with configurable polling plus focus and tab-visibility refresh triggers.
+  - Added in-flight request coalescing so global and project Action Centre refreshes do not stack overlapping fetches during polling and mutation-driven refresh bursts.
+  - Added Playwright coverage for global dismiss parity (global dismiss reflected in project Action Centre) and multi-project background refresh on `/workspace/actions` without manual refresh clicks or navigation.
+  - Added a Playwright-only env override (`NEXT_PUBLIC_LARRY_ACTION_CENTRE_REFRESH_MS=1000`) so automated tests can validate background refresh behavior quickly without changing production defaults.
+- **Phase 3 follow-up: Slack connector ledger onboarding**:
+  - Added tenant-scoped `slack_channel_project_mappings` persistence with `(tenant_id, slack_team_id, slack_channel_id)` uniqueness, project linkage, recency indexes, and tenant RLS so Slack channel scope can resolve project context on the canonical runtime path.
+  - Extended worker `canonical_event.created` handling so canonical Slack events now run intelligence and write source-linked `larry_events` (`sourceKind='slack'`, `sourceRecordId=canonicalEventId`) when project scope resolves from project hints or saved channel mappings.
+  - Added Slack auto-learn mapping behavior so Slack events carrying both channel scope and valid project hints upsert the channel-to-project mapping, while events without hints can resolve through the saved mapping.
+  - Added replay safety for Slack-driven ledger writes by skipping canonical Slack events that already have source-linked `larry_events`.
+  - Added API and worker coverage for signed Slack webhook ingest payload shape, Slack canonical event publication, Slack canonical-event-to-ledger writes, mapped project fallback, and replay skip behavior.
+- **Phase 3 follow-up: Calendar connector ledger onboarding**:
+  - Extended worker `canonical_event.created` handling so canonical calendar events now resolve project hints from canonical payloads, run intelligence, and write source-linked `larry_events` (`sourceKind='calendar'`, `sourceRecordId=canonicalEventId`) when project scope is valid.
+  - Added replay safety for calendar-driven ledger writes by skipping canonical calendar events that already have source-linked `larry_events`.
+  - Extended Google Calendar webhook canonical ingest payloads to propagate a normalized `projectId` hint when present, preserving the existing signed webhook contract.
+  - Updated project and global Action Centre provenance copy so calendar-origin non-chat events render signal-specific origin/meta text instead of chat fallback copy.
+  - Added API and worker coverage for calendar webhook canonical payload shape, calendar canonical-event-to-ledger writes, missing-scope skip behavior, and replay skip behavior.
+- **Phase 3 follow-up: Global linked-chat UX expansion**:
+  - Preserved the existing global Action Centre quick-jump behavior (`Open linked chat`) that opens the floating Larry panel and loads the linked conversation directly.
+  - Added an additive rich launch path (`Open in chats`) on both suggestion and activity cards that deep-links to `/workspace/chats` with project, conversation, launch source, provenance source kind, and event-type context.
+  - Updated `/workspace/chats` query bootstrap precedence so `draft` still wins, then explicit `conversationId`, then project-first fallback behavior.
+  - Added an Action Centre launch-context banner in `/workspace/chats` with project framing, normalized source label, event status context, and a direct return link to `/workspace/actions`.
+  - Added targeted Playwright coverage validating linked-chat launch consistency and deep-link context rendering across both suggestion and activity cards.
+- **Phase 3 follow-up: Metadata normalization closure**:
+  - Hardened Larry event context normalization in `@larry/db` so every new event now enforces `sourceKind`, source-linkage requirements (`sourceRecordId` for chat/meeting/email/slack/calendar/briefing/schedule), chat linkage requirements (`conversationId`, request/response message IDs, requester), and login requester requirements before insert.
+  - Updated login briefing generation to pre-generate `briefingId`, pass `sourceRecordId=briefingId` into `runAutoActions` and `storeSuggestions`, and persist the briefing row with the same ID while keeping source-record backfill as idempotent safety.
+  - Updated scheduled scan ledger writes to stamp a per-project `sourceRecordId` so schedule-origin actions satisfy provenance linkage requirements without introducing synthetic requesters.
+  - Added API and worker contract coverage updates so briefing and scheduled-scan Larry writes fail regression checks if required provenance linkage metadata is omitted.
+- **Phase 2 - Retirement runner parity: deployed canonical preflight unblock**:
+  - Ran deployed baseline rehearsal and captured blocked artifact evidence in:
+    - `plans/phase-2.7-artifacts/2026-03-29T22-17-41-761Z__railway-prod__deployed-preflight-blocked__11111111.{json,md}`
+  - Captured pre-DDL migration baseline evidence for target environment FK/table state and row counts in:
+    - `plans/phase-2.7-artifacts/2026-03-29__railway-prod__j2b-1-notes.md`
+  - Applied non-destructive target-environment M0 alignment on `larry_events` (add missing canonical linkage/provenance columns, backfills, and required indexes) without running A/B/C/D/E table retirement.
+  - Re-ran deployed rehearsal and captured post-alignment artifact evidence in:
+    - `plans/phase-2.7-artifacts/2026-03-29T22-18-18-863Z__railway-prod__deployed-preflight-aligned__11111111.{json,md}`
+  - Unblocked canonical preflight (`status=ok`, `preflight passed`) while surfacing high/medium anomaly follow-ups that must be triaged before destructive retirement execution.
+- **Phase 2 - Retirement runner parity: anomaly waiver packet + operator command pack (repo-prep)**:
+  - Re-ran deployed canonical rehearsal read-only on Railway prod (`2026-03-29T22:25:35.771Z`) and confirmed no gate movement:
+    - `status=ok`, preflight passed,
+    - anomaly counts unchanged (`missing_source_record_links`, `invalid_chat_linkage`, `meeting_action_count_mismatch`),
+    - A/B/C FK dependencies and D/E legacy tables still present.
+  - Added committed anomaly triage/waiver dossier:
+    - `plans/phase-2.7-artifacts/2026-03-29__railway-prod__j2b-2a-anomaly-waiver-dossier.md`
+    - Includes baseline counts, rationale, waiver defaults, owner/reviewer placeholders, due date, and explicit "no post-baseline growth" gate rule.
+  - Added deterministic J2b-2b operator command pack in Phase 2.7 runbook docs:
+    - pre-checks (rehearsal + FK/table validation),
+    - staged A/B/C then D/E execution,
+    - post-check/rollback command blocks,
+    - sign-off metadata template.
+  - Corrected tracker language for transcript runtime reality: `/v1/larry/transcript` still performs inline intelligence writes alongside canonical event enqueue (known residual seam).
+- **Phase 2 - Retirement runner parity: anomaly-gated retirement execution (in progress, reviewer-gated)**:
+  - Ran a fresh deployed J2b-2b pre-check rehearsal and committed artifacts:
+    - `plans/phase-2.7-artifacts/2026-03-29T22-43-10-868Z__railway-prod__deployed-preflight-j2b-2b-gate__11111111.{json,md}`
+    - `status=ok`, preflight passed, anomaly counts unchanged from J2b-2a baseline.
+  - Ran growth-gate and FK/table baseline queries and captured outputs in:
+    - `plans/phase-2.7-artifacts/2026-03-29__railway-prod__j2b-2b-precheck-notes.md`
+    - Growth-gate deltas all `0`; A/B/C FK dependencies plus D/E tables still present as expected pre-execution.
+  - Updated anomaly dossier sign-off fields:
+    - Engineer `Fergus`, Rollback owner `Fergus`, temporary reviewer `Fergus` accepted.
+    - Decision remains `blocked` until deploy-safe sync + in-window gate rerun are completed.
+  - Did not execute destructive A/B/C/D/E SQL in this slice because deploy-safe/in-window gates were unmet.
+- **Phase 2 - FK gate alignment: deploy-safe migration gate (implemented)**:
+  - Added a startup migration safety gate in `packages/db/src/migrate.ts` so Phase 2.7 D/E retirement drops are skipped by default during API deploy-time migrations.
+  - Added explicit opt-in env control for controlled destructive retirement execution:
+    - `LARRY_ALLOW_PHASE27_DESTRUCTIVE_RETIREMENT=true`
+  - Added migration startup logging to report whether D/E retirement drops are skipped or enabled.
+  - Added `apps/api/tests/migration-safety-gate.test.ts` regression coverage so default-safe behavior and explicit opt-in behavior cannot regress.
+  - Re-synced Phase 2.7 runbook guidance so deploy-sync occurs with safe defaults before any in-window destructive SQL execution.
+- **Phase 2 - FK gate alignment: repo-native retirement window runner (implemented)**:
+  - Refactored `scripts/phase-2.7-extraction-rehearsal.mjs` onto an import-safe helper so Phase 2.7 query/artifact flow is reusable from other operator tooling.
+  - Added `scripts/phase-2.7-retirement-window.mjs` with a read-only-by-default precheck mode plus explicit `--execute --confirm phase-2.7-retirement` destructive mode.
+  - Added hard safety guards so destructive execution is blocked if rehearsal is not `ok`, growth-gate counts are non-zero, required FK/table baselines are missing, or `LARRY_ALLOW_PHASE27_DESTRUCTIVE_RETIREMENT` is enabled.
+  - Added repo convenience commands:
+    - `npm run phase27:rehearsal -- ...`
+    - `npm run phase27:retirement-window -- ...`
+  - Added `apps/api/tests/phase-2.7-retirement-window.test.ts` regression coverage for CLI parsing, safety gates, destructive-stage order, and artifact rendering.
+  - Reworked the Phase 2.7 runbook and deployment notes so the next live window can run through the repo-native runner instead of external `psql` copy/paste.
+- **Phase 2 - Rebaseline and window execution: live window attempt (blocked by safety gates)**:
+  - Deployed target-environment services with deploy-safe defaults and verified both latest deployments succeeded:
+    - `larry-site` deployment `65d6d39d-a2d2-4589-86f7-3c6d7d23030a`
+    - `diplomatic-vitality` deployment `8fd8b154-c912-4f5f-8f07-55222b4637f0`
+  - Verified `LARRY_ALLOW_PHASE27_DESTRUCTIVE_RETIREMENT` remains unset on both API and worker services.
+  - Added API image packaging support for in-service operator execution by copying repo `scripts/` into `apps/api/Dockerfile`.
+  - Ran repo-native in-window precheck via Railway SSH and captured artifacts:
+    - `plans/phase-2.7-artifacts/2026-03-30T15-11-51-707Z__railway-prod__phase-2-7-retirement-window-precheck__11111111.{json,md}`
+    - Final decision: `precheck_blocked`
+  - Ran execute mode with explicit confirmation token and captured artifacts:
+    - `plans/phase-2.7-artifacts/2026-03-30T15-14-55-535Z__railway-prod__phase-2-7-retirement-window-execute__11111111.{json,md}`
+    - `plans/phase-2.7-artifacts/2026-03-30T15-14-55-535Z__railway-prod__phase-2-7-retirement-window-execute-precheck__11111111.{json,md}`
+    - Final decision: `blocked`, `destructive_sql_executed=no`
+  - Blocking reasons observed in both runs:
+    - growth-gate delta failure (`newScheduleMissingSourceRecord=49` after baseline timestamp `2026-03-29T22:25:35.771Z`)
+    - FK baseline expectations missing (A/B/C FK dependencies already detached in target environment)
+  - Stale-state correction (`2026-03-30`): production later advanced to `master` commit `d202add5f55c2e410508ac4df58ed9069200c201`, and that runtime does not yet include this workspace's `/app/scripts` + `phase27:*` runner parity changes.
+  - Dossier decision remains `blocked`; no destructive A/B/C/D/E statements were executed.
 
-- Executed deployed-environment canonical preflight unblock against Railway production target (`crossover.proxy.rlwy.net:31718`, tenant `11111111-1111-4111-8111-111111111111`) without running destructive retirement steps.
-- Captured baseline blocked rehearsal artifact before any DDL:
-  - `plans/phase-2.7-artifacts/2026-03-29T22-17-41-761Z__railway-prod__deployed-preflight-blocked__11111111.{json,md}`
-- Captured pre-DDL FK/table baseline evidence (A/B/C FK presence + D/E table row counts) and M0 execution details in:
-  - `plans/phase-2.7-artifacts/2026-03-29__railway-prod__j2b-1-notes.md`
-- Applied non-destructive M0 alignment SQL on deployed DB:
-  - Added missing canonical `larry_events` linkage/provenance columns.
-  - Backfilled `execution_mode`, `executed_by_kind` (auto events), and `source_kind`.
-  - Added missing canonical indexes (`idx_larry_events_project_conversation_created`, `idx_larry_events_request_message`, `idx_larry_events_response_message`, `idx_larry_events_source_record`).
-- Captured post-M0 rehearsal artifact with canonical preflight unblocked:
-  - `plans/phase-2.7-artifacts/2026-03-29T22-18-18-863Z__railway-prod__deployed-preflight-aligned__11111111.{json,md}`
-  - `status=ok`, `preflight Passed: yes`.
-- Logged non-blocking but high/medium data anomalies from aligned rehearsal and deferred destructive A/B/C/D/E execution pending anomaly triage/owner assignment.
+### Still To Do For Phase 1
 
-### Slice 2026-03-29-J2b-2a (implemented)
+- Remove or fully fence the remaining legacy dashboard shell and dashboard-only create flows from production behavior, not just from active navigation.
+- Retire `/api/workspace/snapshot` after all remaining legacy dashboard consumers are migrated or deleted.
+- Remove or archive workspace code that is now inactive on the production path:
+  - legacy `ProjectWorkspace`
+  - legacy `StartProjectFlow`
+  - legacy dashboard data hooks and route-driven state composition
+- Add targeted tests for the remaining scoped workspace contracts and the new intake flows; the active project Larry chat and Action Centre path now has smoke coverage, but the workspace cutover is not fully covered yet.
 
-- Re-ran deployed canonical rehearsal read-only on Railway production (`2026-03-29T22:25:35.771Z UTC`) and confirmed no gate movement:
-  - `status=ok`, preflight still passed.
-  - anomaly counts unchanged (`missing_source_record_links`, `invalid_chat_linkage`, `meeting_action_count_mismatch`).
-  - Migration A/B/C FK dependencies and D/E legacy tables still present in target environment.
-- Added anomaly triage + waiver dossier:
-  - `plans/phase-2.7-artifacts/2026-03-29__railway-prod__j2b-2a-anomaly-waiver-dossier.md`
-  - Captures anomaly counts, rationale, waiver defaults, owner/reviewer placeholders, due date, and explicit growth-gate rule.
-- Added deterministic J2b-2b operator command pack in Phase 2.7 runbook/checklist docs:
-  - pre-check commands (rehearsal + FK/table validation),
-  - staged A/B/C then D/E execution sequence,
-  - post-check and rollback command blocks,
-  - sign-off metadata template (engineer/reviewer/rollback owner/window).
-- Corrected stale tracker claim for Phase 2.2:
-  - current `/v1/larry/transcript` behavior still includes inline intelligence writes in addition to canonical event enqueue; full queue-only transcript execution remains a known residual seam.
+### Still To Do For Phase 2
 
-### Slice 2026-03-29-J2b-2b (in progress, reviewer-gated)
+- Continue consolidating connector-triggered Larry actions onto the same canonical Larry ledger contract as legacy paths are retired; chat, transcript, login briefing, scheduled scan, email, Slack, and calendar are now onboarded on the canonical path.
+- Remediate or re-baseline post-baseline growth-gate deltas (`newScheduleMissingSourceRecord=49`) and rerun precheck until growth-gate counts are zero.
+- Align runner and runbook FK gate policy to treat attached and already-detached A/B/C dependencies as valid pre-execution states while keeping FK baseline reporting for audit evidence.
+- Finalize the J2b-2a dossier decision state from `blocked` to `approved` only after a rerun precheck is green for growth/FK/table gates.
+- Execute the remaining destructive D/E retirement sequence in target environments via the repo-native runner's explicit `--execute --confirm phase-2.7-retirement` path once gates pass, and capture pre/post artifacts.
+- Record rollout sign-off metadata (engineer, reviewer, rollback owner, deploy window, evidence links) in Phase 2.7 runbook notes.
+- Complete any residual non-core docs sweep work found during evidence closeout; core runtime docs sweep + guard are complete in J2a.
+- Continue retiring or fencing any remaining legacy Larry read/write paths beyond the now-fenced conversation writes and event-list reads as canonical contracts replace them.
+- Known residual seam to schedule: `/v1/larry/transcript` still performs inline intelligence writes alongside canonical event enqueue; queue-only transcript execution cutover remains pending.
 
-- Ran fresh deployed pre-check rehearsal and committed artifacts:
-  - `plans/phase-2.7-artifacts/2026-03-29T22-43-10-868Z__railway-prod__deployed-preflight-j2b-2b-gate__11111111.{json,md}`
-  - `status=ok`, preflight passed, anomaly counts unchanged from J2b-2a baseline.
-- Ran growth-gate plus FK/table baseline SQL checks and captured outputs:
-  - `plans/phase-2.7-artifacts/2026-03-29__railway-prod__j2b-2b-precheck-notes.md`
-  - Growth-gate deltas all `0`; A/B/C FK dependencies and D/E tables remain present pre-execution.
-- Updated anomaly dossier sign-off fields:
-  - Engineer `Fergus`, Rollback owner `Fergus`, Reviewer pending.
-  - Decision: `blocked` until reviewer assignment/sign-off.
-- Destructive A/B/C/D/E migration SQL was not executed in this slice because reviewer gate remains unmet.
+### Recommended Next Slice
 
-## What Remains In Current Phase (Phase 2)
+- **Phase 2 - Rebaseline and window execution: growth-gate remediation + FK-baseline alignment rerun**:
+  - Investigate schedule-origin ledger growth after baseline (`newScheduleMissingSourceRecord=49`) and either remediate rows or formally reset baseline timestamp with reviewer sign-off.
+  - Decide and document FK baseline policy for target environments where A/B/C detaches are already applied (restore constraints before execution vs. treat already-detached as acceptable in runner gating).
+  - Rerun `npm run phase27:retirement-window -- ...` in precheck mode and require `final_decision=precheck_passed` before any execute attempt.
+  - Update the J2b-2a dossier and runbook notes with refreshed counts, gate outcomes, and explicit go/no-go decision metadata.
 
-- Assign reviewer and complete approval status for anomaly waiver/remediation dossier (`plans/phase-2.7-artifacts/2026-03-29__railway-prod__j2b-2a-anomaly-waiver-dossier.md`).
-- Re-run deployed rehearsal + growth-gate/FK/table baselines at migration window start and confirm no post-baseline anomaly growth.
-- Execute Migration A/B/C/D/E in target environments (staged FK detach -> table retirement) and capture pre/post FK/table validation evidence.
-- Record rollout sign-off metadata (engineer, reviewer, rollback owner, deploy window, evidence links).
-- Complete any residual non-core historical docs cleanup discovered during evidence closeout (core runtime docs sweep completed in J2a).
-- Known residual seam: `/v1/larry/transcript` still performs inline intelligence writes alongside canonical event enqueue; queue-only transcript execution cutover remains deferred follow-up.
+---
 
-## Recommended Next Slice
+## Phase 1: Workspace Cutover And Data-Plane Reset
 
-### Slice 2026-03-29-J2b-2b completion (next)
+**User stories**:
+- As a user, I interact with one coherent workspace product surface, not overlapping old and new shells.
+- As a team, we can extend the workspace without inheriting duplicated route trees and inconsistent data loading patterns.
 
-Goal: complete reviewer-gated anomaly-approved target-environment retirement execution.
+### What to build
 
-Plan:
-1. Assign reviewer/sign-off in `plans/phase-2.7-artifacts/2026-03-29__railway-prod__j2b-2a-anomaly-waiver-dossier.md` and change decision from `blocked` to `approved`.
-2. Re-run operator pre-check command pack at migration window start (rehearsal + growth-gate + FK/table baselines) and confirm counts are unchanged from the current J2b-2b baseline.
-3. Execute staged target-environment migration sequence (A/B/C FK detach, then D/E retirements) and capture output evidence.
-4. Run post-check + rollback-readiness commands and record final sign-off metadata.
+Deliver a single canonical workspace slice by cutting active product behavior fully onto `/workspace`, retiring legacy dashboard entry points, and replacing the most fragile snapshot-driven reads with explicit scoped workspace read models. The goal is a stable home page and project workspace path that future phases can safely build on.
 
-Definition of done:
-- Reviewer gate is closed, deployed rehearsal/growth/fk-table checks pass in-window, A/B/C/D/E environment evidence is captured, and rollout runbook sign-off metadata is finalized.
+### Acceptance criteria
+
+- [ ] `/workspace` is the only active product surface for workspace behavior and project creation entry points.
+- [ ] Legacy dashboard-only flows are retired, redirected, or clearly fenced off from production behavior.
+- [x] The home and project workspace views read from scoped workspace data contracts instead of depending on one broad snapshot for everything.
+- [x] The project workspace has stable slots for context, Action Centre, and project Larry chat so later phases deepen one canonical surface instead of creating parallel UIs.
+- [x] A single project workspace path is demoable end-to-end on the new data plane.
+
+### Suggested ownership
+
+- Route-tree cutover and deprecation
+- Workspace read-model reset
+- UI state and data-fetching cleanup
+
+---
+
+## Phase 2: Larry Runtime Consolidation
+
+**User stories**:
+- As a PM, I can trust that Larry actions, approvals, and chat history come from one coherent runtime.
+- As an engineer, I can extend Larry behavior without choosing between two competing data models.
+
+### What to build
+
+Consolidate Larry onto one canonical runtime by establishing `larry_events`, conversation history, and approval or execution state as the source of truth for new behavior. Migrate or fence legacy extraction-led tables so future features do not branch across two action systems.
+
+### Acceptance criteria
+
+- [ ] New Larry behavior writes only to the canonical Larry runtime model.
+- [ ] Project chat, transcript-driven suggestions, and scheduled or signal-driven actions are visible through the same action ledger.
+- [ ] Conversation turns and resulting actions share stable linkage and attribution fields so histories can show what actions each chat created and who requested, approved, or executed them.
+- [ ] The system exposes a clear migration boundary between canonical Larry data and legacy data.
+- [ ] No new UI behavior depends on the legacy extraction-led pipeline.
+
+### Suggested ownership
+
+- Canonical Larry runtime schema and migration
+- Unified event and approval contracts
+- Legacy-path deprecation and compatibility
+
+---
+
+## Phase 3: Event-Driven Action Centre And Provenance
+
+**User stories**:
+- As a PM, I can open a project or the global Action Centre and see the same Larry actions with clear provenance.
+- As a collaborator, I can tell what action was created, where it came from, and who requested, approved, or executed it.
+
+### What to build
+
+Create a real Action Centre built on the consolidated Larry runtime and event-driven updates. Every Larry action should carry project scope, source taxonomy, requester and actor attribution, linked source context, and lifecycle state so project and cross-project views are reading one provenance-rich ledger.
+
+### Acceptance criteria
+
+- [x] A dedicated `/workspace/actions` surface exists and reads from the same action ledger as the project workspace.
+- [x] Each project dashboard exposes its own Action Centre view backed by the same canonical ledger as the global Action Centre.
+- [x] Every new Larry action includes normalized source, requester, actor, and linked context metadata.
+- [x] Project-level and global Action Centre views stay consistent without manual refresh choreography.
+- [x] Connector and transcript events can create or update visible Larry actions through the canonical event-driven path.
+
+### Suggested ownership
+
+- Provenance-rich action ledger
+- Project and global Action Centre UI
+- Event-driven action updates
+
+---
+
+## Phase 4: Project Memory And Context Timeline
+
+**User stories**:
+- As a user, I want Larry to retain project context over time instead of re-deriving everything from current tasks only.
+- As a PM, I want to inspect the memory Larry is using for a project.
+
+### What to build
+
+Add a durable project memory layer fed by direct chat, meetings, accepted Larry actions, and connector signals. Larry uses this memory in reasoning, and the project workspace exposes a source-filterable context timeline so the user can inspect what Larry is carrying forward.
+
+### Acceptance criteria
+
+- [ ] Project memory entries are written from chat, meetings, accepted actions, and connector signals.
+- [ ] Larry reasoning reads from project memory in addition to current workspace state.
+- [ ] The project workspace exposes a context timeline with source and record linkage.
+- [ ] Memory writes are tied to canonical Larry and connector records rather than ad hoc text blobs.
+
+### Suggested ownership
+
+- Project memory model and ingestion
+- Memory retrieval in Larry runtime
+- Context timeline UI
+
+---
+
+## Phase 5: Unified Project Intake
+
+**User stories**:
+- As a user, I can create a project manually, through a structured chat with Larry, or from a meeting transcript.
+- As a PM, I can start from a meeting and bootstrap a project without relying on a legacy side flow.
+
+### What to build
+
+Deliver one project intake route with three supported modes: manual, chat, and meeting. All three paths land in the same canonical flow, produce a live project or reviewable project draft, and immediately connect the result to the Action Centre and project memory model.
+
+### Acceptance criteria
+
+- [x] `/workspace/projects/new` is the canonical intake route with manual, chat, and meeting modes.
+- [ ] Manual, chat, and meeting intake all feed the same project draft and bootstrap contracts.
+- [ ] Chat intake can propose starter tasks and actions without requiring a pre-existing project.
+- [ ] Meeting intake can create a new project draft or attach the meeting to an existing project cleanly.
+
+### Suggested ownership
+
+- Unified intake route and draft model
+- Chat bootstrap orchestration
+- Meeting-to-project bootstrap flow
+
+---
+
+## Phase 6: Clarification-First Chat, Task Management, And Governed Auto-Execution
+
+**User stories**:
+- As a user, Larry asks follow-up questions before acting on vague instructions.
+- As a PM, Larry only auto-executes actions that are clearly low-risk and within authority.
+- As a collaborator, I can see and refine planned actions before they run.
+- As a user, Larry can create and update project-scoped tasks through chat.
+
+### What to build
+
+Turn Larry chat into a real planning and confirmation loop. Add ambiguity handling, task and action preview, context enrichment, confirmation, authority checks, and a single policy path for chat, signals, and fallback scans. This is the point where Larry becomes trustworthy rather than merely responsive.
+
+### Acceptance criteria
+
+- [ ] Ambiguous requests trigger clarification instead of silent failure or premature execution.
+- [ ] Chat shows a reviewable action plan before executing medium- or high-impact actions.
+- [ ] Larry enriches planned tasks and actions with available project context and asks for any missing required details before execution.
+- [ ] Auto-execution checks policy eligibility, user authority, action risk, and audit-safety before proceeding without approval.
+- [ ] Unambiguous low-risk actions can run automatically, while medium-risk, high-risk, externally visible, or destructive actions require explicit user confirmation.
+- [ ] Larry can create and update project-scoped tasks through the same governed flow used for other action types.
+- [ ] Chat, connector-triggered actions, and fallback scans use the same execution policy path.
+
+### Suggested ownership
+
+- Clarification and planning state machine
+- Policy and authority engine
+- Chat confirm and refine UX
+
+---
+
+## Phase 7: Project Collaboration, Shared Larry, And Notes
+
+**User stories**:
+- As a PM, I can add multiple real users to a project.
+- As a collaborator, I can participate in shared project Larry conversations and see who did what.
+- As a user, I can send shared or personal notes to collaborators, optionally drafted by Larry.
+
+### What to build
+
+Introduce project-scoped collaboration on top of tenant membership. Add project members, shared project Larry threads, explicit actor attribution in conversations and actions, collaborator updates through the governed action system, and project notes with shared and personal visibility modes.
+
+### Acceptance criteria
+
+- [ ] Projects have project-scoped collaboration membership and role management.
+- [ ] Project Larry conversations can be shared across project collaborators.
+- [ ] Project chat history is expandable and shows actor attribution, approvals, and resulting actions clearly.
+- [ ] Shared notes and personal notes exist inside project collaboration surfaces with correct visibility rules.
+- [ ] Users can draft and send collaborator notes, including Larry-drafted personal notes addressed to specific project members.
+- [ ] Larry can propose and, where permitted, execute project collaborator updates through the canonical action system.
+
+### Suggested ownership
+
+- Project membership and permissions
+- Shared Larry conversation model
+- Notes and collaborator UX
+
+---
+
+## Phase 8: Communications, Documents, Templates, And Task Attachments
+
+**User stories**:
+- As a user, Larry can draft emails and letters from project context.
+- As a user, Larry can create `.docx` and `.xlsx` skeletons from project or task context.
+- As a PM, generated documents live in project documentation and can be attached to tasks.
+
+### What to build
+
+Replace the placeholder document experience with a storage-backed project asset and communication draft system. Larry can draft emails and letters, generate project and task templates, store them as reviewable assets, attach them to tasks, and surface them consistently in project documentation and task detail views.
+
+### Acceptance criteria
+
+- [ ] Larry can draft reviewable emails and letters from project context, with actor attribution and approval state.
+- [ ] Larry can generate at least one document skeleton and one spreadsheet skeleton.
+- [ ] Documents are stored as project assets with source, creator, version, and linkage metadata.
+- [ ] Tasks can reference attached documents directly.
+- [ ] Larry can create and update document records and task attachments through the canonical action system.
+- [ ] The project documents experience is no longer a thin wrapper around meeting summaries.
+
+### Suggested ownership
+
+- Asset-backed document model
+- Communication and template generation flow
+- Documents and attachment UI
+
+---
+
+## Phase 9: Calendar Context And Global Larry
+
+**User stories**:
+- As a PM, calendar activity contributes to project context automatically.
+- As a user, I can use Larry globally across all accessible projects.
+- As a user, Larry can propose or create calendar events through the same governed action system.
+
+### What to build
+
+Make Google Calendar a first-class project context source and extend Larry into a true cross-project assistant. Calendar signals should write into project memory, calendar actions should go through the canonical action ledger, and global Larry should retrieve across projects while preserving project-level grouping and permissions.
+
+### Acceptance criteria
+
+- [ ] Calendar signals are linked to projects and written into project memory.
+- [ ] Larry can propose and, where permitted, create or update calendar events.
+- [ ] Calendar reads and writes use the same governed policy, authority, and audit path as other Larry actions.
+- [ ] Users can start a global Larry conversation without selecting a project first.
+- [ ] Global responses and proposed actions are grouped by project and respect project visibility.
+
+### Suggested ownership
+
+- Calendar-to-project linkage
+- Calendar action types and execution
+- Global Larry retrieval and grouped response UX
+
+---
+
+## Phase 10: Project Deletion, Migration Cleanup, And Launch Hardening
+
+**User stories**:
+- As an admin or PM, I can archive or delete a project safely.
+- As a team, we can trust the platform because old paths are retired and core flows are tested end-to-end.
+
+### What to build
+
+Finish the platform by adding archive and delete lifecycle support, removing superseded paths, completing migration cleanup, and hardening the end-to-end system. This phase closes the gap between "new architecture exists" and "the old architecture is no longer a risk."
+
+### Acceptance criteria
+
+- [ ] Projects can be archived or deleted with confirmation, audit, and cleanup behavior.
+- [ ] Legacy dashboard and legacy Larry paths are removed or fully isolated from active behavior.
+- [ ] Event-driven updates are the canonical runtime path, with scheduled scans relegated to fallback and hygiene roles.
+- [ ] Security, performance, and reliability gates are met for core workspace, chat, action, document, calendar, and deletion flows.
+- [ ] End-to-end tests cover intake, project chat, approvals, auto-execution, collaboration, documents, calendar, global Larry, and deletion.
+
+### Suggested ownership
+
+- Archive and delete lifecycle
+- Legacy-path removal and migration completion
+- End-to-end reliability and observability
+
+---
+
+## Recommended Execution Strategy
+
+- Do **not** implement this in one run unless the goal is a throwaway prototype. The repo needs consolidation before it needs breadth.
+- Treat **Phases 1-3** as mandatory foundation. They remove route overlap, reset the data plane, unify Larry runtime behavior, and establish event-driven provenance.
+- Treat **Phases 4-6** as the second foundation band. They establish project memory, unified intake, and clarification-first governed execution.
+- Treat **Phases 7-9** as expansion phases that become much safer once the runtime and workspace foundations are stable.
+- Treat **Phase 10** as both final hardening and debt retirement. It is where the plan proves it truly replaced the fragile base instead of hiding it.
+
+## Agent-Ready Decomposition
+
+- Keep ownership disjoint within each phase:
+  - route and data-plane cutover plus schema migration
+  - Larry runtime and worker behavior
+  - workspace UI and interaction flow
+  - tests, observability, and migration cleanup
+- Require every agent-owned slice to remove or deprecate the old path it replaces.
+- Avoid parallel work across the same canonical model in the same phase.
+- Prefer one thin end-to-end cutover at a time over broad layer-by-layer rewrites.
+- Use the Requirement Coverage Matrix as the delegation contract so no agent-owned slice quietly drops part of the report.
 

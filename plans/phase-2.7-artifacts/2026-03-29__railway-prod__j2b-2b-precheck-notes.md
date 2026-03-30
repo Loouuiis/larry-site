@@ -87,8 +87,8 @@ Baseline timestamp: `2026-03-29T22:25:35.771Z`
 ## Gate Decision
 
 - Engineer: `Fergus`
-- Reviewer: `[pending-reviewer]`
+- Reviewer: `Fergus (temporary)`
 - Rollback owner: `Fergus`
 - Decision: `blocked`
-- Reason: reviewer sign-off is required before destructive A/B/C/D/E SQL execution.
+- Reason: deploy-safe API/worker sync (J2b-2c) and in-window gate rerun are required before destructive A/B/C/D/E SQL execution.
 - Destructive SQL executed in this slice: `no`

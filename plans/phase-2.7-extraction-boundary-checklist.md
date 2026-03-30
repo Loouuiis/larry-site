@@ -31,7 +31,7 @@ Exit behavior:
 
 Artifacts are commit-safe JSON + Markdown files under `plans/phase-2.7-artifacts` by default.
 
-## Latest Deployed Snapshot (J2b-2a, Railway Prod)
+## Latest Deployed Snapshot (through J2b-2e, Railway Prod)
 
 Environment: `railway-prod`  
 Tenant: `11111111-1111-4111-8111-111111111111`
@@ -50,6 +50,13 @@ Tenant: `11111111-1111-4111-8111-111111111111`
   - Explicit gate: only pre-existing anomalies are waivable; any post-baseline growth blocks J2b-2b execution.
 - J2b-2b execution command pack:
   - `plans/phase-2.7-schema-deprecation-prep.md#j2b-2b-operator-command-pack-copypaste`
+- J2b-2e live-window precheck and execute attempt artifacts:
+  - `plans/phase-2.7-artifacts/2026-03-30T15-11-51-707Z__railway-prod__phase-2-7-retirement-window-precheck__11111111.{json,md}`
+  - `plans/phase-2.7-artifacts/2026-03-30T15-14-55-535Z__railway-prod__phase-2-7-retirement-window-execute__11111111.{json,md}`
+  - `plans/phase-2.7-artifacts/2026-03-30T15-14-55-535Z__railway-prod__phase-2-7-retirement-window-execute-precheck__11111111.{json,md}`
+  - Both runs blocked; no destructive SQL executed.
+- J2b-2e window-attempt notes:
+  - `plans/phase-2.7-artifacts/2026-03-30__railway-prod__j2b-2e-window-attempt-notes.md`
 
 ## Keep/Migrate/Fence Matrix
 

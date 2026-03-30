@@ -14,6 +14,7 @@ RUN npm ci
 
 # Copy source
 COPY apps/api ./apps/api
+COPY scripts ./scripts
 COPY packages ./packages
 
 # Build packages in dependency order

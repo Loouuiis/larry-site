@@ -307,9 +307,42 @@ These are not optional cleanups; they are part of the implementation strategy:
     - `plans/phase-2.7-artifacts/2026-03-29__railway-prod__j2b-2b-precheck-notes.md`
     - Growth-gate deltas all `0`; A/B/C FK dependencies plus D/E tables still present as expected pre-execution.
   - Updated anomaly dossier sign-off fields:
-    - Engineer `Fergus`, Rollback owner `Fergus`, Reviewer pending.
-    - Decision set to `blocked` until reviewer assignment/sign-off is completed.
-  - Did not execute destructive A/B/C/D/E SQL in this slice because reviewer gate is unmet.
+    - Engineer `Fergus`, Rollback owner `Fergus`, temporary reviewer `Fergus` accepted.
+    - Decision remains `blocked` until deploy-safe sync + in-window gate rerun are completed.
+  - Did not execute destructive A/B/C/D/E SQL in this slice because deploy-safe/in-window gates were unmet.
+- **Phase 2.7j-2b-2c deploy-safe migration gate (implemented)**:
+  - Added a startup migration safety gate in `packages/db/src/migrate.ts` so Phase 2.7 D/E retirement drops are skipped by default during API deploy-time migrations.
+  - Added explicit opt-in env control for controlled destructive retirement execution:
+    - `LARRY_ALLOW_PHASE27_DESTRUCTIVE_RETIREMENT=true`
+  - Added migration startup logging to report whether D/E retirement drops are skipped or enabled.
+  - Added `apps/api/tests/migration-safety-gate.test.ts` regression coverage so default-safe behavior and explicit opt-in behavior cannot regress.
+  - Re-synced Phase 2.7 runbook guidance so deploy-sync occurs with safe defaults before any in-window destructive SQL execution.
+- **Phase 2.7j-2b-2d repo-native retirement window runner (implemented)**:
+  - Refactored `scripts/phase-2.7-extraction-rehearsal.mjs` onto an import-safe helper so Phase 2.7 query/artifact flow is reusable from other operator tooling.
+  - Added `scripts/phase-2.7-retirement-window.mjs` with a read-only-by-default precheck mode plus explicit `--execute --confirm phase-2.7-retirement` destructive mode.
+  - Added hard safety guards so destructive execution is blocked if rehearsal is not `ok`, growth-gate counts are non-zero, required FK/table baselines are missing, or `LARRY_ALLOW_PHASE27_DESTRUCTIVE_RETIREMENT` is enabled.
+  - Added repo convenience commands:
+    - `npm run phase27:rehearsal -- ...`
+    - `npm run phase27:retirement-window -- ...`
+  - Added `apps/api/tests/phase-2.7-retirement-window.test.ts` regression coverage for CLI parsing, safety gates, destructive-stage order, and artifact rendering.
+  - Reworked the Phase 2.7 runbook and deployment notes so the next live window can run through the repo-native runner instead of external `psql` copy/paste.
+- **Phase 2.7j-2b-2e live window execution attempt (blocked by safety gates)**:
+  - Deployed target-environment services with deploy-safe defaults and verified both latest deployments succeeded:
+    - `larry-site` deployment `65d6d39d-a2d2-4589-86f7-3c6d7d23030a`
+    - `diplomatic-vitality` deployment `8fd8b154-c912-4f5f-8f07-55222b4637f0`
+  - Verified `LARRY_ALLOW_PHASE27_DESTRUCTIVE_RETIREMENT` remains unset on both API and worker services.
+  - Added API image packaging support for in-service operator execution by copying repo `scripts/` into `apps/api/Dockerfile`.
+  - Ran repo-native in-window precheck via Railway SSH and captured artifacts:
+    - `plans/phase-2.7-artifacts/2026-03-30T15-11-51-707Z__railway-prod__phase-2-7-retirement-window-precheck__11111111.{json,md}`
+    - Final decision: `precheck_blocked`
+  - Ran execute mode with explicit confirmation token and captured artifacts:
+    - `plans/phase-2.7-artifacts/2026-03-30T15-14-55-535Z__railway-prod__phase-2-7-retirement-window-execute__11111111.{json,md}`
+    - `plans/phase-2.7-artifacts/2026-03-30T15-14-55-535Z__railway-prod__phase-2-7-retirement-window-execute-precheck__11111111.{json,md}`
+    - Final decision: `blocked`, `destructive_sql_executed=no`
+  - Blocking reasons observed in both runs:
+    - growth-gate delta failure (`newScheduleMissingSourceRecord=49` after baseline timestamp `2026-03-29T22:25:35.771Z`)
+    - FK baseline expectations missing (A/B/C FK dependencies already detached in target environment)
+  - Dossier decision remains `blocked`; no destructive A/B/C/D/E statements were executed.
 
 ### Still To Do For Phase 1
 
@@ -324,10 +357,10 @@ These are not optional cleanups; they are part of the implementation strategy:
 ### Still To Do For Phase 2
 
 - Continue consolidating connector-triggered Larry actions onto the same canonical Larry ledger contract as legacy paths are retired; chat, transcript, login briefing, scheduled scan, email, Slack, and calendar are now onboarded on the canonical path.
-- Assign reviewer and complete approval status in `plans/phase-2.7-artifacts/2026-03-29__railway-prod__j2b-2a-anomaly-waiver-dossier.md` (engineer + rollback owner are now set).
-- Re-run deployed rehearsal and growth-gate/FK/table baselines at migration window start and confirm no post-baseline anomaly growth.
-- Execute Migration A/B/C in target environments after anomaly/sign-off gates clear and capture FK-detach validation outputs.
-- Execute Migration D/E table retirements in target environments after anomaly/sign-off gates clear and capture table-retirement validation outputs.
+- Remediate or re-baseline post-baseline growth-gate deltas (`newScheduleMissingSourceRecord=49`) and rerun precheck until growth-gate counts are zero.
+- Resolve FK baseline gate mismatch for J2b-2e (target environment now has A/B/C constraints absent): either restore expected pre-execution FK state or update runner gate policy/runbook for already-detached environments.
+- Finalize the J2b-2a dossier decision state from `blocked` to `approved` only after a rerun precheck is green for growth/FK/table gates.
+- Execute the remaining destructive D/E retirement sequence in target environments via the repo-native runner's explicit `--execute --confirm phase-2.7-retirement` path once gates pass, and capture pre/post artifacts.
 - Record rollout sign-off metadata (engineer, reviewer, rollback owner, deploy window, evidence links) in Phase 2.7 runbook notes.
 - Complete any residual non-core docs sweep work found during evidence closeout; core runtime docs sweep + guard are complete in J2a.
 - Continue retiring or fencing any remaining legacy Larry read/write paths beyond the now-fenced conversation writes and event-list reads as canonical contracts replace them.
@@ -335,11 +368,11 @@ These are not optional cleanups; they are part of the implementation strategy:
 
 ### Recommended Next Slice
 
-- **Phase 2.7j-2b-2b completion follow-up: reviewer unlock + staged retirement execution (target environments)**:
-  - Assign reviewer/sign-off in `plans/phase-2.7-artifacts/2026-03-29__railway-prod__j2b-2a-anomaly-waiver-dossier.md` and move decision from `blocked` to `approved`.
-  - Re-run J2b-2b pre-check command pack at migration window start (rehearsal + growth-gate + FK/table baseline) and verify no drift from current baseline.
-  - Execute staged A/B/C FK detaches then D/E retirements in target environments and capture documented pre/post validation evidence.
-  - Record final sign-off owners, rollback owner, migration window, and evidence links in Phase 2.7 runbook notes.
+- **Phase 2.7j-2b-2f: growth-gate remediation + FK-baseline alignment rerun**:
+  - Investigate schedule-origin ledger growth after baseline (`newScheduleMissingSourceRecord=49`) and either remediate rows or formally reset baseline timestamp with reviewer sign-off.
+  - Decide and document FK baseline policy for target environments where A/B/C detaches are already applied (restore constraints before execution vs. treat already-detached as acceptable in runner gating).
+  - Rerun `npm run phase27:retirement-window -- ...` in precheck mode and require `final_decision=precheck_passed` before any execute attempt.
+  - Update the J2b-2a dossier and runbook notes with refreshed counts, gate outcomes, and explicit go/no-go decision metadata.
 
 ---
 
