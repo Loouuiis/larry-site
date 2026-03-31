@@ -1,4 +1,9 @@
 import type { Db } from "@larry/db";
+import {
+  normalizeProjectStatus,
+  projectStatusSql,
+  type ProjectStatus,
+} from "./project-status.js";
 
 export type ProjectMembershipRole = "owner" | "editor" | "viewer";
 
@@ -14,6 +19,7 @@ export interface ProjectMemberRecord {
 
 export interface ProjectMembershipAccess {
   projectExists: boolean;
+  projectStatus?: ProjectStatus | null;
   projectRole: ProjectMembershipRole | null;
   canRead: boolean;
   canManage: boolean;
@@ -58,17 +64,29 @@ export async function getProjectMembershipAccess(input: {
   userId: string;
   tenantRole: string;
 }): Promise<ProjectMembershipAccess> {
-  const [exists, projectRole] = await Promise.all([
-    projectExists(input.db, input.tenantId, input.projectId),
+  const [projectRows, projectRole] = await Promise.all([
+    input.db.queryTenant<{ id: string; status: string }>(
+      input.tenantId,
+      `SELECT id, ${projectStatusSql("status")} as status
+         FROM projects
+        WHERE tenant_id = $1
+          AND id = $2
+        LIMIT 1`,
+      [input.tenantId, input.projectId]
+    ),
     getProjectMembershipRole(input.db, input.tenantId, input.projectId, input.userId),
   ]);
 
+  const project = projectRows[0];
+  const exists = Boolean(project);
+  const projectStatus = project ? normalizeProjectStatus(project.status) : null;
   const isAdmin = input.tenantRole === "admin";
   const canRead = exists && (isAdmin || projectRole !== null);
   const canManage = exists && (isAdmin || projectRole === "owner" || projectRole === "editor");
 
   return {
     projectExists: exists,
+    projectStatus,
     projectRole,
     canRead,
     canManage,

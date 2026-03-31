@@ -2,6 +2,10 @@ import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { writeAuditLog } from "../../lib/audit.js";
 import { getProjectMembershipAccess } from "../../lib/project-memberships.js";
+import {
+  ARCHIVED_PROJECT_WRITE_LOCK_MESSAGE,
+  isProjectWriteLocked,
+} from "../../lib/project-write-lock.js";
 
 const ListDocumentsQuerySchema = z.object({
   projectId: z.string().uuid().optional(),
@@ -65,6 +69,8 @@ export const documentRoutes: FastifyPluginAsync = async (fastify) => {
     if (!access.canRead) {
       throw fastify.httpErrors.forbidden("Project access denied.");
     }
+
+    return access;
   }
 
   fastify.get(
@@ -136,12 +142,15 @@ export const documentRoutes: FastifyPluginAsync = async (fastify) => {
       const tenantId = request.user.tenantId;
       const actorUserId = request.user.userId;
 
-      await assertProjectReadAccessOrThrow({
+      const access = await assertProjectReadAccessOrThrow({
         tenantId,
         userId: actorUserId,
         tenantRole: request.user.role,
         projectId: body.projectId,
       });
+      if (isProjectWriteLocked(access.projectStatus)) {
+        throw fastify.httpErrors.conflict(ARCHIVED_PROJECT_WRITE_LOCK_MESSAGE);
+      }
 
       if (body.attachTaskId) {
         const taskRows = await fastify.db.queryTenant<{ id: string; project_id: string }>(

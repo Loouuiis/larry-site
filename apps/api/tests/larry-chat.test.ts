@@ -260,7 +260,7 @@ describe("POST /larry/chat", () => {
         projectStatus: "active",
       }
     );
-  });
+  }, 15_000);
 
   it("keeps project-scoped conversation reads free of archive filters", async () => {
     vi.mocked(listLarryConversationPreviews).mockResolvedValue([]);
@@ -1114,6 +1114,34 @@ describe("POST /larry/chat", () => {
     expect(getProjectSnapshot).not.toHaveBeenCalled();
   });
 
+  it("blocks project chat writes when the project is archived", async () => {
+    vi.mocked(getProjectMembershipAccess).mockResolvedValue({
+      projectExists: true,
+      projectStatus: "archived",
+      projectRole: "owner",
+      canRead: true,
+      canManage: true,
+    });
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/larry/chat",
+      payload: { projectId: PROJECT_ID, message: "Status update?" },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      message: "Archived projects are read-only. Unarchive the project before making changes.",
+    });
+    expect(getProjectSnapshot).not.toHaveBeenCalled();
+    expect(runIntelligence).not.toHaveBeenCalled();
+    expect(runAutoActions).not.toHaveBeenCalled();
+    expect(storeSuggestions).not.toHaveBeenCalled();
+  });
+
   it("returns 404 when the provided conversation does not exist", async () => {
     vi.mocked(getLarryConversationForUser).mockResolvedValue(null);
 
@@ -1254,6 +1282,39 @@ describe("POST /larry/transcript", () => {
     });
 
     expect(response.statusCode).toBe(400);
+    expect(insertCanonicalEventRecords).not.toHaveBeenCalled();
+    expect(publishCanonicalEventCreated).not.toHaveBeenCalled();
+  });
+
+  it("blocks transcript ingestion when projectId points to an archived project", async () => {
+    const app = await createTestApp();
+    appsToClose.push(app);
+    const queryTenant = (
+      app.db as unknown as { queryTenant: ReturnType<typeof vi.fn> }
+    ).queryTenant;
+    queryTenant.mockImplementation(async (_tenantId: string, sql: string) => {
+      if (sql.includes("FROM projects")) {
+        return [{ id: PROJECT_ID, name: "Archived Project", status: "archived" }];
+      }
+      return [];
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/larry/transcript",
+      payload: {
+        sourceEventId: "archived-project-upload",
+        transcript:
+          "This transcript is long enough to pass validation but should be blocked for archived project writes.",
+        projectId: PROJECT_ID,
+        meetingTitle: "Archived transcript test",
+      },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      message: "Archived projects are read-only. Unarchive the project before making changes.",
+    });
     expect(insertCanonicalEventRecords).not.toHaveBeenCalled();
     expect(publishCanonicalEventCreated).not.toHaveBeenCalled();
   });

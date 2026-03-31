@@ -24,6 +24,11 @@ import {
   listProjectMembers,
   upsertProjectMembership,
 } from "../../lib/project-memberships.js";
+import {
+  ARCHIVED_PROJECT_WRITE_LOCK_MESSAGE,
+  isProjectWriteLocked,
+  loadProjectWriteState,
+} from "../../lib/project-write-lock.js";
 
 const CreateProjectSchema = z.object({
   name: z.string().min(1).max(200),
@@ -37,6 +42,9 @@ const ProjectListQuerySchema = z.object({
 });
 
 const ProjectIdParamSchema = z.object({ id: z.string().uuid() });
+const DeleteProjectSchema = z.object({
+  confirmProjectName: z.string().min(1).max(200),
+});
 const ProjectMemberRoleSchema = z.enum(["owner", "editor", "viewer"]);
 const ProjectMemberParamsSchema = z.object({ id: z.string().uuid(), userId: z.string().uuid() });
 const UpsertProjectMemberSchema = z.object({
@@ -114,6 +122,12 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     return access;
+  }
+
+  function assertProjectWritableOrThrow(projectStatus: string | null | undefined) {
+    if (isProjectWriteLocked(projectStatus)) {
+      throw fastify.httpErrors.conflict(ARCHIVED_PROJECT_WRITE_LOCK_MESSAGE);
+    }
   }
 
   async function buildProjectMembersResponse(input: {
@@ -356,6 +370,95 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
+  fastify.post(
+    "/:id/delete",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
+    async (request) => {
+      const params = parseOrBadRequest(ProjectIdParamSchema, request.params);
+      const body = parseOrBadRequest(DeleteProjectSchema, request.body);
+      const tenantId = request.user.tenantId;
+      const actorUserId = request.user.userId;
+
+      const project = await loadProjectWriteState(fastify.db, tenantId, params.id);
+      if (!project) {
+        throw fastify.httpErrors.notFound("Project not found.");
+      }
+
+      if (!isProjectWriteLocked(project.status)) {
+        throw fastify.httpErrors.conflict(
+          "Project must be archived before it can be permanently deleted."
+        );
+      }
+
+      if (body.confirmProjectName !== project.name) {
+        throw fastify.httpErrors.conflict(
+          "confirmProjectName must exactly match the current project name."
+        );
+      }
+
+      const purgeResult = await fastify.db.tx(async (client) => {
+        await client.query("SELECT set_config('app.tenant_id', $1, true)", [tenantId]);
+
+        async function deleteAndCount(tableName: string): Promise<number> {
+          const rows = await client.query<{ row_count: number }>(
+            `WITH deleted AS (
+               DELETE FROM ${tableName}
+               WHERE tenant_id = $1
+                 AND project_id = $2
+               RETURNING id
+             )
+             SELECT COUNT(*)::int AS row_count
+             FROM deleted`,
+            [tenantId, params.id]
+          );
+          return Number(rows.rows[0]?.row_count ?? 0);
+        }
+
+        const [meetingNotesPurged, documentsPurged, emailDraftsPurged, conversationsPurged] =
+          await Promise.all([
+            deleteAndCount("meeting_notes"),
+            deleteAndCount("documents"),
+            deleteAndCount("email_outbound_drafts"),
+            deleteAndCount("larry_conversations"),
+          ]);
+
+        const deletedProjectRows = await client.query<{ id: string }>(
+          `DELETE FROM projects
+            WHERE tenant_id = $1
+              AND id = $2
+          RETURNING id`,
+          [tenantId, params.id]
+        );
+
+        if (!deletedProjectRows.rows[0]) {
+          throw fastify.httpErrors.notFound("Project not found.");
+        }
+
+        return {
+          meetingNotesPurged,
+          documentsPurged,
+          emailDraftsPurged,
+          conversationsPurged,
+        };
+      });
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId,
+        actionType: "project.delete",
+        objectType: "project",
+        objectId: params.id,
+        details: {
+          previousStatus: project.status,
+          projectName: project.name,
+          purgedCounts: purgeResult,
+        },
+      });
+
+      return { id: params.id, deleted: true };
+    }
+  );
+
   fastify.get(
     "/:id/members",
     { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
@@ -390,13 +493,14 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
       const tenantId = request.user.tenantId;
       const userId = request.user.userId;
 
-      await getProjectAccessOrThrow({
+      const access = await getProjectAccessOrThrow({
         tenantId,
         userId,
         tenantRole: request.user.role,
         projectId: params.id,
         mode: "manage",
       });
+      assertProjectWritableOrThrow(access.projectStatus);
 
       const userInTenant = await hasTenantMembership(fastify.db, tenantId, body.userId);
       if (!userInTenant) {
@@ -444,13 +548,14 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
       const tenantId = request.user.tenantId;
       const userId = request.user.userId;
 
-      await getProjectAccessOrThrow({
+      const access = await getProjectAccessOrThrow({
         tenantId,
         userId,
         tenantRole: request.user.role,
         projectId: params.id,
         mode: "manage",
       });
+      assertProjectWritableOrThrow(access.projectStatus);
 
       const existingRole = await getProjectMembershipRole(
         fastify.db,
@@ -502,13 +607,14 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
       const tenantId = request.user.tenantId;
       const userId = request.user.userId;
 
-      await getProjectAccessOrThrow({
+      const access = await getProjectAccessOrThrow({
         tenantId,
         userId,
         tenantRole: request.user.role,
         projectId: params.id,
         mode: "manage",
       });
+      assertProjectWritableOrThrow(access.projectStatus);
 
       const existingRole = await getProjectMembershipRole(
         fastify.db,
@@ -604,13 +710,14 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
       const tenantId = request.user.tenantId;
       const userId = request.user.userId;
 
-      await getProjectAccessOrThrow({
+      const access = await getProjectAccessOrThrow({
         tenantId,
         userId,
         tenantRole: request.user.role,
         projectId: params.id,
         mode: "read",
       });
+      assertProjectWritableOrThrow(access.projectStatus);
 
       if (body.visibility === "personal") {
         const recipientUserId = body.recipientUserId ?? null;

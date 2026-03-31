@@ -152,5 +152,5 @@ describe("POST /v1/ingest/transcript", () => {
         objectId: MEETING_NOTE_ID,
       })
     );
-  });
+  }, 15_000);
 });

@@ -320,6 +320,53 @@ describe("Google Calendar project-link routes", () => {
     ).toBe(false);
   });
 
+  it("returns 409 when linking Google Calendar to an archived project", async () => {
+    const queryTenant = vi.fn(async (_tenantId: string, sql: string) => {
+      if (sql.includes("FROM google_calendar_installations")) {
+        return [
+          {
+            id: INSTALLATION_ID,
+            tenant_id: TENANT_ID,
+            project_id: null,
+            google_calendar_id: "primary",
+            google_access_token: "access-token",
+            google_refresh_token: null,
+            token_expires_at: null,
+            webhook_channel_id: null,
+            webhook_resource_id: null,
+            webhook_expiration: null,
+          },
+        ];
+      }
+      if (sql.includes("FROM projects")) {
+        return [{ id: PROJECT_ID, name: "Archived Project", status: "archived" }];
+      }
+      return [];
+    });
+
+    const db = { tx: vi.fn(), queryTenant } as unknown as Db;
+
+    const app = await createTestApp({ db, queue: createQueueMock() });
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "PUT",
+      url: "/connectors/google-calendar/project-link",
+      payload: {
+        calendarId: "primary",
+        projectId: PROJECT_ID,
+      },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.body).toContain(
+      "Archived projects are read-only. Unarchive the project before making changes."
+    );
+    expect(
+      queryTenant.mock.calls.some(([, sql]) => String(sql).includes("UPDATE google_calendar_installations"))
+    ).toBe(false);
+  });
+
   it("requires admin or pm role for project-link mutation", async () => {
     const db = {
       tx: vi.fn(),

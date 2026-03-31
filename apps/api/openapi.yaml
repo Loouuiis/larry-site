@@ -38,6 +38,9 @@ paths:
   /v1/projects/{id}/unarchive:
     post:
       summary: Unarchive a project (admin or pm, idempotent)
+  /v1/projects/{id}/delete:
+    post:
+      summary: Permanently delete an archived project after exact-name confirmation
   /v1/tasks:
     get:
       summary: List tasks with optional projectId and additive projectStatus filtering
@@ -67,7 +70,7 @@ paths:
       deprecated: true
   /v1/larry/chat:
     post:
-      summary: Run canonical Larry chat turn with linked action persistence
+      summary: Run canonical Larry chat turn with linked action persistence (409 if project is archived)
   /v1/larry/briefing:
     get:
       summary: Get Larry login briefing
@@ -82,13 +85,13 @@ paths:
       summary: List project memory timeline entries with optional source filtering
   /v1/larry/events/{id}/accept:
     post:
-      summary: Accept a suggested Larry event
+      summary: Accept a suggested Larry event (409 if project is archived)
   /v1/larry/events/{id}/dismiss:
     post:
-      summary: Dismiss a suggested Larry event
+      summary: Dismiss a suggested Larry event (409 if project is archived)
   /v1/larry/transcript:
     post:
-      summary: Ingest transcript through canonical Larry runtime
+      summary: Ingest transcript through canonical Larry runtime (409 if project is archived)
   /v1/projects/{id}/health:
     get:
       summary: Get project health snapshot

@@ -9,6 +9,11 @@ import type { LarryAction } from "@larry/shared";
 import { writeAuditLog } from "../../lib/audit.js";
 import { createProjectOwnerMembership } from "../../lib/project-memberships.js";
 import {
+  ARCHIVED_PROJECT_WRITE_LOCK_MESSAGE,
+  isProjectWriteLocked,
+  loadProjectWriteState,
+} from "../../lib/project-write-lock.js";
+import {
   insertCanonicalEventRecords,
   publishCanonicalEventCreated,
 } from "../../services/ingest/pipeline.js";
@@ -563,19 +568,18 @@ export const projectIntakeRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         if (draft.attachToProjectId) {
-          const existingRows = await fastify.db.queryTenant<{ id: string }>(
+          const attachProject = await loadProjectWriteState(
+            fastify.db,
             tenantId,
-            `SELECT id
-               FROM projects
-              WHERE tenant_id = $1
-                AND id = $2
-              LIMIT 1`,
-            [tenantId, draft.attachToProjectId]
+            draft.attachToProjectId
           );
-          if (!existingRows[0]) {
+          if (!attachProject) {
             throw fastify.httpErrors.notFound("Attach target project was not found.");
           }
-          finalizedProjectId = existingRows[0].id;
+          if (isProjectWriteLocked(attachProject.status)) {
+            throw fastify.httpErrors.conflict(ARCHIVED_PROJECT_WRITE_LOCK_MESSAGE);
+          }
+          finalizedProjectId = attachProject.projectId;
         } else {
           const projectName =
             draft.projectName?.trim() || draft.meetingTitle?.trim() || "New Project";
@@ -634,8 +638,8 @@ export const projectIntakeRoutes: FastifyPluginAsync = async (fastify) => {
 
           const meetingNoteResult = await client.query<{ id: string }>(
             `INSERT INTO meeting_notes
-              (tenant_id, project_id, agent_run_id, title, transcript, created_by_user_id)
-             VALUES ($1, $2, NULL, $3, $4, $5)
+              (tenant_id, project_id, title, transcript, created_by_user_id)
+             VALUES ($1, $2, $3, $4, $5)
              RETURNING id`,
             [tenantId, finalizedProjectId, draft.meetingTitle ?? null, transcript, actorUserId]
           );

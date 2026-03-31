@@ -715,8 +715,8 @@ export async function executeEmailDraft(
   const rows = await db.queryTenant<Record<string, unknown>>(
     tenantId,
     `INSERT INTO email_outbound_drafts
-       (tenant_id, project_id, action_id, recipient, subject, body, state, metadata)
-     VALUES ($1, $2, NULL, $3, $4, $5, 'draft', $6::jsonb)
+       (tenant_id, project_id, recipient, subject, body, state, metadata)
+     VALUES ($1, $2, $3, $4, $5, 'draft', $6::jsonb)
      RETURNING id, tenant_id, project_id, recipient, subject, body, state, created_at`,
     [tenantId, projectId, payload.to, payload.subject, payload.body, JSON.stringify({ taskId: payload.taskId })]
   );

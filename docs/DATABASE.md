@@ -104,6 +104,13 @@ Use tenant-aware query helpers consistently in API and worker code.
   - stored values are constrained to `active|archived`
   - additive normalization backfills unexpected/null values to `active`
   - archive-aware recency index: `idx_projects_tenant_status_recent (tenant_id, status, updated_at DESC, created_at DESC)`
+- Project hard-delete runtime contract (`POST /v1/projects/:id/delete`) explicitly purges project-linked rows from:
+  - `meeting_notes`
+  - `documents`
+  - `email_outbound_drafts`
+  - `larry_conversations`
+  before deleting the `projects` row. This avoids leaving retained `ON DELETE SET NULL` artifacts for hard-deleted projects.
+- Legacy compatibility columns remain in schema (`meeting_notes.agent_run_id`, `email_outbound_drafts.action_id`), but runtime insert paths no longer explicitly write `NULL` into those columns.
 - Seed data includes one deterministic `project_intake_drafts` fixture row so local/demo environments exercise the new intake contract.
 - Seed data includes deterministic `project_memberships` rows (including a multi-user project) so collaboration access is visible in local/demo environments.
 - Seed data includes deterministic `project_notes` rows (shared and personal) for workspace-note demos.

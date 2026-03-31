@@ -197,4 +197,29 @@ describe("Task document attachment routes", () => {
       duplicate: true,
     });
   });
+
+  it("blocks attachment writes when the task project is archived", async () => {
+    const queryTenant = vi.fn(async (_tenantId: string, sql: string) => {
+      if (sql.includes("JOIN projects")) {
+        return [{ taskId: TASK_ID, projectId: PROJECT_ID, projectStatus: "archived" }];
+      }
+      return [];
+    });
+    const app = await createTestApp(queryTenant);
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/tasks/${TASK_ID}/attachments`,
+      payload: {
+        documentId: DOCUMENT_ID,
+      },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      message: "Archived projects are read-only. Unarchive the project before making changes.",
+    });
+    expect(writeAuditLog).not.toHaveBeenCalled();
+  });
 });

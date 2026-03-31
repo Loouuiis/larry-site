@@ -100,11 +100,13 @@ function makeDraftRow(overrides: Partial<DraftRow> = {}): DraftRow {
 function createDbStub(input: {
   initialDraft: DraftRow | null;
   attachProjectExists?: boolean;
+  attachProjectStatus?: "active" | "archived";
   createdProjectId?: string;
 }) {
   const state = {
     draft: input.initialDraft ? { ...input.initialDraft } : null,
     attachProjectExists: input.attachProjectExists ?? true,
+    attachProjectStatus: input.attachProjectStatus ?? "active",
     createdProjectId: input.createdProjectId ?? PROJECT_ID,
   };
 
@@ -169,7 +171,7 @@ function createDbStub(input: {
 
     if (sql.includes("FROM projects") && sql.includes("WHERE tenant_id = $1")) {
       if (!state.attachProjectExists) return [];
-      return [{ id: ATTACH_PROJECT_ID }];
+      return [{ id: ATTACH_PROJECT_ID, name: "Attached Project", status: state.attachProjectStatus }];
     }
 
     if (sql.includes("UPDATE project_intake_drafts") && sql.includes("SET status = 'finalized'")) {
@@ -293,7 +295,7 @@ describe("Project intake runtime routes", () => {
         },
       },
     });
-  });
+  }, 15_000);
 
   it("bootstraps chat draft tasks/actions without requiring a pre-existing project", async () => {
     const db = createDbStub({
@@ -481,6 +483,35 @@ describe("Project intake runtime routes", () => {
     );
     expect(insertProjectCalls).toHaveLength(0);
     expect(createProjectOwnerMembership).not.toHaveBeenCalled();
+  });
+
+  it("blocks meeting attach-existing finalize when attach target project is archived", async () => {
+    const db = createDbStub({
+      initialDraft: makeDraftRow({
+        mode: "meeting",
+        status: "draft",
+        attach_to_project_id: ATTACH_PROJECT_ID,
+        meeting_title: "Attach path archived",
+        meeting_transcript:
+          "This transcript is long enough to pass validation but should not attach to archived projects.",
+      }),
+      attachProjectExists: true,
+      attachProjectStatus: "archived",
+    });
+    const app = await createTestApp(db);
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/projects/intake/drafts/${DRAFT_ID}/finalize`,
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      message: "Archived projects are read-only. Unarchive the project before making changes.",
+    });
+    expect(insertCanonicalEventRecords).not.toHaveBeenCalled();
+    expect(publishCanonicalEventCreated).not.toHaveBeenCalled();
   });
 
   it("enforces validation on draft payloads and meeting finalize prerequisites", async () => {

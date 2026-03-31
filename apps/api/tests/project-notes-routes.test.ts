@@ -260,4 +260,53 @@ describe("Project notes routes", () => {
     expect(response.statusCode).toBe(404);
     expect(createProjectNote).not.toHaveBeenCalled();
   });
+
+  it("keeps archived project note reads available by direct project scope", async () => {
+    vi.mocked(getProjectMembershipAccess).mockResolvedValue({
+      projectExists: true,
+      projectStatus: "archived",
+      projectRole: "viewer",
+      canRead: true,
+      canManage: false,
+    });
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/projects/${PROJECT_ID}/notes`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(listProjectNotesForUser).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks note creation when the project is archived", async () => {
+    vi.mocked(getProjectMembershipAccess).mockResolvedValue({
+      projectExists: true,
+      projectStatus: "archived",
+      projectRole: "owner",
+      canRead: true,
+      canManage: true,
+    });
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/projects/${PROJECT_ID}/notes`,
+      payload: {
+        visibility: "shared",
+        content: "Shared note body",
+      },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      message: "Archived projects are read-only. Unarchive the project before making changes.",
+    });
+    expect(createProjectNote).not.toHaveBeenCalled();
+  });
 });

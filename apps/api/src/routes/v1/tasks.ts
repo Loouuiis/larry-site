@@ -3,6 +3,12 @@ import { z } from "zod";
 import { classifyRiskLevel, computeRiskScore } from "@larry/ai";
 import { writeAuditLog } from "../../lib/audit.js";
 import {
+  ARCHIVED_PROJECT_WRITE_LOCK_MESSAGE,
+  isProjectWriteLocked,
+  loadProjectWriteState,
+  loadTaskProjectWriteState,
+} from "../../lib/project-write-lock.js";
+import {
   ProjectStatusFilterSchema,
   appendProjectStatusFilter,
 } from "../../lib/project-status.js";
@@ -41,6 +47,12 @@ const ListTasksQuerySchema = z.object({
 });
 
 export const taskRoutes: FastifyPluginAsync = async (fastify) => {
+  function assertProjectWritableOrThrow(projectStatus: string | null | undefined) {
+    if (isProjectWriteLocked(projectStatus)) {
+      throw fastify.httpErrors.conflict(ARCHIVED_PROJECT_WRITE_LOCK_MESSAGE);
+    }
+  }
+
   fastify.get(
     "/",
     { preHandler: [fastify.authenticate] },
@@ -99,6 +111,10 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const body = CreateTaskSchema.parse(request.body);
       const tenantId = request.user.tenantId;
+      const projectWriteState = await loadProjectWriteState(fastify.db, tenantId, body.projectId);
+      if (projectWriteState) {
+        assertProjectWritableOrThrow(projectWriteState.status);
+      }
 
       const dueDate = body.dueDate ? new Date(body.dueDate) : null;
       const daysToDeadline = dueDate ? Math.ceil((dueDate.getTime() - Date.now()) / 86_400_000) : 30;
@@ -251,6 +267,10 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
       const body = AttachDocumentSchema.parse(request.body);
       const tenantId = request.user.tenantId;
       const actorUserId = request.user.userId;
+      const taskProjectState = await loadTaskProjectWriteState(fastify.db, tenantId, params.id);
+      if (taskProjectState) {
+        assertProjectWritableOrThrow(taskProjectState.projectStatus);
+      }
 
       const taskRows = await fastify.db.queryTenant<{ id: string; project_id: string }>(
         tenantId,
@@ -362,6 +382,10 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
         assigneeUserId: z.string().uuid().optional().nullable(),
       }).parse(request.body);
       const tenantId = request.user.tenantId;
+      const taskProjectState = await loadTaskProjectWriteState(fastify.db, tenantId, params.id);
+      if (taskProjectState) {
+        assertProjectWritableOrThrow(taskProjectState.projectStatus);
+      }
 
       const setClauses: string[] = ["updated_at = NOW()"];
       const values: unknown[] = [tenantId, params.id];
@@ -437,6 +461,10 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
       const params = z.object({ id: z.string().uuid() }).parse(request.params);
       const body = z.object({ body: z.string().min(1).max(4000) }).parse(request.body);
       const tenantId = request.user.tenantId;
+      const taskProjectState = await loadTaskProjectWriteState(fastify.db, tenantId, params.id);
+      if (taskProjectState) {
+        assertProjectWritableOrThrow(taskProjectState.projectStatus);
+      }
 
       // Look up project_id from the task (required by task_comments schema)
       const taskRow = await fastify.db.queryTenant<{ project_id: string }>(
@@ -478,6 +506,10 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
       const params = z.object({ id: z.string().uuid() }).parse(request.params);
       const body = AddDependencySchema.parse(request.body);
       const tenantId = request.user.tenantId;
+      const taskProjectState = await loadTaskProjectWriteState(fastify.db, tenantId, params.id);
+      if (taskProjectState) {
+        assertProjectWritableOrThrow(taskProjectState.projectStatus);
+      }
 
       // Self-dependency guard
       if (params.id === body.dependsOnTaskId) {
@@ -533,6 +565,10 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
       const params = z.object({ id: z.string().uuid() }).parse(request.params);
       const body = UpdateStatusSchema.parse(request.body);
       const tenantId = request.user.tenantId;
+      const taskProjectState = await loadTaskProjectWriteState(fastify.db, tenantId, params.id);
+      if (taskProjectState) {
+        assertProjectWritableOrThrow(taskProjectState.projectStatus);
+      }
 
       const existing = await fastify.db.queryTenant<{
         due_date: string | null;

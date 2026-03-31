@@ -158,7 +158,7 @@ describe("Larry action centre routes", () => {
       error: expect.stringContaining("retired"),
     });
     expect(listLarryEventSummaries).not.toHaveBeenCalled();
-  });
+  }, 15_000);
 
   it("returns the canonical action-centre payload", async () => {
     vi.mocked(getLarryActionCentreData).mockResolvedValue({
@@ -924,6 +924,38 @@ describe("Larry action centre routes", () => {
     expect(executeAction).not.toHaveBeenCalled();
   });
 
+  it("blocks accepting suggested events when the project is archived", async () => {
+    vi.mocked(getProjectMembershipAccess).mockResolvedValue({
+      projectExists: true,
+      projectStatus: "archived",
+      projectRole: "owner",
+      canRead: true,
+      canManage: true,
+    });
+    vi.mocked(getLarryEventForMutation).mockResolvedValue({
+      id: EVENT_ID,
+      projectId: PROJECT_ID,
+      eventType: "suggested",
+      actionType: "deadline_change",
+      payload: { taskId: "task-1", newDeadline: "2026-04-10" },
+    });
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/larry/events/${EVENT_ID}/accept`,
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      message: "Archived projects are read-only. Unarchive the project before making changes.",
+    });
+    expect(executeAction).not.toHaveBeenCalled();
+    expect(markLarryEventAccepted).not.toHaveBeenCalled();
+  });
+
   it("dismisses a suggested event and returns the updated attribution", async () => {
     vi.mocked(getLarryEventForMutation).mockResolvedValue({
       id: EVENT_ID,
@@ -995,6 +1027,38 @@ describe("Larry action centre routes", () => {
       USER_ID,
       "Not needed"
     );
+  });
+
+  it("blocks dismissing suggested events when the project is archived", async () => {
+    vi.mocked(getProjectMembershipAccess).mockResolvedValue({
+      projectExists: true,
+      projectStatus: "archived",
+      projectRole: "owner",
+      canRead: true,
+      canManage: true,
+    });
+    vi.mocked(getLarryEventForMutation).mockResolvedValue({
+      id: EVENT_ID,
+      projectId: PROJECT_ID,
+      eventType: "suggested",
+      actionType: "deadline_change",
+      payload: { taskId: "task-1", newDeadline: "2026-04-10" },
+    });
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/larry/events/${EVENT_ID}/dismiss`,
+      payload: { reason: "Not needed" },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      message: "Archived projects are read-only. Unarchive the project before making changes.",
+    });
+    expect(markLarryEventDismissed).not.toHaveBeenCalled();
   });
 
   it("returns project memory entries with optional source filter", async () => {

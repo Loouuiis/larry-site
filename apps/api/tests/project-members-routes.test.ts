@@ -302,4 +302,29 @@ describe("Project collaborator routes", () => {
     expect(response.statusCode).toBe(404);
     expect(upsertProjectMembership).not.toHaveBeenCalled();
   });
+
+  it("blocks collaborator mutations when the project is archived", async () => {
+    vi.mocked(getProjectMembershipAccess).mockResolvedValue({
+      projectExists: true,
+      projectStatus: "archived",
+      projectRole: "owner",
+      canRead: true,
+      canManage: true,
+    });
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/projects/${PROJECT_ID}/members`,
+      payload: { userId: OTHER_USER_ID, role: "viewer" },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      message: "Archived projects are read-only. Unarchive the project before making changes.",
+    });
+    expect(upsertProjectMembership).not.toHaveBeenCalled();
+  });
 });

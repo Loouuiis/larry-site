@@ -301,4 +301,37 @@ describe("Document routes", () => {
     expect(insertDocumentCalls).toHaveLength(0);
     expect(writeAuditLog).not.toHaveBeenCalled();
   });
+
+  it("blocks document creation when the project is archived", async () => {
+    vi.mocked(getProjectMembershipAccess).mockResolvedValue({
+      projectExists: true,
+      projectStatus: "archived",
+      projectRole: "owner",
+      canRead: true,
+      canManage: true,
+    });
+    const queryTenant = vi.fn(async () => []);
+    const app = await createTestApp(queryTenant);
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/documents",
+      payload: {
+        projectId: PROJECT_ID,
+        title: "Project Brief",
+        content: "Template body",
+        docType: "docx_template",
+      },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      message: "Archived projects are read-only. Unarchive the project before making changes.",
+    });
+    expect(
+      queryTenant.mock.calls.some((call) => String(call[1]).includes("INSERT INTO documents"))
+    ).toBe(false);
+    expect(writeAuditLog).not.toHaveBeenCalled();
+  });
 });

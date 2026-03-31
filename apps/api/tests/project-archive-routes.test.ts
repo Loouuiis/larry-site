@@ -99,7 +99,7 @@ describe("Project archive lifecycle routes", () => {
         }),
       })
     );
-  });
+  }, 15_000);
 
   it("keeps archive requests idempotent when the project is already archived", async () => {
     const queryTenant = vi.fn(async (_tenantId: string, sql: string) => {

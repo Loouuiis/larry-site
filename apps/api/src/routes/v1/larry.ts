@@ -40,6 +40,11 @@ import {
   touchLarryConversation,
 } from "../../lib/larry-ledger.js";
 import { getProjectMembershipAccess } from "../../lib/project-memberships.js";
+import {
+  ARCHIVED_PROJECT_WRITE_LOCK_MESSAGE,
+  isProjectWriteLocked,
+  loadProjectWriteState,
+} from "../../lib/project-write-lock.js";
 import { getOrGenerateBriefing } from "../../services/larry-briefing.js";
 import {
   insertCanonicalEventRecords,
@@ -336,6 +341,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
     tenantRole: string;
     projectId: string;
     mode: "read" | "manage";
+    requireWritable?: boolean;
   }) {
     const access = await getProjectMembershipAccess({
       db: fastify.db,
@@ -358,6 +364,12 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         "Project action updates require owner or editor access."
       );
     }
+
+    if (input.requireWritable && isProjectWriteLocked(access.projectStatus)) {
+      throw fastify.httpErrors.conflict(ARCHIVED_PROJECT_WRITE_LOCK_MESSAGE);
+    }
+
+    return access;
   }
 
   async function listAccessibleProjectsForGlobalChat(input: {
@@ -722,6 +734,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         tenantRole: request.user.role,
         projectId: event.projectId,
         mode: "manage",
+        requireWritable: true,
       });
       if (event.eventType !== "suggested") {
         throw fastify.httpErrors.conflict("Only suggested events can be accepted.");
@@ -813,6 +826,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         tenantRole: request.user.role,
         projectId: event.projectId,
         mode: "manage",
+        requireWritable: true,
       });
       if (event.eventType !== "suggested") {
         throw fastify.httpErrors.conflict("Only suggested events can be dismissed.");
@@ -935,6 +949,12 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
 
       const body = parse.data;
       const tenantId = request.user.tenantId;
+      if (body.projectId) {
+        const projectWriteState = await loadProjectWriteState(fastify.db, tenantId, body.projectId);
+        if (projectWriteState && isProjectWriteLocked(projectWriteState.status)) {
+          throw fastify.httpErrors.conflict(ARCHIVED_PROJECT_WRITE_LOCK_MESSAGE);
+        }
+      }
       const canonicalPayload = {
         ...(body.payload ?? {}),
         transcript: body.transcript,
@@ -954,8 +974,8 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
 
         const meetingNoteResult = await client.query<{ id: string }>(
           `INSERT INTO meeting_notes
-            (tenant_id, project_id, agent_run_id, title, transcript, created_by_user_id)
-           VALUES ($1, $2, NULL, $3, $4, $5)
+            (tenant_id, project_id, title, transcript, created_by_user_id)
+           VALUES ($1, $2, $3, $4, $5)
            RETURNING id`,
           [tenantId, body.projectId ?? null, body.meetingTitle ?? null, body.transcript, request.user.userId]
         );
@@ -1033,6 +1053,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           tenantRole: request.user.role,
           projectId,
           mode: "read",
+          requireWritable: true,
         });
       }
 

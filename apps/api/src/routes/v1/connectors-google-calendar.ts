@@ -3,6 +3,11 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { ingestCanonicalEvent } from "../../services/ingest/pipeline.js";
 import { writeAuditLog } from "../../lib/audit.js";
+import {
+  ARCHIVED_PROJECT_WRITE_LOCK_MESSAGE,
+  isProjectWriteLocked,
+  loadProjectWriteState,
+} from "../../lib/project-write-lock.js";
 import { createSignedStateToken, verifySignedStateToken } from "../../services/connectors/slack.js";
 import {
   buildGoogleCalendarInstallUrl,
@@ -181,22 +186,6 @@ async function loadTenantGoogleInstallation(
     [tenantId, calendarId]
   );
   return rows[0] ?? null;
-}
-
-async function tenantProjectExists(
-  app: Parameters<FastifyPluginAsync>[0],
-  tenantId: string,
-  projectId: string
-): Promise<boolean> {
-  const rows = await app.db.queryTenant<{ id: string }>(
-    tenantId,
-    `SELECT id
-     FROM projects
-     WHERE tenant_id = $1 AND id = $2
-     LIMIT 1`,
-    [tenantId, projectId]
-  );
-  return rows.length > 0;
 }
 
 async function ensureFreshGoogleAccessToken(
@@ -409,9 +398,16 @@ export const googleCalendarConnectorRoutes: FastifyPluginAsync = async (fastify)
       }
 
       if (body.projectId) {
-        const exists = await tenantProjectExists(fastify, request.user.tenantId, body.projectId);
-        if (!exists) {
+        const projectWriteState = await loadProjectWriteState(
+          fastify.db,
+          request.user.tenantId,
+          body.projectId
+        );
+        if (!projectWriteState) {
           throw fastify.httpErrors.notFound("Project not found for this tenant.");
+        }
+        if (isProjectWriteLocked(projectWriteState.status)) {
+          throw fastify.httpErrors.conflict(ARCHIVED_PROJECT_WRITE_LOCK_MESSAGE);
         }
       }
 

@@ -25,6 +25,8 @@ interface MeetingNoteRow {
   project_id: string | null;
 }
 
+type ProjectRuntimeStatus = "active" | "archived";
+
 interface EmailCanonicalPayload extends Record<string, unknown> {
   projectId?: string;
   from?: string;
@@ -110,6 +112,44 @@ async function loadMeetingNote(
   );
 
   return rows[0] ?? null;
+}
+
+async function loadProjectRuntimeStatus(
+  tenantId: string,
+  projectId: string
+): Promise<ProjectRuntimeStatus | null> {
+  const rows = await db.queryTenant<{ status: ProjectRuntimeStatus }>(
+    tenantId,
+    `SELECT CASE
+              WHEN status = 'archived' THEN 'archived'
+              ELSE 'active'
+            END AS status
+       FROM projects
+      WHERE tenant_id = $1
+        AND id = $2
+      LIMIT 1`,
+    [tenantId, projectId]
+  );
+  return rows[0]?.status ?? null;
+}
+
+async function shouldSkipArchivedProjectWrites(input: {
+  tenantId: string;
+  canonicalEvent: CanonicalEventRow;
+  projectId: string;
+}): Promise<boolean> {
+  const projectStatus = await loadProjectRuntimeStatus(input.tenantId, input.projectId);
+  if (projectStatus !== "archived") {
+    return false;
+  }
+
+  console.warn("[canonical-event] archived project write skipped", {
+    tenantId: input.tenantId,
+    canonicalEventId: input.canonicalEvent.id,
+    source: input.canonicalEvent.source,
+    projectId: input.projectId,
+  });
+  return true;
 }
 
 async function reconcileMeetingNote(
@@ -325,6 +365,18 @@ async function handleTranscriptCanonicalEvent(
     );
     return;
   }
+  if (
+    await shouldSkipArchivedProjectWrites({
+      tenantId,
+      canonicalEvent,
+      projectId: resolvedProjectId,
+    })
+  ) {
+    await reconcileMeetingNote(tenantId, meetingNoteId, 0, {
+      projectId: resolvedProjectId,
+    });
+    return;
+  }
 
   const snapshot = await getProjectSnapshot(db, tenantId, resolvedProjectId);
   const config = buildWorkerIntelligenceConfig();
@@ -393,6 +445,15 @@ async function handleEmailCanonicalEvent(
     console.warn(
       `[canonical-event] email event ${canonicalEvent.id} missing projectId; skipping action generation`
     );
+    return;
+  }
+  if (
+    await shouldSkipArchivedProjectWrites({
+      tenantId,
+      canonicalEvent,
+      projectId,
+    })
+  ) {
     return;
   }
 
@@ -477,6 +538,15 @@ async function handleCalendarCanonicalEvent(
     );
     return;
   }
+  if (
+    await shouldSkipArchivedProjectWrites({
+      tenantId,
+      canonicalEvent,
+      projectId: resolvedProjectId,
+    })
+  ) {
+    return;
+  }
 
   let snapshot;
   try {
@@ -556,6 +626,15 @@ async function handleSlackCanonicalEvent(
     console.warn(
       `[canonical-event] slack event ${canonicalEvent.id} has no resolvable project scope; skipping action generation`
     );
+    return;
+  }
+  if (
+    await shouldSkipArchivedProjectWrites({
+      tenantId,
+      canonicalEvent,
+      projectId: resolvedProjectId,
+    })
+  ) {
     return;
   }
 

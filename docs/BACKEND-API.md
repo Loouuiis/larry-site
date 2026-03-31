@@ -9,7 +9,7 @@ Fastify v5 REST API at `apps/api/`. Product routes are registered in `apps/api/s
 | File | Primary Routes |
 |------|----------------|
 | `auth.ts` | `POST /v1/auth/login`, `POST /v1/auth/refresh`, `GET /v1/auth/me` |
-| `projects.ts` | CRUD `/v1/projects`, archive lifecycle routes (`POST /v1/projects/:id/archive`, `POST /v1/projects/:id/unarchive`), project timeline/health utilities, project collaborator routes (`GET/POST/PATCH/DELETE /v1/projects/:id/members...`), and project notes routes (`GET/POST /v1/projects/:id/notes`) |
+| `projects.ts` | CRUD `/v1/projects`, archive/delete lifecycle routes (`POST /v1/projects/:id/archive`, `POST /v1/projects/:id/unarchive`, `POST /v1/projects/:id/delete`), project timeline/health utilities, project collaborator routes (`GET/POST/PATCH/DELETE /v1/projects/:id/members...`), and project notes routes (`GET/POST /v1/projects/:id/notes`) |
 | `project-intake.ts` | `POST /v1/projects/intake/drafts`, `POST /v1/projects/intake/drafts/:id/bootstrap`, `POST /v1/projects/intake/drafts/:id/finalize` |
 | `documents.ts` | `GET /v1/documents`, `POST /v1/documents` (optional create+attach via `attachTaskId`) |
 | `tasks.ts` | CRUD `/v1/tasks`, task status/dependency helpers, and task document attachments (`GET/POST /v1/tasks/:id/attachments`) |
@@ -37,6 +37,11 @@ Fastify v5 REST API at `apps/api/`. Product routes are registered in `apps/api/s
 - `POST /v1/larry/transcript` is queue-only: it persists canonical ingest metadata and meeting linkage, returns `202`, and defers intelligence/action execution to worker `canonical_event.created`.
 - `POST /v1/larry/chat` and `POST /v1/larry/events/:id/accept` write durable rows into `project_memory_entries` for project timeline context.
 - `POST /v1/larry/chat` applies a clarification-first gate for ambiguous mutation requests and returns a clarification reply without executing/storing actions when task target/details are under-specified.
+- Project-scoped Larry write routes return `409` for archived projects:
+  - `POST /v1/larry/chat` (when `projectId` is provided)
+  - `POST /v1/larry/transcript` (when `projectId` is provided)
+  - `POST /v1/larry/events/:id/accept`
+  - `POST /v1/larry/events/:id/dismiss`
 - Clarification gating applies task-target checks only to task-targeted mutation intents; collaborator and note intents are not blocked by `missing_task_target`.
 - `POST /v1/larry/chat` request contract is additive:
   - `projectId` is optional.
@@ -73,7 +78,7 @@ Compatibility and retirement behavior:
   - `GET /v1/larry/conversations?projectStatus=all|active|archived`
   - `projectStatus` is applied only when `projectId` is omitted; project-scoped reads remain unchanged so archived project URLs still work.
 
-## Project Archive Contracts
+## Project Archive/Delete Contracts
 
 - `GET /v1/projects?status=all|active|archived`
   - Default remains `status=all` for backwards compatibility.
@@ -84,6 +89,29 @@ Compatibility and retirement behavior:
   - Idempotent and audit-logged.
   - Response shape is `{ id, status }`.
   - Audit details include `previousStatus`, `newStatus`, and `changed`.
+- `POST /v1/projects/:id/delete`
+  - `admin|pm` only.
+  - Body: `{ "confirmProjectName": "<exact project name>" }`.
+  - Returns:
+    - `404` if project does not exist.
+    - `409` if project is not archived.
+    - `409` if `confirmProjectName` does not exactly match current project name.
+    - `200` with `{ id, deleted: true }` on success.
+  - Hard-delete flow purges project-owned non-cascading artifacts before deleting the project row:
+    - `meeting_notes`
+    - `documents`
+    - `email_outbound_drafts`
+    - `larry_conversations`
+  - Writes audit log `project.delete` with pre-delete status/name and purge counts.
+- Archived projects are write-locked (`409`) for project-scoped mutations:
+  - collaborator membership writes (`POST/PATCH/DELETE /v1/projects/:id/members...`)
+  - `POST /v1/projects/:id/notes`
+  - task writes (`POST /v1/tasks`, `PATCH /v1/tasks/:id`, `PATCH /v1/tasks/:id/status`, `POST /v1/tasks/:id/comments`, `POST /v1/tasks/:id/dependencies`, `POST /v1/tasks/:id/attachments`)
+  - `POST /v1/documents`
+  - Larry project write routes listed above
+  - `PUT /v1/connectors/google-calendar/project-link` when linking to an archived project
+  - `POST /v1/projects/intake/drafts/:id/finalize` meeting attach-existing path when target project is archived
+- Project-scoped archived reads stay unchanged (for example `GET /v1/projects/:id/notes`, `GET /v1/projects/:id/members`).
 
 Cross-project archive-aware list filters:
 - `GET /v1/tasks?projectStatus=all|active|archived`
@@ -100,6 +128,7 @@ Cross-project archive-aware list filters:
 - `PUT /v1/connectors/google-calendar/project-link`
   - Body: `{ calendarId?, projectId? }` where `projectId: null` clears the link.
   - Requires `admin|pm` and validates tenant-scoped project existence for non-null `projectId`.
+  - Linking to an archived project is rejected with `409`.
 - `POST /v1/connectors/google-calendar/webhook`
   - Canonical payload project scope resolution is additive:
     - explicit webhook payload hint (`projectId`) if present
@@ -146,11 +175,13 @@ Visibility semantics:
 - `POST /v1/documents`
   - Creates a document asset with structured metadata fields (`sourceKind`, `sourceRecordId`, `version`, `metadata`).
   - Supports optional one-shot create+attach via `attachTaskId` (same-project enforced).
+  - Returns `409` when `projectId` is archived.
 - `GET /v1/tasks/:id/attachments`
   - Lists task attachments with joined document metadata.
 - `POST /v1/tasks/:id/attachments`
   - Attaches an existing project document to a task.
   - Idempotent for duplicate task+document pairs (`duplicate` flag in response).
+  - Returns `409` when the task's project is archived.
 - `POST /v1/connectors/email/draft/send`
   - Existing response contract is unchanged.
   - Additively mirrors each saved email draft to `documents` as `doc_type='email_draft'`.
@@ -165,6 +196,7 @@ Visibility semantics:
   - `manual` / `chat`: create project, create starter tasks, write project memory entry, and persist non-task suggestions to Action Centre.
   - `meeting` + create-new: create project and enqueue canonical transcript ingest.
   - `meeting` + attach-existing: enqueue canonical transcript ingest directly to selected project without project insert.
+  - `meeting` + attach-existing returns `409` when the target project is archived.
 - Intake responses return a canonical draft shape:
   - `draft.id`, `draft.mode`, `draft.status`
   - `draft.project` (`name`, `description`, `startDate`, `targetDate`, `attachToProjectId`)

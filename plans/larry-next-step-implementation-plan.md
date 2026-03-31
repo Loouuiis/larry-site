@@ -610,29 +610,43 @@ None. Phase 8 starter slice is fully closed as of 2026-03-30.
 ### Phase Closure Snapshot
 
 - Closed in this update:
-  - **Phase 10 - Project Archive Lifecycle**:
-    - hardened `projects.status` to `active|archived`, added archive-aware recency indexing, and seeded a deterministic archived demo project
-    - added idempotent `POST /v1/projects/:id/archive` and `POST /v1/projects/:id/unarchive` with audit metadata
-    - added additive `status` / `projectStatus` filters across projects, tasks, meetings, global Larry conversation previews, and global Larry Action Centre reads
-    - updated workspace proxies and UI so active surfaces default to active-only while archived project URLs remain directly readable
+  - **Phase 11 - Project Delete And Runtime Retirement**:
+    - added `POST /v1/projects/:id/delete` with archived-only gating, exact-name confirmation, and irreversible hard-delete response `{ id, deleted: true }`
+    - implemented transactional project hard-delete purge for non-cascading project artifacts before `projects` row delete:
+      - `meeting_notes`
+      - `documents`
+      - `email_outbound_drafts`
+      - `larry_conversations`
+    - added `project.delete` audit coverage with pre-delete project status/name and purge counts
+    - introduced shared project/task write-lock helpers and applied archived write-lock (`409`) coverage across project-scoped mutation routes:
+      - project collaborators and notes writes
+      - task mutation/attachment/comment/dependency/status writes
+      - document create/attach writes
+      - Larry project chat/transcript/accept/dismiss writes
+      - intake meeting attach-existing finalize path
+      - Google Calendar project-link updates
+    - hardened worker `canonical_event.created` handling to skip action/memory writes for archived projects with structured warning logs
+    - completed non-breaking runtime retirement cleanup by removing explicit legacy-column `NULL` writes:
+      - removed explicit `agent_run_id = NULL` from meeting-note insert paths
+      - removed explicit `action_id = NULL` from internal email-draft insert path
     - updated targeted docs:
       - `apps/api/openapi.yaml`
       - `docs/BACKEND-API.md`
-      - `docs/FRONTEND.md`
       - `docs/DATABASE.md`
+      - `plans/larry-next-step-implementation-plan.md`
     - test gate passed: `cd apps/api && npm test`
 - Remaining in current phase:
-  - None. Phase 10 - Project Archive Lifecycle is closed as of 2026-03-31.
+  - None. Phase 11 - Project Delete And Runtime Retirement is closed as of 2026-03-31.
 - Next concrete milestone:
-  - `Phase 11 - Project Delete And Runtime Retirement` is recommended next, but it is not opened in this change.
+  - `Phase 12 - Runtime Reliability And Operator Recovery` is recommended next, but it is not opened in this change.
 
 ### Recommended Next Slice
 
 - Candidate milestone for the next update:
-  - **Phase 11 - Project Delete And Runtime Retirement**: add explicit hard-delete flow, archived write-lock behavior, legacy runtime retirement cleanup, and archive/delete boundary hardening.
-- Keep out of scope for that slice unless delete semantics force it in:
-  - non-project-centric sweeps such as Documents
-  - unrelated UI redesign
+  - **Phase 12 - Runtime Reliability And Operator Recovery**: add replay-safe operator tooling for canonical events, expose actionable dead-letter/retry visibility, and tighten idempotency observability for connector/event-driven flows.
+- Keep out of scope for that slice unless reliability hardening forces it in:
+  - broad UI redesign work
+  - schema-breaking changes to existing public read contracts
 
 ---
 
