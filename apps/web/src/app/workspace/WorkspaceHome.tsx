@@ -1,10 +1,12 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { TriangleAlert } from "lucide-react";
+import { TriangleAlert, Plus } from "lucide-react";
 import type { WorkspaceHomeData, WorkspaceProject, WorkspaceTask } from "@/app/dashboard/types";
+import { ProjectCreateSheet } from "./ProjectCreateSheet";
+import { useWorkspaceChrome } from "./WorkspaceChromeContext";
 
 interface LarryBriefingProject {
   projectId: string;
@@ -115,12 +117,14 @@ function buildProjectCard(
 
 export function WorkspaceHome({ viewerEmail }: WorkspaceHomeProps) {
   const router = useRouter();
+  const chrome = useWorkspaceChrome();
   const [homeData, setHomeData] = useState<WorkspaceHomeData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [nudgeDismissed, setNudgeDismissed] = useState(false);
   const [briefing, setBriefing] = useState<LarryBriefingContent | null>(null);
   const [archivedProjectsOpen, setArchivedProjectsOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const loadWorkspace = useCallback(async () => {
     try {
@@ -184,17 +188,37 @@ export function WorkspaceHome({ viewerEmail }: WorkspaceHomeProps) {
   ].filter(Boolean).length;
 
   return (
-    <div className="min-h-full overflow-y-auto" style={{ background: "var(--page-bg)" }}>
-      <div className="mx-auto max-w-[960px] space-y-6 px-6 py-8">
-        <header>
-          <h1 className="text-display" style={{ color: "var(--text-1)" }}>
-            {briefing?.greeting ?? `Welcome back, ${greetingName}.`}
+    <div
+      className="min-h-full overflow-y-auto"
+      style={{ background: "var(--page-bg)" }}
+    >
+      <div className="mx-auto max-w-[960px] px-6 py-8 space-y-6">
+
+        {/* Header */}
+        <header className="text-center">
+          <h1 className="text-[2.5rem] font-bold leading-tight" style={{ color: "var(--text-1)" }}>
+            Your projects
           </h1>
-          <p className="mt-1 text-body-sm">
-            {briefing
-              ? `${briefing.totalNeedsYou} project${briefing.totalNeedsYou !== 1 ? "s" : ""} need${briefing.totalNeedsYou === 1 ? "s" : ""} your attention · ${projectCards.length} active`
-              : `${projectCards.length} active project${projectCards.length !== 1 ? "s" : ""}`}
+          <p className="text-body-sm mt-1" style={{ color: "var(--text-muted)" }}>
+            Select a project to get started.
           </p>
+          <div className="mt-4 flex justify-center">
+            <button
+              type="button"
+              onClick={() => setSheetOpen(true)}
+              className="inline-flex items-center gap-1.5 text-[13px] font-medium transition-opacity hover:opacity-90"
+              style={{
+                height: "36px",
+                padding: "0 16px",
+                borderRadius: "var(--radius-btn)",
+                background: "#e2d6fc",
+                color: "#6c44f6",
+              }}
+            >
+              <Plus size={14} />
+              New Project
+            </button>
+          </div>
         </header>
 
         {briefing && briefing.projects.length > 0 && (
@@ -358,7 +382,7 @@ export function WorkspaceHome({ viewerEmail }: WorkspaceHomeProps) {
                       width: `${Math.max(project.progress, 2)}%`,
                       height: "100%",
                       borderRadius: "9999px",
-                      background: "var(--cta)",
+                      background: "#6c44f6",
                     }}
                   />
                 </div>
@@ -472,6 +496,15 @@ export function WorkspaceHome({ viewerEmail }: WorkspaceHomeProps) {
           </div>
         )}
       </div>
+
+      <ProjectCreateSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        onCreated={() => {
+          setSheetOpen(false);
+          chrome?.refreshShell?.();
+        }}
+      />
     </div>
   );
 }

@@ -9,7 +9,7 @@ import {
   FileText, MessageSquare, ClipboardList,
   X, FolderOpen, Home, ListTodo, Settings,
   Search, LogOut, User, FolderKanban, CheckSquare,
-  Plus, BarChart2, Sparkles,
+  Plus, BarChart2, Sparkles, PanelLeftClose, PanelLeftOpen,
 } from "lucide-react";
 import { WorkspaceProject } from "@/app/dashboard/types";
 
@@ -39,11 +39,12 @@ interface WorkspaceSidebarInnerProps {
   onClose?: () => void;
   userEmail?: string | null;
   notifCount?: number;
+  onToggleCollapsed?: () => void;
 }
 
 interface SearchTask { id: string; title: string; status: string; projectId?: string | null; }
 
-function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail }: WorkspaceSidebarInnerProps) {
+function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, onToggleCollapsed }: WorkspaceSidebarInnerProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -98,10 +99,10 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail }: Work
   const isProjectActive = (id: string) => pathname?.startsWith(`/workspace/projects/${id}`) ?? false;
 
   return (
-    <div className="flex h-full flex-col" style={{ background: "var(--surface)" }}>
+    <div className="flex h-full flex-col" style={{ background: "#ffffff" }}>
 
       {/* Logo */}
-      <div className="shrink-0 px-4 pt-4 pb-3">
+      <div className="shrink-0 px-4 pt-4 pb-3 flex items-center justify-between">
         <Link href="/workspace" onClick={onClose} className="flex items-center gap-2">
           <Image src="/Larry_logo.png" alt="Larry" width={100} height={30} className="object-contain" />
           {/* Green active dot on logo */}
@@ -111,6 +112,18 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail }: Work
             aria-hidden="true"
           />
         </Link>
+        {onToggleCollapsed && (
+          <button
+            onClick={onToggleCollapsed}
+            title="Collapse sidebar"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors"
+            style={{ color: "#6c44f6" }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+          >
+            <PanelLeftClose size={15} />
+          </button>
+        )}
       </div>
 
       {/* Search */}
@@ -326,23 +339,51 @@ interface WorkspaceSidebarProps {
   onMobileClose: () => void;
   userEmail?: string | null;
   notifCount?: number;
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
 }
 
-export function WorkspaceSidebar({ projects, activeNav, mobileOpen, onMobileClose, userEmail, notifCount }: WorkspaceSidebarProps) {
+export function WorkspaceSidebar({ projects, activeNav, mobileOpen, onMobileClose, userEmail, notifCount, collapsed, onToggleCollapsed }: WorkspaceSidebarProps) {
   return (
     <>
       {/* Desktop */}
-      <aside
-        className="hidden md:flex shrink-0 flex-col"
-        style={{ width: "252px", borderRight: "1px solid var(--border)", background: "var(--surface)" }}
+      <motion.aside
+        className="hidden md:flex shrink-0 flex-col overflow-hidden"
+        initial={false}
+        animate={{ width: collapsed ? 52 : 252 }}
+        transition={{ duration: 0.22, ease: DRAWER_EASE }}
+        style={{ borderRight: "1px solid var(--border)", background: "#ffffff" }}
       >
-        <WorkspaceSidebarInner
-          projects={projects}
-          activeNav={activeNav}
-          userEmail={userEmail}
-          notifCount={notifCount}
-        />
-      </aside>
+        {collapsed ? (
+          <div className="flex h-full flex-col items-center justify-between pt-4 pb-3">
+            <button
+              onClick={onToggleCollapsed}
+              title="Expand sidebar"
+              className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors"
+              style={{ color: "#6c44f6" }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+            >
+              <PanelLeftOpen size={16} />
+            </button>
+            <div
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+              style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}
+              title={userEmail ?? "Account"}
+            >
+              <User size={16} style={{ color: "var(--text-disabled)" }} />
+            </div>
+          </div>
+        ) : (
+          <WorkspaceSidebarInner
+            projects={projects}
+            activeNav={activeNav}
+            userEmail={userEmail}
+            notifCount={notifCount}
+            onToggleCollapsed={onToggleCollapsed}
+          />
+        )}
+      </motion.aside>
 
       {/* Mobile drawer */}
       <AnimatePresence>
@@ -368,7 +409,7 @@ export function WorkspaceSidebar({ projects, activeNav, mobileOpen, onMobileClos
               style={{
                 width: "252px",
                 borderRight: "1px solid var(--border)",
-                background: "var(--surface)",
+                background: "#ffffff",
                 boxShadow: "var(--shadow-3)",
               }}
             >
@@ -416,7 +457,7 @@ interface SidebarProps {
 
 function SidebarInner({ active, setActive, onClose }: { active: NavSection; setActive: (s: NavSection) => void; onClose?: () => void; }) {
   return (
-    <div className="flex h-full flex-col" style={{ background: "var(--surface)" }}>
+    <div className="flex h-full flex-col" style={{ background: "#ffffff" }}>
       <div className="flex h-14 items-center justify-between px-4" style={{ borderBottom: "1px solid var(--border)" }}>
         <div className="flex items-center gap-2">
           <div

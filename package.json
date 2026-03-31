@@ -11,7 +11,7 @@
     "web:build": "npm run build -w @larry/web",
     "web:start": "npm run start -w @larry/web",
     "web:lint": "npm run lint -w @larry/web",
-    "api:dev": "npm run build -w @larry/shared && npm run build -w @larry/ai && npm run db:migrate && npm run db:seed && npm run dev -w @larry/api",
+    "api:dev": "npm run build -w @larry/shared && npm run build -w @larry/config && npm run build -w @larry/db && npm run build -w @larry/ai && npm run db:migrate && npm run db:seed && npm run dev -w @larry/api",
     "api:build": "npm run build -w @larry/shared && npm run build -w @larry/config && npm run build -w @larry/db && npm run build -w @larry/ai && npm run build -w @larry/api",
     "api:test": "npm run build -w @larry/shared && npm run build -w @larry/config && npm run build -w @larry/db && npm run build -w @larry/ai && npm run test -w @larry/api",
     "worker:dev": "npm run dev -w @larry/worker",

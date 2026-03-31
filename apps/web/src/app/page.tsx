@@ -18,7 +18,7 @@ import { CTASection } from "@/components/sections/CTASection";
 
 export default function Home() {
   return (
-    <div className="use-custom-cursor">
+    <div className="use-custom-cursor landing-page">
       <CustomCursor />
       <OverlayManager />
       <WelcomeSplash />

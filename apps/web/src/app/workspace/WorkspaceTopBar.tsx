@@ -1,10 +1,10 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NotificationBell } from "./NotificationBell";
 import { useWorkspaceChrome } from "./WorkspaceChromeContext";
-import { Plus, Menu } from "lucide-react";
+import { Menu } from "lucide-react";
 
 type WorkspaceTopBarProps = {
   userEmail?: string | null;
@@ -109,22 +109,8 @@ export function WorkspaceTopBar({
         <Breadcrumb workspaceName={workspaceName} />
       </div>
 
-      <div className="flex shrink-0 items-center gap-3">
+      <div className="flex shrink-0 items-center">
         <NotificationBell count={chrome?.notifCount ?? 0} onCountChange={() => undefined} />
-
-        <Link
-          href="/workspace/projects/new"
-          className="hidden items-center gap-1.5 text-[13px] font-medium text-white transition-opacity hover:opacity-90 sm:inline-flex"
-          style={{
-            height: "32px",
-            padding: "0 12px",
-            borderRadius: "var(--radius-btn)",
-            background: "var(--cta)",
-          }}
-        >
-          <Plus size={14} />
-          New Project
-        </Link>
       </div>
     </header>
   );
