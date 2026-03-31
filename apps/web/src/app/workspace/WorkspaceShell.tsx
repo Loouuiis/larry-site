@@ -32,7 +32,7 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
   const [meetingBusy, setMeetingBusy] = useState(false);
   const [notifCount, setNotifCount] = useState(0);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
 
   const projectIdFromPath = pathname?.match(/^\/workspace\/projects\/([^/]+)/)?.[1] ?? "";
 

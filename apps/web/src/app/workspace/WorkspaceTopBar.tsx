@@ -4,9 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NotificationBell } from "./NotificationBell";
 import { useWorkspaceChrome } from "./WorkspaceChromeContext";
-import { Plus, Menu } from "lucide-react";
-import { useState } from "react";
-import { ProjectCreateSheet } from "./ProjectCreateSheet";
+import { Menu } from "lucide-react";
 
 type WorkspaceTopBarProps = {
   userEmail?: string | null;
@@ -77,64 +75,31 @@ function Breadcrumb({ workspaceName }: { workspaceName: string }) {
 
 export function WorkspaceTopBar({ userEmail: _userEmail, workspaceName = "Larry Workspace", onMobileMenuOpen }: WorkspaceTopBarProps) {
   const chrome = useWorkspaceChrome();
-  const [sheetOpen, setSheetOpen] = useState(false);
 
   return (
-    <>
-      <header
-        className="flex h-12 shrink-0 items-center justify-between px-4 gap-4"
-        style={{
-          height: "48px",
-          background: "var(--surface)",
-          borderBottom: "1px solid var(--border)",
-        }}
+    <header
+      className="flex h-12 shrink-0 items-center justify-between px-4 gap-4"
+      style={{ height: "48px" }}
+    >
+      {/* Mobile: hamburger */}
+      <button
+        className="flex h-8 w-8 items-center justify-center rounded-lg md:hidden"
+        style={{ color: "var(--text-muted)" }}
+        onClick={onMobileMenuOpen}
+        aria-label="Open menu"
       >
-        {/* Mobile: hamburger */}
-        <button
-          className="flex h-8 w-8 items-center justify-center rounded-lg md:hidden"
-          style={{ color: "var(--text-muted)" }}
-          onClick={onMobileMenuOpen}
-          aria-label="Open menu"
-        >
-          <Menu size={18} />
-        </button>
+        <Menu size={18} />
+      </button>
 
-        {/* Left: breadcrumb */}
-        <div className="flex-1 min-w-0 hidden md:block">
-          <Breadcrumb workspaceName={workspaceName} />
-        </div>
+      {/* Left: breadcrumb */}
+      <div className="flex-1 min-w-0 hidden md:block">
+        <Breadcrumb workspaceName={workspaceName} />
+      </div>
 
-        {/* Right cluster */}
-        <div className="flex items-center gap-3 shrink-0">
-          {/* Notification bell */}
-          <NotificationBell count={chrome?.notifCount ?? 0} onCountChange={() => undefined} />
-
-          {/* + New Project */}
-          <button
-            type="button"
-            onClick={() => setSheetOpen(true)}
-            className="hidden sm:inline-flex items-center gap-1.5 text-[13px] font-medium text-white transition-opacity hover:opacity-90"
-            style={{
-              height: "32px",
-              padding: "0 12px",
-              borderRadius: "var(--radius-btn)",
-              background: "var(--cta)",
-            }}
-          >
-            <Plus size={14} />
-            New Project
-          </button>
-        </div>
-      </header>
-
-      <ProjectCreateSheet
-        open={sheetOpen}
-        onClose={() => setSheetOpen(false)}
-        onCreated={() => {
-          setSheetOpen(false);
-          chrome?.refreshShell?.();
-        }}
-      />
-    </>
+      {/* Right: bell */}
+      <div className="flex items-center shrink-0">
+        <NotificationBell count={chrome?.notifCount ?? 0} onCountChange={() => undefined} />
+      </div>
+    </header>
   );
 }

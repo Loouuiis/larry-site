@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { TriangleAlert } from "lucide-react";
+import { TriangleAlert, Plus } from "lucide-react";
 import type { WorkspaceProject, WorkspaceSnapshot, WorkspaceTask } from "@/app/dashboard/types";
+import { ProjectCreateSheet } from "./ProjectCreateSheet";
+import { useWorkspaceChrome } from "./WorkspaceChromeContext";
 
 interface LarryBriefingProject {
   projectId: string;
@@ -119,12 +121,14 @@ function buildProjectCard(
 
 export function WorkspaceHome() {
   const router = useRouter();
+  const chrome = useWorkspaceChrome();
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
   const [viewer, setViewer] = useState<AuthMePayload["user"] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [nudgeDismissed, setNudgeDismissed] = useState(false);
   const [briefing, setBriefing] = useState<LarryBriefingContent | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const loadWorkspace = useCallback(async () => {
     try {
@@ -193,16 +197,30 @@ export function WorkspaceHome() {
     >
       <div className="mx-auto max-w-[960px] px-6 py-8 space-y-6">
 
-        {/* Welcome header — no card wrapper */}
-        <header>
+        {/* Header */}
+        <header className="text-center">
           <h1 className="text-display" style={{ color: "var(--text-1)" }}>
-            {briefing?.greeting ?? `Welcome back, ${greetingName}.`}
+            Your projects
           </h1>
-          <p className="text-body-sm mt-1">
-            {briefing
-              ? `${briefing.totalNeedsYou} project${briefing.totalNeedsYou !== 1 ? "s" : ""} need${briefing.totalNeedsYou === 1 ? "s" : ""} your attention · ${projectCards.length} active`
-              : `${projectCards.length} active project${projectCards.length !== 1 ? "s" : ""}`}
+          <p className="text-body-sm mt-1" style={{ color: "var(--text-muted)" }}>
+            Select a project to get started
           </p>
+          <div className="mt-4 flex justify-center">
+            <button
+              type="button"
+              onClick={() => setSheetOpen(true)}
+              className="inline-flex items-center gap-1.5 text-[13px] font-medium text-white transition-opacity hover:opacity-90"
+              style={{
+                height: "36px",
+                padding: "0 16px",
+                borderRadius: "var(--radius-btn)",
+                background: "var(--cta)",
+              }}
+            >
+              <Plus size={14} />
+              New Project
+            </button>
+          </div>
         </header>
 
         {/* Larry briefing — per-project summaries */}
@@ -437,6 +455,15 @@ export function WorkspaceHome() {
         )}
 
       </div>
+
+      <ProjectCreateSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        onCreated={() => {
+          setSheetOpen(false);
+          chrome?.refreshShell?.();
+        }}
+      />
     </div>
   );
 }
