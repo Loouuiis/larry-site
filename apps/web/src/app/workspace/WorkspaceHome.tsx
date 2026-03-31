@@ -68,6 +68,15 @@ function formatRelativeTime(value: string | null | undefined): string {
   return `${Math.floor(days / 30)}mo ago`;
 }
 
+function projectStatusPillClass(status: string | undefined): string {
+  switch (status) {
+    case "completed": return "pm-pill-done";
+    case "blocked": return "pm-pill-stuck";
+    case "in_progress": return "pm-pill-working";
+    default: return "pm-pill-not-started";
+  }
+}
+
 function titleCase(value: string): string {
   return value
     .split(/[\s._-]+/)
@@ -202,7 +211,7 @@ export function WorkspaceHome() {
           <h1 className="text-[2.5rem] font-bold leading-tight" style={{ color: "var(--text-1)" }}>
             Your projects
           </h1>
-          <p className="text-body-sm mt-1" style={{ color: "var(--text-muted)" }}>
+          <p className="text-[15px] mt-1" style={{ color: "var(--text-muted)" }}>
             Select a project to get started.
           </p>
           <div className="mt-4 flex justify-center">
@@ -375,13 +384,18 @@ export function WorkspaceHome() {
                   padding: "20px",
                 }}
               >
-                {/* Project name */}
-                <p
-                  className="text-[16px] font-semibold leading-snug truncate"
-                  style={{ color: "var(--text-1)" }}
-                >
-                  {project.name}
-                </p>
+                {/* Project name + status */}
+                <div className="flex items-center justify-between gap-2">
+                  <p
+                    className="text-[16px] font-semibold leading-snug truncate"
+                    style={{ color: "var(--text-1)" }}
+                  >
+                    {project.name}
+                  </p>
+                  <span className={`pm-pill shrink-0 ${projectStatusPillClass(project.status)}`}>
+                    {project.status ?? "active"}
+                  </span>
+                </div>
 
                 {/* Description — 1 line truncated */}
                 <p

@@ -15,7 +15,7 @@ import { StatusChip } from "./StatusChip";
 import { TaskTable } from "./TaskTable";
 import { LarryTabSection } from "./LarryTabSection";
 
-type TabId = "overview" | "timeline" | "analytics" | "meetings" | "orgchart" | "documents";
+type TabId = "overview" | "project_overview" | "timeline" | "analytics" | "meetings" | "orgchart" | "documents";
 
 interface ProjectWorkspaceProps {
   projectId: string;
@@ -32,6 +32,7 @@ interface TimelineRow extends BoardTaskRow {
 }
 
 const TAB_OPTIONS: Array<{ id: TabId; label: string }> = [
+  { id: "project_overview", label: "Overview" },
   { id: "overview", label: "Tasks" },
   { id: "timeline", label: "Timeline" },
   { id: "analytics", label: "Analytics" },
@@ -641,6 +642,16 @@ export function ProjectWorkspace({
           </div>
         );
 
+      case "project_overview":
+        return (
+          <div
+            className="flex items-center justify-center h-full"
+            style={{ color: "var(--text-muted)", fontSize: "14px" }}
+          >
+            Overview coming soon.
+          </div>
+        );
+
       case "timeline":
         if (timeline.dated.length === 0 && timeline.undated.length === 0) {
           return (
@@ -1022,7 +1033,7 @@ export function ProjectWorkspace({
   return (
     <div className="flex h-full flex-col overflow-hidden bg-[var(--pm-bg)]">
       {/* Project header */}
-      <header style={{ borderBottom: "1px solid var(--border)", background: "var(--surface)", padding: "16px 24px" }}>
+      <header style={{ borderBottom: "1px solid var(--border)", background: "var(--page-bg)", padding: "16px 24px" }}>
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1
