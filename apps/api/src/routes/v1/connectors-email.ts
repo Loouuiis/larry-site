@@ -4,12 +4,14 @@ import { z } from "zod";
 import { ingestCanonicalEvent } from "../../services/ingest/pipeline.js";
 import { writeAuditLog } from "../../lib/audit.js";
 import { createSignedStateToken, verifySignedStateToken } from "../../services/connectors/slack.js";
+import { buildGmailInstallUrl, fetchGmailUserProfile, sendGmailMessage } from "../../services/connectors/gmail.js";
+import { exchangeGoogleOauthCode, refreshGoogleAccessToken } from "../../services/connectors/google-calendar.js";
 
 const EmailInstallStateSchema = z.object({
   kind: z.literal("email_oauth_state"),
   tenantId: z.string().uuid(),
   userId: z.string().min(1),
-  accountEmail: z.string().email(),
+  accountEmail: z.string(),
   nonce: z.string().uuid(),
 });
 
@@ -47,6 +49,16 @@ const EmailDraftListQuerySchema = z.object({
   state: z.enum(["draft", "sent"]).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(30),
 });
+
+interface EmailInstallationRow {
+  id: string;
+  provider: string;
+  account_email: string;
+  oauth_access_token: string | null;
+  oauth_refresh_token: string | null;
+  oauth_scope: string | null;
+  oauth_token_expires_at: string | null;
+}
 
 function resolvePublicBaseUrl(
   fastify: Parameters<FastifyPluginAsync>[0],
@@ -86,6 +98,109 @@ async function lookupInstallationByEmail(
   });
 }
 
+function requireGmailOauthConfig(
+  app: Parameters<FastifyPluginAsync>[0]
+): {
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+  scopes: string;
+  stateTtlSeconds: number;
+} {
+  const {
+    GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET,
+    GMAIL_REDIRECT_URI,
+    GMAIL_SCOPES,
+    EMAIL_CONNECTOR_OAUTH_STATE_TTL_SECONDS,
+  } = app.config;
+
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GMAIL_REDIRECT_URI) {
+    throw app.httpErrors.failedDependency(
+      "Gmail OAuth is not configured. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GMAIL_REDIRECT_URI."
+    );
+  }
+
+  return {
+    clientId: GOOGLE_CLIENT_ID,
+    clientSecret: GOOGLE_CLIENT_SECRET,
+    redirectUri: GMAIL_REDIRECT_URI,
+    scopes: GMAIL_SCOPES,
+    stateTtlSeconds: EMAIL_CONNECTOR_OAUTH_STATE_TTL_SECONDS,
+  };
+}
+
+async function loadEmailInstallation(
+  app: Parameters<FastifyPluginAsync>[0],
+  tenantId: string
+): Promise<EmailInstallationRow | null> {
+  const rows = await app.db.queryTenant<EmailInstallationRow>(
+    tenantId,
+    `SELECT id, provider, account_email, oauth_access_token, oauth_refresh_token, oauth_scope, oauth_token_expires_at
+     FROM email_installations
+     WHERE tenant_id = $1
+     ORDER BY updated_at DESC
+     LIMIT 1`,
+    [tenantId]
+  );
+  return rows[0] ?? null;
+}
+
+async function ensureFreshEmailToken(
+  app: Parameters<FastifyPluginAsync>[0],
+  tenantId: string,
+  installation: EmailInstallationRow,
+  oauthConfig: ReturnType<typeof requireGmailOauthConfig>
+): Promise<string> {
+  if (!installation.oauth_access_token) {
+    throw app.httpErrors.failedDependency(
+      "Gmail installation has no access token. Reconnect Gmail."
+    );
+  }
+
+  const expiresAt = installation.oauth_token_expires_at
+    ? new Date(installation.oauth_token_expires_at).getTime()
+    : null;
+  const aboutToExpire = expiresAt !== null && expiresAt <= Date.now() + 60_000;
+
+  if (!aboutToExpire) {
+    return installation.oauth_access_token;
+  }
+
+  if (!installation.oauth_refresh_token) {
+    throw app.httpErrors.failedDependency(
+      "Gmail access token expired and no refresh token is available. Reconnect Gmail."
+    );
+  }
+
+  const refreshed = await refreshGoogleAccessToken({
+    clientId: oauthConfig.clientId,
+    clientSecret: oauthConfig.clientSecret,
+    refreshToken: installation.oauth_refresh_token,
+  });
+
+  await app.db.queryTenant(
+    tenantId,
+    `UPDATE email_installations
+     SET oauth_access_token = $3,
+         oauth_refresh_token = COALESCE($4, oauth_refresh_token),
+         oauth_scope = COALESCE($5, oauth_scope),
+         oauth_token_expires_at = $6,
+         updated_at = NOW()
+     WHERE tenant_id = $1 AND id = $2`,
+    [
+      tenantId,
+      installation.id,
+      refreshed.accessToken,
+      refreshed.refreshToken ?? null,
+      refreshed.scope ?? null,
+      refreshed.expiresAt ?? null,
+    ]
+  );
+
+  return refreshed.accessToken;
+}
+
 export const emailConnectorRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/status",
@@ -121,6 +236,33 @@ export const emailConnectorRoutes: FastifyPluginAsync = async (fastify) => {
     "/install-url",
     { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
     async (request) => {
+      if (fastify.config.EMAIL_CONNECTOR_PROVIDER === "gmail") {
+        const oauthConfig = requireGmailOauthConfig(fastify);
+
+        const state = createSignedStateToken(
+          {
+            kind: "email_oauth_state",
+            tenantId: request.user.tenantId,
+            userId: request.user.userId,
+            accountEmail: request.user.email ?? "",
+            nonce: randomUUID(),
+          },
+          fastify.config.JWT_ACCESS_SECRET,
+          oauthConfig.stateTtlSeconds
+        );
+
+        return {
+          provider: "gmail",
+          installUrl: buildGmailInstallUrl({
+            clientId: oauthConfig.clientId,
+            redirectUri: oauthConfig.redirectUri,
+            scopes: oauthConfig.scopes,
+            state,
+          }),
+        };
+      }
+
+      // Mock behavior for non-Gmail providers
       const query = EmailInstallQuerySchema.parse(request.query);
       const accountEmail = query.accountEmail ?? request.user.email;
       if (!accountEmail) {
@@ -158,6 +300,76 @@ export const emailConnectorRoutes: FastifyPluginAsync = async (fastify) => {
       throw fastify.httpErrors.badRequest(`Email connector authorization failed: ${query.error}`);
     }
 
+    if (fastify.config.EMAIL_CONNECTOR_PROVIDER === "gmail") {
+      if (!query.code) {
+        throw fastify.httpErrors.badRequest("Gmail callback missing required code.");
+      }
+
+      let parsedState: z.infer<typeof EmailInstallStateSchema>;
+      try {
+        parsedState = EmailInstallStateSchema.parse(
+          verifySignedStateToken(query.state, fastify.config.JWT_ACCESS_SECRET)
+        );
+      } catch {
+        throw fastify.httpErrors.badRequest("Invalid or expired email connector state.");
+      }
+
+      const oauthConfig = requireGmailOauthConfig(fastify);
+
+      const tokenSet = await exchangeGoogleOauthCode({
+        clientId: oauthConfig.clientId,
+        clientSecret: oauthConfig.clientSecret,
+        redirectUri: oauthConfig.redirectUri,
+        code: query.code,
+      });
+
+      const profile = await fetchGmailUserProfile(tokenSet.accessToken);
+
+      const rows = await fastify.db.queryTenant<{ id: string; account_email: string; webhook_secret: string }>(
+        parsedState.tenantId,
+        `INSERT INTO email_installations
+          (tenant_id, installed_by_user_id, provider, account_email, provider_account_id,
+           oauth_access_token, oauth_refresh_token, oauth_scope, oauth_token_expires_at,
+           connected_at, updated_at)
+         VALUES
+          ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+         ON CONFLICT (tenant_id, account_email) DO UPDATE SET
+           installed_by_user_id = EXCLUDED.installed_by_user_id,
+           provider = EXCLUDED.provider,
+           provider_account_id = EXCLUDED.provider_account_id,
+           oauth_access_token = EXCLUDED.oauth_access_token,
+           oauth_refresh_token = COALESCE(EXCLUDED.oauth_refresh_token, email_installations.oauth_refresh_token),
+           oauth_scope = COALESCE(EXCLUDED.oauth_scope, email_installations.oauth_scope),
+           oauth_token_expires_at = EXCLUDED.oauth_token_expires_at,
+           connected_at = COALESCE(email_installations.connected_at, NOW()),
+           updated_at = NOW()
+         RETURNING id, account_email, webhook_secret`,
+        [
+          parsedState.tenantId,
+          parsedState.userId,
+          "gmail",
+          profile.email,
+          `gmail:${profile.email}`,
+          tokenSet.accessToken,
+          tokenSet.refreshToken ?? null,
+          tokenSet.scope ?? null,
+          tokenSet.expiresAt ?? null,
+        ]
+      );
+
+      await writeAuditLog(fastify.db, {
+        tenantId: parsedState.tenantId,
+        actorUserId: parsedState.userId,
+        actionType: "connector.email.connected",
+        objectType: "email_installation",
+        objectId: rows[0].id,
+        details: { accountEmail: rows[0].account_email },
+      });
+
+      return reply.redirect(`${fastify.config.CORS_ORIGINS.split(",")[0]}/workspace/settings/connectors?connected=email`);
+    }
+
+    // Mock behavior for non-Gmail providers
     let parsedState: z.infer<typeof EmailInstallStateSchema>;
     try {
       parsedState = EmailInstallStateSchema.parse(
@@ -294,25 +506,48 @@ export const emailConnectorRoutes: FastifyPluginAsync = async (fastify) => {
       );
 
       if (body.sendNow) {
-        // Real email sending via Resend when API key is configured
-        const resendKey = fastify.config.RESEND_API_KEY;
-        if (resendKey) {
-          try {
-            await fetch("https://api.resend.com/emails", {
-              method: "POST",
-              headers: {
-                "Authorization": `Bearer ${resendKey}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                from: "Larry <noreply@larry.app>",
-                to: [body.to],
+        let gmailUsed = false;
+
+        if (fastify.config.EMAIL_CONNECTOR_PROVIDER === "gmail") {
+          const installation = await loadEmailInstallation(fastify, tenantId);
+          if (installation) {
+            try {
+              const oauthConfig = requireGmailOauthConfig(fastify);
+              const accessToken = await ensureFreshEmailToken(fastify, tenantId, installation, oauthConfig);
+              await sendGmailMessage({
+                accessToken,
+                to: body.to,
                 subject: body.subject,
-                text: body.body,
-              }),
-            });
-          } catch (err) {
-            fastify.log.warn({ err }, "Resend email delivery failed — draft saved anyway");
+                body: body.body,
+              });
+              gmailUsed = true;
+            } catch (err) {
+              fastify.log.warn({ err }, "Gmail email delivery failed — draft saved anyway");
+            }
+          }
+        }
+
+        if (!gmailUsed) {
+          // Fallback to Resend when Gmail is not configured or has no installation
+          const resendKey = fastify.config.RESEND_API_KEY;
+          if (resendKey) {
+            try {
+              await fetch("https://api.resend.com/emails", {
+                method: "POST",
+                headers: {
+                  "Authorization": `Bearer ${resendKey}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  from: "Larry <noreply@larry.app>",
+                  to: [body.to],
+                  subject: body.subject,
+                  text: body.body,
+                }),
+              });
+            } catch (err) {
+              fastify.log.warn({ err }, "Resend email delivery failed — draft saved anyway");
+            }
           }
         }
 
@@ -324,7 +559,7 @@ export const emailConnectorRoutes: FastifyPluginAsync = async (fastify) => {
             tenantId,
             body.subject,
             body.body,
-            JSON.stringify({ recipient: body.to, draftId: rows[0].id, resendUsed: Boolean(resendKey) }),
+            JSON.stringify({ recipient: body.to, draftId: rows[0].id, gmailUsed }),
           ]
         );
       }

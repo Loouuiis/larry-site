@@ -52,6 +52,8 @@ const ApiSchema = SharedSchema.extend({
   EMAIL_CONNECTOR_PROVIDER: z.string().default("mock"),
   EMAIL_CONNECTOR_PUBLIC_BASE_URL: z.string().url().optional(),
   EMAIL_CONNECTOR_OAUTH_STATE_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
+  GMAIL_REDIRECT_URI: z.string().url().optional(),
+  GMAIL_SCOPES: z.string().default("https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email"),
   RESEND_API_KEY: z.string().optional(),
 });
 
