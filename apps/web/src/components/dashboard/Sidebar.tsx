@@ -354,7 +354,7 @@ export function WorkspaceSidebar({ projects, activeNav, mobileOpen, onMobileClos
         style={{ borderRight: "1px solid var(--border)", background: "#ffffff" }}
       >
         {collapsed ? (
-          <div className="flex flex-col items-center pt-4">
+          <div className="flex h-full flex-col items-center justify-between pt-4 pb-3">
             <button
               onClick={onToggleCollapsed}
               title="Expand sidebar"
@@ -365,6 +365,13 @@ export function WorkspaceSidebar({ projects, activeNav, mobileOpen, onMobileClos
             >
               <PanelLeftOpen size={16} />
             </button>
+            <div
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+              style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}
+              title={userEmail ?? "Account"}
+            >
+              <User size={16} style={{ color: "var(--text-disabled)" }} />
+            </div>
           </div>
         ) : (
           <WorkspaceSidebarInner
