@@ -199,22 +199,23 @@ export function WorkspaceHome() {
 
         {/* Header */}
         <header className="text-center">
-          <h1 className="text-display" style={{ color: "var(--text-1)" }}>
+          <h1 className="text-[2.5rem] font-bold leading-tight" style={{ color: "var(--text-1)" }}>
             Your projects
           </h1>
           <p className="text-body-sm mt-1" style={{ color: "var(--text-muted)" }}>
-            Select a project to get started
+            Select a project to get started.
           </p>
           <div className="mt-4 flex justify-center">
             <button
               type="button"
               onClick={() => setSheetOpen(true)}
-              className="inline-flex items-center gap-1.5 text-[13px] font-medium text-white transition-opacity hover:opacity-90"
+              className="inline-flex items-center gap-1.5 text-[13px] font-medium transition-opacity hover:opacity-90"
               style={{
                 height: "36px",
                 padding: "0 16px",
                 borderRadius: "var(--radius-btn)",
-                background: "var(--cta)",
+                background: "#e2d6fc",
+                color: "#6c44f6",
               }}
             >
               <Plus size={14} />
@@ -403,7 +404,7 @@ export function WorkspaceHome() {
                       width: `${Math.max(project.progress, 2)}%`,
                       height: "100%",
                       borderRadius: "9999px",
-                      background: "var(--cta)",
+                      background: "#6c44f6",
                     }}
                   />
                 </div>

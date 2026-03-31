@@ -98,7 +98,7 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, onTogg
   const isProjectActive = (id: string) => pathname?.startsWith(`/workspace/projects/${id}`) ?? false;
 
   return (
-    <div className="flex h-full flex-col" style={{ background: "var(--surface)" }}>
+    <div className="flex h-full flex-col" style={{ background: "#ffffff" }}>
 
       {/* Logo */}
       <div className="shrink-0 px-4 pt-4 pb-3 flex items-center justify-between">
@@ -116,7 +116,7 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, onTogg
             onClick={onToggleCollapsed}
             title="Collapse sidebar"
             className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors"
-            style={{ color: "var(--text-disabled)" }}
+            style={{ color: "#6c44f6" }}
             onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
             onMouseLeave={(e) => (e.currentTarget.style.background = "")}
           >
@@ -351,7 +351,7 @@ export function WorkspaceSidebar({ projects, activeNav, mobileOpen, onMobileClos
         initial={false}
         animate={{ width: collapsed ? 52 : 252 }}
         transition={{ duration: 0.22, ease: DRAWER_EASE }}
-        style={{ borderRight: "1px solid var(--border)", background: "var(--surface)" }}
+        style={{ borderRight: "1px solid var(--border)", background: "#ffffff" }}
       >
         {collapsed ? (
           <div className="flex flex-col items-center pt-4">
@@ -359,7 +359,7 @@ export function WorkspaceSidebar({ projects, activeNav, mobileOpen, onMobileClos
               onClick={onToggleCollapsed}
               title="Expand sidebar"
               className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors"
-              style={{ color: "var(--text-disabled)" }}
+              style={{ color: "#6c44f6" }}
               onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
               onMouseLeave={(e) => (e.currentTarget.style.background = "")}
             >
@@ -401,7 +401,7 @@ export function WorkspaceSidebar({ projects, activeNav, mobileOpen, onMobileClos
               style={{
                 width: "252px",
                 borderRight: "1px solid var(--border)",
-                background: "var(--surface)",
+                background: "#ffffff",
                 boxShadow: "var(--shadow-3)",
               }}
             >
@@ -449,7 +449,7 @@ interface SidebarProps {
 
 function SidebarInner({ active, setActive, onClose }: { active: NavSection; setActive: (s: NavSection) => void; onClose?: () => void; }) {
   return (
-    <div className="flex h-full flex-col" style={{ background: "var(--surface)" }}>
+    <div className="flex h-full flex-col" style={{ background: "#ffffff" }}>
       <div className="flex h-14 items-center justify-between px-4" style={{ borderBottom: "1px solid var(--border)" }}>
         <div className="flex items-center gap-2">
           <div
