@@ -2,6 +2,10 @@ import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { classifyRiskLevel, computeRiskScore } from "@larry/ai";
 import { writeAuditLog } from "../../lib/audit.js";
+import {
+  ProjectStatusFilterSchema,
+  appendProjectStatusFilter,
+} from "../../lib/project-status.js";
 
 const CreateTaskSchema = z.object({
   projectId: z.string().uuid(),
@@ -31,15 +35,21 @@ const AttachDocumentSchema = z.object({
   documentId: z.string().uuid(),
 });
 
+const ListTasksQuerySchema = z.object({
+  projectId: z.string().uuid().optional(),
+  projectStatus: ProjectStatusFilterSchema.optional().default("all"),
+});
+
 export const taskRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/",
     { preHandler: [fastify.authenticate] },
     async (request) => {
-      const query = z.object({ projectId: z.string().uuid().optional() }).parse(request.query);
+      const query = ListTasksQuerySchema.parse(request.query);
       const tenantId = request.user.tenantId;
 
       const values: unknown[] = [tenantId];
+      const filters = ["tasks.tenant_id = $1"];
       let sql = `SELECT tasks.id,
                         tasks.project_id as "projectId",
                         tasks.title,
@@ -56,15 +66,27 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
                         tasks.created_at as "createdAt",
                         tasks.updated_at as "updatedAt"
                  FROM tasks
-                 LEFT JOIN users ON users.id = tasks.assignee_user_id
-                 WHERE tasks.tenant_id = $1`;
+                 LEFT JOIN users ON users.id = tasks.assignee_user_id`;
 
       if (query.projectId) {
         values.push(query.projectId);
-        sql += " AND tasks.project_id = $2";
+        filters.push(`tasks.project_id = $${values.length}`);
+      } else if (query.projectStatus !== "all") {
+        sql += `
+          JOIN projects
+            ON projects.tenant_id = tasks.tenant_id
+           AND projects.id = tasks.project_id`;
+        appendProjectStatusFilter({
+          filters,
+          values,
+          filter: query.projectStatus,
+          statusColumn: "projects.status",
+        });
       }
 
-      sql += " ORDER BY tasks.created_at DESC";
+      sql += `
+        WHERE ${filters.join(" AND ")}
+        ORDER BY tasks.created_at DESC`;
 
       const rows = await fastify.db.queryTenant(tenantId, sql, values);
       return { items: rows };

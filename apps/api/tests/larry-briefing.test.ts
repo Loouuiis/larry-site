@@ -157,5 +157,12 @@ describe("generateBriefing", () => {
       "briefing",
       insertedBriefingId
     );
+    expect(db.queryTenant).toHaveBeenCalledWith(
+      TENANT_ID,
+      expect.stringContaining(
+        "CASE WHEN p.status = 'archived' THEN 'archived' ELSE 'active' END = 'active'"
+      ),
+      [TENANT_ID, USER_ID]
+    );
   });
 });

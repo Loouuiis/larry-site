@@ -120,6 +120,7 @@ export function WorkspaceHome({ viewerEmail }: WorkspaceHomeProps) {
   const [error, setError] = useState<string | null>(null);
   const [nudgeDismissed, setNudgeDismissed] = useState(false);
   const [briefing, setBriefing] = useState<LarryBriefingContent | null>(null);
+  const [archivedProjectsOpen, setArchivedProjectsOpen] = useState(false);
 
   const loadWorkspace = useCallback(async () => {
     try {
@@ -175,6 +176,7 @@ export function WorkspaceHome({ viewerEmail }: WorkspaceHomeProps) {
   }, [homeData]);
 
   const greetingName = deriveGreetingName(viewerEmail);
+  const archivedProjects = homeData?.archivedProjects ?? [];
   const connectedCount = [
     homeData?.connectors?.slack?.connected,
     homeData?.connectors?.calendar?.connected,
@@ -301,13 +303,15 @@ export function WorkspaceHome({ viewerEmail }: WorkspaceHomeProps) {
             }}
           >
             <p className="text-h1" style={{ color: "var(--text-1)" }}>
-              No projects yet
+              {archivedProjects.length > 0 ? "No active projects" : "No projects yet"}
             </p>
             <p
               className="mx-auto mt-2 max-w-[520px] text-[15px] leading-7"
               style={{ color: "var(--text-muted)" }}
             >
-              Start with a live project so Larry can begin collecting task movement, meeting context, and approval-worthy actions in one place.
+              {archivedProjects.length > 0
+                ? "Everything in this workspace is archived for reference. Open one below or start a new project to bring fresh work back into the active shell."
+                : "Start with a live project so Larry can begin collecting task movement, meeting context, and approval-worthy actions in one place."}
             </p>
             <Link
               href="/workspace/projects/new"
@@ -366,6 +370,78 @@ export function WorkspaceHome({ viewerEmail }: WorkspaceHomeProps) {
               </button>
             ))}
           </div>
+        )}
+
+        {!loading && archivedProjects.length > 0 && (
+          <section
+            style={{
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-card)",
+              background: "var(--surface)",
+              padding: "16px 20px",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setArchivedProjectsOpen((open) => !open)}
+              className="flex w-full items-center justify-between gap-4 text-left"
+              aria-expanded={archivedProjectsOpen}
+              aria-controls="workspace-archived-projects"
+            >
+              <div>
+                <p className="text-[16px] font-semibold" style={{ color: "var(--text-1)" }}>
+                  Archived projects
+                </p>
+                <p className="mt-1 text-[13px]" style={{ color: "var(--text-muted)" }}>
+                  {archivedProjects.length} project{archivedProjects.length !== 1 ? "s" : ""} hidden from the active workspace shell.
+                </p>
+              </div>
+              <span className="text-[13px] font-semibold" style={{ color: "var(--cta)" }}>
+                {archivedProjectsOpen ? "Hide" : "Show"}
+              </span>
+            </button>
+
+            {archivedProjectsOpen && (
+              <div id="workspace-archived-projects" className="mt-4 grid gap-3 md:grid-cols-2">
+                {archivedProjects.map((project) => (
+                  <button
+                    key={project.id}
+                    type="button"
+                    onClick={() => router.push(`/workspace/projects/${project.id}`)}
+                    className="text-left transition-shadow hover:shadow-[var(--shadow-1)]"
+                    style={{
+                      borderRadius: "var(--radius-card)",
+                      border: "1px solid var(--border)",
+                      background: "var(--surface-2)",
+                      padding: "16px",
+                    }}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="truncate text-[15px] font-semibold" style={{ color: "var(--text-1)" }}>
+                        {project.name}
+                      </p>
+                      <span
+                        className="inline-flex items-center rounded-full border px-2 py-1 text-[11px] font-medium"
+                        style={{
+                          borderColor: "var(--border)",
+                          background: "var(--surface)",
+                          color: "var(--text-2)",
+                        }}
+                      >
+                        Archived
+                      </span>
+                    </div>
+                    <p className="mt-2 line-clamp-2 text-[13px] leading-6" style={{ color: "var(--text-2)" }}>
+                      {project.description?.trim() || "Reference workspace kept available by direct link."}
+                    </p>
+                    <p className="mt-3 text-[12px]" style={{ color: "var(--text-muted)" }}>
+                      Updated {formatRelativeTime(project.updatedAt)}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
         )}
 
         {!nudgeDismissed && connectedCount === 0 && (

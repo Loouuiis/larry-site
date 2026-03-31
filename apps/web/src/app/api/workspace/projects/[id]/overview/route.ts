@@ -42,7 +42,7 @@ export async function GET(
 
   const { id } = await context.params;
   const [projectsResult, tasksResult, timelineResult, healthResult, outcomesResult, meetingsResult] = await Promise.all([
-    proxyApiRequest(session, "/v1/projects"),
+    proxyApiRequest(session, "/v1/projects?status=all"),
     proxyApiRequest(session, `/v1/tasks?projectId=${encodeURIComponent(id)}`),
     proxyApiRequest(session, `/v1/projects/${id}/timeline`),
     proxyApiRequest(session, `/v1/projects/${id}/health`),

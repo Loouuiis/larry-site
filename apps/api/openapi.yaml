@@ -29,14 +29,23 @@ paths:
       summary: Return authenticated profile
   /v1/projects:
     get:
-      summary: List tenant projects
+      summary: List tenant projects with additive status filtering
     post:
       summary: Create project
+  /v1/projects/{id}/archive:
+    post:
+      summary: Archive a project (admin or pm, idempotent)
+  /v1/projects/{id}/unarchive:
+    post:
+      summary: Unarchive a project (admin or pm, idempotent)
   /v1/tasks:
     get:
-      summary: List tasks
+      summary: List tasks with optional projectId and additive projectStatus filtering
     post:
       summary: Create task
+  /v1/meetings:
+    get:
+      summary: List meetings with optional projectId and additive projectStatus filtering
   /v1/tasks/{id}/dependencies:
     post:
       summary: Add or update task dependency
@@ -64,7 +73,10 @@ paths:
       summary: Get Larry login briefing
   /v1/larry/action-centre:
     get:
-      summary: List canonical Larry action-centre data (project or tenant-wide)
+      summary: List canonical Larry action-centre data (project or tenant-wide, additive projectStatus on global reads)
+  /v1/larry/conversations:
+    get:
+      summary: List canonical Larry conversation previews (project or tenant-wide, additive projectStatus on global reads)
   /v1/larry/memory:
     get:
       summary: List project memory timeline entries with optional source filtering

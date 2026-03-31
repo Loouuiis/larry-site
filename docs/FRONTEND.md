@@ -40,6 +40,27 @@ Next.js 16 App Router at `apps/web/`. Two distinct surfaces:
 | `apps/web/src/hooks/useProjectMemory.ts` | Fetches `/api/workspace/projects/:id/memory` with source filtering for timeline context |
 | `apps/web/src/hooks/useProjectNotes.ts` | Fetches and creates `/api/workspace/projects/:id/notes` with visibility filtering |
 
+## Phase 10 Archive Lifecycle
+
+- Workspace project-list proxy (`/api/workspace/projects`) now defaults to `status=active` and supports additive `?status=all|active|archived`.
+- Active-only workspace surfaces now include:
+  - sidebar shell project list
+  - workspace home active grid
+  - my-work
+  - meetings overview
+  - intake attach pickers
+  - connector project pickers
+  - global chats
+  - global Action Centre
+- Workspace home adds a collapsed archived-project section so archived workspaces remain discoverable without reappearing in the active shell.
+- `ProjectWorkspaceView` adds archive/unarchive controls in the header:
+  - archive requires client-side confirmation modal
+  - unarchive is one-click
+  - both use inline success/error feedback plus bounded workspace refresh
+- Direct archived project reads remain supported:
+  - `/workspace/projects/:id` still loads because the overview route reads `/v1/projects?status=all`
+  - `/workspace/chats?projectId=...` loads project-scoped conversation history and resolves labels from the all-projects view so archived deep links remain readable
+
 ## Web API Proxy Layer
 
 `apps/web/src/lib/workspace-proxy.ts` — session-aware proxy for all backend calls:

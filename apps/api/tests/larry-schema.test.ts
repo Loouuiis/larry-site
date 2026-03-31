@@ -6,6 +6,21 @@ const schemaPath = resolve(process.cwd(), "..", "..", "packages", "db", "src", "
 const schema = readFileSync(schemaPath, "utf8");
 
 describe("Larry ledger schema", () => {
+  it("hardens project archive status values and adds a tenant-status recency index", () => {
+    const projectsTable = schema.match(/CREATE TABLE IF NOT EXISTS projects \([\s\S]*?\n\);/);
+    expect(projectsTable).not.toBeNull();
+
+    const projectsTableSql = projectsTable?.[0] ?? "";
+    expect(projectsTableSql).toContain("status TEXT NOT NULL DEFAULT 'active' CONSTRAINT projects_status_check CHECK (status IN ('active', 'archived'))");
+    expect(schema).toContain("UPDATE projects");
+    expect(schema).toContain("WHERE status IS NULL");
+    expect(schema).toContain("OR status NOT IN ('active', 'archived');");
+    expect(schema).toContain("ALTER COLUMN status SET DEFAULT 'active';");
+    expect(schema).toContain("ADD CONSTRAINT projects_status_check");
+    expect(schema).toContain("CREATE INDEX IF NOT EXISTS idx_projects_tenant_status_recent");
+    expect(schema).toContain("ON projects (tenant_id, status, updated_at DESC, created_at DESC);");
+  });
+
   it("adds the action-linkage columns and indexes to larry_events", () => {
     expect(schema).toContain("conversation_id UUID REFERENCES larry_conversations(id) ON DELETE SET NULL");
     expect(schema).toContain("request_message_id UUID REFERENCES larry_messages(id) ON DELETE SET NULL");

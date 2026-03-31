@@ -80,5 +80,59 @@ describe("Larry shared visibility runtime SQL", () => {
     expect(eventSql2).toContain("pm.user_id = $2");
     expect(convoSql).toContain("FROM project_memberships pm");
   });
-});
 
+  it("filters global conversation previews to active project threads while preserving general chats", async () => {
+    const queryTenant = vi.fn().mockResolvedValue([]);
+
+    await listLarryConversationPreviews(
+      { queryTenant } as never,
+      TENANT_ID,
+      USER_ID,
+      { projectStatus: "active", limit: 10 }
+    );
+
+    const sql = String(queryTenant.mock.calls[0]?.[1]);
+    expect(sql).toContain("LEFT JOIN projects project");
+    expect(sql).toContain("c.project_id IS NULL OR CASE WHEN project.status = 'archived' THEN 'archived' ELSE 'active' END = $3");
+  });
+
+  it("adds active-project filtering to global action-centre reads only", async () => {
+    const queryTenant = vi.fn().mockResolvedValue([]);
+
+    await getLarryActionCentreData(
+      { queryTenant } as never,
+      TENANT_ID,
+      USER_ID,
+      undefined,
+      "active"
+    );
+
+    const eventSql1 = String(queryTenant.mock.calls[0]?.[1]);
+    const eventSql2 = String(queryTenant.mock.calls[1]?.[1]);
+    const convoSql = String(queryTenant.mock.calls[2]?.[1]);
+
+    expect(eventSql1).toContain("CASE WHEN project.status = 'archived' THEN 'archived' ELSE 'active' END = $2");
+    expect(eventSql2).toContain("CASE WHEN project.status = 'archived' THEN 'archived' ELSE 'active' END = $2");
+    expect(convoSql).toContain("CASE WHEN project.status = 'archived' THEN 'archived' ELSE 'active' END = $3");
+  });
+
+  it("keeps project-scoped action-centre reads free of archive filters", async () => {
+    const queryTenant = vi.fn().mockResolvedValue([]);
+
+    await getLarryActionCentreData(
+      { queryTenant } as never,
+      TENANT_ID,
+      USER_ID,
+      PROJECT_ID,
+      "active"
+    );
+
+    const eventSql1 = String(queryTenant.mock.calls[0]?.[1]);
+    const eventSql2 = String(queryTenant.mock.calls[1]?.[1]);
+    const convoSql = String(queryTenant.mock.calls[2]?.[1]);
+
+    expect(eventSql1).not.toContain("project.status = 'archived'");
+    expect(eventSql2).not.toContain("project.status = 'archived'");
+    expect(convoSql).not.toContain("project.status = 'archived'");
+  });
+});

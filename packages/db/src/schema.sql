@@ -116,7 +116,7 @@ CREATE TABLE IF NOT EXISTS projects (
   name TEXT NOT NULL,
   description TEXT,
   owner_user_id UUID REFERENCES users(id),
-  status TEXT NOT NULL DEFAULT 'active',
+  status TEXT NOT NULL DEFAULT 'active' CONSTRAINT projects_status_check CHECK (status IN ('active', 'archived')),
   risk_score NUMERIC(5,2) NOT NULL DEFAULT 0,
   risk_level risk_level NOT NULL DEFAULT 'low',
   start_date DATE,
@@ -126,6 +126,25 @@ CREATE TABLE IF NOT EXISTS projects (
 );
 
 CREATE INDEX IF NOT EXISTS idx_projects_tenant ON projects (tenant_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_projects_tenant_status_recent
+  ON projects (tenant_id, status, updated_at DESC, created_at DESC);
+
+-- Phase 10: harden project archive status values before enabling archive lifecycle routes.
+UPDATE projects
+SET status = 'active'
+WHERE status IS NULL
+   OR status NOT IN ('active', 'archived');
+
+ALTER TABLE projects
+  ALTER COLUMN status SET DEFAULT 'active';
+
+DO $$ BEGIN
+  ALTER TABLE projects
+    ADD CONSTRAINT projects_status_check
+    CHECK (status IN ('active', 'archived'));
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 
 -- Phase 7: project-scoped collaboration membership model
 CREATE TABLE IF NOT EXISTS project_memberships (

@@ -21,6 +21,11 @@ import type {
 import { writeAuditLog } from "../../lib/audit.js";
 import { buildPendingClause } from "../../lib/intelligence-hints.js";
 import {
+  ACTIVE_PROJECT_STATUS,
+  ProjectStatusFilterSchema,
+  projectStatusSql,
+} from "../../lib/project-status.js";
+import {
   createLarryConversation,
   getLarryActionCentreData,
   getLarryConversationForUser,
@@ -58,10 +63,12 @@ function buildIntelligenceConfig(config: ReturnType<typeof getApiEnv>): Intellig
 
 const ConversationQuerySchema = z.object({
   projectId: z.string().uuid().optional(),
+  projectStatus: ProjectStatusFilterSchema.optional().default("all"),
 });
 
 const ActionCentreQuerySchema = z.object({
   projectId: z.string().uuid().optional(),
+  projectStatus: ProjectStatusFilterSchema.optional().default("all"),
 });
 
 const MemoryQuerySchema = z.object({
@@ -365,6 +372,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         `SELECT p.id, p.name
          FROM projects p
          WHERE p.tenant_id = $1
+           AND ${projectStatusSql("p.status")} = '${ACTIVE_PROJECT_STATUS}'
          ORDER BY p.updated_at DESC, p.created_at DESC
          LIMIT $2`,
         [input.tenantId, input.limit]
@@ -380,6 +388,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         AND p.id = pm.project_id
        WHERE pm.tenant_id = $1
          AND pm.user_id = $2
+         AND ${projectStatusSql("p.status")} = '${ACTIVE_PROJECT_STATUS}'
        ORDER BY p.updated_at DESC, p.created_at DESC
        LIMIT $3`,
       [input.tenantId, input.userId, input.limit]
@@ -574,7 +583,10 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         fastify.db,
         request.user.tenantId,
         request.user.userId,
-        parseResult.data
+        {
+          projectId: parseResult.data.projectId,
+          projectStatus: parseResult.data.projectId ? "all" : parseResult.data.projectStatus,
+        }
       );
 
       return { conversations };
@@ -655,7 +667,8 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         fastify.db,
         request.user.tenantId,
         request.user.userId,
-        parseResult.data.projectId
+        parseResult.data.projectId,
+        parseResult.data.projectId ? "all" : parseResult.data.projectStatus
       );
     }
   );

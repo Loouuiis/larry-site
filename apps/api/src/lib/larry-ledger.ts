@@ -6,9 +6,12 @@ import type {
   LarryEventType,
   LarryMessageRecord,
 } from "@larry/shared";
+import type { ProjectStatusFilter } from "./project-status.js";
+import { projectStatusSql } from "./project-status.js";
 
 export interface LarryEventListOptions {
   projectId?: string;
+  projectStatus?: ProjectStatusFilter;
   userId?: string;
   eventTypes?: LarryEventType[];
   ids?: string[];
@@ -98,7 +101,7 @@ export async function listLarryConversationPreviews(
   db: Db,
   tenantId: string,
   userId: string,
-  options: { projectId?: string; limit?: number } = {}
+  options: { projectId?: string; projectStatus?: ProjectStatusFilter; limit?: number } = {}
 ): Promise<LarryConversationPreview[]> {
   const params: unknown[] = [tenantId, userId];
   const filters = [
@@ -121,6 +124,9 @@ export async function listLarryConversationPreviews(
   if (options.projectId) {
     params.push(options.projectId);
     filters.push(`c.project_id = $${params.length}`);
+  } else if (options.projectStatus && options.projectStatus !== "all") {
+    params.push(options.projectStatus);
+    filters.push(`(c.project_id IS NULL OR ${projectStatusSql("project.status")} = $${params.length})`);
   }
 
   params.push(options.limit ?? 50);
@@ -135,6 +141,9 @@ export async function listLarryConversationPreviews(
             last_message.preview AS "lastMessagePreview",
             COALESCE(last_message.created_at, c.updated_at) AS "lastMessageAt"
        FROM larry_conversations c
+       LEFT JOIN projects project
+         ON project.tenant_id = c.tenant_id
+        AND project.id = c.project_id
        LEFT JOIN LATERAL (
          SELECT LEFT(content, 160) AS preview, created_at
            FROM larry_messages
@@ -356,6 +365,9 @@ export async function listLarryEventSummaries(
   if (options.projectId) {
     params.push(options.projectId);
     filters.push(`e.project_id = $${params.length}`);
+  } else if (options.projectStatus && options.projectStatus !== "all") {
+    params.push(options.projectStatus);
+    filters.push(`(e.project_id IS NULL OR ${projectStatusSql("project.status")} = $${params.length})`);
   }
 
   if (options.userId) {
@@ -411,23 +423,28 @@ export async function getLarryActionCentreData(
   db: Db,
   tenantId: string,
   userId: string,
-  projectId?: string
+  projectId?: string,
+  projectStatus?: ProjectStatusFilter
 ): Promise<LarryActionCentreData> {
+  const scopedProjectStatus = projectId ? "all" : projectStatus;
   const [suggested, activity, conversations] = await Promise.all([
     listLarryEventSummaries(db, tenantId, {
       projectId,
+      projectStatus: scopedProjectStatus,
       userId,
       eventTypes: ["suggested"],
       limit: 25,
     }),
     listLarryEventSummaries(db, tenantId, {
       projectId,
+      projectStatus: scopedProjectStatus,
       userId,
       eventTypes: ["auto_executed", "accepted"],
       limit: 10,
     }),
     listLarryConversationPreviews(db, tenantId, userId, {
       projectId,
+      projectStatus: scopedProjectStatus,
       limit: 6,
     }),
   ]);

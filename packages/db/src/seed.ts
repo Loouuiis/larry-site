@@ -37,6 +37,7 @@ const U_MARCUS    = "44444444-4444-4444-8444-444444444444"; // marcus@larry.loca
 
 const PROJECT_ID  = "55555555-5555-4555-8555-555555555555";
 const PROJECT2_ID = "66666666-6666-4666-8666-666666666666";
+const PROJECT_ARCHIVED_ID = "76767676-7676-4767-8767-767676767676";
 
 const P2T1 = "a1000001-0000-4000-8000-000000000001"; // Map current onboarding UX
 const P2T2 = "a1000002-0000-4000-8000-000000000002"; // Design new flow in Figma
@@ -53,6 +54,7 @@ const T5 = "a0000005-0000-4000-8000-000000000005"; // Legal review of ToS update
 const T6 = "a0000006-0000-4000-8000-000000000006"; // Launch email campaign
 const T7 = "a0000007-0000-4000-8000-000000000007"; // Performance testing on API
 const T8 = "a0000008-0000-4000-8000-000000000008"; // Update onboarding flow
+const ARCHIVED_TASK_ID = "a2000001-0000-4000-8000-000000000001"; // Archive fixture: final handover checklist
 
 const CE1 = "b0000001-0000-4000-8000-000000000001"; // Slack signal
 const CE2 = "b0000002-0000-4000-8000-000000000002"; // Transcript ingestion
@@ -65,6 +67,7 @@ const GCAL_INSTALLATION_ID = "d2000001-0000-4000-8000-000000000001";
 
 const MN1 = "e0000001-0000-4000-8000-000000000001"; // Sprint standup note
 const MN2 = "e0000002-0000-4000-8000-000000000002"; // Stakeholder sync note
+const MN3 = "e0000003-0000-4000-8000-000000000003"; // Archive fixture retrospective note
 
 const LC1 = "f0000001-0000-4000-8000-000000000001"; // Larry conversation
 const PMEM1 = "f1000001-0000-4000-8000-000000000001"; // Project memory: chat
@@ -593,6 +596,21 @@ We will send a further update once QA sign-off is confirmed.
   console.log("✓  Project 2: Customer Onboarding Redesign");
 
   await q(`
+    INSERT INTO projects (id, tenant_id, name, description, owner_user_id, status, risk_score, risk_level, start_date, target_date)
+    VALUES ($1, $2, 'Website Replatform 2025',
+      'Completed website replatform kept as a read-only reference workspace after handoff to the growth team.',
+      $3, 'archived', 4.0, 'low', $4, $5)
+    ON CONFLICT (id) DO UPDATE SET
+      name = EXCLUDED.name,
+      description = EXCLUDED.description,
+      status = EXCLUDED.status,
+      risk_score = EXCLUDED.risk_score,
+      risk_level = EXCLUDED.risk_level,
+      updated_at = NOW()
+  `, [PROJECT_ARCHIVED_ID, TENANT_ID, U_ADMIN, daysAgo(120).slice(0, 10), daysAgo(45).slice(0, 10)]);
+  console.log("âœ“  Archived project fixture: Website Replatform 2025");
+
+  await q(`
     INSERT INTO project_memberships (tenant_id, project_id, user_id, role)
     VALUES
       ($1, $2, $3, 'owner'),
@@ -600,10 +618,13 @@ We will send a further update once QA sign-off is confirmed.
       ($1, $2, $5, 'viewer'),
       ($1, $6, $4, 'owner'),
       ($1, $6, $3, 'editor'),
-      ($1, $6, $5, 'viewer')
+      ($1, $6, $5, 'viewer'),
+      ($1, $7, $3, 'owner'),
+      ($1, $7, $4, 'editor'),
+      ($1, $7, $5, 'viewer')
     ON CONFLICT (tenant_id, project_id, user_id)
     DO UPDATE SET role = EXCLUDED.role, updated_at = NOW()
-  `, [TENANT_ID, PROJECT_ID, U_ADMIN, U_SARAH, U_MARCUS, PROJECT2_ID]);
+  `, [TENANT_ID, PROJECT_ID, U_ADMIN, U_SARAH, U_MARCUS, PROJECT2_ID, PROJECT_ARCHIVED_ID]);
   console.log("✓  Project memberships seeded");
 
   const p2tasks = [
@@ -623,6 +644,51 @@ We will send a further update once QA sign-off is confirmed.
       ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, progress_percent = EXCLUDED.progress_percent
     `, [id, TENANT_ID, PROJECT2_ID, title, desc, status, priority, assignee, U_SARAH, progress, risk_score, risk_level, start_date, due_date]);
   }
+  await q(`
+    INSERT INTO tasks (id, tenant_id, project_id, title, description, status, priority, assignee_user_id,
+      created_by_user_id, progress_percent, risk_score, risk_level, start_date, due_date)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+    ON CONFLICT (id) DO UPDATE SET
+      status = EXCLUDED.status,
+      progress_percent = EXCLUDED.progress_percent,
+      risk_score = EXCLUDED.risk_score,
+      updated_at = NOW()
+  `, [
+    ARCHIVED_TASK_ID,
+    TENANT_ID,
+    PROJECT_ARCHIVED_ID,
+    "Finalize growth-team handover checklist",
+    "Close out the replatform programme and capture the final ownership handoff before archiving the workspace.",
+    "completed",
+    "medium",
+    U_ADMIN,
+    U_ADMIN,
+    100,
+    0,
+    "low",
+    daysAgo(60).slice(0, 10),
+    daysAgo(48).slice(0, 10),
+  ]);
+
+  await q(`
+    INSERT INTO meeting_notes (id, tenant_id, project_id, agent_run_id, title, transcript, summary, action_count, meeting_date, created_by_user_id, created_at)
+    VALUES
+      ($1, $2, $3, NULL,
+       'Website Replatform retrospective',
+       $4, $5, 1, $6, $7, $8)
+    ON CONFLICT (id) DO UPDATE SET
+      title = EXCLUDED.title,
+      summary = EXCLUDED.summary
+  `, [
+    MN3,
+    TENANT_ID,
+    PROJECT_ARCHIVED_ID,
+    ARCHIVE_RETRO_TRANSCRIPT,
+    "Final retrospective confirmed the replatform was delivered and formally handed over, so the project is now archived for reference.",
+    daysAgo(47).slice(0, 10),
+    U_ADMIN,
+    daysAgo(47),
+  ]);
   console.log("✓  Project 2 tasks: 6 tasks (1 completed, 2 in progress, 3 not started)");
 
   // Task dependency: tooltips depend on Figma design being done
@@ -704,6 +770,17 @@ Pricing copy (Sarah): Blocked on external sign-off. Not on the critical path but
 Investor deck (Alex): 60% complete. On track if ARR data is available by tomorrow.
 
 Decision: Team voted to extend the Q2 launch target by 7 days. This will be reflected in the project timeline once approved. Larry to raise a deadline change proposal in the Action Center.
+`.trim();
+
+const ARCHIVE_RETRO_TRANSCRIPT = `
+Website Replatform retrospective
+Date: ${new Date().toLocaleDateString("en-GB")}
+Attendees: Alex, Sarah Chen, Marcus Reid
+
+The team reviewed the final handover checklist and confirmed the replatform work is complete.
+Growth operations now owns the website backlog, and no new delivery work remains under the original project.
+
+Decision: archive the workspace so historical tasks, meetings, and notes stay readable by direct link without keeping the project in active workspace surfaces.
 `.trim();
 
 seed()

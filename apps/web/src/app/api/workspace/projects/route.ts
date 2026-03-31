@@ -3,12 +3,27 @@ import { z } from "zod";
 import { getSession } from "@/lib/auth";
 import { persistSession, proxyApiRequest } from "@/lib/workspace-proxy";
 
-export async function GET() {
+const ProjectStatusQuerySchema = z.object({
+  status: z.enum(["all", "active", "archived"]).optional().default("active"),
+});
+
+export async function GET(request: NextRequest) {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const result = await proxyApiRequest(session, "/v1/projects");
+
+  const parseResult = ProjectStatusQuerySchema.safeParse({
+    status: request.nextUrl.searchParams.get("status") ?? undefined,
+  });
+  if (!parseResult.success) {
+    return NextResponse.json({ error: "Invalid project status filter." }, { status: 400 });
+  }
+
+  const result = await proxyApiRequest(
+    session,
+    `/v1/projects?status=${encodeURIComponent(parseResult.data.status)}`,
+  );
   if (result.session) await persistSession(result.session);
   return NextResponse.json(result.body, { status: result.status });
 }

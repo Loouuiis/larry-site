@@ -4,6 +4,7 @@ import { runIntelligence } from "@larry/ai";
 import type { IntelligenceConfig } from "@larry/shared";
 import { runAutoActions, storeSuggestions, getPendingSuggestionTexts } from "@larry/db";
 import { buildPendingClause } from "../lib/intelligence-hints.js";
+import { ACTIVE_PROJECT_STATUS, projectStatusSql } from "../lib/project-status.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -61,7 +62,7 @@ export async function generateBriefing(
      FROM projects p
      JOIN memberships m ON m.tenant_id = p.tenant_id AND m.user_id = $2
      WHERE p.tenant_id = $1
-       AND p.status = 'active'
+       AND ${projectStatusSql("p.status")} = '${ACTIVE_PROJECT_STATUS}'
      ORDER BY p.updated_at DESC
      LIMIT 20`,
     [tenantId, userId]

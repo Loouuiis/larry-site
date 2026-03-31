@@ -1,27 +1,49 @@
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
+import {
+  ProjectStatusFilterSchema,
+  appendProjectStatusFilter,
+} from "../../lib/project-status.js";
+
+const ListMeetingsQuerySchema = z.object({
+  projectId: z.string().uuid().optional(),
+  projectStatus: ProjectStatusFilterSchema.optional().default("all"),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
 
 export const meetingRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/meetings",
     { preHandler: [fastify.authenticate] },
     async (request) => {
-      const query = z.object({
-        projectId: z.string().uuid().optional(),
-        limit: z.coerce.number().int().min(1).max(100).default(20),
-      }).parse(request.query);
+      const query = ListMeetingsQuerySchema.parse(request.query);
       const tenantId = request.user.tenantId;
 
       const values: unknown[] = [tenantId, query.limit];
+      const filters = ["meeting_notes.tenant_id = $1"];
       let sql = `SELECT id, title, summary, action_count, meeting_date, created_at,
                         project_id
                  FROM meeting_notes
-                 WHERE tenant_id = $1`;
+                `;
       if (query.projectId) {
         values.push(query.projectId);
-        sql += ` AND project_id = $${values.length}`;
+        filters.push(`meeting_notes.project_id = $${values.length}`);
+      } else if (query.projectStatus !== "all") {
+        sql += `
+          JOIN projects
+            ON projects.tenant_id = meeting_notes.tenant_id
+           AND projects.id = meeting_notes.project_id`;
+        appendProjectStatusFilter({
+          filters,
+          values,
+          filter: query.projectStatus,
+          statusColumn: "projects.status",
+        });
       }
-      sql += " ORDER BY created_at DESC LIMIT $2";
+      sql += `
+        WHERE ${filters.join(" AND ")}
+        ORDER BY meeting_notes.created_at DESC
+        LIMIT $2`;
 
       const rows = await fastify.db.queryTenant<{
         id: string;

@@ -9,7 +9,7 @@ Fastify v5 REST API at `apps/api/`. Product routes are registered in `apps/api/s
 | File | Primary Routes |
 |------|----------------|
 | `auth.ts` | `POST /v1/auth/login`, `POST /v1/auth/refresh`, `GET /v1/auth/me` |
-| `projects.ts` | CRUD `/v1/projects`, project timeline/health utilities, project collaborator routes (`GET/POST/PATCH/DELETE /v1/projects/:id/members...`), and project notes routes (`GET/POST /v1/projects/:id/notes`) |
+| `projects.ts` | CRUD `/v1/projects`, archive lifecycle routes (`POST /v1/projects/:id/archive`, `POST /v1/projects/:id/unarchive`), project timeline/health utilities, project collaborator routes (`GET/POST/PATCH/DELETE /v1/projects/:id/members...`), and project notes routes (`GET/POST /v1/projects/:id/notes`) |
 | `project-intake.ts` | `POST /v1/projects/intake/drafts`, `POST /v1/projects/intake/drafts/:id/bootstrap`, `POST /v1/projects/intake/drafts/:id/finalize` |
 | `documents.ts` | `GET /v1/documents`, `POST /v1/documents` (optional create+attach via `attachTaskId`) |
 | `tasks.ts` | CRUD `/v1/tasks`, task status/dependency helpers, and task document attachments (`GET/POST /v1/tasks/:id/attachments`) |
@@ -29,6 +29,7 @@ Fastify v5 REST API at `apps/api/`. Product routes are registered in `apps/api/s
 - `POST /v1/larry/chat`
 - `GET /v1/larry/briefing`
 - `GET /v1/larry/action-centre`
+- `GET /v1/larry/conversations`
 - `GET /v1/larry/memory?projectId=&sourceKind=&limit=`
 - `POST /v1/larry/events/:id/accept`
 - `POST /v1/larry/events/:id/dismiss`
@@ -67,6 +68,28 @@ Compatibility and retirement behavior:
 - `POST /v1/ingest/transcript` proxies to `/v1/larry/transcript` and returns deprecation metadata.
 - `POST /v1/larry/conversations` and `POST /v1/larry/conversations/:id/messages` return `410`.
 - `GET /v1/larry/events` returns `410` and points callers to `/v1/larry/action-centre`.
+- Additive archive-aware global filters:
+  - `GET /v1/larry/action-centre?projectStatus=all|active|archived`
+  - `GET /v1/larry/conversations?projectStatus=all|active|archived`
+  - `projectStatus` is applied only when `projectId` is omitted; project-scoped reads remain unchanged so archived project URLs still work.
+
+## Project Archive Contracts
+
+- `GET /v1/projects?status=all|active|archived`
+  - Default remains `status=all` for backwards compatibility.
+  - `status` is normalized to `active|archived` on read; unexpected stored values are treated as `active`.
+- `POST /v1/projects/:id/archive`
+- `POST /v1/projects/:id/unarchive`
+  - `admin|pm` only.
+  - Idempotent and audit-logged.
+  - Response shape is `{ id, status }`.
+  - Audit details include `previousStatus`, `newStatus`, and `changed`.
+
+Cross-project archive-aware list filters:
+- `GET /v1/tasks?projectStatus=all|active|archived`
+- `GET /v1/meetings?projectStatus=all|active|archived`
+  - `projectStatus` applies only when `projectId` is omitted.
+  - Project-scoped reads (`projectId=...`) are unchanged so archived project detail pages stay readable.
 
 ## Google Calendar Connector Contracts
 

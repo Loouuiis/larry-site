@@ -110,7 +110,7 @@ These are not optional cleanups; they are part of the implementation strategy:
 | Larry creates and updates tasks and project-related users or documents | Phases 6, 7, 8, 9 | Task, collaborator, document, note, and calendar mutations all need project scope, audit, and policy checks. |
 | Project creation supports manual, chat, and meeting modes | Phases 1, 5 | All three intake modes must land on one canonical route and draft model. |
 | Global chat works across all projects | Phase 9 | Retrieval, grouping, and permissions must be cross-project aware from the start. |
-| Projects can be deleted | Phase 10 | Deletion must be explicit, auditable, and safe for related artifacts. |
+| Projects can be archived and deleted safely | Phases 10, 11 | Archive lands first so active surfaces can hide historical work without breaking direct reads; deletion remains explicit, auditable, and safe for related artifacts. |
 | Multiple real users can collaborate and receive personal notes drafted by Larry | Phase 7 | Project membership, shared visibility, personal-note targeting, and Larry drafting all ship together. |
 
 ## Implementation Progress
@@ -607,21 +607,32 @@ None. Phase 8 starter slice is fully closed as of 2026-03-30.
       - `docs/FRONTEND.md`
       - `docs/CONNECTORS.md`
     - test gate passed: `cd apps/api && npm test`
+### Phase Closure Snapshot
+
+- Closed in this update:
+  - **Phase 10 - Project Archive Lifecycle**:
+    - hardened `projects.status` to `active|archived`, added archive-aware recency indexing, and seeded a deterministic archived demo project
+    - added idempotent `POST /v1/projects/:id/archive` and `POST /v1/projects/:id/unarchive` with audit metadata
+    - added additive `status` / `projectStatus` filters across projects, tasks, meetings, global Larry conversation previews, and global Larry Action Centre reads
+    - updated workspace proxies and UI so active surfaces default to active-only while archived project URLs remain directly readable
+    - updated targeted docs:
+      - `apps/api/openapi.yaml`
+      - `docs/BACKEND-API.md`
+      - `docs/FRONTEND.md`
+      - `docs/DATABASE.md`
+    - test gate passed: `cd apps/api && npm test`
 - Remaining in current phase:
-  - None. Phase 9 starter slice is closed.
+  - None. Phase 10 - Project Archive Lifecycle is closed as of 2026-03-31.
 - Next concrete milestone:
-  - Not opened in this update (phase discipline: no next-phase kickoff).
-
-### Still To Do For Phase 9
-
-None. Phase 9 starter slice is fully closed as of 2026-03-31.
+  - `Phase 11 - Project Delete And Runtime Retirement` is recommended next, but it is not opened in this change.
 
 ### Recommended Next Slice
 
-- Closed in this update:
-  - **Phase 9 - Calendar Context And Global Larry (starter slice)**: optional global chat fan-out + governed Google Calendar action execution.
 - Candidate milestone for the next update:
-  - Not opened in this change (phase discipline: no next-phase kickoff).
+  - **Phase 11 - Project Delete And Runtime Retirement**: add explicit hard-delete flow, archived write-lock behavior, legacy runtime retirement cleanup, and archive/delete boundary hardening.
+- Keep out of scope for that slice unless delete semantics force it in:
+  - non-project-centric sweeps such as Documents
+  - unrelated UI redesign
 
 ---
 
@@ -866,29 +877,29 @@ Make Google Calendar a first-class project context source and extend Larry into 
 
 ---
 
-## Phase 10: Project Deletion, Migration Cleanup, And Launch Hardening
+## Phase 10 - Project Archive Lifecycle
 
 **User stories**:
-- As an admin or PM, I can archive or delete a project safely.
-- As a team, we can trust the platform because old paths are retired and core flows are tested end-to-end.
+- As an admin or PM, I can archive or restore a project safely without breaking direct archived links.
+- As a workspace user, active surfaces stay focused on current work while archived projects remain discoverable on purpose.
 
 ### What to build
 
-Finish the platform by adding archive and delete lifecycle support, removing superseded paths, completing migration cleanup, and hardening the end-to-end system. This phase closes the gap between "new architecture exists" and "the old architecture is no longer a risk."
+Add reversible archive/unarchive lifecycle support without changing existing project-scoped read contracts. Archived projects stay readable by direct URL, disappear from default active workspace surfaces, and remain discoverable from an explicit archived-project entry point on workspace home.
 
 ### Acceptance criteria
 
-- [ ] Projects can be archived or deleted with confirmation, audit, and cleanup behavior.
-- [ ] Legacy dashboard and legacy Larry paths are removed or fully isolated from active behavior.
-- [ ] Event-driven updates are the canonical runtime path, with scheduled scans relegated to fallback and hygiene roles.
-- [ ] Security, performance, and reliability gates are met for core workspace, chat, action, document, calendar, and deletion flows.
-- [ ] End-to-end tests cover intake, project chat, approvals, auto-execution, collaboration, documents, calendar, global Larry, and deletion.
+- [x] Projects can be archived or unarchived with confirmation in the workspace, idempotent API behavior, and audit coverage.
+- [x] `projects.status` is hardened to `active|archived` with normalization and tenant/status recency indexing.
+- [x] Cross-project reads support additive `status` / `projectStatus` filtering while project-scoped archived reads remain unchanged.
+- [x] Workspace active surfaces default to active-only project lists, with archived discovery explicit on home and direct archived project/chat links preserved.
+- [x] Targeted schema, API, runtime, docs, and `cd apps/api && npm test` coverage all pass for this slice.
 
 ### Suggested ownership
 
-- Archive and delete lifecycle
-- Legacy-path removal and migration completion
-- End-to-end reliability and observability
+- Schema + API archive lifecycle
+- Workspace visibility defaults + archive UX
+- Tests + docs + plan synchronization
 
 ---
 
@@ -898,7 +909,7 @@ Finish the platform by adding archive and delete lifecycle support, removing sup
 - Treat **Phases 1-3** as mandatory foundation. They remove route overlap, reset the data plane, unify Larry runtime behavior, and establish event-driven provenance.
 - Treat **Phases 4-6** as the second foundation band. They establish project memory, unified intake, and clarification-first governed execution.
 - Treat **Phases 7-9** as expansion phases that become much safer once the runtime and workspace foundations are stable.
-- Treat **Phase 10** as both final hardening and debt retirement. It is where the plan proves it truly replaced the fragile base instead of hiding it.
+- Treat **Phases 10-11** as archive/delete hardening and debt retirement. Phase 10 establishes safe archive visibility; the next slice should finish delete semantics and remaining retirement work.
 
 ## Agent-Ready Decomposition
 

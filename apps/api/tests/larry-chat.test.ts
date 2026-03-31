@@ -67,6 +67,7 @@ import {
   createLarryConversation,
   getLarryConversationForUser,
   insertLarryMessage,
+  listLarryConversationPreviews,
   listLarryMessagesByIds,
   touchLarryConversation,
 } from "../src/lib/larry-ledger.js";
@@ -238,6 +239,52 @@ afterEach(async () => {
 });
 
 describe("POST /larry/chat", () => {
+  it("forwards additive global conversation status filters to the canonical preview read", async () => {
+    vi.mocked(listLarryConversationPreviews).mockResolvedValue([]);
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/larry/conversations?projectStatus=active",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(listLarryConversationPreviews).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT_ID,
+      USER_ID,
+      {
+        projectId: undefined,
+        projectStatus: "active",
+      }
+    );
+  });
+
+  it("keeps project-scoped conversation reads free of archive filters", async () => {
+    vi.mocked(listLarryConversationPreviews).mockResolvedValue([]);
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/larry/conversations?projectId=${PROJECT_ID}&projectStatus=archived`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(listLarryConversationPreviews).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT_ID,
+      USER_ID,
+      {
+        projectId: PROJECT_ID,
+        projectStatus: "all",
+      }
+    );
+  });
+
   it("returns 410 for legacy conversation creation writes", async () => {
     const app = await createTestApp();
     appsToClose.push(app);
@@ -827,6 +874,9 @@ describe("POST /larry/chat", () => {
     ).queryTenant;
     queryTenant.mockImplementation(async (_tenantId: string, sql: string, values?: unknown[]) => {
       if (sql.includes("FROM project_memberships pm")) {
+        expect(sql).toContain(
+          "CASE WHEN p.status = 'archived' THEN 'archived' ELSE 'active' END = 'active'"
+        );
         expect(values).toEqual([TENANT_ID, USER_ID, 5]);
         return [
           { id: PROJECT_ID, name: "Alpha Launch" },

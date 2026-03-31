@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   const projectId = request.nextUrl.searchParams.get("projectId");
   const path = projectId
     ? `/v1/larry/conversations?projectId=${encodeURIComponent(projectId)}`
-    : "/v1/larry/conversations";
+    : "/v1/larry/conversations?projectStatus=active";
 
   const result = await proxyApiRequest(session, path, { method: "GET" });
   if (result.session) await persistSession(result.session);

@@ -261,7 +261,8 @@ describe("Larry action centre routes", () => {
       expect.anything(),
       TENANT_ID,
       USER_ID,
-      PROJECT_ID
+      PROJECT_ID,
+      "all"
     );
   });
 
@@ -380,7 +381,33 @@ describe("Larry action centre routes", () => {
       expect.anything(),
       TENANT_ID,
       USER_ID,
-      undefined
+      undefined,
+      "all"
+    );
+  });
+
+  it("forwards additive global project status filters to the canonical action-centre runtime", async () => {
+    vi.mocked(getLarryActionCentreData).mockResolvedValue({
+      suggested: [],
+      activity: [],
+      conversations: [],
+    });
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/larry/action-centre?projectStatus=active",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(getLarryActionCentreData).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT_ID,
+      USER_ID,
+      undefined,
+      "active"
     );
   });
 

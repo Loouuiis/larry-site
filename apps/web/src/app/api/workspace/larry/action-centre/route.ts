@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   const projectId = request.nextUrl.searchParams.get("projectId");
   const path = projectId
     ? `/v1/larry/action-centre?projectId=${encodeURIComponent(projectId)}`
-    : "/v1/larry/action-centre";
+    : "/v1/larry/action-centre?projectStatus=active";
 
   const result = await proxyApiRequest(session, path, { method: "GET" });
   if (result.session) {

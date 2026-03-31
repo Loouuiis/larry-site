@@ -2,6 +2,14 @@ import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { writeAuditLog } from "../../lib/audit.js";
 import {
+  ACTIVE_PROJECT_STATUS,
+  ARCHIVED_PROJECT_STATUS,
+  ProjectStatusFilterSchema,
+  appendProjectStatusFilter,
+  normalizeProjectStatus,
+  projectStatusSql,
+} from "../../lib/project-status.js";
+import {
   createProjectNote,
   isProjectCollaborator,
   listProjectNotesForUser,
@@ -23,6 +31,9 @@ const CreateProjectSchema = z.object({
   ownerUserId: z.string().uuid().optional(),
   startDate: z.string().date().optional(),
   targetDate: z.string().date().optional(),
+});
+const ProjectListQuerySchema = z.object({
+  status: ProjectStatusFilterSchema.optional().default("all"),
 });
 
 const ProjectIdParamSchema = z.object({ id: z.string().uuid() });
@@ -193,16 +204,27 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
     "/",
     { preHandler: [fastify.authenticate] },
     async (request) => {
+      const query = parseOrBadRequest(ProjectListQuerySchema, request.query);
+      const values: unknown[] = [request.user.tenantId];
+      const filters = ["projects.tenant_id = $1"];
+      appendProjectStatusFilter({
+        filters,
+        values,
+        filter: query.status,
+        statusColumn: "projects.status",
+      });
+
       const rows = await fastify.db.queryTenant(
         request.user.tenantId,
-        `SELECT id, name, description, owner_user_id as "ownerUserId", status,
+        `SELECT id, name, description, owner_user_id as "ownerUserId",
+                ${projectStatusSql("projects.status")} as status,
                 risk_score as "riskScore", risk_level as "riskLevel",
                 start_date as "startDate", target_date as "targetDate",
                 created_at as "createdAt", updated_at as "updatedAt"
          FROM projects
-         WHERE tenant_id = $1
-         ORDER BY created_at DESC`,
-        [request.user.tenantId]
+         WHERE ${filters.join(" AND ")}
+         ORDER BY updated_at DESC, created_at DESC`,
+        values
       );
 
       return { items: rows };
@@ -248,6 +270,89 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
       });
 
       return reply.code(201).send({ id: projectId });
+    }
+  );
+
+  async function updateProjectArchiveStatus(input: {
+    tenantId: string;
+    actorUserId: string;
+    projectId: string;
+    nextStatus: typeof ACTIVE_PROJECT_STATUS | typeof ARCHIVED_PROJECT_STATUS;
+    actionType: "project.archive" | "project.unarchive";
+  }) {
+    const rows = await fastify.db.queryTenant<{ id: string; status: string }>(
+      input.tenantId,
+      `SELECT id, ${projectStatusSql("status")} as status
+         FROM projects
+        WHERE tenant_id = $1
+          AND id = $2
+        LIMIT 1`,
+      [input.tenantId, input.projectId]
+    );
+
+    const project = rows[0];
+    if (!project) {
+      throw fastify.httpErrors.notFound("Project not found.");
+    }
+
+    const previousStatus = normalizeProjectStatus(project.status);
+    const changed = previousStatus !== input.nextStatus;
+
+    if (changed) {
+      await fastify.db.queryTenant(
+        input.tenantId,
+        `UPDATE projects
+            SET status = $3,
+                updated_at = NOW()
+          WHERE tenant_id = $1
+            AND id = $2`,
+        [input.tenantId, input.projectId, input.nextStatus]
+      );
+    }
+
+    await writeAuditLog(fastify.db, {
+      tenantId: input.tenantId,
+      actorUserId: input.actorUserId,
+      actionType: input.actionType,
+      objectType: "project",
+      objectId: input.projectId,
+      details: {
+        previousStatus,
+        newStatus: input.nextStatus,
+        changed,
+      },
+    });
+
+    return { id: input.projectId, status: input.nextStatus };
+  }
+
+  fastify.post(
+    "/:id/archive",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
+    async (request) => {
+      const params = parseOrBadRequest(ProjectIdParamSchema, request.params);
+      return updateProjectArchiveStatus({
+        tenantId: request.user.tenantId,
+        actorUserId: request.user.userId,
+        projectId: params.id,
+        nextStatus: ARCHIVED_PROJECT_STATUS,
+        actionType: "project.archive",
+      });
+    }
+  );
+
+  fastify.post(
+    "/:id/unarchive",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
+    async (request) => {
+      const params = parseOrBadRequest(ProjectIdParamSchema, request.params);
+      return updateProjectArchiveStatus({
+        tenantId: request.user.tenantId,
+        actorUserId: request.user.userId,
+        projectId: params.id,
+        nextStatus: ACTIVE_PROJECT_STATUS,
+        actionType: "project.unarchive",
+      });
     }
   );
 

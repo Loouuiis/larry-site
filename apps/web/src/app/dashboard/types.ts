@@ -184,6 +184,7 @@ export interface WorkspaceSnapshot {
 
 export interface WorkspaceHomeData {
   projects: WorkspaceProject[];
+  archivedProjects?: WorkspaceProject[];
   tasks: WorkspaceTask[];
   connectors: {
     slack?: ConnectorStatus;

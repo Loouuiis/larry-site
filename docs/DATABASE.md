@@ -100,7 +100,15 @@ Use tenant-aware query helpers consistently in API and worker code.
 - `google_calendar_installations` includes additive default-linkage support:
   - nullable `project_id` (`ON DELETE SET NULL`)
   - tenant/project recency lookup index `idx_google_calendar_installations_tenant_project`
+- `projects.status` is hardened to the archive lifecycle enum surface:
+  - stored values are constrained to `active|archived`
+  - additive normalization backfills unexpected/null values to `active`
+  - archive-aware recency index: `idx_projects_tenant_status_recent (tenant_id, status, updated_at DESC, created_at DESC)`
 - Seed data includes one deterministic `project_intake_drafts` fixture row so local/demo environments exercise the new intake contract.
 - Seed data includes deterministic `project_memberships` rows (including a multi-user project) so collaboration access is visible in local/demo environments.
 - Seed data includes deterministic `project_notes` rows (shared and personal) for workspace-note demos.
 - Seed data includes deterministic document assets (`email_draft`, `docx_template`, `xlsx_template`) and one task-document attachment row.
+- Seed data now includes one deterministic archived project fixture with:
+  - collaborator memberships
+  - one archived task
+  - one archived meeting note

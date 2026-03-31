@@ -26,8 +26,8 @@ export async function GET() {
   }
 
   const [projectsResult, tasksResult] = await Promise.all([
-    proxyApiRequest(session, "/v1/projects"),
-    proxyApiRequest(session, "/v1/tasks"),
+    proxyApiRequest(session, "/v1/projects?status=active"),
+    proxyApiRequest(session, "/v1/tasks?projectStatus=active"),
   ]);
 
   const updatedSession = projectsResult.session ?? tasksResult.session ?? session;

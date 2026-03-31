@@ -314,6 +314,7 @@ export default function ChatsPage() {
   const launchSourceKind = searchParams.get("sourceKind");
   const launchEventType = searchParams.get("eventType");
   const launchedFromActionCentre = launchContext === "action-centre";
+  const conversationScopeProjectId = preferredProjectId ?? undefined;
 
   const [projects, setProjects] = useState<WorkspaceProject[]>([]);
   const [conversations, setConversations] = useState<LarryConversation[]>([]);
@@ -379,9 +380,12 @@ export default function ChatsPage() {
       setLoading(true);
       setError(null);
       try {
+        const projectsPath = preferredProjectId
+          ? "/api/workspace/projects?status=all"
+          : "/api/workspace/projects";
         const [conversationItems, projectsResponse] = await Promise.all([
-          listLarryConversations(),
-          fetch("/api/workspace/projects", { cache: "no-store" }),
+          listLarryConversations(conversationScopeProjectId),
+          fetch(projectsPath, { cache: "no-store" }),
         ]);
         const projectsData = await readJson<{ items?: WorkspaceProject[]; error?: string }>(projectsResponse);
 
@@ -403,7 +407,7 @@ export default function ChatsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [conversationScopeProjectId, preferredProjectId]);
 
   useEffect(() => {
     if (loading || initializedRef.current) return;
@@ -488,7 +492,7 @@ export default function ChatsPage() {
   }, [selectedConversationId]);
 
   async function refreshConversations(preferredId?: string | null) {
-    const next = await listLarryConversations();
+    const next = await listLarryConversations(conversationScopeProjectId);
     setConversations(next);
     if (preferredId && next.some((conversation) => conversation.id === preferredId)) {
       setSelectedConversationId(preferredId);

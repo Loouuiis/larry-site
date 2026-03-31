@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ArrowRight,
@@ -14,6 +14,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useWorkspaceChrome } from "@/app/workspace/WorkspaceChromeContext";
+import { triggerBoundedWorkspaceRefresh } from "@/app/workspace/refresh";
 import type {
   WorkspaceConversationPreview,
   WorkspaceLarryEvent,
@@ -24,6 +25,16 @@ import { useProjectActionCentre } from "@/hooks/useProjectActionCentre";
 import { useProjectMemory } from "@/hooks/useProjectMemory";
 import { CollaboratorsPanel } from "./CollaboratorsPanel";
 import { ProjectNotesPanel } from "./ProjectNotesPanel";
+
+async function readJson<T>(response: Response): Promise<T> {
+  const text = await response.text();
+  if (!text) return {} as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return {} as T;
+  }
+}
 
 function formatDate(value?: string | null): string {
   if (!value) return "No date set";
@@ -190,6 +201,13 @@ function getMemoryMeta(entry: WorkspaceProjectMemoryEntry): string {
 export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
   const chrome = useWorkspaceChrome();
   const [memorySourceFilter, setMemorySourceFilter] = useState("all");
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [statusBusy, setStatusBusy] = useState<"archive" | "unarchive" | null>(null);
+  const [statusNotice, setStatusNotice] = useState<{
+    tone: "success" | "error";
+    message: string;
+  } | null>(null);
+  const archiveConfirmButtonRef = useRef<HTMLButtonElement>(null);
   const activeMemorySource = memorySourceFilter === "all" ? null : memorySourceFilter;
   const { project, tasks, health, meetings, outcomes, timeline, loading, error, refresh } = useProjectData(projectId);
   const {
@@ -222,6 +240,22 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
   const blockedTasks = tasks.filter((task) => task.status === "blocked").length;
   const recentTasks = (timeline?.gantt ?? tasks).slice(0, 6);
   const riskTone = getRiskTone(project?.riskLevel ?? health?.riskLevel ?? "low");
+  const isArchived = project?.status === "archived";
+
+  useEffect(() => {
+    if (!archiveDialogOpen) return;
+
+    archiveConfirmButtonRef.current?.focus();
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setArchiveDialogOpen(false);
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [archiveDialogOpen]);
 
   function openLarry() {
     chrome?.openLarry();
@@ -239,6 +273,47 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
         detail: "Review this project and suggest the next actions worth taking.",
       }),
     );
+  }
+
+  async function updateProjectArchiveState(nextStatus: "active" | "archived") {
+    const action = nextStatus === "archived" ? "archive" : "unarchive";
+    setStatusBusy(action);
+    setStatusNotice(null);
+
+    try {
+      const response = await fetch(
+        `/api/workspace/projects/${encodeURIComponent(projectId)}/${action}`,
+        { method: "POST" },
+      );
+      const payload = await readJson<{ error?: string }>(response);
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? `Failed to ${action} project.`);
+      }
+
+      setArchiveDialogOpen(false);
+      setStatusNotice({
+        tone: "success",
+        message:
+          action === "archive"
+            ? "Project archived. It stays readable here and moves out of active workspace lists."
+            : "Project restored to active workspace lists.",
+      });
+
+      await refresh();
+      chrome?.refreshShell();
+      triggerBoundedWorkspaceRefresh();
+    } catch (updateError) {
+      setStatusNotice({
+        tone: "error",
+        message:
+          updateError instanceof Error
+            ? updateError.message
+            : `Failed to ${action} project.`,
+      });
+    } finally {
+      setStatusBusy(null);
+    }
   }
 
   if (loading && !project) {
@@ -319,6 +394,11 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
               <p className="mt-3 max-w-[760px] text-[15px] leading-7" style={{ color: "var(--text-2)" }}>
                 {project.description?.trim() || "This workspace is now running on the scoped Phase 1 project overview contract."}
               </p>
+              {isArchived && (
+                <p className="mt-3 max-w-[760px] text-[13px] leading-6" style={{ color: "var(--text-muted)" }}>
+                  This project is archived. It stays readable by direct link, but it no longer appears in active workspace lists.
+                </p>
+              )}
               <div className="mt-4 flex flex-wrap items-center gap-4 text-[13px]" style={{ color: "var(--text-muted)" }}>
                 <span className="inline-flex items-center gap-2">
                   <CalendarDays size={14} />
@@ -335,6 +415,37 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
               </div>
             </div>
             <div className="flex flex-wrap gap-3">
+              {isArchived ? (
+                <button
+                  type="button"
+                  onClick={() => void updateProjectArchiveState("active")}
+                  disabled={statusBusy !== null}
+                  className="inline-flex h-10 items-center gap-2 rounded-full border px-4 text-[13px] font-semibold"
+                  style={{
+                    borderColor: "var(--border)",
+                    color: "var(--text-2)",
+                    background: "var(--surface)",
+                    opacity: statusBusy !== null ? 0.7 : 1,
+                  }}
+                >
+                  {statusBusy === "unarchive" ? "Restoring..." : "Restore to active"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setArchiveDialogOpen(true)}
+                  disabled={statusBusy !== null}
+                  className="inline-flex h-10 items-center gap-2 rounded-full border px-4 text-[13px] font-semibold"
+                  style={{
+                    borderColor: "var(--border)",
+                    color: "var(--text-2)",
+                    background: "var(--surface)",
+                    opacity: statusBusy !== null ? 0.7 : 1,
+                  }}
+                >
+                  Archive project
+                </button>
+              )}
               <button
                 type="button"
                 onClick={startProjectChat}
@@ -362,6 +473,20 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
               </Link>
             </div>
           </div>
+          {statusNotice && (
+            <div
+              role={statusNotice.tone === "error" ? "alert" : "status"}
+              aria-live="polite"
+              className="mt-4 rounded-[16px] px-4 py-3 text-[13px]"
+              style={{
+                border: `1px solid ${statusNotice.tone === "error" ? "#fecaca" : "#bbf7d0"}`,
+                background: statusNotice.tone === "error" ? "#fef2f2" : "#f0fdf4",
+                color: statusNotice.tone === "error" ? "#b91c1c" : "#166534",
+              }}
+            >
+              {statusNotice.message}
+            </div>
+          )}
         </section>
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -874,6 +999,63 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
           </div>
         </section>
       </div>
+      {archiveDialogOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-4"
+          style={{ background: "rgba(15, 23, 42, 0.45)" }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="archive-project-title"
+            aria-describedby="archive-project-description"
+            className="w-full max-w-[480px]"
+            style={{
+              borderRadius: "var(--radius-card)",
+              border: "1px solid var(--border)",
+              background: "var(--surface)",
+              padding: "24px",
+              boxShadow: "var(--shadow-1)",
+            }}
+          >
+            <p id="archive-project-title" className="text-[20px] font-semibold" style={{ color: "var(--text-1)" }}>
+              Archive this project?
+            </p>
+            <p id="archive-project-description" className="mt-3 text-[14px] leading-7" style={{ color: "var(--text-2)" }}>
+              Active workspace lists will hide this project, but direct links, meetings, tasks, chats, and notes will still be readable here.
+            </p>
+            <div className="mt-6 flex flex-wrap justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setArchiveDialogOpen(false)}
+                disabled={statusBusy !== null}
+                className="inline-flex h-10 items-center rounded-full border px-4 text-[13px] font-semibold"
+                style={{
+                  borderColor: "var(--border)",
+                  color: "var(--text-2)",
+                  background: "var(--surface)",
+                  opacity: statusBusy !== null ? 0.7 : 1,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                ref={archiveConfirmButtonRef}
+                type="button"
+                onClick={() => void updateProjectArchiveState("archived")}
+                disabled={statusBusy !== null}
+                className="inline-flex h-10 items-center rounded-full px-4 text-[13px] font-semibold text-white"
+                style={{
+                  background: "#b91c1c",
+                  opacity: statusBusy !== null ? 0.7 : 1,
+                }}
+              >
+                {statusBusy === "archive" ? "Archiving..." : "Archive project"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

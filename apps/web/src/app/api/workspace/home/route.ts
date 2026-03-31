@@ -25,9 +25,10 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const [projectsResult, tasksResult, slackResult, calendarResult, emailResult] = await Promise.all([
-    proxyApiRequest(session, "/v1/projects"),
-    proxyApiRequest(session, "/v1/tasks"),
+  const [projectsResult, archivedProjectsResult, tasksResult, slackResult, calendarResult, emailResult] = await Promise.all([
+    proxyApiRequest(session, "/v1/projects?status=active"),
+    proxyApiRequest(session, "/v1/projects?status=archived"),
+    proxyApiRequest(session, "/v1/tasks?projectStatus=active"),
     proxyApiRequest(session, "/v1/connectors/slack/status"),
     proxyApiRequest(session, "/v1/connectors/google-calendar/status"),
     proxyApiRequest(session, "/v1/connectors/email/status"),
@@ -35,6 +36,7 @@ export async function GET() {
 
   const updatedSession =
     projectsResult.session ??
+    archivedProjectsResult.session ??
     tasksResult.session ??
     slackResult.session ??
     calendarResult.session ??
@@ -49,6 +51,7 @@ export async function GET() {
     return NextResponse.json(
       {
         projects: [],
+        archivedProjects: [],
         tasks: [],
         connectors: {
           slack: { connected: false },
@@ -67,6 +70,7 @@ export async function GET() {
 
   return NextResponse.json({
     projects: extractItems<WorkspaceProject>(projectsResult.body),
+    archivedProjects: extractItems<WorkspaceProject>(archivedProjectsResult.body),
     tasks: extractItems<WorkspaceTask>(tasksResult.body),
     connectors: {
       slack: slackResult.body && typeof slackResult.body === "object" ? slackResult.body : { connected: false },
