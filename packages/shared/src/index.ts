@@ -143,7 +143,9 @@ export type LarryActionType =
   | "collaborator_add"
   | "collaborator_role_update"
   | "collaborator_remove"
-  | "project_note_send";
+  | "project_note_send"
+  | "calendar_event_create"
+  | "calendar_event_update";
 
 export type LarryEventType = "auto_executed" | "suggested" | "accepted" | "dismissed";
 export type LarryTriggeredBy = "schedule" | "login" | "chat" | "signal";
@@ -232,7 +234,7 @@ export interface LarryActionCentreData {
 }
 
 export interface LarryChatRequest {
-  projectId: string;
+  projectId?: string;
   message: string;
   conversationId?: string;
 }

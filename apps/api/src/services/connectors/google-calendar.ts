@@ -17,6 +17,12 @@ const GoogleWatchResponseSchema = z.object({
   expiration: z.string().optional(),
 });
 
+const GoogleCalendarEventResponseSchema = z.object({
+  id: z.string(),
+  status: z.string().optional(),
+  htmlLink: z.string().optional(),
+});
+
 export interface BuildGoogleInstallUrlInput {
   clientId: string;
   redirectUri: string;
@@ -36,6 +42,37 @@ export interface GoogleWatchResult {
   channelId: string;
   resourceId: string;
   expiration?: string;
+}
+
+export interface GoogleCalendarEventCreateInput {
+  accessToken: string;
+  calendarId: string;
+  summary: string;
+  startDateTime: string;
+  endDateTime: string;
+  description?: string | null;
+  location?: string | null;
+  attendees?: string[] | null;
+  timeZone?: string | null;
+}
+
+export interface GoogleCalendarEventUpdateInput {
+  accessToken: string;
+  calendarId: string;
+  eventId: string;
+  summary?: string | null;
+  startDateTime?: string | null;
+  endDateTime?: string | null;
+  description?: string | null;
+  location?: string | null;
+  attendees?: string[] | null;
+  timeZone?: string | null;
+}
+
+export interface GoogleCalendarEventWriteResult {
+  id: string;
+  status?: string;
+  htmlLink?: string;
 }
 
 export function buildGoogleCalendarInstallUrl(input: BuildGoogleInstallUrlInput): string {
@@ -160,6 +197,124 @@ export async function createGoogleCalendarWatch(input: {
     channelId: payload.id,
     resourceId: payload.resourceId,
     expiration: payload.expiration,
+  };
+}
+
+function buildGoogleEventBody(input: {
+  summary?: string | null;
+  startDateTime?: string | null;
+  endDateTime?: string | null;
+  description?: string | null;
+  location?: string | null;
+  attendees?: string[] | null;
+  timeZone?: string | null;
+}): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+
+  if (input.summary !== undefined) {
+    body.summary = input.summary;
+  }
+  if (input.description !== undefined) {
+    body.description = input.description;
+  }
+  if (input.location !== undefined) {
+    body.location = input.location;
+  }
+  if (input.attendees !== undefined) {
+    body.attendees =
+      input.attendees?.map((email) => ({ email })).filter((entry) => entry.email.trim().length > 0) ?? [];
+  }
+  if (input.startDateTime !== undefined) {
+    body.start = {
+      dateTime: input.startDateTime,
+      ...(input.timeZone ? { timeZone: input.timeZone } : {}),
+    };
+  }
+  if (input.endDateTime !== undefined) {
+    body.end = {
+      dateTime: input.endDateTime,
+      ...(input.timeZone ? { timeZone: input.timeZone } : {}),
+    };
+  }
+
+  return body;
+}
+
+export async function createGoogleCalendarEvent(
+  input: GoogleCalendarEventCreateInput
+): Promise<GoogleCalendarEventWriteResult> {
+  const endpoint = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(
+    input.calendarId
+  )}/events`;
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${input.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(
+      buildGoogleEventBody({
+        summary: input.summary,
+        startDateTime: input.startDateTime,
+        endDateTime: input.endDateTime,
+        description: input.description ?? null,
+        location: input.location ?? null,
+        attendees: input.attendees ?? null,
+        timeZone: input.timeZone ?? null,
+      })
+    ),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Google calendar event create failed: ${response.status} ${text}`);
+  }
+
+  const payload = GoogleCalendarEventResponseSchema.parse(await response.json());
+  return {
+    id: payload.id,
+    status: payload.status,
+    htmlLink: payload.htmlLink,
+  };
+}
+
+export async function updateGoogleCalendarEvent(
+  input: GoogleCalendarEventUpdateInput
+): Promise<GoogleCalendarEventWriteResult> {
+  const endpoint = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(
+    input.calendarId
+  )}/events/${encodeURIComponent(input.eventId)}`;
+
+  const response = await fetch(endpoint, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${input.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(
+      buildGoogleEventBody({
+        summary: input.summary,
+        startDateTime: input.startDateTime,
+        endDateTime: input.endDateTime,
+        description: input.description,
+        location: input.location,
+        attendees: input.attendees,
+        timeZone: input.timeZone,
+      })
+    ),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Google calendar event update failed: ${response.status} ${text}`);
+  }
+
+  const payload = GoogleCalendarEventResponseSchema.parse(await response.json());
+  return {
+    id: payload.id,
+    status: payload.status,
+    htmlLink: payload.htmlLink,
   };
 }
 

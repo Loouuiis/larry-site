@@ -37,6 +37,13 @@ Fastify v5 REST API at `apps/api/`. Product routes are registered in `apps/api/s
 - `POST /v1/larry/chat` and `POST /v1/larry/events/:id/accept` write durable rows into `project_memory_entries` for project timeline context.
 - `POST /v1/larry/chat` applies a clarification-first gate for ambiguous mutation requests and returns a clarification reply without executing/storing actions when task target/details are under-specified.
 - Clarification gating applies task-target checks only to task-targeted mutation intents; collaborator and note intents are not blocked by `missing_task_target`.
+- `POST /v1/larry/chat` request contract is additive:
+  - `projectId` is optional.
+  - with `projectId`: existing project-scoped behavior is unchanged.
+  - without `projectId`: Larry runs in global mode across up to 5 accessible projects (`updated_at DESC`) and returns one grouped response.
+- Conversation consistency is enforced:
+  - global chat cannot reuse a project-scoped conversation.
+  - project chat cannot reuse a global conversation.
 - Project-scoped Larry visibility is membership-scoped:
   - project conversations and project conversation message history are visible to project members
   - project action-centre reads/mutations and project memory reads require project membership access (with tenant-admin override in route guards)
@@ -51,6 +58,10 @@ Fastify v5 REST API at `apps/api/`. Product routes are registered in `apps/api/s
   - `collaborator_role_update`
   - `collaborator_remove`
   - `project_note_send`
+- Canonical Larry action types also include calendar write mutations:
+  - `calendar_event_create`
+  - `calendar_event_update`
+- Calendar write actions are approval-only and execute on `POST /v1/larry/events/:id/accept` via Google Calendar API (not auto-executed in `runAutoActions`).
 
 Compatibility and retirement behavior:
 - `POST /v1/ingest/transcript` proxies to `/v1/larry/transcript` and returns deprecation metadata.
@@ -70,6 +81,11 @@ Compatibility and retirement behavior:
   - Canonical payload project scope resolution is additive:
     - explicit webhook payload hint (`projectId`) if present
     - otherwise installation default project link (`google_calendar_installations.project_id`) when present
+- `POST /v1/larry/events/:id/accept` for `calendar_event_create` and `calendar_event_update`:
+  - resolves the project-linked Google installation (`google_calendar_installations.project_id`).
+  - refreshes Google access tokens when expired.
+  - executes Google Calendar create/update and returns execution metadata in the accept response.
+  - returns `422` with actionable reconnect/link guidance when no project-linked installation exists.
 
 ## Project Collaborator Contracts
 

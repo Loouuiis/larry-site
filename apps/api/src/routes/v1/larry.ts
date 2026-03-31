@@ -40,6 +40,11 @@ import {
   insertCanonicalEventRecords,
   publishCanonicalEventCreated,
 } from "../../services/ingest/pipeline.js";
+import {
+  createGoogleCalendarEvent,
+  refreshGoogleAccessToken,
+  updateGoogleCalendarEvent,
+} from "../../services/connectors/google-calendar.js";
 
 function buildIntelligenceConfig(config: ReturnType<typeof getApiEnv>): IntelligenceConfig {
   if (config.MODEL_PROVIDER === "openai") {
@@ -67,9 +72,34 @@ const MemoryQuerySchema = z.object({
 });
 
 const ChatSchema = z.object({
-  projectId: z.string().uuid(),
+  projectId: z.string().uuid().optional(),
   message: z.string().trim().min(1).max(8_000),
   conversationId: z.string().uuid().optional(),
+});
+
+const GLOBAL_CHAT_PROJECT_LIMIT = 5;
+
+const CalendarCreatePayloadSchema = z.object({
+  summary: z.string().trim().min(1),
+  startDateTime: z.string().trim().min(1),
+  endDateTime: z.string().trim().min(1),
+  description: z.string().nullable().optional(),
+  location: z.string().nullable().optional(),
+  attendees: z.array(z.string().trim().email()).nullable().optional(),
+  calendarId: z.string().trim().min(1).nullable().optional(),
+  timeZone: z.string().trim().min(1).nullable().optional(),
+});
+
+const CalendarUpdatePayloadSchema = z.object({
+  eventId: z.string().trim().min(1),
+  summary: z.string().trim().min(1).nullable().optional(),
+  startDateTime: z.string().trim().min(1).nullable().optional(),
+  endDateTime: z.string().trim().min(1).nullable().optional(),
+  description: z.string().nullable().optional(),
+  location: z.string().nullable().optional(),
+  attendees: z.array(z.string().trim().email()).nullable().optional(),
+  calendarId: z.string().trim().min(1).nullable().optional(),
+  timeZone: z.string().trim().min(1).nullable().optional(),
 });
 
 function fallbackMessage(input: {
@@ -241,6 +271,57 @@ function detectClarificationNeed(input: {
   return null;
 }
 
+interface AccessibleProjectRow {
+  id: string;
+  name: string;
+}
+
+interface GoogleCalendarInstallationRow {
+  id: string;
+  project_id: string | null;
+  google_calendar_id: string;
+  google_access_token: string;
+  google_refresh_token: string | null;
+  token_expires_at: string | null;
+}
+
+interface GlobalProjectIntelligenceResult {
+  projectId: string;
+  projectName: string;
+  briefing: string;
+  executedCount: number;
+  suggestedCount: number;
+  eventIds: string[];
+  error?: string;
+}
+
+function buildGlobalNoProjectMessage(): string {
+  return "I couldn't find any accessible projects to run this global chat request against. Select a project or ask an admin to grant project access.";
+}
+
+function buildGlobalGroupedMessage(results: GlobalProjectIntelligenceResult[]): string {
+  const sections = results.map((result) => {
+    const header = `Project: ${result.projectName}`;
+    if (result.error) {
+      return `${header}\nI couldn't process this project right now: ${result.error}`;
+    }
+
+    const suffix =
+      result.executedCount > 0 || result.suggestedCount > 0
+        ? `\nActions: ${result.executedCount} executed, ${result.suggestedCount} pending approval.`
+        : "";
+    return `${header}\n${result.briefing}${suffix}`;
+  });
+
+  return sections.join("\n\n").slice(0, 8_000);
+}
+
+function isCalendarActionType(
+  actionType: string
+): actionType is "calendar_event_create" | "calendar_event_update" {
+  return actionType === "calendar_event_create" || actionType === "calendar_event_update";
+}
+
 export const larryRoutes: FastifyPluginAsync = async (fastify) => {
   async function assertProjectAccessOrThrow(input: {
     tenantId: string;
@@ -270,6 +351,214 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         "Project action updates require owner or editor access."
       );
     }
+  }
+
+  async function listAccessibleProjectsForGlobalChat(input: {
+    tenantId: string;
+    userId: string;
+    tenantRole: string;
+    limit: number;
+  }): Promise<AccessibleProjectRow[]> {
+    if (input.tenantRole === "admin") {
+      return fastify.db.queryTenant<AccessibleProjectRow>(
+        input.tenantId,
+        `SELECT p.id, p.name
+         FROM projects p
+         WHERE p.tenant_id = $1
+         ORDER BY p.updated_at DESC, p.created_at DESC
+         LIMIT $2`,
+        [input.tenantId, input.limit]
+      );
+    }
+
+    return fastify.db.queryTenant<AccessibleProjectRow>(
+      input.tenantId,
+      `SELECT p.id, p.name
+       FROM project_memberships pm
+       JOIN projects p
+         ON p.tenant_id = pm.tenant_id
+        AND p.id = pm.project_id
+       WHERE pm.tenant_id = $1
+         AND pm.user_id = $2
+       ORDER BY p.updated_at DESC, p.created_at DESC
+       LIMIT $3`,
+      [input.tenantId, input.userId, input.limit]
+    );
+  }
+
+  async function loadProjectLinkedCalendarInstallation(input: {
+    tenantId: string;
+    projectId: string;
+  }): Promise<GoogleCalendarInstallationRow> {
+    const rows = await fastify.db.queryTenant<GoogleCalendarInstallationRow>(
+      input.tenantId,
+      `SELECT id,
+              project_id,
+              google_calendar_id,
+              google_access_token,
+              google_refresh_token,
+              token_expires_at
+       FROM google_calendar_installations
+       WHERE tenant_id = $1
+         AND project_id = $2
+       ORDER BY updated_at DESC
+       LIMIT 1`,
+      [input.tenantId, input.projectId]
+    );
+
+    if (!rows[0]) {
+      throw new Error(
+        "Google Calendar is not linked to this project. Link it in Workspace Settings > Connectors and try again."
+      );
+    }
+
+    return rows[0];
+  }
+
+  async function ensureFreshGoogleAccessToken(input: {
+    tenantId: string;
+    installation: GoogleCalendarInstallationRow;
+  }): Promise<string> {
+    const expiresAt = input.installation.token_expires_at
+      ? new Date(input.installation.token_expires_at).getTime()
+      : null;
+    const aboutToExpire = expiresAt !== null && expiresAt <= Date.now() + 60_000;
+
+    if (!aboutToExpire) {
+      return input.installation.google_access_token;
+    }
+
+    if (!input.installation.google_refresh_token) {
+      throw new Error(
+        "Google Calendar access token expired and no refresh token is available. Reconnect the connector and retry."
+      );
+    }
+
+    if (!fastify.config.GOOGLE_CLIENT_ID || !fastify.config.GOOGLE_CLIENT_SECRET) {
+      throw new Error(
+        "Google Calendar OAuth credentials are not configured on the API. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET."
+      );
+    }
+
+    const refreshed = await refreshGoogleAccessToken({
+      clientId: fastify.config.GOOGLE_CLIENT_ID,
+      clientSecret: fastify.config.GOOGLE_CLIENT_SECRET,
+      refreshToken: input.installation.google_refresh_token,
+    });
+
+    await fastify.db.queryTenant(
+      input.tenantId,
+      `UPDATE google_calendar_installations
+         SET google_access_token = $3,
+             google_refresh_token = COALESCE($4, google_refresh_token),
+             google_scope = COALESCE($5, google_scope),
+             token_expires_at = $6,
+             updated_at = NOW()
+       WHERE tenant_id = $1
+         AND id = $2`,
+      [
+        input.tenantId,
+        input.installation.id,
+        refreshed.accessToken,
+        refreshed.refreshToken ?? null,
+        refreshed.scope ?? null,
+        refreshed.expiresAt ?? null,
+      ]
+    );
+
+    return refreshed.accessToken;
+  }
+
+  async function executeCalendarAction(input: {
+    tenantId: string;
+    projectId: string;
+    actionType: "calendar_event_create" | "calendar_event_update";
+    payload: Record<string, unknown>;
+  }): Promise<Record<string, unknown>> {
+    const installation = await loadProjectLinkedCalendarInstallation({
+      tenantId: input.tenantId,
+      projectId: input.projectId,
+    });
+    const accessToken = await ensureFreshGoogleAccessToken({
+      tenantId: input.tenantId,
+      installation,
+    });
+
+    if (input.actionType === "calendar_event_create") {
+      const parsed = CalendarCreatePayloadSchema.safeParse(input.payload);
+      if (!parsed.success) {
+        throw new Error(
+          `Invalid calendar_event_create payload: ${
+            parsed.error.issues[0]?.message ?? "failed payload validation"
+          }`
+        );
+      }
+
+      const calendarId = parsed.data.calendarId ?? installation.google_calendar_id;
+      const created = await createGoogleCalendarEvent({
+        accessToken,
+        calendarId,
+        summary: parsed.data.summary,
+        startDateTime: parsed.data.startDateTime,
+        endDateTime: parsed.data.endDateTime,
+        description: parsed.data.description ?? null,
+        location: parsed.data.location ?? null,
+        attendees: parsed.data.attendees ?? null,
+        timeZone: parsed.data.timeZone ?? null,
+      });
+
+      return {
+        operation: "calendar_event_create",
+        calendarId,
+        eventId: created.id,
+        status: created.status ?? null,
+        htmlLink: created.htmlLink ?? null,
+      };
+    }
+
+    const parsed = CalendarUpdatePayloadSchema.safeParse(input.payload);
+    if (!parsed.success) {
+      throw new Error(
+        `Invalid calendar_event_update payload: ${
+          parsed.error.issues[0]?.message ?? "failed payload validation"
+        }`
+      );
+    }
+
+    const hasMutation =
+      parsed.data.summary !== undefined ||
+      parsed.data.startDateTime !== undefined ||
+      parsed.data.endDateTime !== undefined ||
+      parsed.data.description !== undefined ||
+      parsed.data.location !== undefined ||
+      parsed.data.attendees !== undefined;
+    if (!hasMutation) {
+      throw new Error(
+        "calendar_event_update requires at least one field to update (summary, date, description, location, or attendees)."
+      );
+    }
+
+    const calendarId = parsed.data.calendarId ?? installation.google_calendar_id;
+    const updated = await updateGoogleCalendarEvent({
+      accessToken,
+      calendarId,
+      eventId: parsed.data.eventId,
+      summary: parsed.data.summary,
+      startDateTime: parsed.data.startDateTime,
+      endDateTime: parsed.data.endDateTime,
+      description: parsed.data.description,
+      location: parsed.data.location,
+      attendees: parsed.data.attendees,
+      timeZone: parsed.data.timeZone ?? null,
+    });
+
+    return {
+      operation: "calendar_event_update",
+      calendarId,
+      eventId: updated.id,
+      status: updated.status ?? null,
+      htmlLink: updated.htmlLink ?? null,
+    };
   }
 
   fastify.get(
@@ -425,25 +714,34 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         throw fastify.httpErrors.conflict("Only suggested events can be accepted.");
       }
 
-      const actionPayload =
-        event.actionType === "project_note_send"
-          ? {
-              ...event.payload,
-              sourceKind: "action",
-              sourceRecordId: id,
-            }
-          : event.payload;
-
       let entity: unknown;
       try {
-        entity = await executeAction(
-          fastify.db,
-          tenantId,
-          event.projectId,
-          event.actionType as LarryActionType,
-          actionPayload,
-          actorUserId
-        );
+        if (isCalendarActionType(event.actionType)) {
+          entity = await executeCalendarAction({
+            tenantId,
+            projectId: event.projectId,
+            actionType: event.actionType,
+            payload: event.payload,
+          });
+        } else {
+          const actionPayload =
+            event.actionType === "project_note_send"
+              ? {
+                  ...event.payload,
+                  sourceKind: "action",
+                  sourceRecordId: id,
+                }
+              : event.payload;
+
+          entity = await executeAction(
+            fastify.db,
+            tenantId,
+            event.projectId,
+            event.actionType as LarryActionType,
+            actionPayload,
+            actorUserId
+          );
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         throw fastify.httpErrors.unprocessableEntity(message);
@@ -709,18 +1007,21 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         throw fastify.httpErrors.badRequest(parseResult.error.issues[0]?.message ?? "Invalid request body");
       }
 
-      const { projectId, message, conversationId } = parseResult.data;
+      const { message, conversationId } = parseResult.data;
+      const projectId = parseResult.data.projectId ?? null;
       const tenantId = request.user.tenantId;
       const actorUserId = request.user.userId;
       let existingConversation = null;
 
-      await assertProjectAccessOrThrow({
-        tenantId,
-        userId: actorUserId,
-        tenantRole: request.user.role,
-        projectId,
-        mode: "read",
-      });
+      if (projectId) {
+        await assertProjectAccessOrThrow({
+          tenantId,
+          userId: actorUserId,
+          tenantRole: request.user.role,
+          projectId,
+          mode: "read",
+        });
+      }
 
       if (conversationId) {
         existingConversation = await getLarryConversationForUser(
@@ -733,8 +1034,299 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           throw fastify.httpErrors.notFound("Conversation not found.");
         }
         if (existingConversation.projectId !== projectId) {
+          if (!projectId) {
+            throw fastify.httpErrors.conflict("Global chat cannot reuse a project conversation.");
+          }
+          if (!existingConversation.projectId) {
+            throw fastify.httpErrors.conflict("Project chat cannot reuse a global conversation.");
+          }
           throw fastify.httpErrors.conflict("Conversation does not belong to this project.");
         }
+      }
+
+      if (!projectId) {
+        const globalProjects = await listAccessibleProjectsForGlobalChat({
+          tenantId,
+          userId: actorUserId,
+          tenantRole: request.user.role,
+          limit: GLOBAL_CHAT_PROJECT_LIMIT,
+        });
+
+        const conversation =
+          existingConversation ??
+          await createLarryConversation(fastify.db, tenantId, actorUserId, {
+            projectId: null,
+            title: message.slice(0, 80),
+          });
+
+        const userMessageInsert = await insertLarryMessage(fastify.db, tenantId, conversation.id, {
+          role: "user",
+          content: message,
+          actorUserId,
+        });
+
+        if (globalProjects.length === 0) {
+          const fallback = buildGlobalNoProjectMessage();
+          const assistantMessageInsert = await insertLarryMessage(fastify.db, tenantId, conversation.id, {
+            role: "larry",
+            content: fallback,
+          });
+          await touchLarryConversation(fastify.db, tenantId, conversation.id, message.slice(0, 80));
+
+          const persistedMessages = await listLarryMessagesByIds(fastify.db, tenantId, [
+            userMessageInsert.id,
+            assistantMessageInsert.id,
+          ]);
+          const userMessage =
+            persistedMessages.find((entry) => entry.id === userMessageInsert.id) ??
+            fallbackMessage({
+              id: userMessageInsert.id,
+              role: "user",
+              content: message,
+              createdAt: userMessageInsert.createdAt,
+              actorUserId,
+            });
+          const assistantMessage =
+            persistedMessages.find((entry) => entry.id === assistantMessageInsert.id) ??
+            fallbackMessage({
+              id: assistantMessageInsert.id,
+              role: "larry",
+              content: fallback,
+              createdAt: assistantMessageInsert.createdAt,
+            });
+
+          await writeAuditLog(fastify.db, {
+            tenantId,
+            actorUserId,
+            actionType: "larry.chat.global",
+            objectType: "workspace",
+            objectId: tenantId,
+            details: {
+              conversationId: conversation.id,
+              projectCount: 0,
+              fanoutLimit: GLOBAL_CHAT_PROJECT_LIMIT,
+              linkedActionCount: 0,
+            },
+          });
+
+          const responsePayload: LarryChatResponse = {
+            conversationId: conversation.id,
+            message: fallback,
+            userMessage,
+            assistantMessage: {
+              ...assistantMessage,
+              linkedActions: [],
+            },
+            linkedActions: [],
+            actionsExecuted: 0,
+            suggestionCount: 0,
+          };
+
+          return reply.code(200).send(responsePayload);
+        }
+
+        const config = buildIntelligenceConfig(fastify.config);
+        const draftRuns: Array<{
+          projectId: string;
+          projectName: string;
+          result: Awaited<ReturnType<typeof runIntelligence>> | null;
+          error?: string;
+        }> = [];
+
+        for (const project of globalProjects) {
+          try {
+            const snapshot = await getProjectSnapshot(fastify.db, tenantId, project.id);
+            const pendingTexts = await getPendingSuggestionTexts(fastify.db, tenantId, project.id).catch(
+              () => [] as string[]
+            );
+            const pendingClause = buildPendingClause(pendingTexts);
+            const result = await runIntelligence(config, snapshot, `user said: "${message}"${pendingClause}`);
+            draftRuns.push({
+              projectId: project.id,
+              projectName: project.name,
+              result,
+            });
+          } catch (error) {
+            const reason = error instanceof Error ? error.message : String(error);
+            request.log.warn(
+              { err: error, tenantId, projectId: project.id, userId: actorUserId },
+              "global chat intelligence failed for project"
+            );
+            draftRuns.push({
+              projectId: project.id,
+              projectName: project.name,
+              result: null,
+              error: reason,
+            });
+          }
+        }
+
+        const assistantText = buildGlobalGroupedMessage(
+          draftRuns.map((entry) => ({
+            projectId: entry.projectId,
+            projectName: entry.projectName,
+            briefing: entry.result?.briefing ?? "",
+            executedCount: 0,
+            suggestedCount: 0,
+            eventIds: [],
+            error: entry.error,
+          }))
+        );
+        const assistantMessageInsert = await insertLarryMessage(fastify.db, tenantId, conversation.id, {
+          role: "larry",
+          content: assistantText,
+        });
+
+        await touchLarryConversation(fastify.db, tenantId, conversation.id, message.slice(0, 80));
+
+        const actionContext = {
+          conversationId: conversation.id,
+          requestMessageId: userMessageInsert.id,
+          responseMessageId: assistantMessageInsert.id,
+          requesterUserId: actorUserId,
+          sourceKind: "chat",
+          sourceRecordId: userMessageInsert.id,
+        };
+
+        const finalizedResults: GlobalProjectIntelligenceResult[] = [];
+        for (const draft of draftRuns) {
+          if (draft.error || !draft.result) {
+            finalizedResults.push({
+              projectId: draft.projectId,
+              projectName: draft.projectName,
+              briefing: "",
+              executedCount: 0,
+              suggestedCount: 0,
+              eventIds: [],
+              error: draft.error ?? "No intelligence result was produced for this project.",
+            });
+            continue;
+          }
+          try {
+            const [autoResult, suggestResult] = await Promise.all([
+              runAutoActions(
+                fastify.db,
+                tenantId,
+                draft.projectId,
+                "chat",
+                draft.result.autoActions,
+                message,
+                actionContext
+              ),
+              storeSuggestions(
+                fastify.db,
+                tenantId,
+                draft.projectId,
+                "chat",
+                draft.result.suggestedActions,
+                message,
+                actionContext
+              ),
+            ]);
+
+            finalizedResults.push({
+              projectId: draft.projectId,
+              projectName: draft.projectName,
+              briefing: draft.result.briefing,
+              executedCount: autoResult.executedCount,
+              suggestedCount: suggestResult.suggestedCount + autoResult.suggestedCount,
+              eventIds: [...autoResult.eventIds, ...suggestResult.eventIds],
+            });
+
+            await Promise.resolve(
+              insertProjectMemoryEntry(fastify.db, tenantId, draft.projectId, {
+                source: "Larry chat",
+                sourceKind: "chat",
+                sourceRecordId: userMessageInsert.id,
+                content: buildChatMemoryEntry(message, draft.result.briefing),
+              })
+            ).catch((error) => {
+              request.log.warn(
+                { err: error, tenantId, projectId: draft.projectId, conversationId: conversation.id },
+                "project memory write failed for global chat turn"
+              );
+            });
+          } catch (error) {
+            const reason = error instanceof Error ? error.message : String(error);
+            request.log.warn(
+              { err: error, tenantId, projectId: draft.projectId, conversationId: conversation.id },
+              "global chat action execution failed for project"
+            );
+            finalizedResults.push({
+              projectId: draft.projectId,
+              projectName: draft.projectName,
+              briefing: draft.result.briefing,
+              executedCount: 0,
+              suggestedCount: 0,
+              eventIds: [],
+              error: reason,
+            });
+          }
+        }
+
+        const linkedActionIds = finalizedResults.flatMap((result) => result.eventIds);
+        const persistedMessages = await listLarryMessagesByIds(fastify.db, tenantId, [
+          userMessageInsert.id,
+          assistantMessageInsert.id,
+        ]);
+        const userMessage =
+          persistedMessages.find((entry) => entry.id === userMessageInsert.id) ??
+          fallbackMessage({
+            id: userMessageInsert.id,
+            role: "user",
+            content: message,
+            createdAt: userMessageInsert.createdAt,
+            actorUserId,
+          });
+        const assistantMessage =
+          persistedMessages.find((entry) => entry.id === assistantMessageInsert.id) ??
+          fallbackMessage({
+            id: assistantMessageInsert.id,
+            role: "larry",
+            content: assistantText,
+            createdAt: assistantMessageInsert.createdAt,
+          });
+
+        const linkedActions =
+          assistantMessage.linkedActions.length > 0 || linkedActionIds.length === 0
+            ? assistantMessage.linkedActions
+            : await listLarryEventSummaries(fastify.db, tenantId, {
+                ids: linkedActionIds,
+                sort: "chronological",
+              });
+        const actionsExecuted = finalizedResults.reduce((sum, result) => sum + result.executedCount, 0);
+        const suggestionCount = finalizedResults.reduce((sum, result) => sum + result.suggestedCount, 0);
+
+        await writeAuditLog(fastify.db, {
+          tenantId,
+          actorUserId,
+          actionType: "larry.chat.global",
+          objectType: "workspace",
+          objectId: tenantId,
+          details: {
+            conversationId: conversation.id,
+            fanoutLimit: GLOBAL_CHAT_PROJECT_LIMIT,
+            touchedProjectIds: finalizedResults.map((result) => result.projectId),
+            actionsExecuted,
+            suggestionCount,
+            linkedActionCount: linkedActions.length,
+          },
+        });
+
+        const responsePayload: LarryChatResponse = {
+          conversationId: conversation.id,
+          message: assistantText,
+          userMessage,
+          assistantMessage: {
+            ...assistantMessage,
+            linkedActions,
+          },
+          linkedActions,
+          actionsExecuted,
+          suggestionCount,
+        };
+
+        return reply.code(200).send(responsePayload);
       }
 
       let snapshot;

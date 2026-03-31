@@ -127,6 +127,29 @@ interface ProjectNoteSendPayload {
   sourceRecordId?: string | null;
 }
 
+interface CalendarEventCreatePayload {
+  summary: string;
+  startDateTime: string;
+  endDateTime: string;
+  description?: string | null;
+  location?: string | null;
+  attendees?: string[] | null;
+  calendarId?: string | null;
+  timeZone?: string | null;
+}
+
+interface CalendarEventUpdatePayload {
+  eventId: string;
+  summary?: string | null;
+  startDateTime?: string | null;
+  endDateTime?: string | null;
+  description?: string | null;
+  location?: string | null;
+  attendees?: string[] | null;
+  calendarId?: string | null;
+  timeZone?: string | null;
+}
+
 interface TenantPolicySettings {
   autoExecuteLowImpact: boolean;
 }
@@ -148,6 +171,8 @@ const APPROVAL_ONLY_ACTION_TYPES = new Set<LarryActionType>([
   "collaborator_role_update",
   "collaborator_remove",
   "project_note_send",
+  "calendar_event_create",
+  "calendar_event_update",
 ]);
 
 const DESTRUCTIVE_KEYWORD_PATTERN = /\b(delete|remove|drop|destroy|terminate|cancel)\b/i;
@@ -205,6 +230,25 @@ function missingPayloadFields(action: LarryAction): string[] {
       return ["userId"].filter((field) => !hasPayloadValue(action.payload, field));
     case "project_note_send":
       return ["visibility", "content"].filter((field) => !hasPayloadValue(action.payload, field));
+    case "calendar_event_create":
+      return ["summary", "startDateTime", "endDateTime"].filter(
+        (field) => !hasPayloadValue(action.payload, field)
+      );
+    case "calendar_event_update": {
+      const missing = ["eventId"].filter((field) => !hasPayloadValue(action.payload, field));
+      const hasAnyMutationField = [
+        "summary",
+        "startDateTime",
+        "endDateTime",
+        "description",
+        "location",
+        "attendees",
+      ].some((field) => hasPayloadValue(action.payload, field));
+      if (!hasAnyMutationField) {
+        missing.push("updateFields");
+      }
+      return missing;
+    }
     default:
       return [];
   }
@@ -1093,6 +1137,16 @@ export async function executeAction(
         projectId,
         payload as unknown as ProjectNoteSendPayload,
         actorUserId ?? null
+      );
+
+    case "calendar_event_create":
+      throw new Error(
+        "calendar_event_create is approval-governed and must execute via the API accept flow."
+      );
+
+    case "calendar_event_update":
+      throw new Error(
+        "calendar_event_update is approval-governed and must execute via the API accept flow."
       );
 
     default:

@@ -58,7 +58,7 @@ export async function listLarryMessages(conversationId: string): Promise<LarryMe
 }
 
 export async function sendLarryChat(input: {
-  projectId: string;
+  projectId?: string;
   message: string;
   conversationId?: string;
 }): Promise<{ response: Response; data: LarryChatResponse }> {

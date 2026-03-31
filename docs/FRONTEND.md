@@ -13,7 +13,7 @@ Next.js 16 App Router at `apps/web/`. Two distinct surfaces:
 /workspace/projects/:id       ProjectPageClient → ProjectWorkspaceView (context, collaborators, Action Centre, project chat)
 /workspace/projects/new       WorkspaceProjectIntake — unified draft lifecycle for manual/chat/meeting intake
 /workspace/actions            Global Action Centre — cross-project Larry ledger (accept/dismiss)
-/workspace/chats              Chat history grouped by project, deep-linkable from Action Centre
+/workspace/chats              Chat history grouped by project, supports project mode and global mode (no project selected), deep-linkable from Action Centre
 /workspace/my-work            Cross-project task view for current user
 /workspace/meetings           Meetings overview
 /workspace/documents          Project document assets and template creation surface
@@ -32,7 +32,7 @@ Next.js 16 App Router at `apps/web/`. Two distinct surfaces:
 | `apps/web/src/app/workspace/projects/[projectId]/ProjectNotesPanel.tsx` | Shared/personal project notes composer and feed with visibility filtering |
 | `apps/web/src/app/workspace/projects/new/WorkspaceProjectIntake.tsx` | 3-mode unified intake draft lifecycle (manual / guided chat / meeting-led create-or-attach) |
 | `apps/web/src/app/workspace/actions/page.tsx` | Global Action Centre page (canonical ledger, accept/dismiss) |
-| `apps/web/src/app/workspace/chats/page.tsx` | Chat history with project grouping, actor attribution labels, and Action Centre deep-link context |
+| `apps/web/src/app/workspace/chats/page.tsx` | Chat history with project grouping, actor attribution labels, global-context mode UI, Action Centre deep-link context, and per-project linked-action grouping in assistant replies |
 | `apps/web/src/app/workspace/documents/page.tsx` | Documents asset list (from `/api/workspace/documents`) with lightweight `.docx` / `.xlsx` template creation |
 | `apps/web/src/app/workspace/NotificationBell.tsx` | Bell with unread badge, dismiss flow |
 | `apps/web/src/hooks/useLarryActionCentre.ts` | Shared Action Centre fetch, accept, dismiss, and background refresh for project and global surfaces |
@@ -60,6 +60,7 @@ Web proxy routes (`apps/web/src/app/api/workspace/`):
 - `GET /projects/:id/notes` - project notes feed (`shared` + caller-visible `personal` notes)
 - `POST /projects/:id/notes` - create shared/personal project note
 - `POST /larry/chat` - canonical chat persistence: persists user + assistant turn, writes linked `larry_events`
+  - `projectId` optional: omitted project runs global Larry mode across accessible projects.
 - `GET /larry/conversations` — conversation list with optional `?projectId=` filter
 - `GET /larry/conversations/:id/messages` — message history for a conversation
 - `POST /larry/events/:id/accept` — accept a suggested Larry event (executes and marks accepted)
@@ -87,6 +88,11 @@ Web proxy routes (`apps/web/src/app/api/workspace/`):
 - `POST /larry/conversations/:id/messages` — retired; use `/larry/chat`
 - `POST /actions/:id/approve`, `/reject`, `/correct` — retired; use `/larry/events/:id/accept` or `/dismiss`
 - `GET /snapshot` - retired and fenced with `410 Gone`; use scoped `/home`, `/projects/:id/overview`, and `/larry/action-centre` routes
+
+`/workspace/chats` behavior (Phase 9 starter):
+- Users can submit chat without selecting a project (global mode).
+- Header/composer context labels indicate when chat is running in global context.
+- Assistant linked actions are grouped by project label when a global reply includes multi-project actions.
 
 ## Auth Bridge
 

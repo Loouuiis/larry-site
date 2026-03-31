@@ -76,6 +76,11 @@ GOOGLE_CALENDAR_WEBHOOK_URL
 - Webhook project scope resolution is:
   1. explicit payload `projectId` hint (if present)
   2. otherwise the installation default project link (`google_calendar_installations.project_id`)
+- Calendar write mutations are now governed by Larry Action Centre accept flow:
+  - `calendar_event_create` and `calendar_event_update` execute only after acceptance.
+  - accept execution resolves the project-linked installation and writes to Google Calendar via API create/update.
+  - expired access tokens are refreshed with stored refresh token before write execution.
+  - missing project-linkage returns an actionable error to link Google Calendar to that project first.
 - Channel token is compacted to short keys (`{ k, t, i }`) — Google enforces 256-char token limit.
 - Webhook rejects missing/invalid `x-goog-channel-token`. Renewal job must include the token field to match the initial registration — without this, calendar silently breaks after 7 days (the renewal fix was applied in Session 5).
 - Push webhooks deliver metadata only (no rich event text). Worker's `extractActionableText()` may return null for calendar events — calendar enrichment fetch (events detail pull) is a planned improvement.

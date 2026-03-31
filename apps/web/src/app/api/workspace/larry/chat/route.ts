@@ -4,7 +4,7 @@ import { getSession } from "@/lib/auth";
 import { persistSession, proxyApiRequest } from "@/lib/workspace-proxy";
 
 const ChatSchema = z.object({
-  projectId: z.string().uuid(),
+  projectId: z.string().uuid().optional(),
   message: z.string().min(1).max(8000),
   conversationId: z.string().uuid().optional(),
 });

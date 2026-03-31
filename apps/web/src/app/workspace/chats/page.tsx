@@ -137,51 +137,90 @@ function getActionMeta(event: WorkspaceLarryEvent): string {
   return pieces.join(" · ");
 }
 
-function LinkedActionChips({ actions }: { actions: WorkspaceLarryEvent[] }) {
+function LinkedActionChips({
+  actions,
+  projectNameById,
+}: {
+  actions: WorkspaceLarryEvent[];
+  projectNameById: Map<string, string>;
+}) {
   if (actions.length === 0) return null;
+
+  const grouped = new Map<string, { label: string; actions: WorkspaceLarryEvent[] }>();
+  for (const action of actions) {
+    const key = action.projectId || "__general__";
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        label:
+          action.projectName?.trim() ||
+          (action.projectId ? projectNameById.get(action.projectId) : undefined) ||
+          "General workspace",
+        actions: [],
+      });
+    }
+    grouped.get(key)?.actions.push(action);
+  }
+
+  const groupedEntries = Array.from(grouped.entries());
+  const showGroupLabels = groupedEntries.length > 1;
 
   return (
     <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "8px" }}>
-      {actions.map((action) => {
-        const tone = getActionTone(action);
-        return (
-          <div
-            key={action.id}
-            style={{
-              borderRadius: "14px",
-              border: `1px solid ${tone.border}`,
-              background: "#ffffff",
-              padding: "10px 12px",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "10px" }}>
-              <p style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-1)" }}>
-                {action.displayText}
-              </p>
-              <span
+      {groupedEntries.map(([groupKey, group]) => (
+        <div key={groupKey} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          {showGroupLabels && (
+            <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-muted)" }}>
+              {group.label}
+            </p>
+          )}
+          {group.actions.map((action) => {
+            const tone = getActionTone(action);
+            return (
+              <div
+                key={action.id}
                 style={{
-                  flexShrink: 0,
-                  borderRadius: "999px",
-                  padding: "2px 8px",
-                  fontSize: "10px",
-                  fontWeight: 600,
-                  ...tone.badge,
+                  borderRadius: "14px",
+                  border: `1px solid ${tone.border}`,
+                  background: "#ffffff",
+                  padding: "10px 12px",
                 }}
               >
-                {tone.label}
-              </span>
-            </div>
-            <p style={{ marginTop: "4px", fontSize: "11px", lineHeight: "1.5", color: "var(--text-muted)" }}>
-              {getActionMeta(action)}
-            </p>
-          </div>
-        );
-      })}
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "10px" }}>
+                  <p style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-1)" }}>
+                    {action.displayText}
+                  </p>
+                  <span
+                    style={{
+                      flexShrink: 0,
+                      borderRadius: "999px",
+                      padding: "2px 8px",
+                      fontSize: "10px",
+                      fontWeight: 600,
+                      ...tone.badge,
+                    }}
+                  >
+                    {tone.label}
+                  </span>
+                </div>
+                <p style={{ marginTop: "4px", fontSize: "11px", lineHeight: "1.5", color: "var(--text-muted)" }}>
+                  {getActionMeta(action)}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      ))}
     </div>
   );
 }
 
-function MessageBubble({ message }: { message: LarryMessage }) {
+function MessageBubble({
+  message,
+  projectNameById,
+}: {
+  message: LarryMessage;
+  projectNameById: Map<string, string>;
+}) {
   const isLarry = message.role === "larry";
   const isProcessing = message.id === "processing";
   const actorLabel =
@@ -258,7 +297,9 @@ function MessageBubble({ message }: { message: LarryMessage }) {
               : ""}
           </p>
         )}
-        {isLarry && !isProcessing && <LinkedActionChips actions={message.linkedActions ?? []} />}
+        {isLarry && !isProcessing && (
+          <LinkedActionChips actions={message.linkedActions ?? []} projectNameById={projectNameById} />
+        )}
       </div>
     </div>
   );
@@ -300,6 +341,9 @@ export default function ChatsPage() {
   const activeProjectId =
     activeConversation?.projectId ?? draftProjectId ?? preferredProjectId ?? null;
   const activeProjectLabel = buildProjectLabel(activeProjectId, projectNameById);
+  const contextLabel = activeProjectId
+    ? `${activeProjectLabel} context`
+    : "Global context (top 5 accessible projects)";
   const launchSourceLabel = getLaunchSourceLabel(launchSourceKind);
   const launchEventLabel = getLaunchEventLabel(launchEventType);
 
@@ -469,10 +513,6 @@ export default function ChatsPage() {
     event?.preventDefault();
     const text = input.trim();
     if (busy || text.length < 1) return;
-    if (!activeProjectId) {
-      setError("Select a project to chat with Larry about it.");
-      return;
-    }
 
     setBusy(true);
     setError(null);
@@ -508,7 +548,7 @@ export default function ChatsPage() {
       ]);
 
       const { response, data } = await sendLarryChat({
-        projectId: activeProjectId,
+        projectId: activeProjectId ?? undefined,
         message: text,
         conversationId: selectedConversationId ?? undefined,
       });
@@ -879,7 +919,7 @@ export default function ChatsPage() {
                     marginBottom: "2px",
                   }}
                 >
-                  {activeProjectId ? activeProjectLabel : "General workspace"}
+                  {activeProjectId ? activeProjectLabel : "Global workspace (top 5 projects)"}
                 </span>
                 <h2
                   style={{
@@ -947,7 +987,7 @@ export default function ChatsPage() {
                         color: "var(--text-2)",
                       }}
                     >
-                      Tell Larry what to do — it will act immediately and report back. Select a project to get started.
+                      Tell Larry what to do — it will act immediately and report back. Add a project for focused context or leave this in global mode.
                     </p>
                   </div>
                 )}
@@ -955,7 +995,11 @@ export default function ChatsPage() {
                 {!messageLoading && messages.length > 0 && (
                   <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                     {messages.map((message) => (
-                      <MessageBubble key={message.id} message={message} />
+                      <MessageBubble
+                        key={message.id}
+                        message={message}
+                        projectNameById={projectNameById}
+                      />
                     ))}
                   </div>
                 )}
@@ -1003,7 +1047,7 @@ export default function ChatsPage() {
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
                     <p style={{ fontSize: "12px", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "4px" }}>
                       <Clock3 size={11} />
-                      {activeProjectId ? `${activeProjectLabel} context` : "No project context"}
+                      {contextLabel}
                     </p>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                       <button
@@ -1029,7 +1073,7 @@ export default function ChatsPage() {
                       </button>
                       <button
                         type="submit"
-                        disabled={busy || input.trim().length < 1 || !activeProjectId}
+                        disabled={busy || input.trim().length < 1}
                         className="pm-btn pm-btn-primary"
                         style={{
                           display: "inline-flex",

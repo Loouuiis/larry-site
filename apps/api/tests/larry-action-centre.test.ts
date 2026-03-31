@@ -46,6 +46,12 @@ vi.mock("../src/lib/project-memberships.js", () => ({
   getProjectMembershipAccess: vi.fn(),
 }));
 
+vi.mock("../src/services/connectors/google-calendar.js", () => ({
+  createGoogleCalendarEvent: vi.fn(),
+  refreshGoogleAccessToken: vi.fn(),
+  updateGoogleCalendarEvent: vi.fn(),
+}));
+
 import Fastify from "fastify";
 import sensible from "@fastify/sensible";
 import type { ApiEnv } from "@larry/config";
@@ -63,6 +69,11 @@ import {
   markLarryEventDismissed,
 } from "../src/lib/larry-ledger.js";
 import { getProjectMembershipAccess } from "../src/lib/project-memberships.js";
+import {
+  createGoogleCalendarEvent,
+  refreshGoogleAccessToken,
+  updateGoogleCalendarEvent,
+} from "../src/services/connectors/google-calendar.js";
 import { larryRoutes } from "../src/routes/v1/larry.js";
 
 const TENANT_ID = "11111111-1111-4111-8111-111111111111";
@@ -81,7 +92,14 @@ async function createTestApp() {
       queryTenant: vi.fn().mockResolvedValue([]),
     } as unknown as Db
   );
-  app.decorate("config", { MODEL_PROVIDER: "mock" } as unknown as ApiEnv);
+  app.decorate(
+    "config",
+    {
+      MODEL_PROVIDER: "mock",
+      GOOGLE_CLIENT_ID: "google-client-id",
+      GOOGLE_CLIENT_SECRET: "google-client-secret",
+    } as unknown as ApiEnv
+  );
   app.decorate(
     "authenticate",
     async (request: Parameters<(typeof app)["authenticate"]>[0]) => {
@@ -455,6 +473,279 @@ describe("Larry action centre routes", () => {
         sourceRecordId: EVENT_ID,
       })
     );
+  });
+
+  it("accepts calendar_event_create suggestions through Google Calendar execution", async () => {
+    vi.mocked(getLarryEventForMutation).mockResolvedValue({
+      id: EVENT_ID,
+      projectId: PROJECT_ID,
+      eventType: "suggested",
+      actionType: "calendar_event_create",
+      payload: {
+        summary: "Customer kickoff",
+        startDateTime: "2026-04-03T10:00:00Z",
+        endDateTime: "2026-04-03T10:30:00Z",
+        description: "Prep call",
+        location: null,
+        attendees: ["pm@example.com"],
+        calendarId: null,
+        timeZone: "UTC",
+      },
+    });
+    vi.mocked(createGoogleCalendarEvent).mockResolvedValue({
+      id: "google-event-create-1",
+      status: "confirmed",
+      htmlLink: "https://calendar.google.com/event?eid=create-1",
+    });
+    vi.mocked(markLarryEventAccepted).mockResolvedValue(undefined);
+    vi.mocked(listLarryEventSummaries).mockResolvedValue([
+      {
+        id: EVENT_ID,
+        projectId: PROJECT_ID,
+        projectName: "Alpha Launch",
+        eventType: "accepted",
+        actionType: "calendar_event_create",
+        displayText: "Create customer kickoff event",
+        reasoning: "User asked to schedule a kickoff.",
+        payload: {},
+        executedAt: "2026-03-31T11:10:00.000Z",
+        triggeredBy: "chat",
+        chatMessage: "Schedule kickoff",
+        createdAt: "2026-03-31T11:05:00.000Z",
+        conversationId: CONVERSATION_ID,
+        requestMessageId: null,
+        responseMessageId: null,
+        requestedByUserId: USER_ID,
+        requestedByName: "pm",
+        approvedByUserId: USER_ID,
+        approvedByName: "pm",
+        approvedAt: "2026-03-31T11:10:00.000Z",
+        dismissedByUserId: null,
+        dismissedByName: null,
+        dismissedAt: null,
+        executedByKind: "user",
+        executedByUserId: USER_ID,
+        executedByName: "pm",
+        executionMode: "approval",
+        sourceKind: "chat",
+        sourceRecordId: "source-calendar-create",
+        conversationTitle: "Schedule kickoff",
+        requestMessagePreview: "Schedule kickoff",
+        responseMessagePreview: "Prepared for approval.",
+      },
+    ]);
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+    const queryTenant = (
+      app.db as unknown as { queryTenant: ReturnType<typeof vi.fn> }
+    ).queryTenant;
+    queryTenant.mockImplementation(async (_tenantId: string, sql: string) => {
+      if (sql.includes("FROM google_calendar_installations")) {
+        return [
+          {
+            id: "google-install-1",
+            project_id: PROJECT_ID,
+            google_calendar_id: "primary",
+            google_access_token: "calendar-access-token",
+            google_refresh_token: "calendar-refresh-token",
+            token_expires_at: "2099-01-01T00:00:00.000Z",
+          },
+        ];
+      }
+      return [];
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/larry/events/${EVENT_ID}/accept`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      accepted: true,
+      entity: {
+        operation: "calendar_event_create",
+        calendarId: "primary",
+        eventId: "google-event-create-1",
+      },
+    });
+    expect(createGoogleCalendarEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accessToken: "calendar-access-token",
+        calendarId: "primary",
+        summary: "Customer kickoff",
+      })
+    );
+    expect(refreshGoogleAccessToken).not.toHaveBeenCalled();
+    expect(updateGoogleCalendarEvent).not.toHaveBeenCalled();
+    expect(executeAction).not.toHaveBeenCalled();
+  });
+
+  it("accepts calendar_event_update suggestions and refreshes expired Google tokens", async () => {
+    vi.mocked(getLarryEventForMutation).mockResolvedValue({
+      id: EVENT_ID,
+      projectId: PROJECT_ID,
+      eventType: "suggested",
+      actionType: "calendar_event_update",
+      payload: {
+        eventId: "google-event-abc",
+        summary: "Kickoff (updated)",
+        startDateTime: "2026-04-03T11:00:00Z",
+        endDateTime: "2026-04-03T11:30:00Z",
+        description: null,
+        location: "Board room",
+        attendees: ["pm@example.com", "ops@example.com"],
+        calendarId: null,
+        timeZone: "UTC",
+      },
+    });
+    vi.mocked(refreshGoogleAccessToken).mockResolvedValue({
+      accessToken: "fresh-access-token",
+      refreshToken: "fresh-refresh-token",
+      scope: "https://www.googleapis.com/auth/calendar",
+      expiresAt: "2026-04-01T12:00:00.000Z",
+      tokenType: "Bearer",
+    });
+    vi.mocked(updateGoogleCalendarEvent).mockResolvedValue({
+      id: "google-event-abc",
+      status: "confirmed",
+      htmlLink: "https://calendar.google.com/event?eid=abc",
+    });
+    vi.mocked(markLarryEventAccepted).mockResolvedValue(undefined);
+    vi.mocked(listLarryEventSummaries).mockResolvedValue([
+      {
+        id: EVENT_ID,
+        projectId: PROJECT_ID,
+        projectName: "Alpha Launch",
+        eventType: "accepted",
+        actionType: "calendar_event_update",
+        displayText: "Update kickoff event",
+        reasoning: "User requested a reschedule.",
+        payload: {},
+        executedAt: "2026-03-31T11:20:00.000Z",
+        triggeredBy: "chat",
+        chatMessage: "Reschedule kickoff",
+        createdAt: "2026-03-31T11:15:00.000Z",
+        conversationId: CONVERSATION_ID,
+        requestMessageId: null,
+        responseMessageId: null,
+        requestedByUserId: USER_ID,
+        requestedByName: "pm",
+        approvedByUserId: USER_ID,
+        approvedByName: "pm",
+        approvedAt: "2026-03-31T11:20:00.000Z",
+        dismissedByUserId: null,
+        dismissedByName: null,
+        dismissedAt: null,
+        executedByKind: "user",
+        executedByUserId: USER_ID,
+        executedByName: "pm",
+        executionMode: "approval",
+        sourceKind: "chat",
+        sourceRecordId: "source-calendar-update",
+        conversationTitle: "Reschedule kickoff",
+        requestMessagePreview: "Reschedule kickoff",
+        responseMessagePreview: "Prepared for approval.",
+      },
+    ]);
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+    const queryTenant = (
+      app.db as unknown as { queryTenant: ReturnType<typeof vi.fn> }
+    ).queryTenant;
+    queryTenant.mockImplementation(async (_tenantId: string, sql: string) => {
+      if (sql.includes("FROM google_calendar_installations")) {
+        return [
+          {
+            id: "google-install-2",
+            project_id: PROJECT_ID,
+            google_calendar_id: "primary",
+            google_access_token: "expired-access-token",
+            google_refresh_token: "refresh-token-2",
+            token_expires_at: "2026-03-31T00:00:00.000Z",
+          },
+        ];
+      }
+      if (sql.includes("UPDATE google_calendar_installations")) {
+        return [];
+      }
+      return [];
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/larry/events/${EVENT_ID}/accept`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      accepted: true,
+      entity: {
+        operation: "calendar_event_update",
+        calendarId: "primary",
+        eventId: "google-event-abc",
+      },
+    });
+    expect(refreshGoogleAccessToken).toHaveBeenCalledWith({
+      clientId: "google-client-id",
+      clientSecret: "google-client-secret",
+      refreshToken: "refresh-token-2",
+    });
+    expect(updateGoogleCalendarEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accessToken: "fresh-access-token",
+        calendarId: "primary",
+        eventId: "google-event-abc",
+      })
+    );
+    expect(
+      queryTenant.mock.calls.some(
+        (call) => typeof call[1] === "string" && (call[1] as string).includes("UPDATE google_calendar_installations")
+      )
+    ).toBe(true);
+    expect(executeAction).not.toHaveBeenCalled();
+  });
+
+  it("returns 422 for calendar accept when no project-linked Google installation exists", async () => {
+    vi.mocked(getLarryEventForMutation).mockResolvedValue({
+      id: EVENT_ID,
+      projectId: PROJECT_ID,
+      eventType: "suggested",
+      actionType: "calendar_event_create",
+      payload: {
+        summary: "Kickoff",
+        startDateTime: "2026-04-03T10:00:00Z",
+        endDateTime: "2026-04-03T10:30:00Z",
+      },
+    });
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+    const queryTenant = (
+      app.db as unknown as { queryTenant: ReturnType<typeof vi.fn> }
+    ).queryTenant;
+    queryTenant.mockImplementation(async (_tenantId: string, sql: string) => {
+      if (sql.includes("FROM google_calendar_installations")) {
+        return [];
+      }
+      return [];
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/larry/events/${EVENT_ID}/accept`,
+    });
+
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toMatchObject({
+      message: expect.stringContaining("Google Calendar is not linked to this project"),
+    });
+    expect(markLarryEventAccepted).not.toHaveBeenCalled();
+    expect(createGoogleCalendarEvent).not.toHaveBeenCalled();
+    expect(updateGoogleCalendarEvent).not.toHaveBeenCalled();
+    expect(executeAction).not.toHaveBeenCalled();
   });
 
   it("accepts collaborator and note action types through the same accept flow", async () => {

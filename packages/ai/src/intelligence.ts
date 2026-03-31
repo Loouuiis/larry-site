@@ -44,6 +44,8 @@ const LarryActionTypeEnum = z.enum([
   "collaborator_role_update",
   "collaborator_remove",
   "project_note_send",
+  "calendar_event_create",
+  "calendar_event_update",
 ]);
 
 const LarryActionSchema = z.object({
@@ -100,8 +102,10 @@ NEVER put these in autoActions — they must always go in suggestedActions:
 - collaborator_role_update
 - collaborator_remove
 - project_note_send
+- calendar_event_create
+- calendar_event_update
 - Any action that deletes data
-- Any action involving external integrations (email, Slack) unless the user explicitly triggered it
+- Any action involving external integrations (email, Slack, calendar) unless the user explicitly triggered it
 
 ---
 
@@ -115,6 +119,7 @@ Include in suggestedActions when:
 - A new project needs to be created from scratch
 - A collaborator should be added, removed, or have role changed
 - A shared or personal project note should be drafted/sent to a collaborator
+- A calendar event should be created or updated
 
 Keep the Action Centre clean — only suggest when there is a specific, concrete signal.
 Do not suggest the same thing that is already pending approval (see ALREADY PENDING list).
@@ -176,6 +181,12 @@ Each action in autoActions and suggestedActions must have exactly these fields:
 
 "project_note_send" [ACTION CENTRE ONLY]
   payload: { "visibility": "shared"|"personal", "content": string, "recipientUserId": string|null, "recipientName": string|null }
+
+"calendar_event_create" [ACTION CENTRE ONLY]
+  payload: { "summary": string, "startDateTime": "YYYY-MM-DDTHH:mm:ssZ", "endDateTime": "YYYY-MM-DDTHH:mm:ssZ", "description": string|null, "location": string|null, "attendees": string[]|null, "calendarId": string|null, "timeZone": string|null }
+
+"calendar_event_update" [ACTION CENTRE ONLY]
+  payload: { "eventId": string, "summary": string|null, "startDateTime": "YYYY-MM-DDTHH:mm:ssZ"|null, "endDateTime": "YYYY-MM-DDTHH:mm:ssZ"|null, "description": string|null, "location": string|null, "attendees": string[]|null, "calendarId": string|null, "timeZone": string|null }
 
 ---
 
@@ -521,6 +532,51 @@ function mockIntelligence(snapshot: ProjectSnapshot, hint: string | null): Intel
           : "Shared note: reviewed latest project status and next steps.",
         recipientUserId: isPersonal ? (candidate?.id ?? null) : null,
         recipientName: isPersonal ? (candidate?.name ?? null) : null,
+      },
+    });
+  }
+
+  if (
+    hint &&
+    /\b(calendar|meeting|event|invite|schedule)\b/i.test(hint) &&
+    /\b(create|schedule|book)\b/i.test(hint)
+  ) {
+    suggestedActions.push({
+      type: "calendar_event_create" as LarryActionType,
+      displayText: "Create a calendar event",
+      reasoning: "User asked to schedule a calendar event",
+      payload: {
+        summary: "Project sync",
+        startDateTime: "2026-04-02T10:00:00Z",
+        endDateTime: "2026-04-02T10:30:00Z",
+        description: null,
+        location: null,
+        attendees: null,
+        calendarId: null,
+        timeZone: null,
+      },
+    });
+  }
+
+  if (
+    hint &&
+    /\b(calendar|meeting|event)\b/i.test(hint) &&
+    /\b(update|reschedule|move|change)\b/i.test(hint)
+  ) {
+    suggestedActions.push({
+      type: "calendar_event_update" as LarryActionType,
+      displayText: "Update a calendar event",
+      reasoning: "User asked to update a scheduled calendar event",
+      payload: {
+        eventId: "replace-with-calendar-event-id",
+        summary: null,
+        startDateTime: null,
+        endDateTime: null,
+        description: null,
+        location: null,
+        attendees: null,
+        calendarId: null,
+        timeZone: null,
       },
     });
   }

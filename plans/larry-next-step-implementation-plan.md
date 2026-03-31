@@ -573,10 +573,53 @@ None. Phase 7 is fully closed.
 
 None. Phase 8 starter slice is fully closed as of 2026-03-30.
 
+### Phase 9 Closure Snapshot (2026-03-31 UTC)
+
+- Done:
+  - **Phase 9 - Calendar Context And Global Larry (starter slice) (completed)**:
+    - shipped additive global Larry chat mode on `POST /v1/larry/chat` with optional `projectId`
+    - added global execution path when `projectId` is omitted:
+      - resolves up to 5 accessible projects by recency (`updated_at DESC`) with membership visibility enforcement
+      - runs per-project snapshot + intelligence
+      - persists auto/suggested actions per project with shared conversation/message linkage
+      - writes grouped assistant response text by project
+      - writes `larry.chat.global` audit metadata
+      - writes per-project memory entries for touched projects
+    - enforced conversation consistency guards:
+      - project chat cannot reuse global conversations
+      - global chat cannot reuse project conversations
+    - kept project-scoped chat behavior unchanged when `projectId` is provided
+    - added additive Larry action types:
+      - `calendar_event_create`
+      - `calendar_event_update`
+    - updated intelligence schema/prompt and governance validation so calendar writes are approval-only (not auto-executed)
+    - extended accept flow so calendar actions execute via Google Calendar API after approval:
+      - resolves project-linked installation
+      - refreshes token when needed
+      - creates/updates Google Calendar event
+      - preserves existing action ledger + audit semantics
+    - updated workspace chat UX for global mode:
+      - allows sending chat without selecting a project
+      - surfaces explicit global context in header/composer
+      - groups linked assistant actions by project label
+    - updated targeted docs:
+      - `docs/BACKEND-API.md`
+      - `docs/FRONTEND.md`
+      - `docs/CONNECTORS.md`
+    - test gate passed: `cd apps/api && npm test`
+- Remaining in current phase:
+  - None. Phase 9 starter slice is closed.
+- Next concrete milestone:
+  - Not opened in this update (phase discipline: no next-phase kickoff).
+
+### Still To Do For Phase 9
+
+None. Phase 9 starter slice is fully closed as of 2026-03-31.
+
 ### Recommended Next Slice
 
 - Closed in this update:
-  - **Phase 8 - Communications, Documents, Templates, And Task Attachments (starter slice)**: document assets, templates, and task attachments.
+  - **Phase 9 - Calendar Context And Global Larry (starter slice)**: optional global chat fan-out + governed Google Calendar action execution.
 - Candidate milestone for the next update:
   - Not opened in this change (phase discipline: no next-phase kickoff).
 
@@ -809,11 +852,11 @@ Make Google Calendar a first-class project context source and extend Larry into 
 
 ### Acceptance criteria
 
-- [ ] Calendar signals are linked to projects and written into project memory.
-- [ ] Larry can propose and, where permitted, create or update calendar events.
-- [ ] Calendar reads and writes use the same governed policy, authority, and audit path as other Larry actions.
-- [ ] Users can start a global Larry conversation without selecting a project first.
-- [ ] Global responses and proposed actions are grouped by project and respect project visibility.
+- [x] Calendar signals are linked to projects and written into project memory.
+- [x] Larry can propose and, where permitted, create or update calendar events.
+- [x] Calendar reads and writes use the same governed policy, authority, and audit path as other Larry actions.
+- [x] Users can start a global Larry conversation without selecting a project first.
+- [x] Global responses and proposed actions are grouped by project and respect project visibility.
 
 ### Suggested ownership
 

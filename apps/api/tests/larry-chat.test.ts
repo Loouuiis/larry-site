@@ -81,6 +81,7 @@ import { larryRoutes } from "../src/routes/v1/larry.js";
 const TENANT_ID = "11111111-1111-4111-8111-111111111111";
 const USER_ID = "22222222-2222-4222-8222-222222222222";
 const PROJECT_ID = "55555555-5555-4555-8555-555555555555";
+const PROJECT_ID_TWO = "57575757-5757-4575-8575-575757575757";
 const CONVERSATION_ID = "66666666-6666-4666-8666-666666666666";
 
 const MOCK_SNAPSHOT: ProjectSnapshot = {
@@ -747,6 +748,261 @@ describe("POST /larry/chat", () => {
     expect(response.statusCode).toBe(200);
     expect(createLarryConversation).not.toHaveBeenCalled();
     expect(response.json()).toMatchObject({ conversationId: CONVERSATION_ID });
+  });
+
+  it("runs global chat fan-out when projectId is omitted and groups response by project", async () => {
+    vi.mocked(getLarryConversationForUser).mockResolvedValue(null);
+    vi.mocked(getProjectSnapshot).mockImplementation(async (_db, _tenantId, projectId) => {
+      if (projectId === PROJECT_ID) {
+        return {
+          ...MOCK_SNAPSHOT,
+          project: { ...MOCK_SNAPSHOT.project, id: PROJECT_ID, name: "Alpha Launch" },
+        };
+      }
+      if (projectId === PROJECT_ID_TWO) {
+        return {
+          ...MOCK_SNAPSHOT,
+          project: { ...MOCK_SNAPSHOT.project, id: PROJECT_ID_TWO, name: "Beta Expansion" },
+        };
+      }
+      throw new Error(`Unexpected projectId ${projectId}`);
+    });
+    vi.mocked(getPendingSuggestionTexts).mockResolvedValue([]);
+    vi.mocked(runIntelligence)
+      .mockResolvedValueOnce({
+        briefing: "Alpha has one blocker in checkout QA.",
+        autoActions: [],
+        suggestedActions: [],
+      })
+      .mockResolvedValueOnce({
+        briefing: "Beta is stable with one upcoming deadline.",
+        autoActions: [],
+        suggestedActions: [],
+      });
+    vi.mocked(createLarryConversation).mockResolvedValue({
+      id: CONVERSATION_ID,
+      projectId: null,
+      title: "Give me a global update",
+      createdAt: "2026-03-31T09:00:00.000Z",
+      updatedAt: "2026-03-31T09:00:00.000Z",
+      lastMessagePreview: null,
+      lastMessageAt: null,
+    });
+    vi.mocked(insertLarryMessage)
+      .mockResolvedValueOnce({ id: "global-user-1", createdAt: "2026-03-31T09:00:00.000Z" })
+      .mockResolvedValueOnce({ id: "global-assistant-1", createdAt: "2026-03-31T09:00:01.000Z" });
+    vi.mocked(runAutoActions)
+      .mockResolvedValueOnce({ executedCount: 1, suggestedCount: 0, eventIds: [] })
+      .mockResolvedValueOnce({ executedCount: 0, suggestedCount: 1, eventIds: [] });
+    vi.mocked(storeSuggestions)
+      .mockResolvedValueOnce({ executedCount: 0, suggestedCount: 1, eventIds: [] })
+      .mockResolvedValueOnce({ executedCount: 0, suggestedCount: 0, eventIds: [] });
+    vi.mocked(listLarryMessagesByIds).mockResolvedValue([
+      {
+        id: "global-user-1",
+        role: "user",
+        content: "Give me a global update",
+        reasoning: null,
+        createdAt: "2026-03-31T09:00:00.000Z",
+        actorUserId: USER_ID,
+        actorDisplayName: "pm",
+        linkedActions: [],
+      },
+      {
+        id: "global-assistant-1",
+        role: "larry",
+        content: "Project: Alpha Launch\nAlpha has one blocker in checkout QA.\n\nProject: Beta Expansion\nBeta is stable with one upcoming deadline.",
+        reasoning: null,
+        createdAt: "2026-03-31T09:00:01.000Z",
+        actorUserId: null,
+        actorDisplayName: null,
+        linkedActions: [],
+      },
+    ]);
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+    const queryTenant = (
+      app.db as unknown as { queryTenant: ReturnType<typeof vi.fn> }
+    ).queryTenant;
+    queryTenant.mockImplementation(async (_tenantId: string, sql: string, values?: unknown[]) => {
+      if (sql.includes("FROM project_memberships pm")) {
+        expect(values).toEqual([TENANT_ID, USER_ID, 5]);
+        return [
+          { id: PROJECT_ID, name: "Alpha Launch" },
+          { id: PROJECT_ID_TWO, name: "Beta Expansion" },
+        ];
+      }
+      return [];
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/larry/chat",
+      payload: { message: "Give me a global update" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      conversationId: CONVERSATION_ID,
+      actionsExecuted: 1,
+      suggestionCount: 2,
+      message: expect.stringContaining("Project: Alpha Launch"),
+    });
+    expect(response.json().message).toContain("Project: Beta Expansion");
+    expect(getProjectSnapshot).toHaveBeenCalledTimes(2);
+    expect(getProjectSnapshot).toHaveBeenNthCalledWith(
+      1,
+      expect.anything(),
+      TENANT_ID,
+      PROJECT_ID
+    );
+    expect(getProjectSnapshot).toHaveBeenNthCalledWith(
+      2,
+      expect.anything(),
+      TENANT_ID,
+      PROJECT_ID_TWO
+    );
+    expect(runAutoActions).toHaveBeenCalledTimes(2);
+    expect(storeSuggestions).toHaveBeenCalledTimes(2);
+    expect(insertProjectMemoryEntry).toHaveBeenCalledTimes(2);
+    expect(insertProjectMemoryEntry).toHaveBeenNthCalledWith(
+      1,
+      expect.anything(),
+      TENANT_ID,
+      PROJECT_ID,
+      expect.objectContaining({ sourceKind: "chat", sourceRecordId: "global-user-1" })
+    );
+    expect(insertProjectMemoryEntry).toHaveBeenNthCalledWith(
+      2,
+      expect.anything(),
+      TENANT_ID,
+      PROJECT_ID_TWO,
+      expect.objectContaining({ sourceKind: "chat", sourceRecordId: "global-user-1" })
+    );
+  });
+
+  it("returns a global fallback when no accessible projects are found", async () => {
+    vi.mocked(getLarryConversationForUser).mockResolvedValue(null);
+    vi.mocked(createLarryConversation).mockResolvedValue({
+      id: CONVERSATION_ID,
+      projectId: null,
+      title: "What should I focus on?",
+      createdAt: "2026-03-31T09:10:00.000Z",
+      updatedAt: "2026-03-31T09:10:00.000Z",
+      lastMessagePreview: null,
+      lastMessageAt: null,
+    });
+    vi.mocked(insertLarryMessage)
+      .mockResolvedValueOnce({ id: "global-empty-user", createdAt: "2026-03-31T09:10:00.000Z" })
+      .mockResolvedValueOnce({ id: "global-empty-assistant", createdAt: "2026-03-31T09:10:01.000Z" });
+    vi.mocked(listLarryMessagesByIds).mockResolvedValue([
+      {
+        id: "global-empty-user",
+        role: "user",
+        content: "What should I focus on?",
+        reasoning: null,
+        createdAt: "2026-03-31T09:10:00.000Z",
+        actorUserId: USER_ID,
+        actorDisplayName: "pm",
+        linkedActions: [],
+      },
+      {
+        id: "global-empty-assistant",
+        role: "larry",
+        content:
+          "I couldn't find any accessible projects to run this global chat request against. Select a project or ask an admin to grant project access.",
+        reasoning: null,
+        createdAt: "2026-03-31T09:10:01.000Z",
+        actorUserId: null,
+        actorDisplayName: null,
+        linkedActions: [],
+      },
+    ]);
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/larry/chat",
+      payload: { message: "What should I focus on?" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      conversationId: CONVERSATION_ID,
+      actionsExecuted: 0,
+      suggestionCount: 0,
+      linkedActions: [],
+      message: expect.stringContaining("couldn't find any accessible projects"),
+    });
+    expect(getProjectSnapshot).not.toHaveBeenCalled();
+    expect(runIntelligence).not.toHaveBeenCalled();
+    expect(runAutoActions).not.toHaveBeenCalled();
+    expect(storeSuggestions).not.toHaveBeenCalled();
+    expect(insertProjectMemoryEntry).not.toHaveBeenCalled();
+  });
+
+  it("prevents global chat from reusing a project conversation", async () => {
+    vi.mocked(getLarryConversationForUser).mockResolvedValue({
+      id: CONVERSATION_ID,
+      projectId: PROJECT_ID,
+      title: "Project thread",
+      createdAt: "2026-03-31T09:20:00.000Z",
+      updatedAt: "2026-03-31T09:20:00.000Z",
+      lastMessagePreview: null,
+      lastMessageAt: null,
+    });
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/larry/chat",
+      payload: {
+        conversationId: CONVERSATION_ID,
+        message: "Use this in global mode",
+      },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      message: "Global chat cannot reuse a project conversation.",
+    });
+    expect(getProjectSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("prevents project chat from reusing a global conversation", async () => {
+    vi.mocked(getLarryConversationForUser).mockResolvedValue({
+      id: CONVERSATION_ID,
+      projectId: null,
+      title: "Global thread",
+      createdAt: "2026-03-31T09:25:00.000Z",
+      updatedAt: "2026-03-31T09:25:00.000Z",
+      lastMessagePreview: null,
+      lastMessageAt: null,
+    });
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/larry/chat",
+      payload: {
+        projectId: PROJECT_ID,
+        conversationId: CONVERSATION_ID,
+        message: "Use this in project mode",
+      },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      message: "Project chat cannot reuse a global conversation.",
+    });
+    expect(getProjectSnapshot).not.toHaveBeenCalled();
   });
 
   it("returns 404 when getProjectSnapshot throws", async () => {

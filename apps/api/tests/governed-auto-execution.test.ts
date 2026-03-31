@@ -32,6 +32,18 @@ const RISK_FLAG_ACTION: LarryAction = {
   },
 };
 
+const CALENDAR_CREATE_ACTION: LarryAction = {
+  type: "calendar_event_create",
+  displayText: "Create project kickoff calendar event",
+  reasoning: "User asked to schedule kickoff with attendees",
+  payload: {
+    summary: "Project kickoff",
+    startDateTime: "2026-04-03T10:00:00Z",
+    endDateTime: "2026-04-03T10:30:00Z",
+    attendees: ["pm@example.com"],
+  },
+};
+
 function createMockDb(options: {
   autoExecuteLowImpact: boolean;
   role?: "admin" | "pm" | "member";
@@ -167,5 +179,36 @@ describe("runAutoActions governance routing", () => {
       (call) => typeof call[1] === "string" && (call[1] as string).includes("UPDATE tasks")
     );
     expect(taskMutations).toHaveLength(1);
+  });
+
+  it("routes calendar actions to approval-only suggestions even when policy allows auto execution", async () => {
+    const { db, queryTenant } = createMockDb({ autoExecuteLowImpact: true, role: "pm" });
+
+    const result = await runAutoActions(
+      db,
+      TENANT_ID,
+      PROJECT_ID,
+      "chat",
+      [CALENDAR_CREATE_ACTION],
+      "Schedule a kickoff event",
+      CHAT_CONTEXT
+    );
+
+    expect(result).toMatchObject({
+      executedCount: 0,
+      suggestedCount: 1,
+      eventIds: ["event-1"],
+    });
+
+    const insertCalls = queryTenant.mock.calls.filter(
+      (call) => typeof call[1] === "string" && (call[1] as string).includes("INSERT INTO larry_events")
+    );
+    const insertValues = (insertCalls[0]?.[2] ?? []) as unknown[];
+    expect(insertValues[2]).toBe("suggested");
+
+    const taskMutations = queryTenant.mock.calls.filter(
+      (call) => typeof call[1] === "string" && (call[1] as string).includes("UPDATE tasks")
+    );
+    expect(taskMutations).toHaveLength(0);
   });
 });
