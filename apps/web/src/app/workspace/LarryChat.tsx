@@ -114,6 +114,16 @@ function MessageBubble({ msg }: { msg: LarryMessage }) {
         ) : (
           <p>{msg.content}</p>
         )}
+        {isLarry && !isProcessing && (msg.clarifications?.length ?? 0) > 0 && (
+          <div className="mt-2 rounded-lg border border-[#ddd6fe] bg-[#faf5ff] p-2">
+            <p className="text-[11px] font-semibold text-[#6d28d9]">Before I act, I need:</p>
+            <ul className="mt-1 space-y-1 text-[11px] text-[#5b21b6]">
+              {msg.clarifications?.map((item, index) => (
+                <li key={`${item.field}-${index}`}>• {item.question}</li>
+              ))}
+            </ul>
+          </div>
+        )}
         {isLarry && !isProcessing && (executedCount > 0 || suggestionCount > 0) && (
           <p className="mt-1 text-[11px] text-[#6366f1]">
             {executedCount} action{executedCount !== 1 ? "s" : ""} taken

@@ -28,6 +28,7 @@ type WorkspaceShellProps = {
 export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
   const pathname = usePathname();
   const [projects, setProjects] = useState<WorkspaceProject[]>([]);
+  const [chatProjectId, setChatProjectId] = useState<string>("");
   const [meetingOpen, setMeetingOpen] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [meetingBusy, setMeetingBusy] = useState(false);
@@ -63,6 +64,28 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
   useEffect(() => {
     void loadShell();
   }, [loadShell]);
+
+  useEffect(() => {
+    if (projectIdFromPath) {
+      setChatProjectId(projectIdFromPath);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("larry:last-project-id", projectIdFromPath);
+      }
+      return;
+    }
+
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const storedProjectId = window.localStorage.getItem("larry:last-project-id") ?? "";
+    if (storedProjectId && projects.some((project) => project.id === storedProjectId)) {
+      setChatProjectId(storedProjectId);
+      return;
+    }
+
+    setChatProjectId(projects[0]?.id ?? "");
+  }, [projectIdFromPath, projects]);
 
   useEffect(() => {
     function onRefresh() {
@@ -133,7 +156,7 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
         onSubmit={onMeetingSubmit}
         busy={meetingBusy}
       />
-      <LarryChat projectId={projectIdFromPath || undefined} />
+      <LarryChat projectId={chatProjectId || undefined} />
     </WorkspaceChromeProvider>
   );
 }

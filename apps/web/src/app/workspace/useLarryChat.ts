@@ -6,6 +6,7 @@ import {
   listLarryConversations,
   listLarryMessages,
   sendLarryChat,
+  type LarryClarification,
   type LarryMessage as PersistedLarryMessage,
 } from "@/lib/larry";
 
@@ -19,6 +20,7 @@ export interface LarryMessage {
   linkedActions: WorkspaceLarryEvent[];
   actionsExecuted?: number;
   suggestionCount?: number;
+  clarifications?: LarryClarification[];
 }
 
 interface ProactiveItem {
@@ -28,7 +30,7 @@ interface ProactiveItem {
 
 function normalizeMessage(
   message: PersistedLarryMessage,
-  meta?: Pick<LarryMessage, "actionsExecuted" | "suggestionCount">
+  meta?: Pick<LarryMessage, "actionsExecuted" | "suggestionCount" | "clarifications">
 ): LarryMessage {
   return {
     id: message.id,
@@ -40,6 +42,7 @@ function normalizeMessage(
     linkedActions: message.linkedActions ?? [],
     actionsExecuted: meta?.actionsExecuted,
     suggestionCount: meta?.suggestionCount,
+    clarifications: meta?.clarifications,
   };
 }
 
@@ -191,6 +194,7 @@ export function useLarryChat(projectId?: string) {
           {
             actionsExecuted: data.actionsExecuted,
             suggestionCount: data.suggestionCount,
+            clarifications: data.clarifications,
           }
         );
 

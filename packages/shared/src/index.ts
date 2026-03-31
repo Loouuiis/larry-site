@@ -233,6 +233,12 @@ export interface LarryActionCentreData {
   error?: string;
 }
 
+export interface LarryClarification {
+  field: string;
+  question: string;
+  context?: string;
+}
+
 export interface LarryChatRequest {
   projectId?: string;
   message: string;
@@ -248,6 +254,10 @@ export interface LarryChatResponse {
   actionsExecuted: number;
   suggestionCount: number;
   error?: string;
+  /** When true, Larry is asking follow-up questions before acting. */
+  requiresClarification?: boolean;
+  /** Structured clarification questions Larry needs answered before proceeding. */
+  clarifications?: LarryClarification[];
 }
 
 export interface ProjectTaskSnapshot {

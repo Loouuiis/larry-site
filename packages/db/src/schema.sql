@@ -440,6 +440,27 @@ CREATE INDEX IF NOT EXISTS idx_google_calendar_installations_tenant
 CREATE INDEX IF NOT EXISTS idx_google_calendar_installations_tenant_project
   ON google_calendar_installations (tenant_id, project_id, updated_at DESC);
 
+CREATE TABLE IF NOT EXISTS outlook_calendar_installations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  installed_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+  outlook_calendar_id TEXT NOT NULL DEFAULT 'primary',
+  outlook_access_token TEXT NOT NULL,
+  outlook_refresh_token TEXT,
+  outlook_scope TEXT,
+  token_expires_at TIMESTAMPTZ,
+  installed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (tenant_id, outlook_calendar_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_outlook_calendar_installations_tenant
+  ON outlook_calendar_installations (tenant_id, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_outlook_calendar_installations_tenant_project
+  ON outlook_calendar_installations (tenant_id, project_id, updated_at DESC);
+
 CREATE TABLE IF NOT EXISTS email_installations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -626,6 +647,7 @@ ALTER TABLE kpi_snapshots ENABLE ROW LEVEL SECURITY;
 ALTER TABLE slack_installations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE slack_channel_project_mappings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE google_calendar_installations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE outlook_calendar_installations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE email_installations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE email_outbound_drafts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE report_snapshots ENABLE ROW LEVEL SECURITY;
@@ -706,6 +728,11 @@ DO $$ BEGIN
     ON google_calendar_installations
     FOR SELECT
     USING (current_setting('app.tenant_id', true) = '__system__');
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_outlook_calendar_installations
+    ON outlook_calendar_installations
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 DO $$ BEGIN
   CREATE POLICY tenant_isolation_email_installations
@@ -1189,5 +1216,28 @@ ALTER TABLE project_memory_entries ENABLE ROW LEVEL SECURITY;
 DO $$ BEGIN
   CREATE POLICY tenant_isolation_project_memory_entries
     ON project_memory_entries
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+-- Larry custom rules
+CREATE TABLE IF NOT EXISTS larry_rules (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  rule_type TEXT NOT NULL DEFAULT 'behavioral',
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_larry_rules_tenant ON larry_rules (tenant_id, is_active);
+
+ALTER TABLE larry_rules ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_larry_rules
+    ON larry_rules
     USING (tenant_id::text = current_setting('app.tenant_id', true));
 EXCEPTION WHEN duplicate_object THEN null; END $$;

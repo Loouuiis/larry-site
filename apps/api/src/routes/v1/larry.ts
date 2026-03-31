@@ -20,6 +20,7 @@ import type {
   CanonicalEvent,
   IntelligenceConfig,
   LarryActionType,
+  LarryClarification,
   LarryChatResponse,
   LarryMessageRecord,
 } from "@larry/shared";
@@ -60,6 +61,11 @@ import {
   refreshGoogleAccessToken,
   updateGoogleCalendarEvent,
 } from "../../services/connectors/google-calendar.js";
+import {
+  createOutlookCalendarEvent,
+  refreshOutlookAccessToken,
+  updateOutlookCalendarEvent,
+} from "../../services/connectors/outlook-calendar.js";
 
 function buildIntelligenceConfig(config: ReturnType<typeof getApiEnv>): IntelligenceConfig {
   if (config.MODEL_PROVIDER === "openai") {
@@ -120,9 +126,15 @@ const ChatSchema = z.object({
   conversationId: z.string().uuid().optional(),
 });
 
+const CorrectionBodySchema = z.object({
+  correctionType: z.string().trim().min(1).max(80),
+  correctionPayload: z.record(z.string(), z.unknown()).default({}),
+});
+
 const GLOBAL_CHAT_PROJECT_LIMIT = 5;
 
 const CalendarCreatePayloadSchema = z.object({
+  provider: z.enum(["google", "outlook"]).nullable().optional(),
   summary: z.string().trim().min(1),
   startDateTime: z.string().trim().min(1),
   endDateTime: z.string().trim().min(1),
@@ -134,6 +146,7 @@ const CalendarCreatePayloadSchema = z.object({
 });
 
 const CalendarUpdatePayloadSchema = z.object({
+  provider: z.enum(["google", "outlook"]).nullable().optional(),
   eventId: z.string().trim().min(1),
   summary: z.string().trim().min(1).nullable().optional(),
   startDateTime: z.string().trim().min(1).nullable().optional(),
@@ -359,6 +372,15 @@ interface GoogleCalendarInstallationRow {
   token_expires_at: string | null;
 }
 
+interface OutlookCalendarInstallationRow {
+  id: string;
+  project_id: string | null;
+  outlook_calendar_id: string;
+  outlook_access_token: string;
+  outlook_refresh_token: string | null;
+  token_expires_at: string | null;
+}
+
 interface GlobalProjectIntelligenceResult {
   projectId: string;
   projectName: string;
@@ -367,6 +389,18 @@ interface GlobalProjectIntelligenceResult {
   suggestedCount: number;
   eventIds: string[];
   error?: string;
+}
+
+interface LarryRulePromptRow {
+  title: string;
+  description: string;
+  rule_type: string;
+}
+
+interface CorrectionPromptRow {
+  correction_type: string;
+  correction_payload: Record<string, unknown>;
+  created_at: string;
 }
 
 function buildGlobalNoProjectMessage(): string {
@@ -388,6 +422,30 @@ function buildGlobalGroupedMessage(results: GlobalProjectIntelligenceResult[]): 
   });
 
   return sections.join("\n\n").slice(0, 8_000);
+}
+
+function buildRulesAndCorrectionsHint(input: {
+  rules: LarryRulePromptRow[];
+  corrections: CorrectionPromptRow[];
+}): string {
+  const chunks: string[] = [];
+
+  if (input.rules.length > 0) {
+    const lines = input.rules.map(
+      (rule, index) => `${index + 1}. [${rule.rule_type}] ${rule.title}: ${rule.description}`
+    );
+    chunks.push(`User-defined rules Larry must follow:\n${lines.join("\n")}`);
+  }
+
+  if (input.corrections.length > 0) {
+    const lines = input.corrections.map((item, index) => {
+      const payload = JSON.stringify(item.correction_payload ?? {}).slice(0, 240);
+      return `${index + 1}. ${item.correction_type} (${item.created_at.slice(0, 10)}): ${payload}`;
+    });
+    chunks.push(`Past corrections from the user - avoid repeating these patterns:\n${lines.join("\n")}`);
+  }
+
+  return chunks.join("\n\n");
 }
 
 function isCalendarActionType(
@@ -472,7 +530,10 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
   async function loadProjectLinkedCalendarInstallation(input: {
     tenantId: string;
     projectId: string;
-  }): Promise<GoogleCalendarInstallationRow> {
+  }): Promise<
+    | { provider: "google"; installation: GoogleCalendarInstallationRow }
+    | { provider: "outlook"; installation: OutlookCalendarInstallationRow }
+  > {
     const rows = await fastify.db.queryTenant<GoogleCalendarInstallationRow>(
       input.tenantId,
       `SELECT id,
@@ -490,12 +551,89 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
     );
 
     if (!rows[0]) {
-      throw new Error(
-        "Google Calendar is not linked to this project. Link it in Workspace Settings > Connectors and try again."
+      const outlookRows = await fastify.db.queryTenant<OutlookCalendarInstallationRow>(
+        input.tenantId,
+        `SELECT id,
+                project_id,
+                outlook_calendar_id,
+                outlook_access_token,
+                outlook_refresh_token,
+                token_expires_at
+         FROM outlook_calendar_installations
+         WHERE tenant_id = $1
+           AND project_id = $2
+         ORDER BY updated_at DESC
+         LIMIT 1`,
+        [input.tenantId, input.projectId]
       );
+
+      if (!outlookRows[0]) {
+        throw new Error(
+          "No calendar connector is linked to this project. Link Google or Outlook Calendar in Workspace Settings > Connectors and try again."
+        );
+      }
+
+      return {
+        provider: "outlook",
+        installation: outlookRows[0],
+      };
     }
 
-    return rows[0];
+    return {
+      provider: "google",
+      installation: rows[0],
+    };
+  }
+
+  async function loadFallbackCalendarInstallation(input: {
+    tenantId: string;
+    provider?: "google" | "outlook" | null;
+  }): Promise<
+    | { provider: "google"; installation: GoogleCalendarInstallationRow }
+    | { provider: "outlook"; installation: OutlookCalendarInstallationRow }
+    | null
+  > {
+    if (input.provider !== "outlook") {
+      const googleRows = await fastify.db.queryTenant<GoogleCalendarInstallationRow>(
+        input.tenantId,
+        `SELECT id,
+                project_id,
+                google_calendar_id,
+                google_access_token,
+                google_refresh_token,
+                token_expires_at
+         FROM google_calendar_installations
+         WHERE tenant_id = $1
+         ORDER BY updated_at DESC
+         LIMIT 1`,
+        [input.tenantId]
+      );
+      if (googleRows[0]) {
+        return { provider: "google", installation: googleRows[0] };
+      }
+    }
+
+    if (input.provider !== "google") {
+      const outlookRows = await fastify.db.queryTenant<OutlookCalendarInstallationRow>(
+        input.tenantId,
+        `SELECT id,
+                project_id,
+                outlook_calendar_id,
+                outlook_access_token,
+                outlook_refresh_token,
+                token_expires_at
+         FROM outlook_calendar_installations
+         WHERE tenant_id = $1
+         ORDER BY updated_at DESC
+         LIMIT 1`,
+        [input.tenantId]
+      );
+      if (outlookRows[0]) {
+        return { provider: "outlook", installation: outlookRows[0] };
+      }
+    }
+
+    return null;
   }
 
   async function ensureFreshGoogleAccessToken(input: {
@@ -552,20 +690,98 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
     return refreshed.accessToken;
   }
 
+  async function ensureFreshOutlookAccessToken(input: {
+    tenantId: string;
+    installation: OutlookCalendarInstallationRow;
+  }): Promise<string> {
+    const expiresAt = input.installation.token_expires_at
+      ? new Date(input.installation.token_expires_at).getTime()
+      : null;
+    const aboutToExpire = expiresAt !== null && expiresAt <= Date.now() + 60_000;
+
+    if (!aboutToExpire) {
+      return input.installation.outlook_access_token;
+    }
+
+    if (!input.installation.outlook_refresh_token) {
+      throw new Error(
+        "Outlook Calendar access token expired and no refresh token is available. Reconnect the connector and retry."
+      );
+    }
+
+    if (!fastify.config.OUTLOOK_CLIENT_ID || !fastify.config.OUTLOOK_CLIENT_SECRET) {
+      throw new Error(
+        "Outlook Calendar OAuth credentials are not configured on the API. Set OUTLOOK_CLIENT_ID and OUTLOOK_CLIENT_SECRET."
+      );
+    }
+
+    const refreshed = await refreshOutlookAccessToken({
+      clientId: fastify.config.OUTLOOK_CLIENT_ID,
+      clientSecret: fastify.config.OUTLOOK_CLIENT_SECRET,
+      refreshToken: input.installation.outlook_refresh_token,
+      scopes: fastify.config.OUTLOOK_CALENDAR_SCOPES,
+    });
+
+    await fastify.db.queryTenant(
+      input.tenantId,
+      `UPDATE outlook_calendar_installations
+         SET outlook_access_token = $3,
+             outlook_refresh_token = COALESCE($4, outlook_refresh_token),
+             outlook_scope = COALESCE($5, outlook_scope),
+             token_expires_at = $6,
+             updated_at = NOW()
+       WHERE tenant_id = $1
+         AND id = $2`,
+      [
+        input.tenantId,
+        input.installation.id,
+        refreshed.accessToken,
+        refreshed.refreshToken ?? null,
+        refreshed.scope ?? null,
+        refreshed.expiresAt ?? null,
+      ]
+    );
+
+    return refreshed.accessToken;
+  }
+
   async function executeCalendarAction(input: {
     tenantId: string;
     projectId: string;
     actionType: "calendar_event_create" | "calendar_event_update";
     payload: Record<string, unknown>;
   }): Promise<Record<string, unknown>> {
-    const installation = await loadProjectLinkedCalendarInstallation({
+    const providerHint =
+      (typeof input.payload.provider === "string" &&
+      (input.payload.provider === "google" || input.payload.provider === "outlook")
+        ? input.payload.provider
+        : null) as "google" | "outlook" | null;
+
+    const linkedInstallation = await loadProjectLinkedCalendarInstallation({
       tenantId: input.tenantId,
       projectId: input.projectId,
     });
-    const accessToken = await ensureFreshGoogleAccessToken({
-      tenantId: input.tenantId,
-      installation,
-    });
+    const installation =
+      providerHint && linkedInstallation.provider !== providerHint
+        ? await loadFallbackCalendarInstallation({ tenantId: input.tenantId, provider: providerHint })
+        : linkedInstallation;
+
+    if (!installation) {
+      throw new Error(
+        "No active calendar connector found. Connect Google or Outlook Calendar in Workspace Settings > Connectors."
+      );
+    }
+
+    const accessToken =
+      installation.provider === "google"
+        ? await ensureFreshGoogleAccessToken({
+            tenantId: input.tenantId,
+            installation: installation.installation,
+          })
+        : await ensureFreshOutlookAccessToken({
+            tenantId: input.tenantId,
+            installation: installation.installation,
+          });
 
     if (input.actionType === "calendar_event_create") {
       const parsed = CalendarCreatePayloadSchema.safeParse(input.payload);
@@ -577,24 +793,42 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         );
       }
 
-      const calendarId = parsed.data.calendarId ?? installation.google_calendar_id;
-      const created = await createGoogleCalendarEvent({
-        accessToken,
-        calendarId,
-        summary: parsed.data.summary,
-        startDateTime: parsed.data.startDateTime,
-        endDateTime: parsed.data.endDateTime,
-        description: parsed.data.description ?? null,
-        location: parsed.data.location ?? null,
-        attendees: parsed.data.attendees ?? null,
-        timeZone: parsed.data.timeZone ?? null,
-      });
+      const calendarId =
+        parsed.data.calendarId ??
+        (installation.provider === "google"
+          ? installation.installation.google_calendar_id
+          : installation.installation.outlook_calendar_id);
+      const created =
+        installation.provider === "google"
+          ? await createGoogleCalendarEvent({
+              accessToken,
+              calendarId,
+              summary: parsed.data.summary,
+              startDateTime: parsed.data.startDateTime,
+              endDateTime: parsed.data.endDateTime,
+              description: parsed.data.description ?? null,
+              location: parsed.data.location ?? null,
+              attendees: parsed.data.attendees ?? null,
+              timeZone: parsed.data.timeZone ?? null,
+            })
+          : await createOutlookCalendarEvent({
+              accessToken,
+              calendarId,
+              summary: parsed.data.summary,
+              startDateTime: parsed.data.startDateTime,
+              endDateTime: parsed.data.endDateTime,
+              description: parsed.data.description ?? null,
+              location: parsed.data.location ?? null,
+              attendees: parsed.data.attendees ?? null,
+              timeZone: parsed.data.timeZone ?? null,
+            });
 
       return {
         operation: "calendar_event_create",
+        provider: installation.provider,
         calendarId,
         eventId: created.id,
-        status: created.status ?? null,
+        status: "status" in created ? created.status ?? null : null,
         htmlLink: created.htmlLink ?? null,
       };
     }
@@ -621,27 +855,73 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       );
     }
 
-    const calendarId = parsed.data.calendarId ?? installation.google_calendar_id;
-    const updated = await updateGoogleCalendarEvent({
-      accessToken,
-      calendarId,
-      eventId: parsed.data.eventId,
-      summary: parsed.data.summary,
-      startDateTime: parsed.data.startDateTime,
-      endDateTime: parsed.data.endDateTime,
-      description: parsed.data.description,
-      location: parsed.data.location,
-      attendees: parsed.data.attendees,
-      timeZone: parsed.data.timeZone ?? null,
-    });
+    const calendarId =
+      parsed.data.calendarId ??
+      (installation.provider === "google"
+        ? installation.installation.google_calendar_id
+        : installation.installation.outlook_calendar_id);
+    const updated =
+      installation.provider === "google"
+        ? await updateGoogleCalendarEvent({
+            accessToken,
+            calendarId,
+            eventId: parsed.data.eventId,
+            summary: parsed.data.summary,
+            startDateTime: parsed.data.startDateTime,
+            endDateTime: parsed.data.endDateTime,
+            description: parsed.data.description,
+            location: parsed.data.location,
+            attendees: parsed.data.attendees,
+            timeZone: parsed.data.timeZone ?? null,
+          })
+        : await updateOutlookCalendarEvent({
+            accessToken,
+            calendarId,
+            eventId: parsed.data.eventId,
+            summary: parsed.data.summary,
+            startDateTime: parsed.data.startDateTime,
+            endDateTime: parsed.data.endDateTime,
+            description: parsed.data.description,
+            location: parsed.data.location,
+            attendees: parsed.data.attendees,
+            timeZone: parsed.data.timeZone ?? null,
+          });
 
     return {
       operation: "calendar_event_update",
+      provider: installation.provider,
       calendarId,
       eventId: updated.id,
-      status: updated.status ?? null,
+      status: "status" in updated ? updated.status ?? null : null,
       htmlLink: updated.htmlLink ?? null,
     };
+  }
+
+  async function listActiveLarryRules(tenantId: string): Promise<LarryRulePromptRow[]> {
+    return fastify.db.queryTenant<LarryRulePromptRow>(
+      tenantId,
+      `SELECT title, description, rule_type
+       FROM larry_rules
+       WHERE tenant_id = $1
+         AND is_active = true
+       ORDER BY created_at DESC
+       LIMIT 10`,
+      [tenantId]
+    );
+  }
+
+  async function listRecentCorrectionFeedback(tenantId: string): Promise<CorrectionPromptRow[]> {
+    return fastify.db.queryTenant<CorrectionPromptRow>(
+      tenantId,
+      `SELECT correction_type,
+              correction_payload,
+              created_at
+       FROM correction_feedback
+       WHERE tenant_id = $1
+       ORDER BY created_at DESC
+       LIMIT 20`,
+      [tenantId]
+    );
   }
 
   fastify.get(
@@ -1043,6 +1323,15 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
 
       await markLarryEventAccepted(fastify.db, tenantId, id, actorUserId);
 
+      await fastify.db.queryTenant(
+        tenantId,
+        `INSERT INTO correction_feedback
+           (tenant_id, action_id, corrected_by_user_id, correction_type, correction_payload)
+         VALUES
+           ($1, $2, $3, 'accepted', $4::jsonb)`,
+        [tenantId, id, actorUserId, JSON.stringify({ actionType: event.actionType })]
+      );
+
       const [updatedEvent] = await listLarryEventSummaries(fastify.db, tenantId, { ids: [id] });
 
       await Promise.all([
@@ -1102,6 +1391,15 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
 
       await markLarryEventDismissed(fastify.db, tenantId, id, actorUserId, body.reason ?? null);
 
+      await fastify.db.queryTenant(
+        tenantId,
+        `INSERT INTO correction_feedback
+           (tenant_id, action_id, corrected_by_user_id, correction_type, correction_payload)
+         VALUES
+           ($1, $2, $3, 'dismissed', $4::jsonb)`,
+        [tenantId, id, actorUserId, JSON.stringify({ reason: body.reason ?? null })]
+      );
+
       await writeAuditLog(fastify.db, {
         tenantId,
         actorUserId,
@@ -1114,6 +1412,39 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       const [updatedEvent] = await listLarryEventSummaries(fastify.db, tenantId, { ids: [id] });
 
       return reply.code(200).send({ dismissed: true, event: updatedEvent ?? null });
+    }
+  );
+
+  fastify.post(
+    "/actions/:id/correct",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
+    async (request, reply) => {
+      const tenantId = request.user.tenantId;
+      const actorUserId = request.user.userId;
+      const { id } = z.object({ id: z.string().uuid() }).parse(request.params ?? {});
+      const body = CorrectionBodySchema.parse(request.body ?? {});
+
+      await fastify.db.queryTenant(
+        tenantId,
+        `INSERT INTO correction_feedback
+           (tenant_id, action_id, corrected_by_user_id, correction_type, correction_payload)
+         VALUES
+           ($1, $2, $3, $4, $5::jsonb)`,
+        [tenantId, id, actorUserId, body.correctionType, JSON.stringify(body.correctionPayload)]
+      );
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId,
+        actionType: "larry.action.corrected",
+        objectType: "larry_event",
+        objectId: id,
+        details: {
+          correctionType: body.correctionType,
+        },
+      });
+
+      return reply.code(201).send({ ok: true });
     }
   );
 
@@ -1428,6 +1759,14 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         const config = buildIntelligenceConfig(fastify.config);
+        const [activeRules, recentCorrections] = await Promise.all([
+          listActiveLarryRules(tenantId).catch(() => [] as LarryRulePromptRow[]),
+          listRecentCorrectionFeedback(tenantId).catch(() => [] as CorrectionPromptRow[]),
+        ]);
+        const guidanceHint = buildRulesAndCorrectionsHint({
+          rules: activeRules,
+          corrections: recentCorrections,
+        });
         const draftRuns: Array<{
           projectId: string;
           projectName: string;
@@ -1442,7 +1781,11 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
               () => [] as string[]
             );
             const pendingClause = buildPendingClause(pendingTexts);
-            const result = await runIntelligence(config, snapshot, `user said: "${message}"${pendingClause}`);
+            const result = await runIntelligence(
+              config,
+              snapshot,
+              `user said: "${message}"${pendingClause}${guidanceHint ? `\n\n${guidanceHint}` : ""}`
+            );
             draftRuns.push({
               projectId: project.id,
               projectName: project.name,
@@ -1716,6 +2059,13 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           }),
         ]);
 
+        const clarifications: LarryClarification[] = [
+          {
+            field: clarificationNeed.reason,
+            question: clarificationNeed.question,
+          },
+        ];
+
         return reply.code(200).send({
           conversationId: conversation.id,
           message: clarificationNeed.question,
@@ -1728,7 +2078,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           actionsExecuted: 0,
           suggestionCount: 0,
           requiresClarification: true,
-          clarificationQuestions: [clarificationNeed.question],
+          clarifications,
         });
       }
 
@@ -1736,11 +2086,23 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         () => [] as string[]
       );
       const pendingClause = buildPendingClause(pendingTexts);
+      const [activeRules, recentCorrections] = await Promise.all([
+        listActiveLarryRules(tenantId).catch(() => [] as LarryRulePromptRow[]),
+        listRecentCorrectionFeedback(tenantId).catch(() => [] as CorrectionPromptRow[]),
+      ]);
+      const guidanceHint = buildRulesAndCorrectionsHint({
+        rules: activeRules,
+        corrections: recentCorrections,
+      });
 
       const config = buildIntelligenceConfig(fastify.config);
       let result;
       try {
-        result = await runIntelligence(config, snapshot, `user said: "${message}"${pendingClause}`);
+        result = await runIntelligence(
+          config,
+          snapshot,
+          `user said: "${message}"${pendingClause}${guidanceHint ? `\n\n${guidanceHint}` : ""}`
+        );
       } catch (error) {
         const messageText = error instanceof Error ? error.message : String(error);
         request.log.error({ err: error, tenantId, projectId }, "runIntelligence failed");

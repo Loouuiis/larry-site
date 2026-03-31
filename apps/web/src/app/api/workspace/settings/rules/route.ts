@@ -1,17 +1,30 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { persistSession, proxyApiRequest } from "@/lib/workspace-proxy";
 
-export async function POST(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> }
-) {
+export async function GET() {
   const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { id } = await context.params;
+  const result = await proxyApiRequest(session, "/v1/settings/rules", {
+    method: "GET",
+  });
+
+  if (result.session) {
+    await persistSession(result.session);
+  }
+
+  return NextResponse.json(result.body, { status: result.status });
+}
+
+export async function POST(request: NextRequest) {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -19,7 +32,7 @@ export async function POST(
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const result = await proxyApiRequest(session, `/v1/larry/actions/${id}/correct`, {
+  const result = await proxyApiRequest(session, "/v1/settings/rules", {
     method: "POST",
     body: JSON.stringify(body),
   });

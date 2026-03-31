@@ -85,17 +85,13 @@ const EVENT_SUMMARY_SELECT = `
       ON response_message.tenant_id = e.tenant_id
      AND response_message.id = e.response_message_id
     LEFT JOIN users requested
-      ON requested.tenant_id = e.tenant_id
-     AND requested.id = e.requested_by_user_id
+      ON requested.id = e.requested_by_user_id
     LEFT JOIN users approved
-      ON approved.tenant_id = e.tenant_id
-     AND approved.id = e.approved_by_user_id
+      ON approved.id = e.approved_by_user_id
     LEFT JOIN users dismissed
-      ON dismissed.tenant_id = e.tenant_id
-     AND dismissed.id = e.dismissed_by_user_id
+      ON dismissed.id = e.dismissed_by_user_id
     LEFT JOIN users executor
-      ON executor.tenant_id = e.tenant_id
-     AND executor.id = e.executed_by_user_id`;
+      ON executor.id = e.executed_by_user_id`;
 
 export async function listLarryConversationPreviews(
   db: Db,
@@ -314,8 +310,7 @@ export async function listLarryMessagesForConversation(
             COALESCE(NULLIF(u.display_name, ''), SPLIT_PART(u.email, '@', 1)) AS "actorDisplayName"
        FROM larry_messages m
        LEFT JOIN users u
-         ON u.tenant_id = m.tenant_id
-        AND u.id = m.actor_user_id
+         ON u.id = m.actor_user_id
       WHERE m.tenant_id = $1
         AND m.conversation_id = $2
       ORDER BY m.created_at ASC`,
@@ -343,8 +338,7 @@ export async function listLarryMessagesByIds(
             COALESCE(NULLIF(u.display_name, ''), SPLIT_PART(u.email, '@', 1)) AS "actorDisplayName"
        FROM larry_messages m
        LEFT JOIN users u
-         ON u.tenant_id = m.tenant_id
-        AND u.id = m.actor_user_id
+         ON u.id = m.actor_user_id
       WHERE m.tenant_id = $1
         AND m.id = ANY($2::uuid[])
       ORDER BY m.created_at ASC`,

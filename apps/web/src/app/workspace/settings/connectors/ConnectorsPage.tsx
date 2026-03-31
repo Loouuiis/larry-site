@@ -15,6 +15,7 @@ interface ConnectorStatus {
 interface ConnectorsData {
   slack?: ConnectorStatus;
   calendar?: ConnectorStatus;
+  outlookCalendar?: ConnectorStatus;
   email?: ConnectorStatus;
 }
 
@@ -44,6 +45,13 @@ const CONNECTOR_INFO = {
     description:
       "Larry detects upcoming meetings and offers to transcribe them, links calendar events to projects, and can create meeting invites (pending your approval in Action Center).",
     color: "#0073EA",
+  },
+  outlookCalendar: {
+    label: "Outlook Calendar",
+    icon: "📆",
+    description:
+      "Larry connects to Microsoft 365 calendars so invites and updates can sync into project activity and action workflows.",
+    color: "#0067B8",
   },
   email: {
     label: "Email",

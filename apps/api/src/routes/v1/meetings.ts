@@ -21,8 +21,8 @@ export const meetingRoutes: FastifyPluginAsync = async (fastify) => {
 
       const values: unknown[] = [tenantId, query.limit];
       const filters = ["meeting_notes.tenant_id = $1"];
-      let sql = `SELECT id, title, summary, action_count, meeting_date, created_at,
-                        project_id
+      let sql = `SELECT meeting_notes.id, meeting_notes.title, meeting_notes.summary, meeting_notes.action_count, meeting_notes.meeting_date, meeting_notes.created_at,
+            meeting_notes.project_id
                  FROM meeting_notes
                 `;
       if (query.projectId) {

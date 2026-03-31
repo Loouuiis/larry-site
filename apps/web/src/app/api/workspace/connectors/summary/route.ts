@@ -37,20 +37,23 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const [slack, calendar, email] = await Promise.all([
+  const [slack, calendar, outlookCalendar, email] = await Promise.all([
     proxyApiRequest(session, "/v1/connectors/slack/status"),
     proxyApiRequest(session, "/v1/connectors/google-calendar/status"),
+    proxyApiRequest(session, "/v1/connectors/outlook-calendar/status"),
     proxyApiRequest(session, "/v1/connectors/email/status"),
   ]);
 
-  const updatedSession = slack.session ?? calendar.session ?? email.session ?? session;
+  const updatedSession =
+    slack.session ?? calendar.session ?? outlookCalendar.session ?? email.session ?? session;
   if (updatedSession) {
     await persistSession(updatedSession);
   }
 
-  const [slackInstall, calendarInstall, emailInstall] = await Promise.all([
+  const [slackInstall, calendarInstall, outlookInstall, emailInstall] = await Promise.all([
     loadInstallUrl("/v1/connectors/slack/install-url", updatedSession),
     loadInstallUrl("/v1/connectors/google-calendar/install-url", updatedSession),
+    loadInstallUrl("/v1/connectors/outlook-calendar/install-url", updatedSession),
     loadInstallUrl("/v1/connectors/email/install-url", updatedSession),
   ]);
 
@@ -65,6 +68,13 @@ export async function GET() {
         ...(typeof calendar.body === "object" && calendar.body ? calendar.body : { connected: false }),
         installUrl: calendarInstall.installUrl,
         installError: calendarInstall.error,
+      },
+      outlookCalendar: {
+        ...(typeof outlookCalendar.body === "object" && outlookCalendar.body
+          ? outlookCalendar.body
+          : { connected: false }),
+        installUrl: outlookInstall.installUrl,
+        installError: outlookInstall.error,
       },
       email: {
         ...(typeof email.body === "object" && email.body ? email.body : { connected: false }),

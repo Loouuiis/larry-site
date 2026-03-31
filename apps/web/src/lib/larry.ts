@@ -13,6 +13,12 @@ export interface LarryMessage {
   linkedActions: WorkspaceLarryEvent[];
 }
 
+export interface LarryClarification {
+  field: string;
+  question: string;
+  context?: string;
+}
+
 export interface LarryChatResponse {
   conversationId: string;
   message: string;
@@ -21,6 +27,8 @@ export interface LarryChatResponse {
   linkedActions: WorkspaceLarryEvent[];
   actionsExecuted: number;
   suggestionCount: number;
+  requiresClarification?: boolean;
+  clarifications?: LarryClarification[];
   error?: string;
 }
 

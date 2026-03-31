@@ -6,6 +6,7 @@ import { ingestRoutes } from "./ingest.js";
 import { reportingRoutes } from "./reporting.js";
 import { slackConnectorRoutes } from "./connectors-slack.js";
 import { googleCalendarConnectorRoutes } from "./connectors-google-calendar.js";
+import { outlookCalendarConnectorRoutes } from "./connectors-outlook-calendar.js";
 import { larryRoutes } from "./larry.js";
 import { emailConnectorRoutes } from "./connectors-email.js";
 import { activityRoutes } from "./activity.js";
@@ -14,6 +15,7 @@ import { meetingRoutes } from "./meetings.js";
 import { orgRoutes } from "./orgs.js";
 import { projectIntakeRoutes } from "./project-intake.js";
 import { documentRoutes } from "./documents.js";
+import { settingsRoutes } from "./settings.js";
 
 export const v1Routes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(authRoutes, { prefix: "/auth" });
@@ -24,6 +26,7 @@ export const v1Routes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(ingestRoutes, { prefix: "/ingest" });
   await fastify.register(slackConnectorRoutes, { prefix: "/connectors/slack" });
   await fastify.register(googleCalendarConnectorRoutes, { prefix: "/connectors/google-calendar" });
+  await fastify.register(outlookCalendarConnectorRoutes, { prefix: "/connectors/outlook-calendar" });
   await fastify.register(emailConnectorRoutes, { prefix: "/connectors/email" });
   await fastify.register(larryRoutes, { prefix: "/larry" });
   await fastify.register(activityRoutes);
@@ -31,4 +34,5 @@ export const v1Routes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(notificationRoutes);
   await fastify.register(meetingRoutes);
   await fastify.register(orgRoutes);
+  await fastify.register(settingsRoutes, { prefix: "/settings" });
 };
