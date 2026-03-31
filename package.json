@@ -24,6 +24,7 @@
     "db:reset": "docker compose down -v && docker compose up -d && sleep 3 && npm run db:setup",
     "phase27:rehearsal": "node scripts/phase-2.7-extraction-rehearsal.mjs",
     "phase27:retirement-window": "node scripts/phase-2.7-retirement-window.mjs",
+    "phase12:runtime-recovery": "node scripts/phase-12-runtime-recovery.mjs",
     "vercel-build": "npm run build -w @larry/web"
   },
   "dependencies": {

@@ -268,4 +268,25 @@ describe("Larry ledger schema", () => {
     expect(schema).toContain("ALTER TABLE task_document_attachments ENABLE ROW LEVEL SECURITY;");
     expect(schema).toContain("CREATE POLICY tenant_isolation_task_document_attachments");
   });
+
+  it("adds canonical_event_processing_attempts with status checks, bounded indexes, and tenant RLS", () => {
+    expect(schema).toContain("CREATE TABLE IF NOT EXISTS canonical_event_processing_attempts (");
+    expect(schema).toContain("canonical_event_id UUID NOT NULL REFERENCES canonical_events(id) ON DELETE CASCADE");
+    expect(schema).toContain(
+      "status TEXT NOT NULL CHECK (status IN ('running', 'succeeded', 'retryable_failed', 'dead_lettered'))"
+    );
+    expect(schema).toContain("attempt_number INT NOT NULL CHECK (attempt_number >= 1)");
+    expect(schema).toContain("max_attempts INT NOT NULL CHECK (max_attempts >= 1)");
+    expect(schema).toContain("error_payload JSONB NOT NULL DEFAULT '{}'::jsonb");
+    expect(schema).toContain("UNIQUE (tenant_id, canonical_event_id, attempt_number)");
+    expect(schema).toContain("CREATE INDEX IF NOT EXISTS idx_canonical_event_processing_attempts_tenant_status_started");
+    expect(schema).toContain(
+      "CREATE INDEX IF NOT EXISTS idx_canonical_event_processing_attempts_tenant_source_status_started"
+    );
+    expect(schema).toContain(
+      "CREATE INDEX IF NOT EXISTS idx_canonical_event_processing_attempts_tenant_canonical_attempt"
+    );
+    expect(schema).toContain("ALTER TABLE canonical_event_processing_attempts ENABLE ROW LEVEL SECURITY;");
+    expect(schema).toContain("CREATE POLICY tenant_isolation_canonical_event_processing_attempts");
+  });
 });

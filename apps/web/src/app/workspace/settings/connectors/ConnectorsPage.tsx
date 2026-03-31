@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, Circle, ExternalLink, Zap } from "lucide-react";
+import { SettingsSubnav } from "../SettingsSubnav";
 
 interface ConnectorStatus {
   connected?: boolean;
@@ -165,6 +166,7 @@ export function ConnectorsPage() {
         <p className="text-body-sm" style={{ marginTop: "4px" }}>
           Manage your workspace preferences and integrations.
         </p>
+        <SettingsSubnav active="connectors" />
       </div>
 
       <div

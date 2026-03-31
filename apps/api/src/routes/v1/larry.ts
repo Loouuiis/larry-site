@@ -3,6 +3,10 @@ import type { FastifyRequest } from "fastify";
 import { z } from "zod";
 import { runIntelligence } from "@larry/ai";
 import {
+  getCanonicalEventRuntimeEntryById,
+  getCanonicalEventRuntimeSummary,
+  listCanonicalEventRetryCandidates,
+  listCanonicalEventRuntimeEntries,
   executeAction,
   getPendingSuggestionTexts,
   getProjectSnapshot,
@@ -13,6 +17,7 @@ import {
 } from "@larry/db";
 import { getApiEnv } from "@larry/config";
 import type {
+  CanonicalEvent,
   IntelligenceConfig,
   LarryActionType,
   LarryChatResponse,
@@ -81,6 +86,32 @@ const MemoryQuerySchema = z.object({
   sourceKind: z.string().trim().min(1).max(64).optional(),
   source: z.string().trim().min(1).max(64).optional(),
   limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+
+const RuntimeStatusSchema = z.enum(["running", "succeeded", "retryable_failed", "dead_lettered"]);
+const RuntimeRetryableStatusSchema = z.enum(["retryable_failed", "dead_lettered"]);
+const RuntimeSourceSchema = z.enum(["slack", "email", "calendar", "transcript"]);
+
+const RuntimeCanonicalEventsQuerySchema = z.object({
+  status: RuntimeStatusSchema.optional(),
+  source: RuntimeSourceSchema.optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+});
+
+const RuntimeCanonicalEventParamsSchema = z.object({
+  id: z.string().uuid(),
+});
+
+const RuntimeRetryBodySchema = z.object({
+  reason: z.string().trim().min(1).max(1_000).optional(),
+});
+
+const RuntimeRetryBulkBodySchema = z.object({
+  status: z.enum(["retryable_failed", "dead_lettered", "all"]).default("all"),
+  source: RuntimeSourceSchema.optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  execute: z.boolean().default(false),
+  reason: z.string().trim().min(1).max(1_000).optional(),
 });
 
 const ChatSchema = z.object({
@@ -162,6 +193,37 @@ const MUTATING_VERB_PATTERN =
 const DIRECT_UPDATE_PATTERN = /\bupdate\b.{0,40}\b(task|deadline|owner|assignee|risk|status)\b/i;
 const DATE_HINT_PATTERN =
   /\b\d{4}-\d{2}-\d{2}\b|\b(today|tomorrow|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i;
+
+const CANONICAL_EVENT_SOURCE_SET = new Set<CanonicalEvent["source"]>([
+  "slack",
+  "email",
+  "calendar",
+  "transcript",
+]);
+const CANONICAL_EVENT_TYPE_SET = new Set<CanonicalEvent["eventType"]>([
+  "commitment",
+  "blocker",
+  "progress",
+  "decision",
+  "question",
+  "other",
+]);
+
+function isCanonicalEventSource(value: string): value is CanonicalEvent["source"] {
+  return CANONICAL_EVENT_SOURCE_SET.has(value as CanonicalEvent["source"]);
+}
+
+function normalizeCanonicalEventType(value: string): CanonicalEvent["eventType"] {
+  if (CANONICAL_EVENT_TYPE_SET.has(value as CanonicalEvent["eventType"])) {
+    return value as CanonicalEvent["eventType"];
+  }
+  return "other";
+}
+
+function buildRuntimeRetryDedupeKey(canonicalEventId: string): string {
+  const randomToken = Math.random().toString(16).slice(2, 10);
+  return `runtime-retry:${canonicalEventId}:${Date.now()}:${randomToken}`;
+}
 
 function hasMutationIntent(message: string): boolean {
   const trimmed = message.trim();
@@ -713,6 +775,212 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         }
       );
       return { items };
+    }
+  );
+
+  fastify.get(
+    "/runtime/canonical-events",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
+    async (request) => {
+      const parseResult = RuntimeCanonicalEventsQuerySchema.safeParse(request.query);
+      if (!parseResult.success) {
+        throw fastify.httpErrors.badRequest(parseResult.error.issues[0]?.message ?? "Invalid query params");
+      }
+
+      const query = parseResult.data;
+      const [items, summary] = await Promise.all([
+        listCanonicalEventRuntimeEntries(fastify.db, request.user.tenantId, {
+          status: query.status,
+          source: query.source,
+          limit: query.limit,
+        }),
+        getCanonicalEventRuntimeSummary(fastify.db, request.user.tenantId, {
+          source: query.source,
+        }),
+      ]);
+
+      return {
+        items,
+        summary,
+        filters: {
+          status: query.status ?? null,
+          source: query.source ?? null,
+          limit: query.limit,
+        },
+      };
+    }
+  );
+
+  fastify.post(
+    "/runtime/canonical-events/:id/retry",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
+    async (request, reply) => {
+      const params = RuntimeCanonicalEventParamsSchema.safeParse(request.params);
+      if (!params.success) {
+        throw fastify.httpErrors.badRequest(params.error.issues[0]?.message ?? "Invalid event id");
+      }
+      const body = RuntimeRetryBodySchema.safeParse(request.body ?? {});
+      if (!body.success) {
+        throw fastify.httpErrors.badRequest(body.error.issues[0]?.message ?? "Invalid retry payload");
+      }
+
+      const runtimeEntry = await getCanonicalEventRuntimeEntryById(
+        fastify.db,
+        request.user.tenantId,
+        params.data.id
+      );
+      if (!runtimeEntry) {
+        throw fastify.httpErrors.notFound("Canonical event not found.");
+      }
+      if (runtimeEntry.latestStatus === "running") {
+        throw fastify.httpErrors.conflict(
+          "Canonical event is currently running and cannot be retried yet."
+        );
+      }
+      if (
+        runtimeEntry.latestStatus !== "retryable_failed" &&
+        runtimeEntry.latestStatus !== "dead_lettered"
+      ) {
+        throw fastify.httpErrors.conflict(
+          "Only retryable_failed or dead_lettered canonical events can be retried."
+        );
+      }
+      if (!isCanonicalEventSource(runtimeEntry.source)) {
+        throw fastify.httpErrors.unprocessableEntity(
+          `Unsupported canonical event source '${runtimeEntry.source}'.`
+        );
+      }
+
+      const dedupeKey = buildRuntimeRetryDedupeKey(runtimeEntry.canonicalEventId);
+      await fastify.queue.publish({
+        type: "canonical_event.created",
+        tenantId: request.user.tenantId,
+        dedupeKey,
+        payload: {
+          canonicalEventId: runtimeEntry.canonicalEventId,
+          source: runtimeEntry.source,
+          eventType: normalizeCanonicalEventType(runtimeEntry.eventType),
+        },
+      });
+
+      await writeAuditLog(fastify.db, {
+        tenantId: request.user.tenantId,
+        actorUserId: request.user.userId,
+        actionType: "larry.runtime.canonical_event.retry",
+        objectType: "canonical_event",
+        objectId: runtimeEntry.canonicalEventId,
+        details: {
+          reason: body.data.reason ?? null,
+          previousStatus: runtimeEntry.latestStatus,
+          previousAttemptNumber: runtimeEntry.latestAttemptNumber,
+          previousMaxAttempts: runtimeEntry.latestMaxAttempts,
+          dedupeKey,
+        },
+      });
+
+      return reply.code(202).send({
+        queued: true,
+        canonicalEventId: runtimeEntry.canonicalEventId,
+        dedupeKey,
+        previousStatus: runtimeEntry.latestStatus,
+      });
+    }
+  );
+
+  fastify.post(
+    "/runtime/canonical-events/retry-bulk",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
+    async (request, reply) => {
+      const parseResult = RuntimeRetryBulkBodySchema.safeParse(request.body ?? {});
+      if (!parseResult.success) {
+        throw fastify.httpErrors.badRequest(parseResult.error.issues[0]?.message ?? "Invalid bulk retry payload");
+      }
+
+      const body = parseResult.data;
+      const statusFilter =
+        body.status === "all"
+          ? (["retryable_failed", "dead_lettered"] as Array<z.infer<typeof RuntimeRetryableStatusSchema>>)
+          : [body.status];
+
+      const candidates = await listCanonicalEventRetryCandidates(fastify.db, request.user.tenantId, {
+        statuses: statusFilter,
+        source: body.source,
+        limit: body.limit,
+      });
+
+      if (!body.execute) {
+        return reply.code(200).send({
+          dryRun: true,
+          candidateCount: candidates.length,
+          candidates,
+          filters: {
+            status: body.status,
+            source: body.source ?? null,
+            limit: body.limit,
+          },
+        });
+      }
+
+      const queued: Array<{ canonicalEventId: string; dedupeKey: string }> = [];
+      const skipped: Array<{ canonicalEventId: string; reason: string }> = [];
+
+      for (const candidate of candidates) {
+        if (!isCanonicalEventSource(candidate.source)) {
+          skipped.push({
+            canonicalEventId: candidate.canonicalEventId,
+            reason: `Unsupported source '${candidate.source}'.`,
+          });
+          continue;
+        }
+
+        const dedupeKey = buildRuntimeRetryDedupeKey(candidate.canonicalEventId);
+        await fastify.queue.publish({
+          type: "canonical_event.created",
+          tenantId: request.user.tenantId,
+          dedupeKey,
+          payload: {
+            canonicalEventId: candidate.canonicalEventId,
+            source: candidate.source,
+            eventType: normalizeCanonicalEventType(candidate.eventType),
+          },
+        });
+
+        queued.push({
+          canonicalEventId: candidate.canonicalEventId,
+          dedupeKey,
+        });
+      }
+
+      await writeAuditLog(fastify.db, {
+        tenantId: request.user.tenantId,
+        actorUserId: request.user.userId,
+        actionType: "larry.runtime.canonical_event.retry_bulk",
+        objectType: "canonical_event",
+        objectId: "bulk",
+        details: {
+          reason: body.reason ?? null,
+          status: body.status,
+          source: body.source ?? null,
+          limit: body.limit,
+          candidateCount: candidates.length,
+          queuedCount: queued.length,
+          skippedCount: skipped.length,
+        },
+      });
+
+      return reply.code(202).send({
+        dryRun: false,
+        candidateCount: candidates.length,
+        queuedCount: queued.length,
+        skippedCount: skipped.length,
+        queued,
+        skipped,
+        filters: {
+          status: body.status,
+          source: body.source ?? null,
+          limit: body.limit,
+        },
+      });
     }
   );
 

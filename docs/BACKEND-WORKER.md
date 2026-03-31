@@ -17,18 +17,24 @@ BullMQ worker at `apps/worker/src/worker.ts`. Queue name: `larry-events`.
 
 `POST /v1/larry/transcript` is queue-only on the API path; transcript intelligence and Larry event writes execute only in worker `canonical_event.created`.
 
-For each `canonical_event.created` job in `apps/worker/src/canonical-event.ts`:
-1. Load canonical event row.
-2. Resolve project scope from payload/mappings.
+For each `canonical_event.created` job:
+1. `apps/worker/src/handlers.ts` starts a runtime-attempt row in `canonical_event_processing_attempts` with status `running` (`attempt_number = attemptsMade + 1` and queue metadata).
+2. `apps/worker/src/canonical-event.ts` loads canonical event row.
+3. Resolve project scope from payload/mappings.
    - Calendar source uses payload `projectId` first, then installation channel mapping fallback (`google_calendar_installations.webhook_channel_id -> project_id`).
-3. Skip when scope is missing or invalid.
-4. Build a source-aware prompt.
-5. Run `runIntelligence()`.
-6. Persist governed Larry actions through `runAutoActions()` and `storeSuggestions()`:
+4. Skip when scope is missing or invalid.
+5. Build a source-aware prompt.
+6. Run `runIntelligence()`.
+7. Persist governed Larry actions through `runAutoActions()` and `storeSuggestions()`:
    - `runAutoActions()` now enforces tenant policy + authority checks and policy-routes disallowed auto actions into approval suggestions.
    - This keeps chat, login briefing, connector signals, and scheduled scans on one execution-policy path.
-7. Persist one `project_memory_entries` row for transcript/email/slack/calendar with canonical source labels when scope resolves.
-8. Enforce replay safety by source linkage checks before writing duplicate actions; memory writes are additionally deduped on `(tenant_id, project_id, source_kind, source_record_id, content_hash)`.
+8. Persist one `project_memory_entries` row for transcript/email/slack/calendar with canonical source labels when scope resolves.
+9. Finalize runtime-attempt status in `handlers.ts`:
+   - `succeeded` on successful completion
+   - `retryable_failed` when the job throws and retries remain
+   - `dead_lettered` when the throwing attempt reaches BullMQ max attempts
+   - the worker rethrows to preserve native BullMQ retry/dead-letter behavior
+10. Enforce replay safety by source linkage checks before writing duplicate actions; memory writes are additionally deduped on `(tenant_id, project_id, source_kind, source_record_id, content_hash)`.
 
 Supported source handlers:
 - Transcript

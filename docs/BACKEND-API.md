@@ -14,7 +14,7 @@ Fastify v5 REST API at `apps/api/`. Product routes are registered in `apps/api/s
 | `documents.ts` | `GET /v1/documents`, `POST /v1/documents` (optional create+attach via `attachTaskId`) |
 | `tasks.ts` | CRUD `/v1/tasks`, task status/dependency helpers, and task document attachments (`GET/POST /v1/tasks/:id/attachments`) |
 | `ingest.ts` | `POST /v1/ingest/slack`, `/email`, `/calendar`, `/transcript` (transcript shim) |
-| `larry.ts` | `POST /v1/larry/chat`, `GET /v1/larry/briefing`, `GET /v1/larry/action-centre`, `GET /v1/larry/memory`, `POST /v1/larry/events/:id/accept`, `POST /v1/larry/events/:id/dismiss`, `POST /v1/larry/transcript` |
+| `larry.ts` | `POST /v1/larry/chat`, `GET /v1/larry/briefing`, `GET /v1/larry/action-centre`, `GET /v1/larry/memory`, runtime reliability routes (`GET /v1/larry/runtime/canonical-events`, `POST /v1/larry/runtime/canonical-events/:id/retry`, `POST /v1/larry/runtime/canonical-events/retry-bulk`), `POST /v1/larry/events/:id/accept`, `POST /v1/larry/events/:id/dismiss`, `POST /v1/larry/transcript` |
 | `meetings.ts` | Meeting read surfaces and meeting data contracts |
 | `notifications.ts` | Workspace notification reads/mutations |
 | `activity.ts` | `GET /v1/activity` |
@@ -31,6 +31,9 @@ Fastify v5 REST API at `apps/api/`. Product routes are registered in `apps/api/s
 - `GET /v1/larry/action-centre`
 - `GET /v1/larry/conversations`
 - `GET /v1/larry/memory?projectId=&sourceKind=&limit=`
+- `GET /v1/larry/runtime/canonical-events?status=&source=&limit=`
+- `POST /v1/larry/runtime/canonical-events/:id/retry`
+- `POST /v1/larry/runtime/canonical-events/retry-bulk`
 - `POST /v1/larry/events/:id/accept`
 - `POST /v1/larry/events/:id/dismiss`
 - `POST /v1/larry/transcript`
@@ -68,6 +71,13 @@ Fastify v5 REST API at `apps/api/`. Product routes are registered in `apps/api/s
   - `calendar_event_create`
   - `calendar_event_update`
 - Calendar write actions are approval-only and execute on `POST /v1/larry/events/:id/accept` via Google Calendar API (not auto-executed in `runAutoActions`).
+- Runtime recovery endpoints are `admin|pm` only:
+  - `GET /v1/larry/runtime/canonical-events` returns latest attempt metadata plus idempotency observability (`raw_events.idempotency_key`, canonical sibling count, latest attempt/error fields).
+  - `POST /v1/larry/runtime/canonical-events/:id/retry` accepts only latest status `retryable_failed|dead_lettered`; `running` and non-retryable states return `409`.
+  - `POST /v1/larry/runtime/canonical-events/retry-bulk` supports dry-run preview by default (`execute=false`), and bounded execute mode (`limit` default `25`, max `100`).
+- Runtime retry audit entries:
+  - single retry: `larry.runtime.canonical_event.retry`
+  - bulk retry: `larry.runtime.canonical_event.retry_bulk`
 
 Compatibility and retirement behavior:
 - `POST /v1/ingest/transcript` proxies to `/v1/larry/transcript` and returns deprecation metadata.

@@ -59,6 +59,8 @@ const ARCHIVED_TASK_ID = "a2000001-0000-4000-8000-000000000001"; // Archive fixt
 const CE1 = "b0000001-0000-4000-8000-000000000001"; // Slack signal
 const CE2 = "b0000002-0000-4000-8000-000000000002"; // Transcript ingestion
 const CE3 = "b0000003-0000-4000-8000-000000000003"; // Calendar event
+const CEA1 = "b1000001-0000-4000-8000-000000000001"; // Runtime attempt: retryable_failed
+const CEA2 = "b1000002-0000-4000-8000-000000000002"; // Runtime attempt: dead_lettered
 
 const COMPAT_AGENT_RUN_ID_PENDING = "c0000002-0000-4000-8000-000000000002";
 const COMPAT_AGENT_RUN_ID_EXECUTED = "c0000003-0000-4000-8000-000000000003";
@@ -261,6 +263,69 @@ async function seed() {
     calendarId: 'primary',
   })]);
   console.log("✓  Canonical events: Slack + Transcript + Calendar");
+
+  // Phase 12 runtime reliability fixtures: canonical-event processing outcomes.
+  await q(`
+    INSERT INTO canonical_event_processing_attempts
+      (id, tenant_id, canonical_event_id, queue_job_id, queue_job_name, source, status, attempt_number, max_attempts, started_at, finished_at, duration_ms, error_message, error_stack, error_payload, updated_at)
+    VALUES
+      (
+        $1, $2, $3,
+        'job-runtime-retryable-1',
+        'canonical_event.created',
+        'slack',
+        'retryable_failed',
+        2,
+        5,
+        $5,
+        $6,
+        842,
+        'Redis connection reset by peer.',
+        'Error: Redis connection reset by peer.',
+        $7::jsonb,
+        $6
+      ),
+      (
+        $4, $2, $8,
+        'job-runtime-dead-1',
+        'canonical_event.created',
+        'transcript',
+        'dead_lettered',
+        5,
+        5,
+        $9,
+        $10,
+        1675,
+        'OpenAI upstream timeout after max retries.',
+        'Error: OpenAI upstream timeout after max retries.',
+        $11::jsonb,
+        $10
+      )
+    ON CONFLICT (id) DO UPDATE SET
+      status = EXCLUDED.status,
+      attempt_number = EXCLUDED.attempt_number,
+      max_attempts = EXCLUDED.max_attempts,
+      started_at = EXCLUDED.started_at,
+      finished_at = EXCLUDED.finished_at,
+      duration_ms = EXCLUDED.duration_ms,
+      error_message = EXCLUDED.error_message,
+      error_stack = EXCLUDED.error_stack,
+      error_payload = EXCLUDED.error_payload,
+      updated_at = EXCLUDED.updated_at
+  `, [
+    CEA1,
+    TENANT_ID,
+    CE1,
+    CEA2,
+    daysAgo(1),
+    daysAgo(1),
+    JSON.stringify({ code: 'ECONNRESET', stage: 'queue-handler' }),
+    CE2,
+    daysAgo(0),
+    daysAgo(0),
+    JSON.stringify({ code: 'MODEL_TIMEOUT', stage: 'intelligence' }),
+  ]);
+  console.log("✓  Canonical event runtime attempts: retryable + dead-letter fixtures");
 
   console.log("✓  Migration E compatibility: skipped agent_runs/extracted_actions seeding");
 

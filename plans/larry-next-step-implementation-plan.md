@@ -610,43 +610,69 @@ None. Phase 8 starter slice is fully closed as of 2026-03-30.
 ### Phase Closure Snapshot
 
 - Closed in this update:
-  - **Phase 11 - Project Delete And Runtime Retirement**:
-    - added `POST /v1/projects/:id/delete` with archived-only gating, exact-name confirmation, and irreversible hard-delete response `{ id, deleted: true }`
-    - implemented transactional project hard-delete purge for non-cascading project artifacts before `projects` row delete:
-      - `meeting_notes`
-      - `documents`
-      - `email_outbound_drafts`
-      - `larry_conversations`
-    - added `project.delete` audit coverage with pre-delete project status/name and purge counts
-    - introduced shared project/task write-lock helpers and applied archived write-lock (`409`) coverage across project-scoped mutation routes:
-      - project collaborators and notes writes
-      - task mutation/attachment/comment/dependency/status writes
-      - document create/attach writes
-      - Larry project chat/transcript/accept/dismiss writes
-      - intake meeting attach-existing finalize path
-      - Google Calendar project-link updates
-    - hardened worker `canonical_event.created` handling to skip action/memory writes for archived projects with structured warning logs
-    - completed non-breaking runtime retirement cleanup by removing explicit legacy-column `NULL` writes:
-      - removed explicit `agent_run_id = NULL` from meeting-note insert paths
-      - removed explicit `action_id = NULL` from internal email-draft insert path
+  - **Phase 12 - Runtime Reliability And Operator Recovery**:
+    - added additive runtime-reliability schema `canonical_event_processing_attempts`:
+      - status check enum (`running|succeeded|retryable_failed|dead_lettered`)
+      - queue metadata, attempt counters, error metadata, timing fields
+      - bounded recency/filter indexes for operator views
+      - tenant RLS policy (`tenant_isolation_canonical_event_processing_attempts`)
+    - seeded deterministic reliability fixtures:
+      - one retryable-failed canonical event attempt
+      - one dead-lettered canonical event attempt
+    - added shared db helpers in `packages/db/src/canonical-event-runtime.ts`:
+      - attempt lifecycle writes (`start...`, `finalize...`)
+      - latest runtime listing + summary
+      - bounded retry candidate selection
+    - wrapped worker `canonical_event.created` handling with attempt lifecycle tracking in `apps/worker/src/handlers.ts`:
+      - persist `running` at start
+      - finalize to `succeeded`, `retryable_failed`, or `dead_lettered`
+      - rethrow failures to preserve BullMQ retry/dead-letter semantics
+    - shipped additive runtime recovery routes in `apps/api/src/routes/v1/larry.ts`:
+      - `GET /v1/larry/runtime/canonical-events?status=&source=&limit=`
+      - `POST /v1/larry/runtime/canonical-events/:id/retry`
+      - `POST /v1/larry/runtime/canonical-events/retry-bulk`
+      - single retry blocks non-retryable and `running` latest statuses
+      - bulk retry supports dry-run by default and bounded execute mode
+      - runtime-recovery endpoints restricted to `admin|pm`
+      - audit coverage for single and bulk retry operator actions
+    - shipped workspace proxy/runtime UI surface:
+      - proxy routes under `/api/workspace/larry/runtime/canonical-events...`
+      - settings sub-navigation (`Connectors` / `Reliability`)
+      - new `/workspace/settings/reliability` operator page with:
+        - status/source filters and limit control
+        - retryable/dead-letter summary cards
+        - per-event retry action
+        - explicit bulk retry preview + execute controls
+    - added operator CLI tooling:
+      - `scripts/phase-12-runtime-recovery-lib.mjs`
+      - `scripts/phase-12-runtime-recovery.mjs`
+      - root alias `npm run phase12:runtime-recovery`
+      - bulk mode is dry-run by default; execute requires `--execute --confirm phase-12-runtime-recovery`
+    - added/extended coverage:
+      - `apps/api/tests/larry-runtime-reliability-routes.test.ts`
+      - `apps/api/tests/worker-canonical-event-runtime-reliability.test.ts`
+      - `apps/api/tests/phase-12-runtime-recovery-script.test.ts`
+      - `apps/api/tests/larry-schema.test.ts` (runtime-attempt table guards)
     - updated targeted docs:
       - `apps/api/openapi.yaml`
       - `docs/BACKEND-API.md`
+      - `docs/BACKEND-WORKER.md`
       - `docs/DATABASE.md`
+      - `docs/FRONTEND.md`
       - `plans/larry-next-step-implementation-plan.md`
     - test gate passed: `cd apps/api && npm test`
 - Remaining in current phase:
-  - None. Phase 11 - Project Delete And Runtime Retirement is closed as of 2026-03-31.
+  - None. Phase 12 - Runtime Reliability And Operator Recovery is closed as of 2026-03-31.
 - Next concrete milestone:
-  - `Phase 12 - Runtime Reliability And Operator Recovery` is recommended next, but it is not opened in this change.
+  - `Phase 4 - Project Memory And Context Timeline` is recommended next for deeper context retention and inspectable memory timeline UX.
 
 ### Recommended Next Slice
 
 - Candidate milestone for the next update:
-  - **Phase 12 - Runtime Reliability And Operator Recovery**: add replay-safe operator tooling for canonical events, expose actionable dead-letter/retry visibility, and tighten idempotency observability for connector/event-driven flows.
-- Keep out of scope for that slice unless reliability hardening forces it in:
-  - broad UI redesign work
-  - schema-breaking changes to existing public read contracts
+  - **Phase 4 - Project Memory And Context Timeline**: deepen durable project memory ingestion and retrieval so users can inspect and trust the context Larry carries across chat, meetings, accepted actions, and connector signals.
+- Keep out of scope for that slice unless memory-quality hardening forces it in:
+  - broad reliability/operator tooling redesign
+  - schema-breaking changes to existing project/chat/action-centre contracts
 
 ---
 

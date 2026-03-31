@@ -289,6 +289,37 @@ CREATE TABLE IF NOT EXISTS canonical_events (
 CREATE INDEX IF NOT EXISTS idx_canonical_events_tenant_created
   ON canonical_events (tenant_id, created_at DESC);
 
+-- Phase 12: runtime reliability ledger for canonical event processing attempts.
+CREATE TABLE IF NOT EXISTS canonical_event_processing_attempts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  canonical_event_id UUID NOT NULL REFERENCES canonical_events(id) ON DELETE CASCADE,
+  queue_job_id TEXT,
+  queue_job_name TEXT NOT NULL DEFAULT 'canonical_event.created',
+  source TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('running', 'succeeded', 'retryable_failed', 'dead_lettered')),
+  attempt_number INT NOT NULL CHECK (attempt_number >= 1),
+  max_attempts INT NOT NULL CHECK (max_attempts >= 1),
+  started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  finished_at TIMESTAMPTZ,
+  duration_ms INT,
+  error_message TEXT,
+  error_stack TEXT,
+  error_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (tenant_id, canonical_event_id, attempt_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_canonical_event_processing_attempts_tenant_status_started
+  ON canonical_event_processing_attempts (tenant_id, status, started_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_canonical_event_processing_attempts_tenant_source_status_started
+  ON canonical_event_processing_attempts (tenant_id, source, status, started_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_canonical_event_processing_attempts_tenant_canonical_attempt
+  ON canonical_event_processing_attempts (tenant_id, canonical_event_id, attempt_number DESC, started_at DESC);
+
 CREATE TABLE IF NOT EXISTS notifications (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -585,6 +616,7 @@ ALTER TABLE task_dependencies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE task_comments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE activity_log ENABLE ROW LEVEL SECURITY;
 ALTER TABLE canonical_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE canonical_event_processing_attempts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE raw_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE risk_snapshots ENABLE ROW LEVEL SECURITY;
@@ -626,6 +658,11 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 DO $$ BEGIN
   CREATE POLICY tenant_isolation_canonical_events ON canonical_events USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_canonical_event_processing_attempts
+    ON canonical_event_processing_attempts
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 DO $$ BEGIN
   CREATE POLICY tenant_isolation_raw_events ON raw_events USING (tenant_id::text = current_setting('app.tenant_id', true));

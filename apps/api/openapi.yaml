@@ -83,6 +83,15 @@ paths:
   /v1/larry/memory:
     get:
       summary: List project memory timeline entries with optional source filtering
+  /v1/larry/runtime/canonical-events:
+    get:
+      summary: List canonical event runtime reliability state with latest attempt metadata and idempotency observability
+  /v1/larry/runtime/canonical-events/{id}/retry:
+    post:
+      summary: Queue a replay-safe retry for one failed or dead-letter canonical event
+  /v1/larry/runtime/canonical-events/retry-bulk:
+    post:
+      summary: Queue bounded bulk retries for retryable or dead-letter canonical events (dry-run supported)
   /v1/larry/events/{id}/accept:
     post:
       summary: Accept a suggested Larry event (409 if project is archived)

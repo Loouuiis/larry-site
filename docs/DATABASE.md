@@ -40,6 +40,7 @@ npm run seed
 | Table | Purpose |
 |-------|---------|
 | `canonical_events` | Normalized source ingest events |
+| `canonical_event_processing_attempts` | Runtime reliability ledger for canonical event queue attempts (`running`, `succeeded`, `retryable_failed`, `dead_lettered`) |
 | `larry_conversations` | Conversation sessions |
 | `larry_messages` | Message history with actor attribution |
 | `larry_events` | Action-centre ledger with lifecycle/provenance |
@@ -100,6 +101,14 @@ Use tenant-aware query helpers consistently in API and worker code.
 - `google_calendar_installations` includes additive default-linkage support:
   - nullable `project_id` (`ON DELETE SET NULL`)
   - tenant/project recency lookup index `idx_google_calendar_installations_tenant_project`
+- `canonical_event_processing_attempts` includes additive runtime-reliability coverage:
+  - unique guard `(tenant_id, canonical_event_id, attempt_number)`
+  - bounded status check (`running|succeeded|retryable_failed|dead_lettered`)
+  - recency/filter indexes:
+    - `idx_canonical_event_processing_attempts_tenant_status_started`
+    - `idx_canonical_event_processing_attempts_tenant_source_status_started`
+    - `idx_canonical_event_processing_attempts_tenant_canonical_attempt`
+  - tenant RLS policy (`tenant_isolation_canonical_event_processing_attempts`)
 - `projects.status` is hardened to the archive lifecycle enum surface:
   - stored values are constrained to `active|archived`
   - additive normalization backfills unexpected/null values to `active`
@@ -115,6 +124,7 @@ Use tenant-aware query helpers consistently in API and worker code.
 - Seed data includes deterministic `project_memberships` rows (including a multi-user project) so collaboration access is visible in local/demo environments.
 - Seed data includes deterministic `project_notes` rows (shared and personal) for workspace-note demos.
 - Seed data includes deterministic document assets (`email_draft`, `docx_template`, `xlsx_template`) and one task-document attachment row.
+- Seed data includes deterministic `canonical_event_processing_attempts` fixtures for one retryable-failed and one dead-lettered canonical event example.
 - Seed data now includes one deterministic archived project fixture with:
   - collaborator memberships
   - one archived task

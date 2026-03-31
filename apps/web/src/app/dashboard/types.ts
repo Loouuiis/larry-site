@@ -133,6 +133,54 @@ export interface WorkspaceActivityItem {
   createdAt: string;
 }
 
+export type CanonicalEventRuntimeStatus =
+  | "running"
+  | "succeeded"
+  | "retryable_failed"
+  | "dead_lettered";
+
+export interface WorkspaceCanonicalEventRuntimeEntry {
+  canonicalEventId: string;
+  source: "slack" | "email" | "calendar" | "transcript" | string;
+  eventType: string;
+  actor: string;
+  occurredAt: string;
+  canonicalCreatedAt: string;
+  rawEventId: string | null;
+  idempotencyKey: string | null;
+  canonicalSiblingCount: number;
+  latestAttemptId: string | null;
+  latestStatus: CanonicalEventRuntimeStatus | null;
+  latestAttemptNumber: number | null;
+  latestMaxAttempts: number | null;
+  latestQueueJobId: string | null;
+  latestQueueJobName: string | null;
+  latestErrorMessage: string | null;
+  latestStartedAt: string | null;
+  latestFinishedAt: string | null;
+  latestDurationMs: number | null;
+  latestUpdatedAt: string | null;
+}
+
+export interface WorkspaceCanonicalEventRuntimeSummary {
+  runningCount: number;
+  succeededCount: number;
+  retryableFailedCount: number;
+  deadLetteredCount: number;
+  unprocessedCount: number;
+}
+
+export interface WorkspaceCanonicalEventRuntimeResponse {
+  items: WorkspaceCanonicalEventRuntimeEntry[];
+  summary: WorkspaceCanonicalEventRuntimeSummary;
+  filters?: {
+    status?: CanonicalEventRuntimeStatus | null;
+    source?: "slack" | "email" | "calendar" | "transcript" | null;
+    limit?: number;
+  };
+  error?: string;
+}
+
 export interface EmailDraft {
   id: string;
   projectId?: string | null;

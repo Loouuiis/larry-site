@@ -17,7 +17,9 @@ Next.js 16 App Router at `apps/web/`. Two distinct surfaces:
 /workspace/my-work            Cross-project task view for current user
 /workspace/meetings           Meetings overview
 /workspace/documents          Project document assets and template creation surface
-/workspace/settings           Connector settings (Slack, Google Calendar)
+/workspace/settings           Settings root redirect
+/workspace/settings/connectors Connector settings (Slack, Google Calendar)
+/workspace/settings/reliability Runtime reliability + operator recovery (canonical-event retries)
 ```
 
 ## Key Component Files
@@ -34,6 +36,8 @@ Next.js 16 App Router at `apps/web/`. Two distinct surfaces:
 | `apps/web/src/app/workspace/actions/page.tsx` | Global Action Centre page (canonical ledger, accept/dismiss) |
 | `apps/web/src/app/workspace/chats/page.tsx` | Chat history with project grouping, actor attribution labels, global-context mode UI, Action Centre deep-link context, and per-project linked-action grouping in assistant replies |
 | `apps/web/src/app/workspace/documents/page.tsx` | Documents asset list (from `/api/workspace/documents`) with lightweight `.docx` / `.xlsx` template creation |
+| `apps/web/src/app/workspace/settings/SettingsSubnav.tsx` | Shared settings sub-navigation (Connectors / Reliability) |
+| `apps/web/src/app/workspace/settings/reliability/ReliabilityPage.tsx` | Runtime reliability view with filterable canonical-event list, summary cards, single retry, and bounded bulk retry controls |
 | `apps/web/src/app/workspace/NotificationBell.tsx` | Bell with unread badge, dismiss flow |
 | `apps/web/src/hooks/useLarryActionCentre.ts` | Shared Action Centre fetch, accept, dismiss, and background refresh for project and global surfaces |
 | `apps/web/src/hooks/useProjectData.ts` | Fetches `/api/workspace/projects/:id/overview` (scoped), refreshes every 30s |
@@ -87,6 +91,9 @@ Web proxy routes (`apps/web/src/app/api/workspace/`):
 - `POST /larry/events/:id/accept` — accept a suggested Larry event (executes and marks accepted)
 - `POST /larry/events/:id/dismiss` — dismiss a suggested Larry event
 - `GET /larry/briefing` — login briefing for current user
+- `GET runtime/canonical-events` — operator runtime reliability view (`status|source|limit` filters) under the `/api/workspace/larry` proxy namespace
+- `POST runtime/canonical-events/:id/retry` — queue single-event retry for retryable/dead-letter entries under the `/api/workspace/larry` proxy namespace
+- `POST runtime/canonical-events` — bulk retry proxy (dry-run by default unless `execute=true`) under the `/api/workspace/larry` proxy namespace
 - `POST /meetings/transcript` — canonical transcript ingest (enqueues worker job, returns 202)
 - `POST /projects/intake/drafts` — create/update intake draft (manual/chat/meeting)
 - `POST /projects/intake/drafts/:id/bootstrap` — generate chat bootstrap preview (summary/tasks/actions/seed message)
