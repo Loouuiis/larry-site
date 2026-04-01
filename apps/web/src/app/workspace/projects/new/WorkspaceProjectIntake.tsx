@@ -282,7 +282,9 @@ export function WorkspaceProjectIntake() {
   const [meetingTitle, setMeetingTitle] = useState("");
   const [meetingTranscript, setMeetingTranscript] = useState("");
   const [meetingBusy, setMeetingBusy] = useState(false);
+  const [meetingFinalizeBusy, setMeetingFinalizeBusy] = useState(false);
   const [meetingError, setMeetingError] = useState<string | null>(null);
+  const [meetingBootstrappedDraft, setMeetingBootstrappedDraft] = useState<IntakeDraft | null>(null);
   const [meetingCreatedProjectId, setMeetingCreatedProjectId] = useState<string | null>(null);
   const [meetingNoteId, setMeetingNoteId] = useState<string | null>(null);
   const [meetingCanonicalEventId, setMeetingCanonicalEventId] = useState<string | null>(null);
@@ -453,9 +455,7 @@ export function WorkspaceProjectIntake() {
 
     setMeetingBusy(true);
     setMeetingError(null);
-    setMeetingCreatedProjectId(null);
-    setMeetingNoteId(null);
-    setMeetingCanonicalEventId(null);
+    setMeetingBootstrappedDraft(null);
 
     try {
       const draft = await upsertIntakeDraft({
@@ -483,8 +483,26 @@ export function WorkspaceProjectIntake() {
         },
       });
       setMeetingDraftId(draft.id);
+      const bootstrapped = await bootstrapIntakeDraft(draft.id);
+      setMeetingBootstrappedDraft(bootstrapped);
+    } catch (submitError) {
+      setMeetingError(submitError instanceof Error ? submitError.message : "Failed to generate bootstrap preview.");
+    } finally {
+      setMeetingBusy(false);
+    }
+  }
 
-      const finalized = await finalizeIntakeDraft(draft.id);
+  async function handleMeetingFinalize() {
+    if (!meetingBootstrappedDraft?.id || meetingFinalizeBusy) return;
+
+    setMeetingFinalizeBusy(true);
+    setMeetingError(null);
+    setMeetingCreatedProjectId(null);
+    setMeetingNoteId(null);
+    setMeetingCanonicalEventId(null);
+
+    try {
+      const finalized = await finalizeIntakeDraft(meetingBootstrappedDraft.id);
       const projectId = finalized.finalized.projectId;
       if (!projectId) {
         throw new Error("Draft finalized but no project id was returned.");
@@ -498,7 +516,7 @@ export function WorkspaceProjectIntake() {
     } catch (submitError) {
       setMeetingError(submitError instanceof Error ? submitError.message : "Failed to finalize meeting intake.");
     } finally {
-      setMeetingBusy(false);
+      setMeetingFinalizeBusy(false);
     }
   }
 
@@ -815,7 +833,7 @@ export function WorkspaceProjectIntake() {
                 </button>
               </div>
 
-              <form onSubmit={handleMeetingSubmit} className="mt-5 grid gap-4 md:grid-cols-2">
+              <form onSubmit={handleMeetingSubmit} className="mt-5 grid gap-4 md:grid-cols-2" style={{ display: meetingBootstrappedDraft || meetingCreatedProjectId ? "none" : undefined }}>
                 {meetingTargetMode === "create" ? (
                   <>
                     <label className="block md:col-span-2">
@@ -927,29 +945,6 @@ export function WorkspaceProjectIntake() {
                   </div>
                 )}
 
-                {meetingCreatedProjectId && (
-                  <div className="md:col-span-2 rounded-2xl border px-4 py-4" style={{ borderColor: "#bbf7d0", background: "#f0fdf4" }}>
-                    <p className="text-[14px] font-semibold" style={{ color: "#166534" }}>
-                      Transcript queued on canonical intake path
-                    </p>
-                    <p className="mt-2 text-[13px]" style={{ color: "#166534" }}>
-                      Project {meetingTargetMode === "attach" ? "attached" : "created"} and transcript ingest enqueued.
-                    </p>
-                    <p className="mt-2 text-[12px]" style={{ color: "#166534" }}>
-                      Meeting note: {meetingNoteId ?? "pending"} | Canonical event: {meetingCanonicalEventId ?? "pending"}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => router.push(`/workspace/projects/${meetingCreatedProjectId}`)}
-                      className="mt-4 inline-flex h-10 items-center gap-2 rounded-full px-4 text-[13px] font-semibold text-white"
-                      style={{ background: "#16a34a" }}
-                    >
-                      Open project
-                      <ArrowRight size={14} />
-                    </button>
-                  </div>
-                )}
-
                 <div className="md:col-span-2 flex justify-end">
                   <button
                     type="submit"
@@ -969,11 +964,117 @@ export function WorkspaceProjectIntake() {
                           : 1,
                     }}
                   >
-                    {meetingBusy ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />}
-                    {meetingBusy ? "Finalizing..." : "Finalize and queue transcript"}
+                    {meetingBusy ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                    {meetingBusy ? "Generating preview..." : "Preview action items"}
                   </button>
                 </div>
               </form>
+
+              {meetingBootstrappedDraft && !meetingCreatedProjectId && (
+                <div className="mt-5 space-y-4 rounded-[24px] border p-5" style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}>
+                  <div>
+                    <p className="text-[12px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--text-muted)" }}>
+                      Bootstrap preview
+                    </p>
+                    <p className="mt-2 text-[14px] leading-7" style={{ color: "var(--text-1)" }}>
+                      {meetingBootstrappedDraft.bootstrap.summary ?? "Action items extracted from the meeting transcript."}
+                    </p>
+                  </div>
+
+                  {meetingBootstrappedDraft.bootstrap.tasks.length > 0 && (
+                    <div>
+                      <p className="text-[12px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--text-muted)" }}>
+                        Starter tasks
+                      </p>
+                      <div className="mt-2 space-y-2">
+                        {meetingBootstrappedDraft.bootstrap.tasks.map((task, index) => (
+                          <div key={`${task.title}-${index}`} className="rounded-xl border px-3 py-2 text-[13px]" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+                            <p className="font-medium" style={{ color: "var(--text-1)" }}>
+                              {task.title}
+                            </p>
+                            {task.dueDate && (
+                              <p className="mt-1" style={{ color: "var(--text-2)" }}>
+                                Due: {task.dueDate}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {meetingBootstrappedDraft.bootstrap.actions.length > 0 && (
+                    <div>
+                      <p className="text-[12px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--text-muted)" }}>
+                        Suggested actions
+                      </p>
+                      <div className="mt-2 space-y-2">
+                        {meetingBootstrappedDraft.bootstrap.actions.map((action, index) => (
+                          <div key={`${action.type}-${index}`} className="rounded-xl border px-3 py-2 text-[13px]" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+                            <p className="font-medium" style={{ color: "var(--text-1)" }}>
+                              {action.displayText}
+                            </p>
+                            <p className="mt-1" style={{ color: "var(--text-2)" }}>
+                              {action.reasoning}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {meetingError && (
+                    <div className="rounded-2xl border px-4 py-3 text-[13px]" style={{ borderColor: "#fecaca", background: "#fef2f2", color: "#b91c1c" }}>
+                      {meetingError}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between gap-4">
+                    <button
+                      type="button"
+                      onClick={() => { setMeetingBootstrappedDraft(null); setMeetingError(null); }}
+                      disabled={meetingFinalizeBusy}
+                      className="inline-flex h-10 items-center gap-2 rounded-full border px-4 text-[13px] font-semibold"
+                      style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-2)" }}
+                    >
+                      Edit transcript
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleMeetingFinalize()}
+                      disabled={meetingFinalizeBusy}
+                      className="inline-flex h-11 items-center gap-2 rounded-full px-5 text-[14px] font-semibold text-white"
+                      style={{ background: "var(--cta)", opacity: meetingFinalizeBusy ? 0.7 : 1 }}
+                    >
+                      {meetingFinalizeBusy ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                      {meetingFinalizeBusy ? "Finalizing..." : "Confirm and create project"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {meetingCreatedProjectId && (
+                <div className="mt-5 rounded-2xl border px-4 py-4" style={{ borderColor: "#bbf7d0", background: "#f0fdf4" }}>
+                  <p className="text-[14px] font-semibold" style={{ color: "#166534" }}>
+                    Transcript queued on canonical intake path
+                  </p>
+                  <p className="mt-2 text-[13px]" style={{ color: "#166534" }}>
+                    Project {meetingTargetMode === "attach" ? "attached" : "created"}, action items bootstrapped, and transcript ingest enqueued.
+                  </p>
+                  <p className="mt-2 text-[12px]" style={{ color: "#166534" }}>
+                    Meeting note: {meetingNoteId ?? "pending"} | Canonical event: {meetingCanonicalEventId ?? "pending"}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/workspace/projects/${meetingCreatedProjectId}`)}
+                    className="mt-4 inline-flex h-10 items-center gap-2 rounded-full px-4 text-[13px] font-semibold text-white"
+                    style={{ background: "#16a34a" }}
+                  >
+                    Open project
+                    <ArrowRight size={14} />
+                  </button>
+                </div>
+              )}
             </SectionCard>
           )}
         </div>

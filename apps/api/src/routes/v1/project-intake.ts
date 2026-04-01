@@ -266,6 +266,68 @@ function buildBootstrapFromDraft(draft: IntakeDraftModel): {
   actions: LarryAction[];
   seedMessage: string;
 } {
+  if (draft.mode === "meeting") {
+    const projectName = draft.projectName ?? draft.meetingTitle ?? "New Project";
+    const transcript = draft.meetingTranscript ?? "";
+
+    const actionLines: string[] = [];
+    for (const line of transcript.split(/\n/)) {
+      const trimmed = line.trim();
+      const m = /^(?:action(?:\s+item)?s?:?\s*|todo:?\s*|follow[\s-]up:?\s*|-\s*\[\s*\]\s*)/i.exec(trimmed);
+      if (m) {
+        const content = trimmed.slice(m[0].length).trim();
+        if (content.length > 3) actionLines.push(content);
+      }
+    }
+
+    const candidateTitles =
+      actionLines.length > 0
+        ? actionLines.flatMap((line) => tokenizeTaskTitles(line)).slice(0, 6)
+        : tokenizeTaskTitles(transcript.slice(0, 2_000)).slice(0, 6);
+
+    const fallbackTitles = [
+      "Review meeting decisions and outcomes",
+      "Follow up on action items",
+      "Share meeting summary with stakeholders",
+    ];
+    const taskTitles = candidateTitles.length > 0 ? candidateTitles : fallbackTitles;
+
+    const tasks: IntakeBootstrapTask[] = taskTitles.map((title) => ({
+      title: title.slice(0, 200),
+      description: null,
+      dueDate: draft.projectTargetDate,
+      assigneeName: null,
+      priority: "medium" as const,
+    }));
+
+    const taskActions: LarryAction[] = tasks.map((task) => ({
+      type: "task_create",
+      displayText: `Create task "${task.title}"`,
+      reasoning: "Extracted from meeting transcript action items",
+      payload: {
+        title: task.title,
+        description: null,
+        dueDate: task.dueDate ?? null,
+        assigneeName: null,
+        priority: "medium",
+      },
+    }));
+
+    const summary = `Larry identified ${tasks.length} action item${tasks.length === 1 ? "" : "s"} from "${draft.meetingTitle ?? "the meeting transcript"}".`;
+    const transcriptExcerpt = transcript.slice(0, 500);
+    const seedMessage = [
+      "I just created a project from a meeting transcript.",
+      "Use this context to bootstrap the project: summarize the key decisions and propose the most useful next actions.",
+      summary,
+      draft.meetingTitle ? `Meeting: ${draft.meetingTitle}` : null,
+      `Transcript excerpt:\n${transcriptExcerpt}${transcript.length > 500 ? "..." : ""}`,
+    ]
+      .filter((line): line is string => Boolean(line))
+      .join("\n\n");
+
+    return { summary, tasks, actions: taskActions, seedMessage };
+  }
+
   const answers = draft.chatAnswers;
   const projectName = draft.projectName ?? answers[0] ?? "New Project";
   const outcome = answers[1] ?? "";
@@ -675,6 +737,86 @@ export const projectIntakeRoutes: FastifyPluginAsync = async (fastify) => {
 
         finalizedCanonicalEventId = ingestResult.canonicalEventId;
         finalizedMeetingNoteId = ingestResult.meetingNoteId;
+
+        // Bootstrap tasks and suggestions (same contract as chat/manual)
+        if (finalizedProjectId) {
+          let meetingBootstrapTasks = draft.bootstrapTasks;
+          let meetingBootstrapActions = draft.bootstrapActions;
+          let meetingBootstrapSummary = draft.bootstrapSummary;
+          let meetingBootstrapSeedMessage = draft.bootstrapSeedMessage;
+
+          if (meetingBootstrapTasks.length === 0) {
+            const bootstrap = buildBootstrapFromDraft(draft);
+            meetingBootstrapTasks = bootstrap.tasks;
+            meetingBootstrapActions = bootstrap.actions;
+            meetingBootstrapSummary = bootstrap.summary;
+            meetingBootstrapSeedMessage = bootstrap.seedMessage;
+
+            await fastify.db.queryTenant(
+              tenantId,
+              `UPDATE project_intake_drafts
+                  SET status = 'bootstrapped',
+                      bootstrap_summary = $3,
+                      bootstrap_tasks = $4::jsonb,
+                      bootstrap_actions = $5::jsonb,
+                      bootstrap_seed_message = $6,
+                      updated_at = NOW()
+                WHERE tenant_id = $1
+                  AND id = $2`,
+              [
+                tenantId,
+                draft.id,
+                meetingBootstrapSummary,
+                JSON.stringify(meetingBootstrapTasks),
+                JSON.stringify(meetingBootstrapActions),
+                meetingBootstrapSeedMessage,
+              ]
+            );
+          }
+
+          for (const task of meetingBootstrapTasks) {
+            await executeTaskCreate(fastify.db, tenantId, finalizedProjectId, {
+              title: task.title,
+              description: task.description ?? null,
+              dueDate: task.dueDate ?? null,
+              assigneeName: task.assigneeName ?? null,
+              priority: task.priority ?? "medium",
+            });
+          }
+
+          const meetingNonTaskActions = normalizeFinalizeActions(
+            finalizedProjectId,
+            meetingBootstrapActions.filter((action) => action.type !== "task_create")
+          );
+          if (meetingNonTaskActions.length > 0) {
+            await storeSuggestions(
+              fastify.db,
+              tenantId,
+              finalizedProjectId,
+              "chat",
+              meetingNonTaskActions,
+              meetingBootstrapSeedMessage ?? undefined
+            );
+          }
+
+          await Promise.resolve(
+            insertProjectMemoryEntry(fastify.db, tenantId, finalizedProjectId, {
+              source: "Meeting intake",
+              sourceKind: "meeting",
+              sourceRecordId: draft.id,
+              content: (
+                meetingBootstrapSummary ??
+                draft.projectDescription ??
+                `Meeting intake finalized: ${draft.meetingTitle ?? draft.projectName ?? "New Project"}.`
+              ).slice(0, 4_000),
+            })
+          ).catch((error) => {
+            request.log.warn(
+              { err: error, tenantId, projectId: finalizedProjectId, draftId: draft.id },
+              "project memory write failed for meeting intake finalize"
+            );
+          });
+        }
       } else {
         const projectName = draft.projectName?.trim();
         if (!projectName) {
