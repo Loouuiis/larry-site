@@ -377,6 +377,11 @@ These are not optional cleanups; they are part of the implementation strategy:
   - Expanded worker canonical event handling to write one project memory entry for transcript, email, slack, and calendar sources after successful scope resolution/intelligence, with non-blocking failure handling.
   - Extended regression coverage across API schema/runtime helpers and worker canonical-event replay behavior; added Playwright transcript smoke assertion that project timeline shows a non-chat memory entry after worker processing.
   - Updated project timeline copy and core runtime docs (`BACKEND-API.md`, `BACKEND-WORKER.md`) to reflect worker-driven memory ingestion and replay-safe dedup semantics.
+- **Phase 5 - Unified Project Intake starter slice (completed)**:
+  - Extended `buildBootstrapFromDraft()` in `apps/api/src/routes/v1/project-intake.ts` with a meeting mode branch: scans transcript lines for explicit action item / todo / follow-up markers, falls back to `tokenizeTaskTitles` on the first 2 000 characters, and uses generic fallback titles if nothing is extracted.
+  - Updated meeting finalize to execute the full bootstrap contract after canonical event publication: `executeTaskCreate` for each bootstrap task, `storeSuggestions` for non-task actions, and `insertProjectMemoryEntry` — matching the contract already enforced for chat and manual modes.
+  - Split the meeting intake frontend flow in `WorkspaceProjectIntake.tsx` into two steps: (1) upsert + bootstrap on form submit, (2) review preview then confirm finalize. Added `meetingBootstrappedDraft` and `meetingFinalizeBusy` states, a new `handleMeetingFinalize` handler, and a bootstrap preview panel (summary, starter tasks, suggested actions) matching the existing chat intake preview design.
+  - Added "Edit transcript" back-navigation in the preview panel so users can revise input before confirming.
 - **Phase 1 - Legacy Dashboard Retirement And Snapshot Fence (completed)**:
   - Replaced legacy `GET /api/workspace/snapshot` behavior with an explicit `410 Gone` retired-contract payload that points callers to canonical scoped workspace routes.
   - Added a `/dashboard/* -> /workspace` catch-all redirect route so legacy dashboard entry paths no longer expose runtime behavior.
@@ -430,12 +435,17 @@ None. Phase 1 is fully closed as of 2026-03-30.
 
 None. Phase 2 is fully closed as of 2026-03-30.
 
+### Still To Do For Phase 5
+
+None. Phase 5 starter slice is fully closed as of 2026-04-01.
+
 ### Recommended Next Slice
 
 - Closed in this update:
   - **Phase 1 - Legacy Dashboard Retirement And Snapshot Fence** (completed).
+  - **Phase 5 - Unified Project Intake** starter slice (completed).
 - Candidate milestone for the next update (not opened in this change):
-  - **Phase 5 - Unified Project Intake** starter slice.
+  - **Phase 6 - Clarification-First Chat, Task Management, And Governed Auto-Execution** starter slice.
 
 ---
 
@@ -555,9 +565,9 @@ Deliver one project intake route with three supported modes: manual, chat, and m
 ### Acceptance criteria
 
 - [x] `/workspace/projects/new` is the canonical intake route with manual, chat, and meeting modes.
-- [ ] Manual, chat, and meeting intake all feed the same project draft and bootstrap contracts.
-- [ ] Chat intake can propose starter tasks and actions without requiring a pre-existing project.
-- [ ] Meeting intake can create a new project draft or attach the meeting to an existing project cleanly.
+- [x] Manual, chat, and meeting intake all feed the same project draft and bootstrap contracts.
+- [x] Chat intake can propose starter tasks and actions without requiring a pre-existing project.
+- [x] Meeting intake can create a new project draft or attach the meeting to an existing project cleanly.
 
 ### Suggested ownership
 
