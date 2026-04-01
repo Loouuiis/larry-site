@@ -3,21 +3,19 @@
 import { TaskStatus } from "@/app/dashboard/types";
 
 const STATUS_LABELS: Record<TaskStatus, string> = {
-  backlog: "Backlog",
-  not_started: "Not Started",
-  in_progress: "In Progress",
-  waiting: "Waiting",
-  blocked: "Blocked",
-  completed: "Done",
+  not_started: "Not started",
+  on_track: "On track",
+  at_risk: "At risk",
+  overdue: "Overdue",
+  completed: "Completed",
 };
 
 const STATUS_STYLES: Record<TaskStatus, string> = {
-  backlog: "bg-[var(--pm-gray-light)] text-[var(--pm-text-secondary)]",
-  not_started: "bg-[#676879] text-white",
-  in_progress: "bg-[#FDAB3D] text-[#241a00]",
-  waiting: "bg-[#0073EA] text-white",
-  blocked: "bg-[#E2445C] text-white",
-  completed: "bg-[#00C875] text-white",
+  not_started: "bg-[#ebebeb] text-[#606060]",
+  on_track: "bg-[#a8c0e0] text-[#1a3f70]",
+  at_risk: "bg-[#ece4a0] text-[#705800]",
+  overdue: "bg-[#ecaaaa] text-[#701818]",
+  completed: "bg-[#b8d9b4] text-[#245820]",
 };
 
 export function StatusChip({ status }: { status: TaskStatus }) {

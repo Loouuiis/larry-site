@@ -68,11 +68,26 @@ function formatRelativeTime(value: string | null | undefined): string {
   return `${Math.floor(days / 30)}mo ago`;
 }
 
+const PROJECT_STATUS_LABEL: Record<string, string> = {
+  active: "On track",
+  on_track: "On track",
+  at_risk: "At risk",
+  overdue: "Overdue",
+  completed: "Completed",
+  not_started: "Not started",
+};
+
+function projectStatusLabel(status: string | undefined): string {
+  return PROJECT_STATUS_LABEL[status ?? ""] ?? "Not started";
+}
+
 function projectStatusPillClass(status: string | undefined): string {
-  switch (status) {
+  const normalized = status === "active" ? "on_track" : status;
+  switch (normalized) {
     case "completed": return "pm-pill-done";
-    case "blocked": return "pm-pill-stuck";
-    case "in_progress": return "pm-pill-working";
+    case "overdue":   return "pm-pill-stuck";
+    case "on_track":  return "pm-pill-working";
+    case "at_risk":   return "pm-pill-review";
     default: return "pm-pill-not-started";
   }
 }
@@ -103,7 +118,7 @@ function buildProjectCard(
   const projectTasks = tasks.filter((task) => task.projectId === project.id);
   const completedTasks = projectTasks.filter((task) => task.status === "completed").length;
   const openTasks = projectTasks.filter((task) => task.status !== "completed").length;
-  const blockedTasks = projectTasks.filter((task) => task.status === "blocked").length;
+  const blockedTasks = projectTasks.filter((task) => task.status === "overdue" || task.status === "at_risk").length;
   const progress =
     project.completionRate != null
       ? Math.round(Number(project.completionRate) * 100)
@@ -393,7 +408,7 @@ export function WorkspaceHome() {
                     {project.name}
                   </p>
                   <span className={`pm-pill shrink-0 ${projectStatusPillClass(project.status)}`}>
-                    {project.status ?? "active"}
+                    {projectStatusLabel(project.status)}
                   </span>
                 </div>
 

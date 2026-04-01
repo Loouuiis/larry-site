@@ -17,11 +17,10 @@ function boardTaskToPanel(task: BoardTaskRow, projectName: string): TaskPanelDat
     ? new Date(task.dueDate).getTime() < now.getTime() && task.status !== "completed"
     : false;
   const statusMap: Record<TaskStatus, TaskPanelData["status"]> = {
-    backlog:     "upcoming",
     not_started: "upcoming",
-    in_progress: "on-track",
-    waiting:     "on-track",
-    blocked:     "at-risk",
+    on_track:    "on-track",
+    at_risk:     "at-risk",
+    overdue:     "overdue",
     completed:   "done",
   };
   const panelStatus: TaskPanelData["status"] = isOverdue ? "overdue" : (statusMap[task.status] ?? "upcoming");

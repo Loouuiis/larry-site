@@ -91,11 +91,6 @@ export function WorkspaceTopBar({ userEmail: _userEmail, workspaceName = "Larry 
         <Menu size={18} />
       </button>
 
-      {/* Left: breadcrumb */}
-      <div className="flex-1 min-w-0 hidden md:block">
-        <Breadcrumb workspaceName={workspaceName} />
-      </div>
-
       {/* Right: bell */}
       <div className="flex items-center shrink-0">
         <NotificationBell count={chrome?.notifCount ?? 0} onCountChange={() => undefined} />

@@ -41,52 +41,59 @@ async function readJson<T>(response: Response): Promise<T> {
 
 
 function coerceStatus(value: string): TaskStatus {
-  if (
-    value === "backlog" ||
-    value === "not_started" ||
-    value === "in_progress" ||
-    value === "waiting" ||
-    value === "blocked" ||
-    value === "completed"
-  ) {
-    return value;
-  }
-  return "not_started";
+  // Map legacy API values to new statuses
+  const legacyMap: Record<string, TaskStatus> = {
+    backlog: "not_started",
+    in_progress: "on_track",
+    waiting: "at_risk",
+    blocked: "overdue",
+  };
+  if (value in legacyMap) return legacyMap[value];
+  const valid: TaskStatus[] = ["not_started", "on_track", "at_risk", "overdue", "completed"];
+  return valid.includes(value as TaskStatus) ? (value as TaskStatus) : "not_started";
 }
 
 
 function buildTaskGroups(tasks: BoardTaskRow[]): TaskGroup[] {
-  const todo = tasks.filter((task) => task.status === "backlog" || task.status === "not_started");
-  const inProgress = tasks.filter((task) => task.status === "in_progress" || task.status === "waiting");
-  const blocked = tasks.filter((task) => task.status === "blocked");
+  const notStarted = tasks.filter((task) => task.status === "not_started");
+  const onTrack = tasks.filter((task) => task.status === "on_track");
+  const atRisk = tasks.filter((task) => task.status === "at_risk");
+  const overdue = tasks.filter((task) => task.status === "overdue");
   const completed = tasks.filter((task) => task.status === "completed");
 
   return [
     {
-      key: "todo",
-      label: "To-Do",
-      accentClass: "bg-slate-400",
+      key: "on_track",
+      label: "On track",
+      accentClass: "bg-[#8eb0d4]",
+      targetStatus: "on_track",
+      tasks: onTrack,
+    },
+    {
+      key: "not_started",
+      label: "Not started",
+      accentClass: "bg-[#d6d6d6]",
       targetStatus: "not_started",
-      tasks: todo,
+      tasks: notStarted,
     },
     {
-      key: "in_progress",
-      label: "In Progress",
-      accentClass: "bg-amber-500",
-      targetStatus: "in_progress",
-      tasks: inProgress,
+      key: "at_risk",
+      label: "At risk",
+      accentClass: "bg-[#d8cc70]",
+      targetStatus: "at_risk",
+      tasks: atRisk,
     },
     {
-      key: "blocked",
-      label: "Blocked",
-      accentClass: "bg-rose-500",
-      targetStatus: "blocked",
-      tasks: blocked,
+      key: "overdue",
+      label: "Overdue",
+      accentClass: "bg-[#d48888]",
+      targetStatus: "overdue",
+      tasks: overdue,
     },
     {
       key: "completed",
       label: "Completed",
-      accentClass: "bg-emerald-500",
+      accentClass: "bg-[#9dc898]",
       targetStatus: "completed",
       tasks: completed,
     },
@@ -112,9 +119,10 @@ export function useWorkspaceDashboard(projectIdFromUrl: string) {
   const [boardView, setBoardView] = useState<BoardView>("table");
   const [searchQuery, setSearchQuery] = useState("");
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({
-    todo: false,
-    in_progress: false,
-    blocked: false,
+    not_started: false,
+    on_track: false,
+    at_risk: false,
+    overdue: false,
     completed: false,
   });
 
@@ -211,7 +219,7 @@ export function useWorkspaceDashboard(projectIdFromUrl: string) {
       priority: task.priority,
       dueDate: task.dueDate,
       riskLevel: "low",
-      progressPercent: task.status === "completed" ? 100 : task.status === "in_progress" ? 50 : 0,
+      progressPercent: task.status === "completed" ? 100 : task.status === "on_track" ? 50 : 0,
       assigneeUserId: task.assigneeUserId ?? null,
     }));
   }, [snapshot.timeline, snapshot.tasks, selectedProjectId]);
@@ -226,11 +234,10 @@ export function useWorkspaceDashboard(projectIdFromUrl: string) {
 
   const groupedCounts = useMemo(() => {
     const counts: Record<TaskStatus, number> = {
-      backlog: 0,
       not_started: 0,
-      in_progress: 0,
-      waiting: 0,
-      blocked: 0,
+      on_track: 0,
+      at_risk: 0,
+      overdue: 0,
       completed: 0,
     };
     for (const task of boardTasks) {

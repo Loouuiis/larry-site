@@ -67,7 +67,7 @@ function buildStats(breakdown: BreakdownData | null) {
   }
   const bs = breakdown.byStatus;
   const completed = bs["completed"] ?? 0;
-  const atRisk = (bs["blocked"] ?? 0);
+  const atRisk = (bs["at_risk"] ?? 0) + (bs["overdue"] ?? 0);
   const total = Object.values(bs).reduce((s, v) => s + v, 0);
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
   return [
@@ -82,9 +82,9 @@ function buildDonutData(breakdown: BreakdownData | null) {
   if (!breakdown) return DONUT_DATA_MOCK;
   const bs = breakdown.byStatus;
   const completed  = bs["completed"]  ?? 0;
-  const onTrack    = (bs["in_progress"] ?? 0) + (bs["waiting"] ?? 0);
-  const atRisk     = bs["blocked"]    ?? 0;
-  const notStarted = (bs["backlog"] ?? 0) + (bs["not_started"] ?? 0);
+  const onTrack    = bs["on_track"]    ?? 0;
+  const atRisk     = (bs["at_risk"] ?? 0) + (bs["overdue"] ?? 0);
+  const notStarted = bs["not_started"] ?? 0;
   const items = [
     { name: "Completed",   value: completed,  color: C.completed  },
     { name: "On track",    value: onTrack,    color: C.onTrack    },

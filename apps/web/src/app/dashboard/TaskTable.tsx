@@ -18,19 +18,19 @@ interface TaskTableProps {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string }> = {
-  completed: { label: "Done", bg: "bg-[#00C875] text-white" },
-  in_progress: { label: "Working on it", bg: "bg-[#FDAB3D] text-white" },
-  waiting: { label: "Working on it", bg: "bg-[#FDAB3D] text-white" },
-  blocked: { label: "Stuck", bg: "bg-[#E2445C] text-white" },
-  backlog: { label: "Not Started", bg: "bg-[#C4C4C4] text-[#323338]" },
-  not_started: { label: "Not Started", bg: "bg-[#C4C4C4] text-[#323338]" },
+  not_started: { label: "Not started", bg: "bg-[#ebebeb] text-[#606060]" },
+  on_track:    { label: "On track",    bg: "bg-[#a8c0e0] text-[#1a3f70]" },
+  at_risk:     { label: "At risk",     bg: "bg-[#ece4a0] text-[#705800]" },
+  overdue:     { label: "Overdue",     bg: "bg-[#ecaaaa] text-[#701818]" },
+  completed:   { label: "Completed",   bg: "bg-[#b8d9b4] text-[#245820]" },
 };
 
 const GROUP_COLOR: Record<string, string> = {
-  todo: "#0073EA",
-  in_progress: "#FDAB3D",
-  blocked: "#E2445C",
-  completed: "#00C875",
+  not_started: "#d6d6d6",
+  on_track: "#8eb0d4",
+  at_risk: "#d8cc70",
+  overdue: "#d48888",
+  completed: "#9dc898",
 };
 
 function getStatus(status: TaskStatus) {
@@ -69,8 +69,8 @@ function GroupSummary({ tasks }: { tasks: BoardTaskRow[] }) {
     const v = { done: 0, working: 0, stuck: 0, other: 0 };
     for (const t of tasks) {
       if (t.status === "completed") v.done++;
-      else if (t.status === "blocked") v.stuck++;
-      else if (t.status === "in_progress" || t.status === "waiting") v.working++;
+      else if (t.status === "overdue") v.stuck++;
+      else if (t.status === "on_track") v.working++;
       else v.other++;
     }
     return v;

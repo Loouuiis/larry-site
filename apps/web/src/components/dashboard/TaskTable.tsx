@@ -13,30 +13,30 @@ interface TaskTableProps {
 }
 
 const ALL_STATUSES: Array<{ value: string; label: string; pillClass: string }> = [
-  { value: "not_started", label: "Not Started", pillClass: "pm-pill pm-pill-not-started" },
-  { value: "in_progress", label: "In Progress", pillClass: "pm-pill pm-pill-working" },
-  { value: "blocked", label: "Blocked", pillClass: "pm-pill pm-pill-stuck" },
-  { value: "completed", label: "Done", pillClass: "pm-pill pm-pill-done" },
-  { value: "waiting", label: "In Review", pillClass: "pm-pill pm-pill-review" },
+  { value: "not_started", label: "Not started",  pillClass: "pm-pill pm-pill-not-started" },
+  { value: "on_track",    label: "On track",     pillClass: "pm-pill pm-pill-working" },
+  { value: "at_risk",     label: "At risk",      pillClass: "pm-pill pm-pill-review" },
+  { value: "overdue",     label: "Overdue",      pillClass: "pm-pill pm-pill-stuck" },
+  { value: "completed",   label: "Completed",    pillClass: "pm-pill pm-pill-done" },
 ];
 
 function statusPillClass(status: string): string {
   switch (status) {
-    case "completed": return "pm-pill pm-pill-done";
-    case "in_progress": return "pm-pill pm-pill-working";
-    case "blocked": return "pm-pill pm-pill-stuck";
-    case "waiting": return "pm-pill pm-pill-review";
-    default: return "pm-pill pm-pill-not-started";
+    case "completed":  return "pm-pill pm-pill-done";
+    case "on_track":   return "pm-pill pm-pill-working";
+    case "overdue":    return "pm-pill pm-pill-stuck";
+    case "at_risk":    return "pm-pill pm-pill-review";
+    default:           return "pm-pill pm-pill-not-started";
   }
 }
 
 function statusLabel(status: string): string {
   switch (status) {
-    case "completed": return "Done";
-    case "in_progress": return "In Progress";
-    case "blocked": return "Blocked";
-    case "waiting": return "In Review";
-    case "not_started": return "Not Started";
+    case "completed":  return "Completed";
+    case "on_track":   return "On track";
+    case "overdue":    return "Overdue";
+    case "at_risk":    return "At risk";
+    case "not_started": return "Not started";
     default: return status;
   }
 }
@@ -90,25 +90,25 @@ function getAvatarTone(name?: string | null): string {
 
 function groupAccentClass(key: TaskGroup["key"]): string {
   switch (key) {
-    case "in_progress": return "pm-group-accent-progress";
-    case "blocked": return "pm-group-accent-blocked";
+    case "on_track":  return "pm-group-accent-progress";
+    case "overdue":   return "pm-group-accent-blocked";
     case "completed": return "pm-group-accent-done";
-    default: return "pm-group-accent-todo";
+    default:          return "pm-group-accent-todo";
   }
 }
 
 function GroupProgressStrip({ tasks }: { tasks: BoardTaskRow[] }) {
   const total = tasks.length || 1;
   const completed = tasks.filter((t) => t.status === "completed").length;
-  const inProgress = tasks.filter((t) => t.status === "in_progress").length;
-  const blocked = tasks.filter((t) => t.status === "blocked").length;
-  const other = tasks.length - completed - inProgress - blocked;
+  const onTrack = tasks.filter((t) => t.status === "on_track").length;
+  const overdue = tasks.filter((t) => t.status === "overdue").length;
+  const other = tasks.length - completed - onTrack - overdue;
 
   return (
     <div className="pm-summary-bar">
       <span style={{ width: `${(completed / total) * 100}%`, background: "var(--pm-green)" }} />
-      <span style={{ width: `${(inProgress / total) * 100}%`, background: "var(--pm-orange)" }} />
-      <span style={{ width: `${(blocked / total) * 100}%`, background: "var(--pm-red)" }} />
+      <span style={{ width: `${(onTrack / total) * 100}%`, background: "var(--pm-orange)" }} />
+      <span style={{ width: `${(overdue / total) * 100}%`, background: "var(--pm-red)" }} />
       <span style={{ width: `${(other / total) * 100}%`, background: "var(--surface-2)" }} />
     </div>
   );
@@ -129,9 +129,10 @@ export function TaskTable({ groups, onTaskClick, onOpenAddTask, onAddGroup, onSt
 
   useEffect(() => {
     setCollapsed((previous) => ({
-      todo: previous.todo ?? defaultCollapsed.todo,
-      in_progress: previous.in_progress ?? defaultCollapsed.in_progress,
-      blocked: previous.blocked ?? defaultCollapsed.blocked,
+      not_started: previous.not_started ?? defaultCollapsed.not_started,
+      on_track: previous.on_track ?? defaultCollapsed.on_track,
+      at_risk: previous.at_risk ?? defaultCollapsed.at_risk,
+      overdue: previous.overdue ?? defaultCollapsed.overdue,
       completed: previous.completed ?? defaultCollapsed.completed,
     }));
   }, [defaultCollapsed]);

@@ -14,7 +14,7 @@ const EASE = [0.22, 1, 0.36, 1] as const;
 
 /* ─── Data ─────────────────────────────────────────────────────────────── */
 
-export type Health = "on-track" | "at-risk" | "overdue" | "not-started";
+export type Health = "on-track" | "at-risk" | "overdue" | "not-started" | "completed";
 
 interface Task {
   owner: string;
@@ -196,10 +196,11 @@ const RECENT_ACTIVITY = [
 /* ─── Config maps ───────────────────────────────────────────────────────── */
 
 const HEALTH: Record<Health, { label: string; bar: string; badge: string; dot: string }> = {
-  "on-track":    { label: "On track",    bar: "bg-emerald-400", dot: "bg-emerald-400", badge: "bg-emerald-50 text-emerald-600 border-emerald-100"   },
-  "at-risk":     { label: "At risk",     bar: "bg-amber-400",   dot: "bg-amber-400",   badge: "bg-amber-50 text-amber-600 border-amber-100"         },
-  "overdue":     { label: "Overdue",     bar: "bg-red-400",     dot: "bg-red-400",     badge: "bg-red-50 text-red-500 border-red-100"               },
-  "not-started": { label: "Not started", bar: "bg-neutral-300", dot: "bg-neutral-300", badge: "bg-neutral-100 text-neutral-500 border-neutral-200"  },
+  "not-started": { label: "Not started", bar: "bg-[#d6d6d6]",  dot: "bg-[#d6d6d6]",  badge: "bg-[#f2f2f2] text-[#606060] border-[#dcdcdc]"   },
+  "completed":   { label: "Completed",   bar: "bg-[#9dc898]",  dot: "bg-[#9dc898]",  badge: "bg-[#e0f0de] text-[#245820] border-[#b8d9b4]"   },
+  "on-track":    { label: "On track",    bar: "bg-[#8eb0d4]",  dot: "bg-[#8eb0d4]",  badge: "bg-[#dae5f2] text-[#1a3f70] border-[#a8c0e0]"   },
+  "at-risk":     { label: "At risk",     bar: "bg-[#d8cc70]",  dot: "bg-[#d8cc70]",  badge: "bg-[#f5f0cc] text-[#705800] border-[#ece4a0]"   },
+  "overdue":     { label: "Overdue",     bar: "bg-[#d48888]",  dot: "bg-[#d48888]",  badge: "bg-[#f5e0e0] text-[#701818] border-[#ecaaaa]"   },
 };
 
 const TASK_STATUS: Record<Task["status"], string> = {

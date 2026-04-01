@@ -4,7 +4,7 @@ import { getSession } from "@/lib/auth";
 import { persistSession, proxyApiRequest } from "@/lib/workspace-proxy";
 
 const TaskStatusSchema = z.object({
-  status: z.enum(["backlog", "not_started", "in_progress", "waiting", "completed", "blocked"]),
+  status: z.enum(["not_started", "on_track", "at_risk", "overdue", "completed"]),
   progressPercent: z.number().int().min(0).max(100).optional(),
 });
 

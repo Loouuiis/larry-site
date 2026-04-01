@@ -41,14 +41,13 @@ const TAB_OPTIONS: Array<{ id: TabId; label: string }> = [
   { id: "documents", label: "Documents" },
 ];
 
-const GROUP_ORDER: TaskGroup["key"][] = ["in_progress", "todo", "blocked", "completed"];
+const GROUP_ORDER: TaskGroup["key"][] = ["on_track", "not_started", "at_risk", "overdue", "completed"];
 
 const STATUS_TO_GROUP: Record<TaskStatus, TaskGroup["key"]> = {
-  backlog: "todo",
-  not_started: "todo",
-  in_progress: "in_progress",
-  waiting: "todo",
-  blocked: "blocked",
+  not_started: "not_started",
+  on_track: "on_track",
+  at_risk: "at_risk",
+  overdue: "overdue",
   completed: "completed",
 };
 
@@ -56,24 +55,29 @@ const GROUP_META: Record<
   TaskGroup["key"],
   Pick<TaskGroup, "label" | "accentClass" | "targetStatus">
 > = {
-  in_progress: {
-    label: "In Progress",
-    accentClass: "border-l-[4px] border-l-[#FDAB3D]",
-    targetStatus: "in_progress",
+  on_track: {
+    label: "On track",
+    accentClass: "border-l-[4px] border-l-[#8eb0d4]",
+    targetStatus: "on_track",
   },
-  todo: {
-    label: "Not Started",
-    accentClass: "border-l-[4px] border-l-[#0073EA]",
+  not_started: {
+    label: "Not started",
+    accentClass: "border-l-[4px] border-l-[#d6d6d6]",
     targetStatus: "not_started",
   },
-  blocked: {
-    label: "Blocked",
-    accentClass: "border-l-[4px] border-l-[#E2445C]",
-    targetStatus: "blocked",
+  at_risk: {
+    label: "At risk",
+    accentClass: "border-l-[4px] border-l-[#d8cc70]",
+    targetStatus: "at_risk",
+  },
+  overdue: {
+    label: "Overdue",
+    accentClass: "border-l-[4px] border-l-[#d48888]",
+    targetStatus: "overdue",
   },
   completed: {
-    label: "Done",
-    accentClass: "border-l-[4px] border-l-[#00C875]",
+    label: "Completed",
+    accentClass: "border-l-[4px] border-l-[#9dc898]",
     targetStatus: "completed",
   },
 };
@@ -211,23 +215,38 @@ function buildTimeline(rows: BoardTaskRow[]): {
 function statusBarClass(status: TaskStatus): string {
   switch (status) {
     case "completed":
-      return "bg-[#00C875] text-[#04150d]";
-    case "blocked":
-      return "bg-[#E2445C] text-white";
-    case "in_progress":
-      return "bg-[#FDAB3D] text-[#221500]";
-    case "waiting":
-      return "bg-[#0073EA] text-white";
+      return "bg-[#9dc898] text-[#245820]";
+    case "overdue":
+      return "bg-[#d48888] text-white";
+    case "on_track":
+      return "bg-[#8eb0d4] text-[#1a3f70]";
+    case "at_risk":
+      return "bg-[#d8cc70] text-[#705800]";
     default:
-      return "bg-[#5c6b82] text-white";
+      return "bg-[#d6d6d6] text-[#606060]";
   }
 }
 
+const PROJECT_STATUS_LABEL: Record<string, string> = {
+  active: "On track",
+  on_track: "On track",
+  at_risk: "At risk",
+  overdue: "Overdue",
+  completed: "Completed",
+  not_started: "Not started",
+};
+
+function projectStatusLabel(status: string | undefined): string {
+  return PROJECT_STATUS_LABEL[status ?? ""] ?? "Not started";
+}
+
 function projectStatusPillClass(status: string | undefined): string {
-  switch (status) {
+  const normalized = status === "active" ? "on_track" : status;
+  switch (normalized) {
     case "completed": return "pm-pill-done";
-    case "blocked": return "pm-pill-stuck";
-    case "in_progress": return "pm-pill-working";
+    case "overdue": return "pm-pill-stuck";
+    case "on_track": return "pm-pill-working";
+    case "at_risk": return "pm-pill-review";
     default: return "pm-pill-not-started";
   }
 }
@@ -479,7 +498,7 @@ export function ProjectWorkspace({
   const timeline = useMemo(() => buildTimeline(boardTasks), [boardTasks]);
 
   const openCount = boardTasks.filter((task) => task.status !== "completed").length;
-  const blockedCount = boardTasks.filter((task) => task.status === "blocked").length;
+  const blockedCount = boardTasks.filter((task) => task.status === "overdue" || task.status === "at_risk").length;
   const completionRate =
     typeof health?.completionRate === "number"
       ? Math.round(Number(health.completionRate) * 100)
@@ -495,7 +514,7 @@ export function ProjectWorkspace({
       const owner = task.assigneeName ?? "Unassigned";
       const current = counts.get(owner) ?? { count: 0, blocked: 0 };
       current.count += 1;
-      if (task.status === "blocked") current.blocked += 1;
+      if (task.status === "overdue" || task.status === "at_risk") current.blocked += 1;
       counts.set(owner, current);
     }
     return [...counts.entries()]
@@ -541,7 +560,7 @@ export function ProjectWorkspace({
       if (group.targetStatus !== "not_started") {
         const progressPercent =
           group.targetStatus === "completed" ? 100
-          : group.targetStatus === "in_progress" ? 35
+          : group.targetStatus === "on_track" ? 35
           : 0;
         await fetch(`/api/workspace/tasks/${createPayload.id}/status`, {
           method: "PATCH",
@@ -609,13 +628,13 @@ export function ProjectWorkspace({
               <span
                 style={{
                   background: "var(--pm-orange)",
-                  width: `${(boardTasks.filter((t) => t.status === "in_progress").length / Math.max(boardTasks.length, 1)) * 100}%`,
+                  width: `${(boardTasks.filter((t) => t.status === "on_track").length / Math.max(boardTasks.length, 1)) * 100}%`,
                 }}
               />
               <span
                 style={{
                   background: "var(--pm-red)",
-                  width: `${(boardTasks.filter((t) => t.status === "blocked").length / Math.max(boardTasks.length, 1)) * 100}%`,
+                  width: `${(boardTasks.filter((t) => t.status === "overdue").length / Math.max(boardTasks.length, 1)) * 100}%`,
                 }}
               />
               <span style={{ flex: 1, background: "var(--surface-2)" }} />
@@ -1045,7 +1064,7 @@ export function ProjectWorkspace({
             </h1>
             <div className="mt-2 flex items-center gap-2 flex-wrap">
               <span className={`pm-pill ${projectStatusPillClass(project?.status)}`}>
-                {project?.status ?? "active"}
+                {projectStatusLabel(project?.status)}
               </span>
               <span
                 style={{

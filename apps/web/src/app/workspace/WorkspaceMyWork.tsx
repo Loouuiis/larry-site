@@ -322,7 +322,7 @@ export function WorkspaceMyWork() {
                                 style={
                                   task.status === "completed"
                                     ? { background: "#e6f9f0", color: "#00854d" }
-                                    : task.status === "in_progress"
+                                    : task.status === "on_track"
                                     ? { background: "#EBF5FF", color: "var(--cta)" }
                                     : {}
                                 }
