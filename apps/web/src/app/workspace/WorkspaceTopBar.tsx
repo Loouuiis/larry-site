@@ -92,7 +92,7 @@ export function WorkspaceTopBar({ userEmail: _userEmail, workspaceName = "Larry 
       </button>
 
       {/* Right: bell */}
-      <div className="flex items-center shrink-0">
+      <div className="flex items-center shrink-0 ml-auto">
         <NotificationBell count={chrome?.notifCount ?? 0} onCountChange={() => undefined} />
       </div>
     </header>

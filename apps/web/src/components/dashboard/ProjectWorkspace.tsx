@@ -1,9 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import React from "react";
 import {
+  Loader2,
   Plus,
+  Settings,
+  Sparkles,
   TriangleAlert,
   X,
 } from "lucide-react";
@@ -11,11 +14,20 @@ import type { BoardTaskRow, TaskGroup, TaskStatus, WorkspaceTask } from "@/app/d
 import { TaskDetailDrawer } from "@/app/workspace/projects/[projectId]/TaskDetailDrawer";
 import { useProjectData } from "@/hooks/useProjectData";
 import { useLarryEvents } from "@/hooks/useLarryEvents";
+import { readJson } from "@/lib/larry";
 import { StatusChip } from "./StatusChip";
 import { TaskTable } from "./TaskTable";
-import { LarryTabSection } from "./LarryTabSection";
 
-type TabId = "overview" | "project_overview" | "timeline" | "analytics" | "meetings" | "orgchart" | "documents";
+type TabId =
+  | "overview"
+  | "project_overview"
+  | "timeline"
+  | "meetings"
+  | "action_center"
+  | "calendar"
+  | "dashboard"
+  | "orgchart"
+  | "documents";
 
 interface ProjectWorkspaceProps {
   projectId: string;
@@ -33,10 +45,12 @@ interface TimelineRow extends BoardTaskRow {
 
 const TAB_OPTIONS: Array<{ id: TabId; label: string }> = [
   { id: "project_overview", label: "Overview" },
-  { id: "overview", label: "Tasks" },
   { id: "timeline", label: "Timeline" },
-  { id: "analytics", label: "Analytics" },
+  { id: "overview", label: "Tasks" },
   { id: "meetings", label: "Meetings" },
+  { id: "action_center", label: "Action Center" },
+  { id: "calendar", label: "Calendar" },
+  { id: "dashboard", label: "Dashboard" },
   { id: "orgchart", label: "Team" },
   { id: "documents", label: "Documents" },
 ];
@@ -283,7 +297,7 @@ function AddTaskModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  React.useEffect(() => {
     fetch("/api/workspace/members")
       .then((r) => r.json())
       .then((data: { members?: Member[] }) => {
@@ -444,10 +458,7 @@ function LoadingSkeleton() {
     <div className="space-y-4">
       <div className="grid gap-4 md:grid-cols-4">
         {Array.from({ length: 4 }).map((_, index) => (
-          <div
-            key={index}
-            className="h-28 pm-shimmer"
-          />
+          <div key={index} className="h-28 pm-shimmer" />
         ))}
       </div>
       <div className="h-[480px] pm-shimmer" />
@@ -465,6 +476,12 @@ export function ProjectWorkspace({
   const [inlineMessage, setInlineMessage] = useState<string | null>(null);
   const [taskBusy, setTaskBusy] = useState(false);
   const [addingGroup, setAddingGroup] = useState<TaskGroup | null>(null);
+
+  // Header Larry chat state
+  const [larryInput, setLarryInput] = useState("");
+  const [larryBusy, setLarryBusy] = useState(false);
+  const [larryResponse, setLarryResponse] = useState<{ text: string } | null>(null);
+
   const {
     project,
     tasks,
@@ -476,14 +493,7 @@ export function ProjectWorkspace({
     refresh,
   } = useProjectData(projectId);
 
-  const {
-    suggested: larrySuggested,
-    activity: larryActivity,
-    accepting: larryAccepting,
-    dismissing: larryDismissing,
-    accept: acceptLarryEvent,
-    dismiss: dismissLarryEvent,
-  } = useLarryEvents(projectId, refresh);
+  const { suggested: larrySuggested } = useLarryEvents(projectId, refresh);
 
   const boardTasks = useMemo(() => tasks.map(toBoardTask), [tasks]);
   const groupedTasks = useMemo<TaskGroup[]>(
@@ -508,6 +518,11 @@ export function ProjectWorkspace({
   const surfaceName = project?.name ?? projectName;
   const riskLabel = (health?.riskLevel ?? project?.riskLevel ?? "low").replace("_", " ");
 
+  const completedCount  = boardTasks.filter((t) => t.status === "completed").length;
+  const notStartedCount = boardTasks.filter((t) => t.status === "not_started").length;
+  const atRiskCount     = boardTasks.filter((t) => t.status === "at_risk").length;
+  const overdueCount    = boardTasks.filter((t) => t.status === "overdue").length;
+
   const ownerRows = useMemo(() => {
     const counts = new Map<string, { count: number; blocked: number }>();
     for (const task of boardTasks) {
@@ -531,7 +546,6 @@ export function ProjectWorkspace({
   }) {
     setTaskBusy(true);
     setInlineMessage(null);
-
     try {
       const body: Record<string, unknown> = {
         projectId,
@@ -547,16 +561,13 @@ export function ProjectWorkspace({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-
       const createPayload = (await createResponse.json().catch(() => ({}))) as {
         id?: string;
         error?: string;
       };
-
       if (!createResponse.ok || !createPayload.id) {
         throw new Error(createPayload.error ?? "Could not create task.");
       }
-
       if (group.targetStatus !== "not_started") {
         const progressPercent =
           group.targetStatus === "completed" ? 100
@@ -568,7 +579,6 @@ export function ProjectWorkspace({
           body: JSON.stringify({ status: group.targetStatus, progressPercent }),
         });
       }
-
       window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
       await refresh();
     } catch (taskError) {
@@ -592,6 +602,31 @@ export function ProjectWorkspace({
     });
     await refresh();
   };
+
+  async function handleLarrySubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const msg = larryInput.trim();
+    if (!msg || larryBusy) return;
+    setLarryBusy(true);
+    setLarryResponse(null);
+    try {
+      const res = await fetch("/api/workspace/larry/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, message: msg }),
+      });
+      const data = await readJson<{ message?: string; error?: string }>(res);
+      setLarryResponse({
+        text: res.ok ? (data.message ?? "Done.") : (data.error ?? "Something went wrong."),
+      });
+      if (res.ok) window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
+    } catch {
+      setLarryResponse({ text: "Network error — please try again." });
+    } finally {
+      setLarryBusy(false);
+      setLarryInput("");
+    }
+  }
 
   const renderedBody = () => {
     if (loading && boardTasks.length === 0 && meetings.length === 0) {
@@ -640,17 +675,6 @@ export function ProjectWorkspace({
               <span style={{ flex: 1, background: "var(--surface-2)" }} />
             </div>
 
-            <LarryTabSection
-              projectId={projectId}
-              tabId="overview"
-              suggested={larrySuggested}
-              activity={larryActivity}
-              accepting={larryAccepting}
-              dismissing={larryDismissing}
-              onAccept={acceptLarryEvent}
-              onDismiss={dismissLarryEvent}
-            />
-
             <TaskTable
               groups={groupedTasks}
               onTaskClick={setSelectedTask}
@@ -661,50 +685,203 @@ export function ProjectWorkspace({
           </div>
         );
 
-      case "project_overview":
+      case "project_overview": {
+        // Donut chart segments
+        const total = Math.max(boardTasks.length, 1);
+        const donutSegments = [
+          { label: "Completed",   color: "#00C875", count: completedCount },
+          { label: "On track",    color: "#FDAB3D", count: boardTasks.filter((t) => t.status === "on_track").length },
+          { label: "At risk",     color: "#E2445C", count: atRiskCount + overdueCount },
+          { label: "Not started", color: "#C4C4C4", count: notStartedCount },
+        ];
+        const circ = 2 * Math.PI * 36;
+        // Pre-compute arc offsets to avoid mutating state inside render
+        const donutArcs = donutSegments.reduce<Array<{ arcLen: number; offset: number }>>(
+          (acc, seg) => {
+            const prev = acc[acc.length - 1];
+            const prevStart = prev ? prev.offset + prev.arcLen : 0;
+            return [...acc, { arcLen: (seg.count / total) * circ, offset: prevStart }];
+          },
+          []
+        );
+
         return (
-          <div
-            className="flex items-center justify-center h-full"
-            style={{ color: "var(--text-muted)", fontSize: "14px" }}
-          >
-            Overview coming soon.
+          <div className="space-y-5">
+            {/* Row 1: Task Timeline card + Donut Chart card */}
+            <div className="grid gap-5" style={{ gridTemplateColumns: "1fr 200px" }}>
+              {/* Task Timeline */}
+              <div className="rounded-[24px] border border-[var(--pm-border)] bg-white p-6 space-y-4">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">
+                      Task timeline
+                    </p>
+                    <p className="mt-1 text-[13px] text-[var(--pm-text-muted)]">Overall project progress</p>
+                  </div>
+                  {/* Percentage indicator */}
+                  <div className="text-right">
+                    <span
+                      className="text-[36px] font-bold tracking-tight"
+                      style={{ color: "var(--pm-text)", lineHeight: 1 }}
+                    >
+                      {completionRate}
+                    </span>
+                    <span className="text-[16px] font-semibold" style={{ color: "var(--pm-text-muted)" }}>%</span>
+                    <p className="mt-0.5 text-[10px] uppercase tracking-wider" style={{ color: "var(--pm-text-muted)" }}>done</p>
+                  </div>
+                </div>
+                <div className="pm-summary-bar w-full" style={{ height: "8px", borderRadius: "4px" }}>
+                  <span style={{ background: "#00C875", width: `${(completedCount / total) * 100}%` }} />
+                  <span style={{ background: "#FDAB3D", width: `${(boardTasks.filter((t) => t.status === "on_track").length / total) * 100}%` }} />
+                  <span style={{ background: "#E2445C", width: `${((atRiskCount + overdueCount) / total) * 100}%` }} />
+                  <span style={{ flex: 1, background: "var(--surface-2)" }} />
+                </div>
+                <div className="flex items-center gap-4 flex-wrap">
+                  {donutSegments.map(({ label, color, count }) => (
+                    <span key={label} className="flex items-center gap-1.5 text-[12px]" style={{ color: "var(--pm-text-muted)" }}>
+                      <span className="h-2 w-2 rounded-full inline-block" style={{ background: color }} />
+                      {label} ({count})
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Donut Chart */}
+              <div className="rounded-[24px] border border-[var(--pm-border)] bg-white p-5 flex flex-col items-center justify-center gap-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--pm-text-muted)" }}>
+                  Status
+                </p>
+                <div className="relative" style={{ width: 120, height: 120 }}>
+                  <svg viewBox="0 0 100 100" width="120" height="120" style={{ transform: "rotate(-90deg)" }}>
+                    {boardTasks.length === 0 ? (
+                      <circle cx="50" cy="50" r="36" fill="none" stroke="#e5e7eb" strokeWidth="15" />
+                    ) : (
+                      donutSegments.map((seg, i) => {
+                        if (seg.count === 0) return null;
+                        const { arcLen, offset } = donutArcs[i];
+                        return (
+                          <circle
+                            key={i}
+                            cx="50" cy="50" r="36"
+                            fill="none"
+                            stroke={seg.color}
+                            strokeWidth="15"
+                            strokeDasharray={`${arcLen} ${circ - arcLen}`}
+                            strokeDashoffset={-offset}
+                          />
+                        );
+                      })
+                    )}
+                  </svg>
+                  {/* Center label */}
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-[18px] font-bold" style={{ color: "var(--pm-text)" }}>{boardTasks.length}</span>
+                    <span className="text-[9px] uppercase tracking-wider" style={{ color: "var(--pm-text-muted)" }}>tasks</span>
+                  </div>
+                </div>
+                {/* Mini legend */}
+                <div className="w-full space-y-1">
+                  {donutSegments.map(({ label, color, count }) => (
+                    <div key={label} className="flex items-center justify-between text-[10px]" style={{ color: "var(--pm-text-muted)" }}>
+                      <span className="flex items-center gap-1">
+                        <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+                        {label}
+                      </span>
+                      <span className="font-semibold" style={{ color: "var(--pm-text)" }}>{count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Row 2: AI Summarization — full width */}
+            <div className="rounded-[24px] border border-[#e8e4f9] bg-[#faf9ff] p-6">
+              <div className="flex items-center gap-2 mb-3">
+                <Sparkles size={14} className="text-[#6366f1]" />
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6366f1]">AI Summary</p>
+              </div>
+              <p className="text-[14px] leading-7" style={{ color: "var(--pm-text-muted)" }}>
+                {outcomes?.narrative ??
+                  "Larry will generate an AI summary of this project once there is enough activity, risk history, and task movement to surface meaningful insights."}
+              </p>
+            </div>
+
+            {/* Row 3: Status boxes — full width, 5 cards */}
+            <div className="grid grid-cols-5 gap-4">
+              {[
+                { label: "Tasks Completed", count: completedCount,  color: "#00C875" },
+                { label: "Not Started",     count: notStartedCount, color: "#C4C4C4" },
+                { label: "Open Tasks",      count: openCount,       color: "#FDAB3D" },
+                { label: "Tasks At Risk",   count: atRiskCount,     color: "#E2445C" },
+                { label: "Delayed",         count: overdueCount,    color: "#d48888" },
+              ].map(({ label, count, color }) => (
+                <div
+                  key={label}
+                  className="rounded-[20px] border border-[var(--pm-border)] bg-white p-5 flex flex-col items-center text-center"
+                >
+                  <div className="h-1 w-10 rounded-full mb-3" style={{ background: color }} />
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--pm-text-muted)" }}>
+                    {label}
+                  </p>
+                  <p className="mt-2 text-[32px] font-bold tracking-tight leading-none" style={{ color: "var(--pm-text)" }}>
+                    {count}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            {/* Row 4: Health Snapshot */}
+            <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+              <div className="rounded-[24px] border border-[var(--pm-border)] bg-white p-6">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">
+                  Health snapshot
+                </p>
+                <div className="mt-5 grid gap-4 md:grid-cols-2">
+                  <div className="rounded-[20px] border border-[var(--pm-border)] bg-white p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">Risk level</p>
+                    <p className="mt-3 text-[28px] font-semibold tracking-[-0.03em] text-[var(--pm-text)]">{riskLabel}</p>
+                  </div>
+                  <div className="rounded-[20px] border border-[var(--pm-border)] bg-white p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">Blocked count</p>
+                    <p className="mt-3 text-[28px] font-semibold tracking-[-0.03em] text-[var(--pm-text)]">{String(health?.blockedCount ?? blockedCount)}</p>
+                  </div>
+                  <div className="rounded-[20px] border border-[var(--pm-border)] bg-white p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">Task count</p>
+                    <p className="mt-3 text-[28px] font-semibold tracking-[-0.03em] text-[var(--pm-text)]">{String(health?.taskCount ?? boardTasks.length)}</p>
+                  </div>
+                  <div className="rounded-[20px] border border-[var(--pm-border)] bg-white p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">High-risk rate</p>
+                    <p className="mt-3 text-[28px] font-semibold tracking-[-0.03em] text-[var(--pm-text)]">{`${Math.round(Number(outcomes?.metrics?.highRiskTaskRate ?? 0))}%`}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[24px] border border-[var(--pm-border)] bg-white p-6">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">
+                  Larry readout
+                </p>
+                <p className="mt-4 text-[14px] leading-7 text-[var(--pm-text-secondary)]">
+                  {outcomes?.narrative ??
+                    "Larry will surface a narrative once the project has enough task, risk, and approval history to summarise movement cleanly."}
+                </p>
+              </div>
+            </div>
           </div>
         );
+      }
 
       case "timeline":
         if (timeline.dated.length === 0 && timeline.undated.length === 0) {
           return (
-            <div className="space-y-5">
-              <LarryTabSection
-                projectId={projectId}
-                tabId="timeline"
-                suggested={larrySuggested}
-                activity={larryActivity}
-                accepting={larryAccepting}
-                dismissing={larryDismissing}
-                onAccept={acceptLarryEvent}
-                onDismiss={dismissLarryEvent}
-              />
-              <EmptyPanel
-                title="No timeline yet"
-                description="Add tasks with start and due dates to lay out the project plan. Undated tasks will collect underneath so nothing goes missing."
-              />
-            </div>
+            <EmptyPanel
+              title="No timeline yet"
+              description="Add tasks with start and due dates to lay out the project plan. Undated tasks will collect underneath so nothing goes missing."
+            />
           );
         }
 
         return (
           <div className="space-y-5">
-            <LarryTabSection
-              projectId={projectId}
-              tabId="timeline"
-              suggested={larrySuggested}
-              activity={larryActivity}
-              accepting={larryAccepting}
-              dismissing={larryDismissing}
-              onAccept={acceptLarryEvent}
-              onDismiss={dismissLarryEvent}
-            />
             <div className="overflow-hidden rounded-[24px] border border-[var(--pm-border)] bg-white">
               <div className="grid grid-cols-[240px_minmax(0,1fr)] border-b border-[var(--pm-border)] px-5 py-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">
                 <span>Task lane</span>
@@ -803,91 +980,18 @@ export function ProjectWorkspace({
           </div>
         );
 
-      case "analytics":
-        return (
-          <div className="space-y-5">
-            <LarryTabSection
-              projectId={projectId}
-              tabId="analytics"
-              suggested={larrySuggested}
-              activity={larryActivity}
-              accepting={larryAccepting}
-              dismissing={larryDismissing}
-              onAccept={acceptLarryEvent}
-              onDismiss={dismissLarryEvent}
-            />
-          <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-            <div className="rounded-[24px] border border-[var(--pm-border)] bg-white p-6">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">
-                Health snapshot
-              </p>
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
-                <div className="rounded-[20px] border border-[var(--pm-border)] bg-white p-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">Risk level</p>
-                  <p className="mt-3 text-[28px] font-semibold tracking-[-0.03em] text-[var(--pm-text)]">{riskLabel}</p>
-                </div>
-                <div className="rounded-[20px] border border-[var(--pm-border)] bg-white p-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">Blocked count</p>
-                  <p className="mt-3 text-[28px] font-semibold tracking-[-0.03em] text-[var(--pm-text)]">{String(health?.blockedCount ?? blockedCount)}</p>
-                </div>
-                <div className="rounded-[20px] border border-[var(--pm-border)] bg-white p-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">Task count</p>
-                  <p className="mt-3 text-[28px] font-semibold tracking-[-0.03em] text-[var(--pm-text)]">{String(health?.taskCount ?? boardTasks.length)}</p>
-                </div>
-                <div className="rounded-[20px] border border-[var(--pm-border)] bg-white p-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">High-risk rate</p>
-                  <p className="mt-3 text-[28px] font-semibold tracking-[-0.03em] text-[var(--pm-text)]">{`${Math.round(Number(outcomes?.metrics?.highRiskTaskRate ?? 0))}%`}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-[24px] border border-[var(--pm-border)] bg-white p-6">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">
-                Larry readout
-              </p>
-              <p className="mt-4 text-[14px] leading-7 text-[var(--pm-text-secondary)]">
-                {outcomes?.narrative ??
-                  "Larry will surface a narrative once the project has enough task, risk, and approval history to summarise movement cleanly."}
-              </p>
-            </div>
-          </div>
-          </div>
-        );
-
       case "meetings":
         if (meetings.length === 0) {
           return (
-            <div className="space-y-5">
-              <LarryTabSection
-                projectId={projectId}
-                tabId="meetings"
-                suggested={larrySuggested}
-                activity={larryActivity}
-                accepting={larryAccepting}
-                dismissing={larryDismissing}
-                onAccept={acceptLarryEvent}
-                onDismiss={dismissLarryEvent}
-              />
-              <EmptyPanel
-                title="No meeting notes yet"
-                description="Meeting summaries will appear here as soon as transcripts or calendar ingests are processed for this project."
-              />
-            </div>
+            <EmptyPanel
+              title="No meeting notes yet"
+              description="Meeting summaries will appear here as soon as transcripts or calendar ingests are processed for this project."
+            />
           );
         }
 
         return (
           <div className="space-y-4">
-            <LarryTabSection
-              projectId={projectId}
-              tabId="meetings"
-              suggested={larrySuggested}
-              activity={larryActivity}
-              accepting={larryAccepting}
-              dismissing={larryDismissing}
-              onAccept={acceptLarryEvent}
-              onDismiss={dismissLarryEvent}
-            />
             {meetings.map((meeting) => (
               <article
                 key={meeting.id}
@@ -919,40 +1023,41 @@ export function ProjectWorkspace({
           </div>
         );
 
+      case "action_center":
+        return (
+          <EmptyPanel
+            title="Action Center"
+            description="Prioritised actions, approvals, and flagged items for this project will surface here."
+          />
+        );
+
+      case "calendar":
+        return (
+          <EmptyPanel
+            title="Calendar"
+            description="Scheduled milestones, deadlines, and meetings for this project will appear in calendar view here."
+          />
+        );
+
+      case "dashboard":
+        return (
+          <EmptyPanel
+            title="Dashboard"
+            description="Custom charts, KPIs, and project summary widgets will be configurable here."
+          />
+        );
+
       case "orgchart":
         if (ownerRows.length === 0) {
           return (
-            <div className="space-y-5">
-              <LarryTabSection
-                projectId={projectId}
-                tabId="orgchart"
-                suggested={larrySuggested}
-                activity={larryActivity}
-                accepting={larryAccepting}
-                dismissing={larryDismissing}
-                onAccept={acceptLarryEvent}
-                onDismiss={dismissLarryEvent}
-              />
-              <EmptyPanel
-                title="No ownership data yet"
-                description="Assign tasks to teammates and Larry will start building a real ownership map here."
-              />
-            </div>
+            <EmptyPanel
+              title="No ownership data yet"
+              description="Assign tasks to teammates and Larry will start building a real ownership map here."
+            />
           );
         }
 
         return (
-          <div className="space-y-4">
-            <LarryTabSection
-              projectId={projectId}
-              tabId="orgchart"
-              suggested={larrySuggested}
-              activity={larryActivity}
-              accepting={larryAccepting}
-              dismissing={larryDismissing}
-              onAccept={acceptLarryEvent}
-              onDismiss={dismissLarryEvent}
-            />
           <div
             style={{
               border: "1px solid var(--border)",
@@ -999,22 +1104,10 @@ export function ProjectWorkspace({
               </div>
             ))}
           </div>
-          </div>
         );
 
       case "documents":
         return (
-          <div className="space-y-5">
-            <LarryTabSection
-              projectId={projectId}
-              tabId="documents"
-              suggested={larrySuggested}
-              activity={larryActivity}
-              accepting={larryAccepting}
-              dismissing={larryDismissing}
-              onAccept={acceptLarryEvent}
-              onDismiss={dismissLarryEvent}
-            />
           <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
             <div className="rounded-[24px] border border-[var(--pm-border)] bg-white p-6">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--pm-text-muted)]">
@@ -1044,7 +1137,6 @@ export function ProjectWorkspace({
               </div>
             </div>
           </div>
-          </div>
         );
     }
   };
@@ -1052,17 +1144,14 @@ export function ProjectWorkspace({
   return (
     <div className="flex h-full flex-col overflow-hidden bg-[var(--pm-bg)]">
       {/* Project header */}
-      <header style={{ borderBottom: "1px solid var(--border)", background: "var(--page-bg)", padding: "16px 24px" }}>
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1
-              className="text-h1"
-              contentEditable={false}
-              suppressContentEditableWarning
-            >
+      <header style={{ borderBottom: "1px solid var(--border)", background: "var(--page-bg)", padding: "12px 24px" }}>
+        <div className="flex items-start justify-between gap-6">
+          {/* Left: name + status */}
+          <div className="min-w-0">
+            <h1 className="text-h1" contentEditable={false} suppressContentEditableWarning>
               {surfaceName}
             </h1>
-            <div className="mt-2 flex items-center gap-2 flex-wrap">
+            <div className="mt-1 flex items-center gap-2 flex-wrap">
               <span className={`pm-pill ${projectStatusPillClass(project?.status)}`}>
                 {projectStatusLabel(project?.status)}
               </span>
@@ -1079,13 +1168,57 @@ export function ProjectWorkspace({
                 Risk: {riskLabel}
               </span>
               <span className="text-body-sm">Updated {formatRelativeTime(project?.updatedAt)}</span>
+              {project?.targetDate && (
+                <span className="text-body-sm">Target: {formatShortDate(project.targetDate)}</span>
+              )}
             </div>
           </div>
-          {project?.targetDate && (
-            <div className="text-body-sm shrink-0">
-              Target: {formatShortDate(project.targetDate)}
+
+          {/* Right: compact Larry chat — miniature LarryTabSection */}
+          <div className="shrink-0 rounded-[16px] border border-[#e8e4f9] bg-[#faf9ff]" style={{ width: 300 }}>
+            {/* Header row — mirrors LarryTabSection header */}
+            <div className="flex items-center gap-2 border-b border-[#e8e4f9] px-3 py-2">
+              <Sparkles size={12} className="text-[#6366f1]" />
+              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#6366f1]">Larry</span>
             </div>
-          )}
+            {/* Chat input row */}
+            <form
+              onSubmit={(e) => void handleLarrySubmit(e)}
+              className="flex items-center gap-1.5 px-2.5 py-2"
+            >
+              <input
+                value={larryInput}
+                onChange={(e) => setLarryInput(e.target.value)}
+                placeholder="Ask Larry about this project…"
+                disabled={larryBusy}
+                className="min-w-0 flex-1 h-7 rounded-[10px] border border-[#e2defc] bg-white px-2.5 text-[12px] outline-none focus:border-[#6366f1] placeholder:text-[#b0add8] disabled:opacity-50"
+                style={{ color: "var(--text-1)" }}
+              />
+              <button
+                type="submit"
+                disabled={larryBusy || larryInput.trim().length < 1}
+                className="flex h-7 shrink-0 items-center gap-1 rounded-[10px] bg-[#6366f1] px-2.5 text-[11px] font-medium text-white disabled:opacity-40 hover:bg-[#4f46e5]"
+              >
+                {larryBusy
+                  ? <Loader2 size={11} className="animate-spin" />
+                  : <Sparkles size={11} />}
+                {larryBusy ? "…" : "Ask"}
+              </button>
+            </form>
+            {/* Response bubble */}
+            {larryResponse && (
+              <div className="mx-2.5 mb-2.5 rounded-[10px] border border-[#e8e4f9] bg-[#f5f3ff] px-3 py-2">
+                <p className="text-[12px] leading-relaxed text-[#4c3fa0]">{larryResponse.text}</p>
+                <button
+                  type="button"
+                  onClick={() => setLarryResponse(null)}
+                  className="mt-0.5 text-[10px] text-[#9694a8] hover:text-[#6366f1]"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -1096,6 +1229,7 @@ export function ProjectWorkspace({
           background: "var(--surface)",
           padding: "0 24px",
           display: "flex",
+          alignItems: "center",
         }}
       >
         {TAB_OPTIONS.map((tab) => {
@@ -1108,22 +1242,32 @@ export function ProjectWorkspace({
               style={{
                 fontSize: "14px",
                 fontWeight: 500,
-                color: active ? "var(--text-1)" : "var(--text-muted)",
-                borderBottom: active ? "2px solid var(--cta)" : "2px solid transparent",
+                color: active ? "#6c44f6" : "var(--text-muted)",
                 padding: "8px 4px",
                 marginRight: "20px",
                 background: "none",
                 border: "none",
                 borderBottomWidth: "2px",
                 borderBottomStyle: "solid",
-                borderBottomColor: active ? "var(--cta)" : "transparent",
+                borderBottomColor: active ? "#6c44f6" : "transparent",
                 cursor: "pointer",
+                whiteSpace: "nowrap",
               }}
             >
               {tab.label}
             </button>
           );
         })}
+
+        {/* Settings icon — far right */}
+        <button
+          type="button"
+          className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-[var(--surface-2)]"
+          style={{ color: "var(--text-muted)" }}
+          aria-label="Project settings"
+        >
+          <Settings size={15} />
+        </button>
       </div>
 
       <main className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
