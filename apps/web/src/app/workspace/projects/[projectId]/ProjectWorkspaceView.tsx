@@ -7,6 +7,8 @@ import {
   ArrowRight,
   CalendarDays,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   CircleAlert,
   Clock3,
   FolderKanban,
@@ -28,6 +30,7 @@ import type {
 import { useProjectData } from "@/hooks/useProjectData";
 import { useProjectActionCentre } from "@/hooks/useProjectActionCentre";
 import { useProjectMemory } from "@/hooks/useProjectMemory";
+import { useCalendarEvents, type CalendarEvent } from "@/hooks/useCalendarEvents";
 import { CollaboratorsPanel } from "./CollaboratorsPanel";
 import { ProjectNotesPanel } from "./ProjectNotesPanel";
 
@@ -216,6 +219,258 @@ const PROJECT_TABS: { id: ProjectTab; label: string; icon: React.ElementType }[]
   { id: "team",      label: "Team",           icon: Users },
   { id: "settings",  label: "Settings",       icon: Settings },
 ];
+
+function ProjectCalendar({ projectId }: { projectId: string }) {
+  const today = useMemo(() => new Date(), []);
+  const [viewDate, setViewDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
+  const { events, loading } = useCalendarEvents(projectId);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+
+  const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+  function getDaysInMonth(y: number, m: number): Date[] {
+    const days: Date[] = [];
+    const d = new Date(y, m, 1);
+    while (d.getMonth() === m) {
+      days.push(new Date(d));
+      d.setDate(d.getDate() + 1);
+    }
+    return days;
+  }
+
+  function getMonthGrid(y: number, m: number): (Date | null)[][] {
+    const days = getDaysInMonth(y, m);
+    const firstDay = days[0].getDay();
+    const startOffset = firstDay === 0 ? 6 : firstDay - 1;
+    const grid: (Date | null)[][] = [];
+    let week: (Date | null)[] = Array(startOffset).fill(null);
+    for (const day of days) {
+      week.push(day);
+      if (week.length === 7) { grid.push(week); week = []; }
+    }
+    if (week.length > 0) {
+      while (week.length < 7) week.push(null);
+      grid.push(week);
+    }
+    return grid;
+  }
+
+  function isSameDay(a: Date, b: Date): boolean {
+    return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  }
+
+  function eventsForDate(date: Date): CalendarEvent[] {
+    const key = date.toISOString().slice(0, 10);
+    return events.filter((e) => e.date === key);
+  }
+
+  const grid = useMemo(() => getMonthGrid(year, month), [year, month]);
+  const monthLabel = viewDate.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+
+  return (
+    <div className="space-y-4">
+      {/* Calendar card */}
+      <div
+        style={{
+          borderRadius: "var(--radius-card)",
+          border: "1px solid var(--border)",
+          background: "var(--surface)",
+          overflow: "hidden",
+        }}
+      >
+        {/* Month nav */}
+        <div
+          className="flex items-center justify-between px-5 py-3"
+          style={{ borderBottom: "1px solid var(--border)" }}
+        >
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setViewDate(new Date(year, month - 1, 1))}
+              className="flex h-7 w-7 items-center justify-center rounded-lg transition-colors"
+              style={{ color: "var(--text-2)" }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <h3 className="text-[14px] font-semibold min-w-[160px] text-center" style={{ color: "var(--text-1)" }}>
+              {monthLabel}
+            </h3>
+            <button
+              type="button"
+              onClick={() => setViewDate(new Date(year, month + 1, 1))}
+              className="flex h-7 w-7 items-center justify-center rounded-lg transition-colors"
+              style={{ color: "var(--text-2)" }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => setViewDate(new Date(today.getFullYear(), today.getMonth(), 1))}
+            className="rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors"
+            style={{ borderColor: "var(--border)", color: "var(--text-2)" }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+          >
+            Today
+          </button>
+        </div>
+
+        {/* Weekday headers */}
+        <div className="grid grid-cols-7" style={{ borderBottom: "1px solid var(--border)" }}>
+          {WEEKDAYS.map((d) => (
+            <div
+              key={d}
+              className="py-1.5 text-center text-[10px] font-semibold uppercase tracking-wider"
+              style={{ color: "var(--text-disabled)" }}
+            >
+              {d}
+            </div>
+          ))}
+        </div>
+
+        {/* Day grid */}
+        <div>
+          {grid.map((week, wi) => (
+            <div
+              key={wi}
+              className="grid grid-cols-7"
+              style={{ borderBottom: wi < grid.length - 1 ? "1px solid var(--border)" : undefined }}
+            >
+              {week.map((day, di) => {
+                const isToday = day && isSameDay(day, today);
+                const isCurrentMonth = day !== null;
+                return (
+                  <div
+                    key={di}
+                    className="min-h-[60px] p-1.5 transition-colors cursor-pointer"
+                    style={{
+                      borderRight: di < 6 ? "1px solid var(--border)" : undefined,
+                      background: isToday ? "var(--surface-2)" : undefined,
+                    }}
+                    onClick={isCurrentMonth ? () => setSelectedDate(day!.toISOString().slice(0, 10)) : undefined}
+                    onMouseEnter={(e) => { if (!isToday) e.currentTarget.style.background = "var(--surface-2)"; }}
+                    onMouseLeave={(e) => { if (!isToday) e.currentTarget.style.background = ""; }}
+                  >
+                    {isCurrentMonth && (
+                      <>
+                        <span
+                          className="inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-medium"
+                          style={{
+                            background: isToday ? "var(--brand)" : undefined,
+                            color: isToday ? "#fff" : "var(--text-2)",
+                          }}
+                        >
+                          {day.getDate()}
+                        </span>
+                        {(() => {
+                          const dayEvents = eventsForDate(day!);
+                          if (dayEvents.length === 0) return null;
+                          return (
+                            <div className="mt-0.5 flex flex-wrap gap-0.5">
+                              {dayEvents.slice(0, 3).map((evt) => (
+                                <div
+                                  key={evt.id}
+                                  className="h-1 w-1 rounded-full"
+                                  style={{ background: evt.color }}
+                                  title={evt.title}
+                                />
+                              ))}
+                              {dayEvents.length > 3 && (
+                                <span className="text-[8px]" style={{ color: "var(--text-disabled)" }}>
+                                  +{dayEvents.length - 3}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Day detail panel */}
+      {selectedDate && (() => {
+        const dayEvents = events.filter((e) => e.date === selectedDate);
+        return (
+          <div
+            style={{
+              borderRadius: "var(--radius-card)",
+              border: "1px solid var(--border)",
+              background: "var(--surface)",
+              padding: "16px",
+            }}
+          >
+            <div className="flex items-center justify-between">
+              <h4 className="text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
+                {new Date(selectedDate + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+              </h4>
+              <button
+                type="button"
+                onClick={() => setSelectedDate(null)}
+                className="text-[11px]"
+                style={{ color: "var(--text-muted)" }}
+              >
+                Close
+              </button>
+            </div>
+            {dayEvents.length === 0 ? (
+              <p className="mt-2 text-[12px]" style={{ color: "var(--text-disabled)" }}>
+                No events on this day.
+              </p>
+            ) : (
+              <div className="mt-2 space-y-1.5">
+                {dayEvents.map((evt) => (
+                  <div
+                    key={evt.id}
+                    className="flex items-center gap-2 rounded-lg border px-2.5 py-1.5"
+                    style={{ borderColor: "var(--border)" }}
+                  >
+                    <div className="h-2 w-2 shrink-0 rounded-full" style={{ background: evt.color }} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[12px] font-medium truncate" style={{ color: "var(--text-1)" }}>
+                        {evt.title}
+                      </p>
+                      <p className="text-[10px]" style={{ color: "var(--text-disabled)" }}>
+                        {evt.kind === "deadline" ? "Task deadline" : evt.kind === "meeting" ? "Meeting" : "Event"}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Empty state */}
+      {!loading && events.length === 0 && (
+        <div
+          className="text-center px-4 py-6"
+          style={{ borderRadius: "var(--radius-card)", border: "1px dashed var(--border-2)", background: "var(--surface)" }}
+        >
+          <CalendarDays size={24} className="mx-auto mb-2" style={{ color: "var(--text-disabled)" }} />
+          <p className="text-[13px] font-semibold" style={{ color: "var(--text-1)" }}>No calendar events</p>
+          <p className="mt-1 text-[12px]" style={{ color: "var(--text-2)" }}>
+            Task deadlines and meetings for this project will appear here.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
   const chrome = useWorkspaceChrome();
@@ -567,18 +822,9 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
           </div>
         )}
 
-        {/* ── Tab: Calendar (placeholder) ──────────────── */}
+        {/* ── Tab: Calendar ──────────────── */}
         {activeTab === "calendar" && (
-          <div
-            className="text-center px-6 py-12"
-            style={{ borderRadius: "var(--radius-card)", border: "1px dashed var(--border-2)", background: "var(--surface)" }}
-          >
-            <CalendarDays size={32} className="mx-auto mb-3" style={{ color: "var(--text-disabled)" }} />
-            <p className="text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>Project calendar</p>
-            <p className="mt-2 text-[13px]" style={{ color: "var(--text-2)" }}>
-              A project-scoped calendar with deadlines and meetings is coming in the next phase.
-            </p>
-          </div>
+          <ProjectCalendar projectId={projectId} />
         )}
 
         {/* ── Tab: Dashboard ──────────────────────────── */}
