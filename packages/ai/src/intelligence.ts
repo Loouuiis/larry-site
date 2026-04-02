@@ -51,18 +51,18 @@ const LarryActionTypeEnum = z.enum([
 
 const LarryActionSchema = z.object({
   type: LarryActionTypeEnum,
-  displayText: z.string().min(1).max(300),
-  reasoning: z.string().min(1).max(200),
+  displayText: z.string().min(1).transform((s) => s.slice(0, 500)),
+  reasoning: z.string().min(1).transform((s) => s.slice(0, 400)),
   payload: z.record(z.string(), z.unknown()),
 });
 
 const FollowUpQuestionSchema = z.object({
-  field: z.string().min(1).max(100),
-  question: z.string().min(1).max(500),
+  field: z.string().min(1).max(200),
+  question: z.string().min(1).transform((s) => s.slice(0, 1000)),
 });
 
 const IntelligenceResultSchema = z.object({
-  briefing: z.string().min(1).max(1000),
+  briefing: z.string().min(1).transform((s) => s.slice(0, 2000)),
   autoActions: z.array(LarryActionSchema).default([]),
   suggestedActions: z.array(LarryActionSchema).default([]),
   followUpQuestions: z.array(FollowUpQuestionSchema).default([]),

@@ -1,0 +1,47 @@
+<h2>Task center status groups</h2>
+<p class="subtitle">You mentioned "ongoing, completed, and not started." The backend has 6 statuses: <code>backlog</code>, <code>not_started</code>, <code>in_progress</code>, <code>waiting</code>, <code>completed</code>, <code>blocked</code>. How should these map to sections?</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Three groups (your suggestion)</h3>
+      <div style="margin-top:8px;font-size:13px;line-height:1.8;">
+        <div><strong style="color:#6c44f6;">Not Started</strong> — backlog + not_started</div>
+        <div><strong style="color:#f59e0b;">Ongoing</strong> — in_progress + waiting + blocked</div>
+        <div><strong style="color:#22c55e;">Completed</strong> — completed</div>
+      </div>
+      <p style="margin-top:8px;font-size:12px;color:#888;">Simple, scannable. Blocked tasks show a small "blocked" badge within the Ongoing group.</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Four groups (split out blocked)</h3>
+      <div style="margin-top:8px;font-size:13px;line-height:1.8;">
+        <div><strong style="color:#6c44f6;">Not Started</strong> — backlog + not_started</div>
+        <div><strong style="color:#f59e0b;">In Progress</strong> — in_progress + waiting</div>
+        <div><strong style="color:#ef4444;">Blocked</strong> — blocked</div>
+        <div><strong style="color:#22c55e;">Completed</strong> — completed</div>
+      </div>
+      <p style="margin-top:8px;font-size:12px;color:#888;">Blocked tasks get their own section for visibility. Slightly more visual weight.</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Three groups + "Blocked" as a filter badge</h3>
+      <div style="margin-top:8px;font-size:13px;line-height:1.8;">
+        <div>Same as A (three groups), but add a small filter pill at the top:</div>
+        <div style="margin-top:6px;display:flex;gap:8px;">
+          <span style="padding:3px 10px;border-radius:12px;background:#1e1b2e;color:#e2e0ea;font-size:12px;border:1px solid #333;">All</span>
+          <span style="padding:3px 10px;border-radius:12px;background:transparent;color:#999;font-size:12px;border:1px solid #333;">Blocked (2)</span>
+          <span style="padding:3px 10px;border-radius:12px;background:transparent;color:#999;font-size:12px;border:1px solid #333;">At Risk</span>
+        </div>
+      </div>
+      <p style="margin-top:8px;font-size:12px;color:#888;">Clean three groups + quick filter access for problem tasks.</p>
+    </div>
+  </div>
+</div>

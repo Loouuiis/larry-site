@@ -2357,27 +2357,42 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         sourceRecordId: userMessageInsert.id,
       };
 
-      const [autoResult, suggestResult, persistedMessages] = await Promise.all([
-        runAutoActions(
-          fastify.db,
-          tenantId,
-          projectId,
-          "chat",
-          result.autoActions,
-          message,
-          actionContext
-        ),
-        storeSuggestions(
-          fastify.db,
-          tenantId,
-          projectId,
-          "chat",
-          result.suggestedActions,
-          message,
-          actionContext
-        ),
-        listLarryMessagesByIds(fastify.db, tenantId, [userMessageInsert.id, assistantMessageInsert.id]),
-      ]);
+      let autoResult = { executedCount: 0, suggestedCount: 0, eventIds: [] as string[] };
+      let suggestResult = { executedCount: 0, suggestedCount: 0, eventIds: [] as string[] };
+
+      try {
+        [autoResult, suggestResult] = await Promise.all([
+          runAutoActions(
+            fastify.db,
+            tenantId,
+            projectId,
+            "chat",
+            result.autoActions,
+            message,
+            actionContext
+          ),
+          storeSuggestions(
+            fastify.db,
+            tenantId,
+            projectId,
+            "chat",
+            result.suggestedActions,
+            message,
+            actionContext
+          ),
+        ]);
+      } catch (error) {
+        request.log.warn(
+          { err: error, tenantId, projectId, conversationId: conversation.id },
+          "project chat action execution failed"
+        );
+      }
+
+      const persistedMessages = await listLarryMessagesByIds(
+        fastify.db,
+        tenantId,
+        [userMessageInsert.id, assistantMessageInsert.id]
+      ).catch(() => [] as Awaited<ReturnType<typeof listLarryMessagesByIds>>);
 
       const userMessage =
         persistedMessages.find((entry) => entry.id === userMessageInsert.id) ??

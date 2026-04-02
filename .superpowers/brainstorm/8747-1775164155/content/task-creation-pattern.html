@@ -1,0 +1,54 @@
+<h2>How should inline task creation work?</h2>
+<p class="subtitle">You said no popup/modal — the form should be "flushed" into the task list. Here are two patterns:</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Inline Row — Linear/Notion style</h3>
+      <p>Click "+ New task" and an empty row appears <strong>inside the status group</strong> (e.g., inside the "Not Started" section). You type the title right there, then tab through fields (priority, assignee, due date) inline. Press Enter to save, Escape to cancel. No separate form — the new task IS a row.</p>
+      <div style="margin-top:12px;padding:16px;border-radius:8px;background:#1e1b2e;color:#e2e0ea;font-family:monospace;font-size:13px;line-height:2;">
+        <div style="opacity:0.5;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">▸ Not Started (3)</div>
+        <div style="padding:6px 8px;border-radius:4px;border:1px solid #333;">Set up CI pipeline &nbsp; <span style="color:#6c44f6">Medium</span> &nbsp; Sarah &nbsp; Apr 15</div>
+        <div style="padding:6px 8px;border-radius:4px;border:1px solid #333;">Write onboarding docs &nbsp; <span style="color:#6c44f6">Low</span> &nbsp; — &nbsp; Apr 20</div>
+        <div style="padding:6px 8px;border-radius:4px;border:1px dashed #6c44f6;background:rgba(108,68,246,0.08);color:#a78bfa;">
+          ▎ <span style="opacity:0.6">Task title...</span> &nbsp; &lt;priority&gt; &nbsp; &lt;assignee&gt; &nbsp; &lt;due date&gt;
+        </div>
+      </div>
+      <div style="margin-top:8px;">
+        <span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#ecfdf3;color:#15803d;font-size:11px;margin-right:6px;">Fastest for bulk entry</span>
+        <span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#eff6ff;color:#1d4ed8;font-size:11px;">Keyboard-first</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Expandable Card — Asana/ClickUp style</h3>
+      <p>Click "+ New task" and a <strong>card expands below the button</strong> with labelled fields (title, description, priority dropdown, assignee picker, dates). Fill in what you want, click "Create". More guided, more fields visible at once, but takes more vertical space.</p>
+      <div style="margin-top:12px;padding:16px;border-radius:8px;background:#1e1b2e;color:#e2e0ea;font-family:monospace;font-size:13px;line-height:1.8;">
+        <div style="opacity:0.5;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">▸ Not Started (3)</div>
+        <div style="padding:6px 8px;border-radius:4px;border:1px solid #333;">Set up CI pipeline</div>
+        <div style="padding:6px 8px;border-radius:4px;border:1px solid #333;">Write onboarding docs</div>
+        <div style="padding:12px;border-radius:8px;border:1px solid #6c44f6;background:rgba(108,68,246,0.06);margin-top:4px;">
+          <div style="margin-bottom:8px;">Title: <span style="border-bottom:1px solid #6c44f6;padding:2px 40px;opacity:0.5;">_______________</span></div>
+          <div style="margin-bottom:8px;">Description: <span style="opacity:0.5;">(optional)</span></div>
+          <div style="display:flex;gap:16px;margin-bottom:8px;">
+            <span>Priority: <span style="color:#6c44f6;">[Medium ▾]</span></span>
+            <span>Assignee: <span style="color:#6c44f6;">[Select ▾]</span></span>
+            <span>Due: <span style="color:#6c44f6;">[Pick date]</span></span>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:8px;">
+            <span style="padding:4px 12px;border-radius:6px;background:#6c44f6;color:white;font-size:12px;">Create task</span>
+            <span style="padding:4px 12px;border-radius:6px;border:1px solid #555;color:#999;font-size:12px;">Cancel</span>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:8px;">
+        <span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#fff7ed;color:#c2410c;font-size:11px;margin-right:6px;">More guided</span>
+        <span style="display:inline-block;padding:2px 8px;border-radius:4px;background:#eff6ff;color:#1d4ed8;font-size:11px;">Shows all fields upfront</span>
+      </div>
+    </div>
+  </div>
+</div>
