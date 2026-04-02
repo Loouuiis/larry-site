@@ -150,6 +150,12 @@ interface CalendarEventUpdatePayload {
   timeZone?: string | null;
 }
 
+interface SlackMessageDraftPayload {
+  channelName: string;
+  message: string;
+  threadTs: string | null;
+}
+
 interface TenantPolicySettings {
   autoExecuteLowImpact: boolean;
 }
@@ -173,6 +179,7 @@ const APPROVAL_ONLY_ACTION_TYPES = new Set<LarryActionType>([
   "project_note_send",
   "calendar_event_create",
   "calendar_event_update",
+  "slack_message_draft",
 ]);
 
 const DESTRUCTIVE_KEYWORD_PATTERN = /\b(delete|remove|drop|destroy|terminate|cancel)\b/i;
@@ -249,6 +256,8 @@ function missingPayloadFields(action: LarryAction): string[] {
       }
       return missing;
     }
+    case "slack_message_draft":
+      return ["channelName", "message"].filter((field) => !hasPayloadValue(action.payload, field));
     default:
       return [];
   }
@@ -775,6 +784,48 @@ export async function executeProjectCreate(
   return { project, tasks };
 }
 
+async function executeSlackMessageDraft(
+  db: Db,
+  tenantId: string,
+  projectId: string,
+  payload: Record<string, unknown>,
+  actorUserId: string | null
+): Promise<Record<string, unknown>> {
+  const channelName = typeof payload.channelName === "string" ? payload.channelName : null;
+  const message = typeof payload.message === "string" ? payload.message : "";
+  const threadTs = typeof payload.threadTs === "string" ? payload.threadTs : null;
+
+  if (!channelName || !message) {
+    throw new Error("slack_message_draft requires channelName and message in payload");
+  }
+
+  // Store the draft — Slack messages are NOT sent immediately.
+  // They are stored as pending drafts for the user to review and send.
+  // We reuse the notification system to store the draft as a "slack_draft" notification.
+  const rows = await db.queryTenant<{ id: string }>(
+    tenantId,
+    `INSERT INTO notifications (tenant_id, user_id, type, title, body, link, project_id)
+     VALUES ($1, $2, 'slack_draft', $3, $4, $5, $6)
+     RETURNING id`,
+    [
+      tenantId,
+      actorUserId,
+      `Slack draft: ${channelName}`,
+      message.slice(0, 4000),
+      threadTs ? `thread:${threadTs}` : null,
+      projectId,
+    ]
+  );
+
+  return {
+    id: rows[0]?.id ?? null,
+    channelName,
+    message: message.slice(0, 200),
+    threadTs,
+    status: "draft_stored",
+  };
+}
+
 // ── Dispatch ──────────────────────────────────────────────────────────────────
 
 /**
@@ -1148,6 +1199,9 @@ export async function executeAction(
       throw new Error(
         "calendar_event_update is approval-governed and must execute via the API accept flow."
       );
+
+    case "slack_message_draft":
+      return executeSlackMessageDraft(db, tenantId, projectId, payload, actorUserId ?? null);
 
     default:
       throw new Error(`executeAction: unknown action type "${actionType as string}"`);

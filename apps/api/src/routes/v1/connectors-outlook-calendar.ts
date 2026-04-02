@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
+import { ingestCanonicalEvent } from "../../services/ingest/pipeline.js";
 import { writeAuditLog } from "../../lib/audit.js";
 import {
   ARCHIVED_PROJECT_WRITE_LOCK_MESSAGE,
@@ -361,4 +362,111 @@ export const outlookCalendarConnectorRoutes: FastifyPluginAsync = async (fastify
       };
     }
   );
+
+  // ── Outlook Calendar webhook (Microsoft Graph change notifications) ──────────
+
+  fastify.post("/webhook", async (request, reply) => {
+    // Step A: Handle Microsoft Graph subscription validation.
+    // When creating a subscription, Microsoft sends a POST with validationToken in the query string.
+    // We must return it plain-text with 200 to confirm the endpoint.
+    const query = request.query as Record<string, unknown>;
+    const validationToken = typeof query.validationToken === "string" ? query.validationToken : null;
+    if (validationToken) {
+      return reply.type("text/plain").code(200).send(validationToken);
+    }
+
+    // Step B: Process change notification payload.
+    const body = request.body as { value?: Array<Record<string, unknown>> } | null;
+    const notifications = body?.value;
+    if (!Array.isArray(notifications) || notifications.length === 0) {
+      return reply.code(202).send({ ok: true, ignored: true, reason: "empty_notification" });
+    }
+
+    // Process each notification individually so errors in one don't abort the rest.
+    let ingestedCount = 0;
+    for (const notification of notifications) {
+      const subscriptionId = typeof notification.subscriptionId === "string" ? notification.subscriptionId : null;
+      const clientState = typeof notification.clientState === "string" ? notification.clientState : null;
+      const changeType = typeof notification.changeType === "string" ? notification.changeType : null;
+      const resource = typeof notification.resource === "string" ? notification.resource : null;
+
+      if (!subscriptionId) continue;
+
+      // Look up the Outlook installation by subscription ID.
+      // We use fastify.db.query (not queryTenant) because we don't know the tenantId yet.
+      const installationRows = await fastify.db.query<{
+        id: string;
+        tenant_id: string;
+        project_id: string | null;
+        outlook_calendar_id: string;
+        outlook_subscription_client_state: string | null;
+      }>(
+        `SELECT id, tenant_id, project_id, outlook_calendar_id,
+                outlook_subscription_client_state
+         FROM outlook_calendar_installations
+         WHERE outlook_subscription_id = $1
+         LIMIT 1`,
+        [subscriptionId]
+      );
+
+      const installation = installationRows[0];
+      if (!installation) {
+        request.log.warn({ subscriptionId }, "Outlook webhook: unmapped subscription");
+        continue;
+      }
+
+      // Validate client state if configured.
+      if (
+        installation.outlook_subscription_client_state &&
+        clientState !== installation.outlook_subscription_client_state
+      ) {
+        request.log.warn(
+          { subscriptionId, tenantId: installation.tenant_id },
+          "Outlook webhook: client state mismatch"
+        );
+        continue;
+      }
+
+      const sourceEventId = `outlook:${subscriptionId}:${changeType ?? "unknown"}:${Date.now()}`;
+      const payload: Record<string, unknown> = {
+        subscriptionId,
+        changeType: changeType ?? null,
+        resource: resource ?? null,
+        body: notification,
+      };
+      if (installation.project_id) {
+        payload.projectId = installation.project_id;
+      }
+
+      try {
+        const result = await ingestCanonicalEvent(fastify, installation.tenant_id, {
+          source: "calendar",
+          sourceEventId,
+          actor: "outlook-calendar",
+          payload,
+        });
+
+        await writeAuditLog(fastify.db, {
+          tenantId: installation.tenant_id,
+          actionType: "ingest.calendar.outlook_webhook",
+          objectType: "canonical_event",
+          objectId: result.canonicalEventId,
+          details: {
+            sourceEventId,
+            subscriptionId,
+            changeType: changeType ?? null,
+          },
+        });
+
+        ingestedCount++;
+      } catch (err) {
+        request.log.error(
+          { err, subscriptionId, tenantId: installation.tenant_id },
+          "Outlook webhook: failed to ingest canonical event"
+        );
+      }
+    }
+
+    return reply.code(202).send({ ok: true, ingestedCount });
+  });
 };

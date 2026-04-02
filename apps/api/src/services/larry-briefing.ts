@@ -39,6 +39,64 @@ function deriveStatusLabel(riskLevel: string): LarryBriefingProject["statusLabel
   return "On Track";
 }
 
+// ── Guidance helpers ──────────────────────────────────────────────────────────
+
+interface LarryRuleRow {
+  title: string;
+  description: string;
+  rule_type: string;
+}
+
+interface CorrectionRow {
+  correction_type: string;
+  correction_payload: Record<string, unknown>;
+  created_at: string;
+}
+
+async function loadTenantGuidanceHint(db: Db, tenantId: string): Promise<string> {
+  const [rules, corrections] = await Promise.all([
+    db.queryTenant<LarryRuleRow>(
+      tenantId,
+      `SELECT title, description, rule_type
+       FROM larry_rules
+       WHERE tenant_id = $1 AND is_active = true
+       ORDER BY created_at DESC
+       LIMIT 10`,
+      [tenantId]
+    ).catch(() => [] as LarryRuleRow[]),
+    db.queryTenant<CorrectionRow>(
+      tenantId,
+      `SELECT correction_type, correction_payload, created_at
+       FROM correction_feedback
+       WHERE tenant_id = $1
+       ORDER BY created_at DESC
+       LIMIT 20`,
+      [tenantId]
+    ).catch(() => [] as CorrectionRow[]),
+  ]);
+
+  const chunks: string[] = [];
+
+  if (rules.length > 0) {
+    const lines = rules.map(
+      (rule, i) => `${i + 1}. [${rule.rule_type}] ${rule.title}: ${rule.description}`
+    );
+    chunks.push(`USER-DEFINED RULES Larry must follow:\n${lines.join("\n")}`);
+  }
+
+  if (corrections.length > 0) {
+    const lines = corrections.map((item, i) => {
+      const actionType = (item.correction_payload as Record<string, unknown>)?.actionType ?? "unknown";
+      const reason = (item.correction_payload as Record<string, unknown>)?.reason ?? "";
+      const reasonSuffix = typeof reason === "string" && reason.length > 0 ? ` — ${reason}` : "";
+      return `${i + 1}. ${item.correction_type.toUpperCase()}: ${actionType} (${item.created_at.slice(0, 10)})${reasonSuffix}`;
+    });
+    chunks.push(`PAST CORRECTIONS from the user — use these to calibrate your judgment:\n${lines.join("\n")}`);
+  }
+
+  return chunks.join("\n\n");
+}
+
 // ── Core ──────────────────────────────────────────────────────────────────────
 
 /**
@@ -68,7 +126,11 @@ export async function generateBriefing(
     [tenantId, userId]
   );
 
-  // 2. Run intelligence for each project in parallel — errors in individual
+  // 2. Load tenant-level guidance once so every per-project intelligence call
+  //    receives the same rules and correction calibration context.
+  const guidanceHint = await loadTenantGuidanceHint(db, tenantId);
+
+  // 3. Run intelligence for each project in parallel — errors in individual
   //    projects are logged and skipped so one bad project can't kill the briefing
   const settled = await Promise.allSettled(
     projectRows.map(async (project) => {
@@ -81,7 +143,11 @@ export async function generateBriefing(
         getProjectSnapshot(db, tenantId, project.id),
         getPendingSuggestionTexts(db, tenantId, project.id).catch(() => [] as string[]),
       ]);
-      const result = await runIntelligence(config, snapshot, `user logged in${buildPendingClause(pendingTexts)}`);
+      const result = await runIntelligence(
+        config,
+        snapshot,
+        `user logged in${buildPendingClause(pendingTexts)}${guidanceHint ? `\n\n${guidanceHint}` : ""}`
+      );
 
       const [autoResult, suggestResult] = await Promise.all([
         runAutoActions(db, tenantId, project.id, "login", result.autoActions, undefined, ledgerContext),

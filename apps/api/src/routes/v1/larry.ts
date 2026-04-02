@@ -66,6 +66,7 @@ import {
   refreshOutlookAccessToken,
   updateOutlookCalendarEvent,
 } from "../../services/connectors/outlook-calendar.js";
+import { postSlackMessage } from "../../services/connectors/slack.js";
 
 function buildIntelligenceConfig(config: ReturnType<typeof getApiEnv>): IntelligenceConfig {
   if (config.MODEL_PROVIDER === "openai") {
@@ -434,15 +435,17 @@ function buildRulesAndCorrectionsHint(input: {
     const lines = input.rules.map(
       (rule, index) => `${index + 1}. [${rule.rule_type}] ${rule.title}: ${rule.description}`
     );
-    chunks.push(`User-defined rules Larry must follow:\n${lines.join("\n")}`);
+    chunks.push(`USER-DEFINED RULES Larry must follow:\n${lines.join("\n")}`);
   }
 
   if (input.corrections.length > 0) {
     const lines = input.corrections.map((item, index) => {
-      const payload = JSON.stringify(item.correction_payload ?? {}).slice(0, 240);
-      return `${index + 1}. ${item.correction_type} (${item.created_at.slice(0, 10)}): ${payload}`;
+      const actionType = (item.correction_payload as Record<string, unknown>)?.actionType ?? "unknown";
+      const reason = (item.correction_payload as Record<string, unknown>)?.reason ?? "";
+      const reasonSuffix = typeof reason === "string" && reason.length > 0 ? ` — ${reason}` : "";
+      return `${index + 1}. ${item.correction_type.toUpperCase()}: ${actionType} (${item.created_at.slice(0, 10)})${reasonSuffix}`;
     });
-    chunks.push(`Past corrections from the user - avoid repeating these patterns:\n${lines.join("\n")}`);
+    chunks.push(`PAST CORRECTIONS from the user — use these to calibrate your judgment:\n${lines.join("\n")}`);
   }
 
   return chunks.join("\n\n");
@@ -1297,6 +1300,60 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
             actionType: event.actionType,
             payload: event.payload,
           });
+        } else if (event.actionType === "slack_message_draft") {
+          entity = await executeAction(
+            fastify.db,
+            tenantId,
+            event.projectId,
+            event.actionType as LarryActionType,
+            event.payload,
+            actorUserId
+          );
+
+          const channelName = typeof event.payload.channelName === "string" ? event.payload.channelName : null;
+          const messageText = typeof event.payload.message === "string" ? event.payload.message : null;
+
+          if (channelName && messageText) {
+            try {
+              const slackInstallation = await fastify.db.queryTenant<{ bot_access_token: string }>(
+                tenantId,
+                `SELECT bot_access_token
+                 FROM slack_installations
+                 WHERE tenant_id = $1
+                 ORDER BY updated_at DESC
+                 LIMIT 1`,
+                [tenantId]
+              );
+
+              if (slackInstallation[0]?.bot_access_token) {
+                const slackResult = await postSlackMessage(
+                  slackInstallation[0].bot_access_token,
+                  channelName,
+                  messageText
+                );
+
+                if (slackResult.ok) {
+                  (entity as Record<string, unknown>).slackSent = true;
+                } else {
+                  request.log.warn(
+                    { tenantId, eventId: id, error: slackResult.error },
+                    "Slack message send failed after approval"
+                  );
+                  (entity as Record<string, unknown>).slackSent = false;
+                  (entity as Record<string, unknown>).slackError = slackResult.error ?? "Unknown Slack API error";
+                }
+              } else {
+                request.log.warn({ tenantId, eventId: id }, "No Slack installation found for tenant — draft stored but not sent");
+                (entity as Record<string, unknown>).slackSent = false;
+                (entity as Record<string, unknown>).slackError = "No Slack connector installed. Connect Slack in Settings > Connectors.";
+              }
+            } catch (err) {
+              const errMsg = err instanceof Error ? err.message : String(err);
+              request.log.warn({ err, tenantId, eventId: id }, "Slack message delivery failed");
+              (entity as Record<string, unknown>).slackSent = false;
+              (entity as Record<string, unknown>).slackError = errMsg;
+            }
+          }
         } else {
           const actionPayload =
             event.actionType === "project_note_send"
@@ -1410,6 +1467,21 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       });
 
       const [updatedEvent] = await listLarryEventSummaries(fastify.db, tenantId, { ids: [id] });
+
+      // Record dismissal in project memory for future intelligence context
+      Promise.resolve(
+        insertProjectMemoryEntry(fastify.db, tenantId, event.projectId, {
+          source: "Action Centre",
+          sourceKind: "action",
+          sourceRecordId: id,
+          content: `DISMISSED: ${updatedEvent?.displayText ?? "Larry suggestion"}. ${updatedEvent?.reasoning ?? ""}${body.reason ? ` User reason: ${body.reason}` : ""}`.trim().slice(0, 4_000),
+        })
+      ).catch((error) => {
+        request.log.warn(
+          { err: error, tenantId, eventId: id, projectId: event.projectId },
+          "project memory write failed for dismissed event"
+        );
+      });
 
       return reply.code(200).send({ dismissed: true, event: updatedEvent ?? null });
     }
@@ -1767,6 +1839,29 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           rules: activeRules,
           corrections: recentCorrections,
         });
+
+        // Load conversation history for multi-turn context (global chat)
+        let conversationHistoryHint = "";
+        if (existingConversation) {
+          try {
+            const priorMessages = await listLarryMessagesForConversation(
+              fastify.db,
+              tenantId,
+              existingConversation.id
+            );
+            const relevantMessages = priorMessages.slice(-10);
+            if (relevantMessages.length > 0) {
+              const historyLines = relevantMessages.map((m) => {
+                const speaker = m.role === "user" ? "User" : "Larry";
+                return `${speaker}: ${m.content.slice(0, 500)}`;
+              });
+              conversationHistoryHint = `\n\nCONVERSATION HISTORY (most recent messages in this thread — use this to understand what the user is referring to):\n${historyLines.join("\n")}`;
+            }
+          } catch (err) {
+            request.log.warn({ err, tenantId }, "Failed to load conversation history for global chat intelligence");
+          }
+        }
+
         const draftRuns: Array<{
           projectId: string;
           projectName: string;
@@ -1784,7 +1879,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
             const result = await runIntelligence(
               config,
               snapshot,
-              `user said: "${message}"${pendingClause}${guidanceHint ? `\n\n${guidanceHint}` : ""}`
+              `user said: "${message}"${conversationHistoryHint}${pendingClause}${guidanceHint ? `\n\n${guidanceHint}` : ""}`
             );
             draftRuns.push({
               projectId: project.id,
@@ -1829,7 +1924,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           requestMessageId: userMessageInsert.id,
           responseMessageId: assistantMessageInsert.id,
           requesterUserId: actorUserId,
-          sourceKind: "chat",
+          sourceKind: "direct_chat",
           sourceRecordId: userMessageInsert.id,
         };
 
@@ -1881,7 +1976,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
             await Promise.resolve(
               insertProjectMemoryEntry(fastify.db, tenantId, draft.projectId, {
                 source: "Larry chat",
-                sourceKind: "chat",
+                sourceKind: "direct_chat",
                 sourceRecordId: userMessageInsert.id,
                 content: buildChatMemoryEntry(message, draft.result.briefing),
               })
@@ -2047,7 +2142,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           Promise.resolve(
             insertProjectMemoryEntry(fastify.db, tenantId, projectId, {
               source: "Larry chat",
-              sourceKind: "chat",
+              sourceKind: "direct_chat",
               sourceRecordId: userMessageInsert.id,
               content: buildChatMemoryEntry(message, clarificationNeed.question),
             })
@@ -2095,18 +2190,139 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         corrections: recentCorrections,
       });
 
+      // Load conversation history for multi-turn context (project-scoped chat)
+      let conversationHistoryHint = "";
+      const resolvedConversationId = existingConversation?.id ?? conversationId;
+      if (resolvedConversationId) {
+        try {
+          const priorMessages = await listLarryMessagesForConversation(
+            fastify.db,
+            tenantId,
+            resolvedConversationId
+          );
+          // Take last 10 messages (5 turns), skip the most recent if it matches the current message
+          const relevantMessages = priorMessages.slice(-10);
+          if (relevantMessages.length > 0) {
+            const historyLines = relevantMessages.map((m) => {
+              const speaker = m.role === "user" ? "User" : "Larry";
+              return `${speaker}: ${m.content.slice(0, 500)}`;
+            });
+            conversationHistoryHint = `\n\nCONVERSATION HISTORY (most recent messages in this thread — use this to understand what the user is referring to):\n${historyLines.join("\n")}`;
+          }
+        } catch (err) {
+          // Non-fatal — proceed without history if loading fails
+          request.log.warn({ err, tenantId, conversationId: resolvedConversationId }, "Failed to load conversation history for chat intelligence");
+        }
+      }
+
       const config = buildIntelligenceConfig(fastify.config);
       let result;
       try {
         result = await runIntelligence(
           config,
           snapshot,
-          `user said: "${message}"${pendingClause}${guidanceHint ? `\n\n${guidanceHint}` : ""}`
+          `user said: "${message}"${conversationHistoryHint}${pendingClause}${guidanceHint ? `\n\n${guidanceHint}` : ""}`
         );
       } catch (error) {
         const messageText = error instanceof Error ? error.message : String(error);
         request.log.error({ err: error, tenantId, projectId }, "runIntelligence failed");
         throw fastify.httpErrors.serviceUnavailable(`Larry intelligence error: ${messageText}`);
+      }
+
+      // LLM-driven clarification — takes priority over action execution
+      if (result.followUpQuestions && result.followUpQuestions.length > 0) {
+        const conversation =
+          existingConversation ??
+          await createLarryConversation(fastify.db, tenantId, actorUserId, {
+            projectId,
+            title: message.slice(0, 80),
+          });
+
+        const userMessageInsert = await insertLarryMessage(fastify.db, tenantId, conversation.id, {
+          role: "user",
+          content: message,
+          actorUserId,
+        });
+
+        const clarificationText = result.briefing || result.followUpQuestions.map((q) => q.question).join("\n");
+        const assistantMessageInsert = await insertLarryMessage(fastify.db, tenantId, conversation.id, {
+          role: "larry",
+          content: clarificationText,
+        });
+
+        await touchLarryConversation(fastify.db, tenantId, conversation.id, message.slice(0, 80));
+
+        const persistedMessages = await listLarryMessagesByIds(fastify.db, tenantId, [
+          userMessageInsert.id,
+          assistantMessageInsert.id,
+        ]);
+
+        const userMessage =
+          persistedMessages.find((entry) => entry.id === userMessageInsert.id) ??
+          fallbackMessage({
+            id: userMessageInsert.id,
+            role: "user",
+            content: message,
+            createdAt: userMessageInsert.createdAt,
+            actorUserId,
+          });
+
+        const assistantMessage =
+          persistedMessages.find((entry) => entry.id === assistantMessageInsert.id) ??
+          fallbackMessage({
+            id: assistantMessageInsert.id,
+            role: "larry",
+            content: clarificationText,
+            createdAt: assistantMessageInsert.createdAt,
+          });
+
+        await Promise.all([
+          writeAuditLog(fastify.db, {
+            tenantId,
+            actorUserId,
+            actionType: "larry.chat.llm_clarification_requested",
+            objectType: "project",
+            objectId: projectId,
+            details: {
+              conversationId: conversation.id,
+              followUpCount: result.followUpQuestions.length,
+              fields: result.followUpQuestions.map((q) => q.field),
+            },
+          }),
+          Promise.resolve(
+            insertProjectMemoryEntry(fastify.db, tenantId, projectId, {
+              source: "Larry chat",
+              sourceKind: "chat",
+              sourceRecordId: userMessageInsert.id,
+              content: buildChatMemoryEntry(message, clarificationText),
+            })
+          ).catch((error) => {
+            request.log.warn(
+              { err: error, tenantId, projectId, conversationId: conversation.id },
+              "project memory write failed for LLM clarification chat turn"
+            );
+          }),
+        ]);
+
+        const clarifications: LarryClarification[] = result.followUpQuestions.map((q) => ({
+          field: q.field,
+          question: q.question,
+        }));
+
+        return reply.code(200).send({
+          conversationId: conversation.id,
+          message: clarificationText,
+          userMessage,
+          assistantMessage: {
+            ...assistantMessage,
+            linkedActions: [],
+          },
+          linkedActions: [],
+          actionsExecuted: 0,
+          suggestionCount: 0,
+          requiresClarification: true,
+          clarifications,
+        } satisfies LarryChatResponse);
       }
 
       const conversation =
@@ -2134,7 +2350,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         requestMessageId: userMessageInsert.id,
         responseMessageId: assistantMessageInsert.id,
         requesterUserId: actorUserId,
-        sourceKind: "chat",
+        sourceKind: "direct_chat",
         sourceRecordId: userMessageInsert.id,
       };
 
@@ -2218,7 +2434,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         Promise.resolve(
           insertProjectMemoryEntry(fastify.db, tenantId, projectId, {
             source: "Larry chat",
-            sourceKind: "chat",
+            sourceKind: "direct_chat",
             sourceRecordId: userMessageInsert.id,
             content: buildChatMemoryEntry(message, result.briefing),
           })

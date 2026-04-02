@@ -145,7 +145,8 @@ export type LarryActionType =
   | "collaborator_remove"
   | "project_note_send"
   | "calendar_event_create"
-  | "calendar_event_update";
+  | "calendar_event_update"
+  | "slack_message_draft";
 
 export type LarryEventType = "auto_executed" | "suggested" | "accepted" | "dismissed";
 export type LarryTriggeredBy = "schedule" | "login" | "chat" | "signal";
@@ -168,6 +169,11 @@ export interface IntelligenceResult {
   autoActions: LarryAction[];
   /** Actions that need the project owner to approve — deadline/scope/ownership/external. */
   suggestedActions: LarryAction[];
+  /** When non-empty, Larry needs more info before acting. autoActions and suggestedActions should be empty. */
+  followUpQuestions?: Array<{
+    field: string;    // e.g. "deadline", "assignee", "scope", "recipient", "task_target", "general"
+    question: string; // e.g. "What deadline should I set for this task?"
+  }>;
 }
 
 export interface LarryConversationPreview {

@@ -37,7 +37,7 @@ export async function runLarryScan(): Promise<void> {
       try {
         const snapshot = await getProjectSnapshot(db, tenantId, projectId);
         const result = await runIntelligence(config, snapshot, "scheduled health scan");
-        const ledgerContext = { sourceKind: "schedule", sourceRecordId: randomUUID() } as const;
+        const ledgerContext = { sourceKind: "project_review", sourceRecordId: randomUUID() } as const;
 
         const [autoResult, suggestResult] = await Promise.all([
           runAutoActions(db, tenantId, projectId, "schedule", result.autoActions, undefined, ledgerContext),

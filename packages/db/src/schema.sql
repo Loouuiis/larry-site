@@ -1241,3 +1241,13 @@ DO $$ BEGIN
     ON larry_rules
     USING (tenant_id::text = current_setting('app.tenant_id', true));
 EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+-- Outlook Calendar webhook subscription tracking
+ALTER TABLE outlook_calendar_installations
+  ADD COLUMN IF NOT EXISTS outlook_subscription_id TEXT,
+  ADD COLUMN IF NOT EXISTS outlook_subscription_client_state TEXT,
+  ADD COLUMN IF NOT EXISTS outlook_subscription_expiration TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS idx_outlook_calendar_installations_subscription
+  ON outlook_calendar_installations (outlook_subscription_id)
+  WHERE outlook_subscription_id IS NOT NULL;

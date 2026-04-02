@@ -244,6 +244,45 @@ export async function createOutlookCalendarEvent(
   };
 }
 
+export async function createOutlookCalendarSubscription(input: {
+  accessToken: string;
+  notificationUrl: string;
+  clientState: string;
+  calendarId?: string;
+}): Promise<{ subscriptionId: string; expirationDateTime: string }> {
+  const resource = input.calendarId
+    ? `me/calendars/${input.calendarId}/events`
+    : "me/events";
+
+  const response = await fetch("https://graph.microsoft.com/v1.0/subscriptions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${input.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      changeType: "created,updated,deleted",
+      notificationUrl: input.notificationUrl,
+      resource,
+      expirationDateTime: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000 - 60_000).toISOString(),
+      clientState: input.clientState,
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Failed to create Outlook Calendar subscription: ${response.status} — ${err}`);
+  }
+
+  const data = (await response.json()) as { id?: string; expirationDateTime?: string };
+  if (!data.id) throw new Error("Outlook subscription response missing id");
+
+  return {
+    subscriptionId: data.id,
+    expirationDateTime: data.expirationDateTime ?? "",
+  };
+}
+
 export async function updateOutlookCalendarEvent(
   input: OutlookCalendarEventUpdateInput
 ): Promise<OutlookCalendarEventWriteResult> {
