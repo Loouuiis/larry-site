@@ -19,7 +19,7 @@ export function Footer() {
   const year = new Date().getFullYear();
 
   return (
-    <footer className="border-t border-neutral-800 bg-neutral-950">
+    <footer className="border-t border-[var(--text-2)] bg-[#11172c]">
       <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-16">
         <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-4 sm:gap-8 lg:grid-cols-5">
           {/* Brand column */}
@@ -33,7 +33,7 @@ export function Footer() {
               </span>
               Larry
             </Link>
-            <p className="text-xs leading-relaxed text-neutral-500 max-w-[200px]">
+            <p className="text-xs leading-relaxed text-[var(--text-muted)] max-w-[200px]">
               The AI project manager that actually runs execution.
             </p>
           </div>
@@ -41,7 +41,7 @@ export function Footer() {
           {/* Link columns */}
           {Object.entries(FOOTER_LINKS).map(([category, links]) => (
             <div key={category}>
-              <h3 className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-neutral-500 sm:mb-4 sm:tracking-widest sm:text-xs">
+              <h3 className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)] sm:mb-4 sm:tracking-widest sm:text-xs">
                 {category}
               </h3>
               <ul className="space-y-2.5" role="list">
@@ -49,7 +49,7 @@ export function Footer() {
                   <li key={link}>
                     <Link
                       href={`/${link.toLowerCase().replace(/[\s&]+/g, "-")}`}
-                      className="inline-block min-h-[36px] py-1 text-xs text-neutral-600 transition-colors duration-200 hover:text-neutral-200"
+                      className="inline-block min-h-[36px] py-1 text-xs text-[var(--text-2)] transition-colors duration-200 hover:text-[var(--text-disabled)]"
                     >
                       {link}
                     </Link>
@@ -61,8 +61,8 @@ export function Footer() {
         </div>
 
         {/* Bottom bar */}
-        <div className="mt-10 flex flex-col items-center justify-between gap-4 border-t border-neutral-800 pt-6 sm:mt-14 sm:flex-row sm:pt-8">
-          <p className="text-xs text-neutral-600" suppressHydrationWarning>
+        <div className="mt-10 flex flex-col items-center justify-between gap-4 border-t border-[var(--text-2)] pt-6 sm:mt-14 sm:flex-row sm:pt-8">
+          <p className="text-xs text-[var(--text-2)]" suppressHydrationWarning>
             &copy; {year} Larry. All rights reserved.
           </p>
           <ul className="flex items-center gap-5" role="list">
@@ -70,7 +70,7 @@ export function Footer() {
               <li key={label}>
                 <Link
                   href={href}
-                  className="text-xs text-neutral-600 transition-colors duration-200 hover:text-neutral-300"
+                  className="text-xs text-[var(--text-2)] transition-colors duration-200 hover:text-[var(--text-disabled)]"
                 >
                   {label}
                 </Link>

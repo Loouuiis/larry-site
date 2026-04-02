@@ -143,7 +143,7 @@ function buildProjectCard(
   };
 }
 
-export function WorkspaceHome() {
+export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: string | null } = {}) {
   const router = useRouter();
   const chrome = useWorkspaceChrome();
   const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);

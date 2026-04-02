@@ -39,13 +39,13 @@ export function Topbar({
       <button
         onClick={onMenuClick}
         aria-label="Open navigation"
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-50 hover:text-neutral-700 transition-colors md:hidden"
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[var(--text-disabled)] hover:bg-[var(--surface-2)] hover:text-[var(--text-2)] transition-colors md:hidden"
       >
         <Menu size={18} />
       </button>
 
       {/* Page title */}
-      <h1 className="flex-1 text-base font-semibold text-neutral-900 tracking-[-0.02em]">
+      <h1 className="flex-1 text-base font-semibold text-[var(--text-1)] tracking-[-0.02em]">
         {title}
       </h1>
 
@@ -58,7 +58,7 @@ export function Topbar({
             "relative flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-xs font-medium shadow-sm transition-all duration-150",
             actionPanelOpen
               ? "border-[var(--color-brand)]/30 bg-[var(--color-brand)]/8 text-[var(--color-brand)] shadow-[0_0_0_3px_rgba(139,92,246,0.1)]"
-              : "border-neutral-200 bg-white text-neutral-600 hover:border-[var(--color-brand)]/40 hover:bg-[var(--color-brand)]/4 hover:text-[var(--color-brand)] hover:shadow-[0_0_0_3px_rgba(139,92,246,0.08)]",
+              : "border-[var(--border)] bg-white text-[var(--text-2)] hover:border-[var(--color-brand)]/40 hover:bg-[var(--color-brand)]/4 hover:text-[var(--color-brand)] hover:shadow-[0_0_0_3px_rgba(139,92,246,0.08)]",
           ].join(" ")}
         >
           <Zap size={13} className="shrink-0" />
@@ -78,7 +78,7 @@ export function Topbar({
             "relative flex h-8 w-8 items-center justify-center rounded-xl border transition-all duration-150",
             notificationPanelOpen
               ? "border-[var(--color-brand)]/30 bg-[var(--color-brand)]/8 text-[var(--color-brand)] shadow-[0_0_0_3px_rgba(139,92,246,0.1)]"
-              : "border-neutral-200 bg-white text-neutral-500 hover:border-[var(--color-brand)]/30 hover:bg-[var(--color-brand)]/4 hover:text-[var(--color-brand)]",
+              : "border-[var(--border)] bg-white text-[var(--text-muted)] hover:border-[var(--color-brand)]/30 hover:bg-[var(--color-brand)]/4 hover:text-[var(--color-brand)]",
           ].join(" ")}
         >
           <Bell size={15} />

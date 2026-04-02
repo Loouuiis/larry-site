@@ -91,20 +91,20 @@ export function ChatsPage() {
   const thread = THREADS.find((t) => t.id === activeThread)!;
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] overflow-hidden rounded-2xl border border-neutral-100 bg-white pb-4 shadow-card">
+    <div className="flex h-[calc(100vh-4rem)] overflow-hidden rounded-2xl border border-[var(--border)] bg-white pb-4 shadow-card">
 
       {/* Thread list */}
       <motion.aside
         variants={container}
         initial="hidden"
         animate="visible"
-        className="w-64 shrink-0 border-r border-neutral-100 flex flex-col"
+        className="w-64 shrink-0 border-r border-[var(--border)] flex flex-col"
       >
-        <div className="flex items-center gap-2 border-b border-neutral-100 px-4 py-3.5">
-          <Search size={13} className="shrink-0 text-neutral-400" />
+        <div className="flex items-center gap-2 border-b border-[var(--border)] px-4 py-3.5">
+          <Search size={13} className="shrink-0 text-[var(--text-disabled)]" />
           <input
             placeholder="Search chats…"
-            className="flex-1 bg-transparent text-xs text-neutral-700 placeholder:text-neutral-400 outline-none"
+            className="flex-1 bg-transparent text-xs text-[var(--text-2)] placeholder:text-[var(--text-disabled)] outline-none"
           />
         </div>
         <ul role="list" className="flex-1 overflow-y-auto">
@@ -115,16 +115,16 @@ export function ChatsPage() {
                 <button
                   onClick={() => setActiveThread(t.id)}
                   className={[
-                    "w-full text-left px-4 py-3.5 border-b border-neutral-50 transition-colors",
-                    isActive ? "bg-[var(--color-brand)]/5" : "hover:bg-neutral-50",
+                    "w-full text-left px-4 py-3.5 border-b border-[var(--border)] transition-colors",
+                    isActive ? "bg-[var(--color-brand)]/5" : "hover:bg-[var(--surface-2)]",
                   ].join(" ")}
                 >
                   <div className="flex items-center justify-between mb-1">
-                    <span className={`text-xs font-semibold ${isActive ? "text-[var(--color-brand)]" : "text-neutral-800"}`}>
+                    <span className={`text-xs font-semibold ${isActive ? "text-[var(--color-brand)]" : "text-[var(--text-1)]"}`}>
                       {t.name}
                     </span>
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[10px] text-neutral-400">{t.time}</span>
+                      <span className="text-[10px] text-[var(--text-disabled)]">{t.time}</span>
                       {t.unread > 0 && (
                         <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[var(--color-brand)] px-1 text-[9px] font-bold text-white">
                           {t.unread}
@@ -132,7 +132,7 @@ export function ChatsPage() {
                       )}
                     </div>
                   </div>
-                  <p className="text-[10px] text-neutral-400 truncate">{t.lastMessage}</p>
+                  <p className="text-[10px] text-[var(--text-disabled)] truncate">{t.lastMessage}</p>
                 </button>
               </motion.li>
             );
@@ -143,13 +143,13 @@ export function ChatsPage() {
       {/* Message view */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center gap-3 border-b border-neutral-100 px-5 py-3.5">
+        <div className="flex items-center gap-3 border-b border-[var(--border)] px-5 py-3.5">
           <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-[var(--color-brand)] text-[9px] font-bold text-white select-none">
             L
           </div>
           <div>
-            <p className="text-sm font-semibold text-neutral-800">{thread.name}</p>
-            <p className="text-[10px] text-neutral-400">{thread.context}</p>
+            <p className="text-sm font-semibold text-[var(--text-1)]">{thread.name}</p>
+            <p className="text-[10px] text-[var(--text-disabled)]">{thread.context}</p>
           </div>
           <div className="ml-auto flex items-center gap-1.5 rounded-full border border-[var(--color-brand)]/20 bg-[var(--color-brand)]/5 px-3 py-1">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 live-pulse" aria-hidden="true" />
@@ -180,13 +180,13 @@ export function ChatsPage() {
                       className={[
                         "rounded-2xl px-4 py-2.5 text-xs leading-relaxed whitespace-pre-line",
                         msg.role === "larry"
-                          ? "bg-neutral-50 text-neutral-700 rounded-tl-sm"
+                          ? "bg-[var(--surface-2)] text-[var(--text-2)] rounded-tl-sm"
                           : "bg-[var(--color-brand)] text-white rounded-tr-sm",
                       ].join(" ")}
                     >
                       {msg.text}
                     </div>
-                    <p className={`text-[10px] text-neutral-400 ${msg.role === "user" ? "text-right" : ""}`}>
+                    <p className={`text-[10px] text-[var(--text-disabled)] ${msg.role === "user" ? "text-right" : ""}`}>
                       {msg.time}
                     </p>
                   </div>
@@ -197,7 +197,7 @@ export function ChatsPage() {
         </div>
 
         {/* Input */}
-        <div className="border-t border-neutral-100 px-4 py-3">
+        <div className="border-t border-[var(--border)] px-4 py-3">
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -209,7 +209,7 @@ export function ChatsPage() {
               value={inputs[activeThread] ?? ""}
               onChange={(e) => setInputs((p) => ({ ...p, [activeThread]: e.target.value }))}
               placeholder={`Message Larry about ${thread.name}…`}
-              className="flex-1 rounded-xl border border-neutral-200 bg-neutral-50 px-3.5 py-2 text-xs text-neutral-700 placeholder:text-neutral-400 outline-none focus:border-[var(--color-brand)]/40 focus:ring-2 focus:ring-[var(--color-brand)]/10 transition-all"
+              className="flex-1 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-2 text-xs text-[var(--text-2)] placeholder:text-[var(--text-disabled)] outline-none focus:border-[var(--color-brand)]/40 focus:ring-2 focus:ring-[var(--color-brand)]/10 transition-all"
             />
             <button
               type="submit"

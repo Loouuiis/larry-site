@@ -122,15 +122,15 @@ export function Navbar() {
           "bg-[#F8F7FF]/82 backdrop-blur-md",
           "border transition-all duration-300",
           scrolled
-            ? "border-neutral-200 shadow-[0_4px_20px_rgba(0,0,0,0.06)]"
-            : "border-neutral-200/50 shadow-[0_2px_8px_rgba(0,0,0,0.03)]",
+            ? "border-[var(--border)] shadow-[0_4px_20px_rgba(0,0,0,0.06)]"
+            : "border-[var(--border)] shadow-[0_2px_8px_rgba(0,0,0,0.03)]",
         ].join(" ")}
         aria-label="Main navigation"
       >
         {/* Logo */}
         <Link
           href="/"
-          className="flex items-center gap-2 text-sm font-semibold text-neutral-900"
+          className="flex items-center gap-2 text-sm font-semibold text-[var(--text-1)]"
           onClick={() => setMenuOpen(false)}
         >
           <Image src="/Larry_logos.png" alt="Larry" width={50} height={18} className="object-contain" />
@@ -147,8 +147,8 @@ export function Navbar() {
                   className={[
                     "group relative flex items-center gap-0.5 rounded-lg px-3 py-1.5 text-sm transition-colors duration-150",
                     isActive
-                      ? "text-neutral-900"
-                      : "text-neutral-500 hover:text-neutral-900",
+                      ? "text-[var(--text-1)]"
+                      : "text-[var(--text-muted)] hover:text-[var(--text-1)]",
                   ].join(" ")}
                   aria-current={isActive ? "page" : undefined}
                 >
@@ -176,7 +176,7 @@ export function Navbar() {
           {/* Log in — hidden on small mobile, visible from sm */}
           <Link
             href="/login"
-            className="group relative hidden rounded-lg px-3 py-1.5 text-sm text-neutral-500 transition-colors duration-150 hover:text-neutral-900 sm:block"
+            className="group relative hidden rounded-lg px-3 py-1.5 text-sm text-[var(--text-muted)] transition-colors duration-150 hover:text-[var(--text-1)] sm:block"
           >
             Log in
             <span
@@ -200,8 +200,8 @@ export function Navbar() {
             aria-controls="mobile-nav-menu"
             className={[
               "ml-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg md:hidden",
-              "text-neutral-600 transition-colors duration-150 hover:bg-neutral-100 hover:text-neutral-900",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-1",
+              "text-[var(--text-2)] transition-colors duration-150 hover:bg-[var(--surface-2)] hover:text-[var(--text-1)]",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-1)] focus-visible:ring-offset-1",
             ].join(" ")}
           >
             <svg
@@ -241,7 +241,7 @@ export function Navbar() {
             transition={{ duration: 0.2, ease: EASE }}
             className={[
               "mx-auto mt-2 max-w-6xl overflow-hidden rounded-2xl md:hidden",
-              "border border-neutral-200 bg-[#F8F7FF]/96 backdrop-blur-md",
+              "border border-[var(--border)] bg-[#F8F7FF]/96 backdrop-blur-md",
               "shadow-[0_8px_32px_rgba(0,0,0,0.08)]",
             ].join(" ")}
           >
@@ -252,7 +252,7 @@ export function Navbar() {
                   <Link
                     href={href}
                     onClick={() => setMenuOpen(false)}
-                    className="flex min-h-[44px] items-center rounded-xl px-4 py-2.5 text-sm text-neutral-700 transition-colors duration-150 hover:bg-neutral-100 hover:text-neutral-900"
+                    className="flex min-h-[44px] items-center rounded-xl px-4 py-2.5 text-sm text-[var(--text-2)] transition-colors duration-150 hover:bg-[var(--surface-2)] hover:text-[var(--text-1)]"
                   >
                     {label}
                   </Link>
@@ -261,11 +261,11 @@ export function Navbar() {
             </ul>
 
             {/* Bottom actions */}
-            <div className="flex flex-col gap-2 border-t border-neutral-100 px-4 py-4">
+            <div className="flex flex-col gap-2 border-t border-[var(--border)] px-4 py-4">
               <Link
                 href="/login"
                 onClick={() => setMenuOpen(false)}
-                className="flex min-h-[44px] items-center rounded-xl px-4 py-2.5 text-sm font-medium text-neutral-600 transition-colors duration-150 hover:bg-neutral-100 hover:text-neutral-900"
+                className="flex min-h-[44px] items-center rounded-xl px-4 py-2.5 text-sm font-medium text-[var(--text-2)] transition-colors duration-150 hover:bg-[var(--surface-2)] hover:text-[var(--text-1)]"
               >
                 Log in
               </Link>

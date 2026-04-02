@@ -38,10 +38,10 @@ function getStatus(status: TaskStatus) {
 }
 
 function priorityInfo(p: string): { dot: string; label: string } {
-  if (p === "critical") return { dot: "bg-[#E2445C]", label: "Critical" };
-  if (p === "high") return { dot: "bg-[#FDAB3D]", label: "High" };
-  if (p === "medium") return { dot: "bg-[#0073EA]", label: "Medium" };
-  return { dot: "bg-[#C4C4C4]", label: "Low" };
+  if (p === "critical") return { dot: "bg-[var(--status-stuck-bg)]", label: "Critical" };
+  if (p === "high") return { dot: "bg-[var(--status-wip-bg)]", label: "High" };
+  if (p === "medium") return { dot: "bg-[var(--cta)]", label: "Medium" };
+  return { dot: "bg-[#bdb7d0]", label: "Low" };
 }
 
 function initials(task: BoardTaskRow): string {
@@ -91,10 +91,10 @@ function GroupSummary({ tasks }: { tasks: BoardTaskRow[] }) {
   return (
     <div className="flex items-center justify-between border-t border-[#e6e9ef] bg-[#f5f6f8] px-4 py-2">
       <div className="flex h-2 w-[200px] overflow-hidden rounded-full bg-[#e6e9ef]">
-        <div style={{ width: pct(counts.done), background: "#00C875" }} />
-        <div style={{ width: pct(counts.working), background: "#FDAB3D" }} />
-        <div style={{ width: pct(counts.stuck), background: "#E2445C" }} />
-        <div style={{ width: pct(counts.other), background: "#C4C4C4" }} />
+        <div style={{ width: pct(counts.done), background: "var(--status-done-bg)" }} />
+        <div style={{ width: pct(counts.working), background: "var(--status-wip-bg)" }} />
+        <div style={{ width: pct(counts.stuck), background: "var(--status-stuck-bg)" }} />
+        <div style={{ width: pct(counts.other), background: "#bdb7d0" }} />
       </div>
       {range && (
         <span className="rounded-full border border-[#e6e9ef] bg-white px-2 py-0.5 text-[12px] text-[#9699a8]">{range}</span>
@@ -131,7 +131,7 @@ export function TaskTable({
           >
             <header
               className="flex items-center justify-between border-b-[3px] px-3 py-2.5"
-              style={{ borderBottomColor: GROUP_COLOR[group.key] ?? "#C4C4C4" }}
+              style={{ borderBottomColor: GROUP_COLOR[group.key] ?? "#bdb7d0" }}
             >
               <span className="text-[14px] font-semibold text-[#323338]">{group.label}</span>
               <span className="rounded-full bg-[#f5f6f8] px-2 py-0.5 text-[12px] text-[#9699a8]">{group.tasks.length}</span>
@@ -155,7 +155,7 @@ export function TaskTable({
                   </article>
                 );
               })}
-              <button type="button" onClick={onAddTaskClick} className="flex items-center gap-1 px-1 py-1 text-[13px] font-medium text-[#0073EA] hover:underline">
+              <button type="button" onClick={onAddTaskClick} className="flex items-center gap-1 px-1 py-1 text-[13px] font-medium text-[var(--cta)] hover:underline">
                 <Plus size={13} /> Add task
               </button>
             </div>
@@ -183,7 +183,7 @@ export function TaskTable({
                 <span className="text-[13px] text-[#676879]">{fmtDate(task.dueDate)}</span>
                 <div className="flex items-center gap-2">
                   <div className="h-[6px] flex-1 overflow-hidden rounded-full bg-[#f5f6f8]">
-                    <div className="h-full rounded-full" style={{ width: `${w}%`, background: task.status === "completed" ? "#00C875" : "#0073EA" }} />
+                    <div className="h-full rounded-full" style={{ width: `${w}%`, background: task.status === "completed" ? "var(--status-done-bg)" : "var(--cta)" }} />
                   </div>
                   <span className="w-8 text-right text-[12px] text-[#9699a8]">{task.progressPercent}%</span>
                 </div>
@@ -203,7 +203,7 @@ export function TaskTable({
     <div>
       {groups.map(group => {
         const isCollapsed = collapsedGroups[group.key];
-        const color = GROUP_COLOR[group.key] ?? "#C4C4C4";
+        const color = GROUP_COLOR[group.key] ?? "#bdb7d0";
 
         return (
           <section
@@ -278,9 +278,9 @@ export function TaskTable({
                         {/* Due date */}
                         <div className="flex items-center gap-1.5 text-[13px] text-[#676879]">
                           {overdue ? (
-                            <AlertTriangle size={14} className="text-[#E2445C]" />
+                            <AlertTriangle size={14} className="text-[var(--status-stuck-bg)]" />
                           ) : task.dueDate ? (
-                            <CheckCircle2 size={14} className="text-[#00C875]" />
+                            <CheckCircle2 size={14} className="text-[var(--status-done-bg)]" />
                           ) : (
                             <CalendarClock size={14} className="text-[#9699a8]" />
                           )}
@@ -308,7 +308,7 @@ export function TaskTable({
                   <button
                     type="button"
                     onClick={onAddTaskClick}
-                    className="flex w-full items-center gap-1.5 px-4 py-2 text-[13px] font-medium text-[#0073EA] transition-colors hover:bg-[#f5f6f8]"
+                    className="flex w-full items-center gap-1.5 px-4 py-2 text-[13px] font-medium text-[var(--cta)] transition-colors hover:bg-[#f5f6f8]"
                   >
                     <Plus size={14} /> Add task
                   </button>

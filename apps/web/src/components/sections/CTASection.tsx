@@ -12,7 +12,7 @@ export function CTASection() {
   const openFounders = useOverlayTrigger("founders");
 
   return (
-    <section id="pricing" className="relative overflow-hidden border-t border-neutral-900 bg-neutral-950 py-14 sm:py-28">
+    <section id="pricing" className="relative overflow-hidden border-t border-[var(--text-1)] bg-[var(--text-1)] py-14 sm:py-28">
       {/* Brand radial — restrained, just enough warmth */}
       <div
         aria-hidden="true"
@@ -42,7 +42,7 @@ export function CTASection() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, amount: 0.1 }}
           transition={{ duration: 0.6, delay: 0.1, ease: EASE }}
-          className="mx-auto mb-8 max-w-md text-sm leading-relaxed text-neutral-400 sm:mb-10 sm:text-base"
+          className="mx-auto mb-8 max-w-md text-sm leading-relaxed text-[var(--text-disabled)] sm:mb-10 sm:text-base"
         >
           Let AI handle coordination — so your team can focus on building,
           shipping, and delivering.
@@ -60,12 +60,12 @@ export function CTASection() {
             {/* White-outlined primary on dark background */}
             <LiquidButton
               size="lg"
-              className="w-full border-white text-white hover:bg-white hover:text-neutral-950 sm:w-auto"
+              className="w-full border-white text-white hover:bg-white hover:text-[var(--text-1)] sm:w-auto"
               onClick={openWaitlist}
             >
               Join the Waitlist
             </LiquidButton>
-            <p className="mt-2 text-[11px] text-neutral-600">
+            <p className="mt-2 text-[11px] text-[var(--text-2)]">
               Early access · Priority onboarding · Direct input into roadmap
             </p>
           </div>
@@ -74,12 +74,12 @@ export function CTASection() {
             <Button
               size="lg"
               variant="ghost"
-              className="w-full border border-neutral-700 text-neutral-400 hover:border-neutral-500 hover:text-neutral-200 transition-colors duration-200 sm:w-auto"
+              className="w-full border border-[var(--text-2)] text-[var(--text-disabled)] hover:border-[var(--text-muted)] hover:text-[var(--text-2)] transition-colors duration-200 sm:w-auto"
               onClick={openFounders}
             >
               Speak to the Founders
             </Button>
-            <p className="mt-2 text-[11px] text-neutral-600">
+            <p className="mt-2 text-[11px] text-[var(--text-2)]">
               Explore a structured pilot for your team
             </p>
           </div>

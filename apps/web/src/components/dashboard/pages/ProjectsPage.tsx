@@ -212,13 +212,13 @@ const TASK_STATUS: Record<Task["status"], string> = {
 const PHASE_STYLE: Record<Phase["status"], { track: string; fill: string; label: string }> = {
   done:     { track: "bg-emerald-100", fill: "bg-emerald-400", label: "text-emerald-600" },
   active:   { track: "bg-[var(--color-brand)]/10", fill: "bg-[var(--color-brand)]", label: "text-[var(--color-brand)]" },
-  upcoming: { track: "bg-neutral-100", fill: "bg-neutral-300", label: "text-neutral-400" },
+  upcoming: { track: "bg-[var(--surface-2)]", fill: "bg-[var(--text-disabled)]", label: "text-[var(--text-disabled)]" },
 };
 
 const ACTIVITY_ICON: Record<string, string> = {
   reminder:   "bg-[var(--color-brand)]/10 text-[var(--color-brand)]",
   escalation: "bg-red-50 text-red-500",
-  report:     "bg-neutral-100 text-neutral-500",
+  report:     "bg-[var(--surface-2)] text-[var(--text-muted)]",
   assign:     "bg-emerald-50 text-emerald-600",
 };
 const ACTIVITY_LUCIDE: Record<string, React.ElementType> = {
@@ -258,7 +258,7 @@ function ProjectDetail({ project, onBack }: { project: Project; onBack: () => vo
       className="space-y-5 pb-10"
     >
       {/* Breadcrumb + back */}
-      <div className="flex items-center gap-2 text-xs text-neutral-400">
+      <div className="flex items-center gap-2 text-xs text-[var(--text-disabled)]">
         <button
           onClick={onBack}
           className="flex items-center gap-1.5 font-medium text-[var(--color-brand)] hover:underline"
@@ -266,17 +266,17 @@ function ProjectDetail({ project, onBack }: { project: Project; onBack: () => vo
           <ArrowLeft size={13} />
           Projects
         </button>
-        <ChevronRight size={11} className="text-neutral-300" />
-        <span className="font-medium text-neutral-600">{project.name}</span>
+        <ChevronRight size={11} className="text-[var(--text-disabled)]" />
+        <span className="font-medium text-[var(--text-2)]">{project.name}</span>
       </div>
 
       {/* Header card */}
-      <div className="rounded-2xl border border-neutral-100 bg-white p-6 shadow-card">
+      <div className="rounded-2xl border border-[var(--border)] bg-white p-6 shadow-card">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <div className="mb-1.5 flex flex-wrap items-center gap-2">
               <h2
-                className="text-xl font-bold text-neutral-900 tracking-[-0.025em]"
+                className="text-xl font-bold text-[var(--text-1)] tracking-[-0.025em]"
                 style={{ letterSpacing: "-0.025em" }}
               >
                 {project.name}
@@ -285,8 +285,8 @@ function ProjectDetail({ project, onBack }: { project: Project; onBack: () => vo
                 {hc.label}
               </span>
             </div>
-            <p className="text-sm text-neutral-500 leading-relaxed">{project.description}</p>
-            <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-neutral-400">
+            <p className="text-sm text-[var(--text-muted)] leading-relaxed">{project.description}</p>
+            <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-[var(--text-disabled)]">
               <span className="flex items-center gap-1.5">
                 <Calendar size={12} />
                 Due {project.deadline}
@@ -319,15 +319,15 @@ function ProjectDetail({ project, onBack }: { project: Project; onBack: () => vo
                   transition={{ duration: 1.1, ease: EASE }}
                 />
               </svg>
-              <span className="text-lg font-bold text-neutral-900">{project.progress}%</span>
+              <span className="text-lg font-bold text-[var(--text-1)]">{project.progress}%</span>
             </div>
-            <span className="text-[10px] text-neutral-400">Complete</span>
+            <span className="text-[10px] text-[var(--text-disabled)]">Complete</span>
           </div>
         </div>
 
         {/* Team avatars */}
-        <div className="mt-4 flex items-center gap-2 border-t border-neutral-50 pt-4">
-          <span className="text-[10px] font-medium uppercase tracking-widest text-neutral-400 mr-1">Team</span>
+        <div className="mt-4 flex items-center gap-2 border-t border-[var(--border)] pt-4">
+          <span className="text-[10px] font-medium uppercase tracking-widest text-[var(--text-disabled)] mr-1">Team</span>
           <div className="flex -space-x-1.5">
             {project.team.map((initials) => (
               <span
@@ -339,7 +339,7 @@ function ProjectDetail({ project, onBack }: { project: Project; onBack: () => vo
               </span>
             ))}
           </div>
-          <span className="ml-3 flex items-center gap-1 rounded-lg bg-neutral-50 px-2 py-1 text-[10px] text-neutral-500">
+          <span className="ml-3 flex items-center gap-1 rounded-lg bg-[var(--surface-2)] px-2 py-1 text-[10px] text-[var(--text-muted)]">
             <span className="flex h-3 w-3 items-center justify-center rounded bg-[var(--color-brand)] text-[5px] font-bold text-white">L</span>
             {project.larryNote}
           </span>
@@ -347,8 +347,8 @@ function ProjectDetail({ project, onBack }: { project: Project; onBack: () => vo
       </div>
 
       {/* Phases timeline */}
-      <div className="rounded-2xl border border-neutral-100 bg-white p-5 shadow-card">
-        <h3 className="mb-4 text-xs font-semibold text-neutral-800 flex items-center gap-2">
+      <div className="rounded-2xl border border-[var(--border)] bg-white p-5 shadow-card">
+        <h3 className="mb-4 text-xs font-semibold text-[var(--text-1)] flex items-center gap-2">
           <Zap size={12} className="text-[var(--color-brand)]" />
           Project Phases
         </h3>
@@ -366,7 +366,7 @@ function ProjectDetail({ project, onBack }: { project: Project; onBack: () => vo
                     transition={{ duration: 0.85, ease: EASE, delay: i * 0.06 }}
                   />
                 </div>
-                <span className="w-8 shrink-0 text-right text-[10px] text-neutral-400">
+                <span className="w-8 shrink-0 text-right text-[10px] text-[var(--text-disabled)]">
                   {phase.pct > 0 ? `${phase.pct}%` : "—"}
                 </span>
               </div>
@@ -378,27 +378,27 @@ function ProjectDetail({ project, onBack }: { project: Project; onBack: () => vo
       {/* Tasks + Risks */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-[1fr_320px]">
         {/* Task list */}
-        <div className="rounded-2xl border border-neutral-100 bg-white p-5 shadow-card">
+        <div className="rounded-2xl border border-[var(--border)] bg-white p-5 shadow-card">
           <div className="mb-4 flex items-center gap-2">
             <CheckSquare size={13} className="text-[var(--color-brand)]" />
-            <h3 className="text-xs font-semibold text-neutral-800">Action Items</h3>
-            <span className="ml-auto rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-medium text-neutral-500">
+            <h3 className="text-xs font-semibold text-[var(--text-1)]">Action Items</h3>
+            <span className="ml-auto rounded-full bg-[var(--surface-2)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-muted)]">
               {project.tasks.length}
             </span>
           </div>
           {project.tasks.length === 0 ? (
-            <p className="text-xs text-neutral-400 italic">No tasks yet — this project hasn&apos;t kicked off.</p>
+            <p className="text-xs text-[var(--text-disabled)] italic">No tasks yet — this project hasn&apos;t kicked off.</p>
           ) : (
             <ul className="space-y-3">
               {project.tasks.map(({ owner, task, due, status }, i) => (
-                <li key={i} className="flex items-start gap-3 rounded-xl border border-neutral-50 bg-neutral-50/60 p-3">
+                <li key={i} className="flex items-start gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-3">
                   <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--color-brand)]/10 text-[9px] font-bold text-[var(--color-brand)]">
                     {owner}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs font-medium text-neutral-700 leading-snug">{task}</p>
+                    <p className="text-xs font-medium text-[var(--text-2)] leading-snug">{task}</p>
                     <div className="mt-1.5 flex items-center gap-2">
-                      <span className="text-[10px] text-neutral-400">Due {due}</span>
+                      <span className="text-[10px] text-[var(--text-disabled)]">Due {due}</span>
                       <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-medium capitalize ${TASK_STATUS[status]}`}>
                         {status}
                       </span>
@@ -411,19 +411,19 @@ function ProjectDetail({ project, onBack }: { project: Project; onBack: () => vo
         </div>
 
         {/* Risks */}
-        <div className="rounded-2xl border border-neutral-100 bg-white p-5 shadow-card self-start">
+        <div className="rounded-2xl border border-[var(--border)] bg-white p-5 shadow-card self-start">
           <div className="mb-4 flex items-center gap-2">
             <AlertTriangle size={13} className="text-amber-500" />
-            <h3 className="text-xs font-semibold text-neutral-800">Flagged Risks</h3>
+            <h3 className="text-xs font-semibold text-[var(--text-1)]">Flagged Risks</h3>
           </div>
           {project.risks.length === 0 ? (
-            <p className="text-xs text-neutral-400 italic">No risks flagged yet.</p>
+            <p className="text-xs text-[var(--text-disabled)] italic">No risks flagged yet.</p>
           ) : (
             <ul className="space-y-3">
               {project.risks.map((risk, i) => (
                 <li key={i} className="flex items-start gap-2.5">
                   <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
-                  <p className="text-xs leading-relaxed text-neutral-600">{risk}</p>
+                  <p className="text-xs leading-relaxed text-[var(--text-2)]">{risk}</p>
                 </li>
               ))}
             </ul>
@@ -454,11 +454,11 @@ function ProjectRow({ proj, onSelect }: { proj: Project; onSelect: (id: string) 
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span className={`h-2 w-2 shrink-0 rounded-full ${hc.dot}`} />
-            <p className="truncate text-xs font-semibold text-neutral-800 group-hover:text-[var(--color-brand)] transition-colors">
+            <p className="truncate text-xs font-semibold text-[var(--text-1)] group-hover:text-[var(--color-brand)] transition-colors">
               {proj.name}
             </p>
           </div>
-          <p className="mt-0.5 truncate pl-4 text-[10px] text-neutral-400">{proj.description}</p>
+          <p className="mt-0.5 truncate pl-4 text-[10px] text-[var(--text-disabled)]">{proj.description}</p>
         </div>
         <div>
           <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium ${hc.badge}`}>
@@ -466,7 +466,7 @@ function ProjectRow({ proj, onSelect }: { proj: Project; onSelect: (id: string) 
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-neutral-100">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--surface-2)]">
             <motion.div
               className={`h-full rounded-full ${hc.bar}`}
               initial={{ width: 0 }}
@@ -474,7 +474,7 @@ function ProjectRow({ proj, onSelect }: { proj: Project; onSelect: (id: string) 
               transition={{ duration: 0.9, ease: EASE }}
             />
           </div>
-          <span className="w-7 shrink-0 text-right text-[10px] font-medium text-neutral-500">{proj.progress}%</span>
+          <span className="w-7 shrink-0 text-right text-[10px] font-medium text-[var(--text-muted)]">{proj.progress}%</span>
         </div>
         <div className="flex justify-center -space-x-1.5">
           {proj.team.map((initials) => (
@@ -484,9 +484,9 @@ function ProjectRow({ proj, onSelect }: { proj: Project; onSelect: (id: string) 
           ))}
         </div>
         <div className="text-right">
-          <span className="text-[10px] text-neutral-500">{proj.deadline}</span>
+          <span className="text-[10px] text-[var(--text-muted)]">{proj.deadline}</span>
         </div>
-        <ChevronRight size={13} className="text-neutral-200 group-hover:text-[var(--color-brand)] transition-colors" />
+        <ChevronRight size={13} className="text-[var(--border)] group-hover:text-[var(--color-brand)] transition-colors" />
       </div>
 
       {/* Mobile row */}
@@ -494,17 +494,17 @@ function ProjectRow({ proj, onSelect }: { proj: Project; onSelect: (id: string) 
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <span className={`h-2 w-2 shrink-0 rounded-full ${hc.dot}`} />
-            <p className="truncate text-xs font-semibold text-neutral-800">{proj.name}</p>
+            <p className="truncate text-xs font-semibold text-[var(--text-1)]">{proj.name}</p>
           </div>
           <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium ${hc.badge}`}>
             {hc.label}
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-neutral-100">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--surface-2)]">
             <div className={`h-full rounded-full ${hc.bar}`} style={{ width: `${proj.progress}%` }} />
           </div>
-          <span className="text-[10px] font-medium text-neutral-500">{proj.progress}%</span>
+          <span className="text-[10px] font-medium text-[var(--text-muted)]">{proj.progress}%</span>
         </div>
         <div className="flex items-center justify-between">
           <div className="flex -space-x-1.5">
@@ -512,8 +512,8 @@ function ProjectRow({ proj, onSelect }: { proj: Project; onSelect: (id: string) 
               <span key={i} className="flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-[var(--color-brand)]/10 text-[7px] font-bold text-[var(--color-brand)]">{i}</span>
             ))}
           </div>
-          <span className="text-[10px] text-neutral-400">Due {proj.deadline}</span>
-          <ChevronRight size={13} className="text-neutral-300" />
+          <span className="text-[10px] text-[var(--text-disabled)]">Due {proj.deadline}</span>
+          <ChevronRight size={13} className="text-[var(--text-disabled)]" />
         </div>
       </div>
     </motion.li>
@@ -536,22 +536,22 @@ function ProjectSection({
   if (projects.length === 0) return null;
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-neutral-100 bg-white shadow-card">
+    <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-white shadow-card">
       {/* Section header */}
       <motion.button
         onClick={() => setOpen((v) => !v)}
         whileTap={{ scale: 0.995 }}
-        className="flex w-full items-center gap-3 border-b border-neutral-50 px-5 py-3.5 text-left hover:bg-neutral-50/60 transition-colors"
+        className="flex w-full items-center gap-3 border-b border-[var(--border)] px-5 py-3.5 text-left hover:bg-[var(--surface-2)] transition-colors"
       >
         <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${hc.dot}`} />
-        <span className="text-xs font-semibold text-neutral-800">{hc.label}</span>
+        <span className="text-xs font-semibold text-[var(--text-1)]">{hc.label}</span>
         <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${hc.badge}`}>
           {projects.length}
         </span>
         <motion.span
           animate={{ rotate: open ? 0 : -90 }}
           transition={{ duration: 0.2, ease: EASE }}
-          className="ml-auto text-neutral-300"
+          className="ml-auto text-[var(--text-disabled)]"
         >
           <ChevronDown size={14} />
         </motion.span>
@@ -567,7 +567,7 @@ function ProjectSection({
             transition={{ duration: 0.22, ease: EASE }}
             className="overflow-hidden"
           >
-            <div className="hidden sm:grid grid-cols-[2fr_1fr_140px_100px_80px_32px] border-b border-neutral-50 px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-neutral-400">
+            <div className="hidden sm:grid grid-cols-[2fr_1fr_140px_100px_80px_32px] border-b border-[var(--border)] px-5 py-2.5 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-disabled)]">
               <span>Project</span>
               <span>Status</span>
               <span>Timeline</span>
@@ -575,7 +575,7 @@ function ProjectSection({
               <span className="text-right">Deadline</span>
               <span />
             </div>
-            <ul role="list" className="divide-y divide-neutral-50">
+            <ul role="list" className="divide-y divide-[var(--border)]">
               {projects.map((proj) => (
                 <ProjectRow key={proj.id} proj={proj} onSelect={onSelect} />
               ))}
@@ -603,12 +603,12 @@ function ProjectsOverview({ onSelect, onNewProject }: { onSelect: (id: string) =
       {/* Stat cards */}
       <motion.div variants={item} className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {STATS.map(({ label, value, icon: Icon, color, bg }) => (
-          <div key={label} className="rounded-2xl border border-neutral-100 bg-white p-4 sm:p-5 shadow-card">
+          <div key={label} className="rounded-2xl border border-[var(--border)] bg-white p-4 sm:p-5 shadow-card">
             <div className={`mb-3 flex h-8 w-8 items-center justify-center rounded-xl ${bg}`}>
               <Icon size={15} className={color} />
             </div>
-            <p className="text-2xl font-bold text-neutral-900 leading-none tracking-tight">{value}</p>
-            <p className="mt-1.5 text-xs text-neutral-500">{label}</p>
+            <p className="text-2xl font-bold text-[var(--text-1)] leading-none tracking-tight">{value}</p>
+            <p className="mt-1.5 text-xs text-[var(--text-muted)]">{label}</p>
           </div>
         ))}
       </motion.div>
@@ -620,12 +620,12 @@ function ProjectsOverview({ onSelect, onNewProject }: { onSelect: (id: string) =
         <div className="space-y-3">
           {/* Toolbar */}
           <div className="flex items-center gap-2">
-            <h2 className="flex-1 text-sm font-semibold text-neutral-800">
+            <h2 className="flex-1 text-sm font-semibold text-[var(--text-1)]">
               {view === "grouped" ? "Projects by Status" : "All Projects"}
             </h2>
 
             {/* View toggle */}
-            <div className="flex items-center rounded-xl border border-neutral-200 bg-white p-0.5">
+            <div className="flex items-center rounded-xl border border-[var(--border)] bg-white p-0.5">
               <motion.button
                 onClick={() => setView("grouped")}
                 whileTap={{ scale: 0.95 }}
@@ -633,7 +633,7 @@ function ProjectsOverview({ onSelect, onNewProject }: { onSelect: (id: string) =
                   "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-all duration-150",
                   view === "grouped"
                     ? "bg-[var(--color-brand)] text-white shadow-sm"
-                    : "text-neutral-500 hover:text-neutral-700",
+                    : "text-[var(--text-muted)] hover:text-[var(--text-2)]",
                 ].join(" ")}
               >
                 <Rows3 size={12} />
@@ -646,7 +646,7 @@ function ProjectsOverview({ onSelect, onNewProject }: { onSelect: (id: string) =
                   "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-all duration-150",
                   view === "all"
                     ? "bg-[var(--color-brand)] text-white shadow-sm"
-                    : "text-neutral-500 hover:text-neutral-700",
+                    : "text-[var(--text-muted)] hover:text-[var(--text-2)]",
                 ].join(" ")}
               >
                 <LayoutList size={12} />
@@ -656,7 +656,7 @@ function ProjectsOverview({ onSelect, onNewProject }: { onSelect: (id: string) =
 
             <button
               onClick={onNewProject}
-              className="flex items-center gap-1.5 rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-medium text-neutral-600 hover:border-[var(--color-brand)]/40 hover:text-[var(--color-brand)] transition-colors"
+              className="flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--text-2)] hover:border-[var(--color-brand)]/40 hover:text-[var(--color-brand)] transition-colors"
             >
               <Plus size={12} />
               New Project
@@ -691,9 +691,9 @@ function ProjectsOverview({ onSelect, onNewProject }: { onSelect: (id: string) =
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -4 }}
                 transition={{ duration: 0.2, ease: EASE }}
-                className="overflow-hidden rounded-2xl border border-neutral-100 bg-white shadow-card"
+                className="overflow-hidden rounded-2xl border border-[var(--border)] bg-white shadow-card"
               >
-                <div className="hidden sm:grid grid-cols-[2fr_1fr_140px_100px_80px_32px] border-b border-neutral-100 px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-neutral-400">
+                <div className="hidden sm:grid grid-cols-[2fr_1fr_140px_100px_80px_32px] border-b border-[var(--border)] px-5 py-3 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-disabled)]">
                   <span>Project</span>
                   <span>Status</span>
                   <span>Timeline</span>
@@ -701,7 +701,7 @@ function ProjectsOverview({ onSelect, onNewProject }: { onSelect: (id: string) =
                   <span className="text-right">Deadline</span>
                   <span />
                 </div>
-                <ul role="list" className="divide-y divide-neutral-50">
+                <ul role="list" className="divide-y divide-[var(--border)]">
                   {PROJECTS.map((proj) => (
                     <ProjectRow key={proj.id} proj={proj} onSelect={onSelect} />
                   ))}
@@ -712,13 +712,13 @@ function ProjectsOverview({ onSelect, onNewProject }: { onSelect: (id: string) =
         </div>
 
         {/* Larry activity feed */}
-        <div className="rounded-2xl border border-neutral-100 bg-white overflow-hidden self-start shadow-card">
-          <div className="flex items-center gap-2 border-b border-neutral-100 px-5 py-3.5">
+        <div className="rounded-2xl border border-[var(--border)] bg-white overflow-hidden self-start shadow-card">
+          <div className="flex items-center gap-2 border-b border-[var(--border)] px-5 py-3.5">
             <span className="flex h-4 w-4 items-center justify-center rounded-lg bg-[var(--color-brand)] text-[7px] font-bold text-white select-none">L</span>
-            <h2 className="text-sm font-semibold text-neutral-800">Larry Activity</h2>
+            <h2 className="text-sm font-semibold text-[var(--text-1)]">Larry Activity</h2>
             <span className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-400 live-pulse shrink-0" aria-hidden="true" />
           </div>
-          <ul role="list" className="divide-y divide-neutral-50">
+          <ul role="list" className="divide-y divide-[var(--border)]">
             {RECENT_ACTIVITY.map(({ time, text, type }, i) => {
               const IconComponent = ACTIVITY_LUCIDE[type];
               return (
@@ -727,14 +727,14 @@ function ProjectsOverview({ onSelect, onNewProject }: { onSelect: (id: string) =
                     <IconComponent size={10} />
                   </span>
                   <div className="min-w-0">
-                    <p className="text-xs leading-relaxed text-neutral-600">{text}</p>
-                    <p className="mt-0.5 text-[10px] text-neutral-400">{time}</p>
+                    <p className="text-xs leading-relaxed text-[var(--text-2)]">{text}</p>
+                    <p className="mt-0.5 text-[10px] text-[var(--text-disabled)]">{time}</p>
                   </div>
                 </li>
               );
             })}
           </ul>
-          <div className="border-t border-neutral-50 px-5 py-3">
+          <div className="border-t border-[var(--border)] px-5 py-3">
             <button className="w-full text-center text-xs text-[var(--color-brand)] hover:underline">
               View all activity →
             </button>

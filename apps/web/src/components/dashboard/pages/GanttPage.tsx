@@ -34,17 +34,17 @@ interface GanttTask {
 
 const STATUS_CFG: Record<Status, { track: string; fill: string; dot: string; badge: string; label: string }> = {
   "done":      { track: "bg-emerald-100", fill: "bg-emerald-400",                   dot: "bg-emerald-400", badge: "bg-emerald-50 text-emerald-600 border-emerald-100",   label: "Done"      },
-  "on-track":  { track: "bg-neutral-200",              fill: "bg-neutral-900",          dot: "bg-neutral-900",         badge: "bg-neutral-100 text-neutral-700 border-neutral-200",                          label: "On track"  },
+  "on-track":  { track: "bg-[var(--surface-2)]",        fill: "bg-[var(--text-1)]",      dot: "bg-[var(--text-1)]",     badge: "bg-[var(--surface-2)] text-[var(--text-2)] border-[var(--border)]",        label: "On track"  },
   "at-risk":   { track: "bg-amber-100",   fill: "bg-amber-400",                     dot: "bg-amber-400",   badge: "bg-amber-50 text-amber-600 border-amber-100",         label: "At risk"   },
   "overdue":   { track: "bg-red-100",     fill: "bg-red-400",                       dot: "bg-red-400",     badge: "bg-red-50 text-red-500 border-red-100",               label: "Overdue"   },
-  "upcoming":  { track: "bg-neutral-100", fill: "bg-neutral-300",                   dot: "bg-neutral-300", badge: "bg-neutral-100 text-neutral-500 border-neutral-200",  label: "Upcoming"  },
+  "upcoming":  { track: "bg-[var(--surface-2)]", fill: "bg-[var(--text-disabled)]", dot: "bg-[var(--text-disabled)]", badge: "bg-[var(--surface-2)] text-[var(--text-muted)] border-[var(--border)]", label: "Upcoming"  },
 };
 
 const PRIORITY_CFG: Record<Priority, { badge: string }> = {
   critical: { badge: "bg-red-50 text-red-500 border-red-100" },
   high:     { badge: "bg-orange-50 text-orange-500 border-orange-100" },
   medium:   { badge: "bg-amber-50 text-amber-600 border-amber-100" },
-  low:      { badge: "bg-neutral-100 text-neutral-400 border-neutral-200" },
+  low:      { badge: "bg-[var(--surface-2)] text-[var(--text-muted)] border-[var(--border)]" },
 };
 
 /* ─── Mock data ─────────────────────────────────────────────────────────── */
@@ -199,14 +199,14 @@ export function GanttPage({ projectName = "Alpha Launch", onBack }: GanttPagePro
 
       {/* Top bar */}
       <div className="mb-4 flex items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-2 text-xs text-neutral-400">
+        <div className="flex items-center gap-2 text-xs text-[var(--text-disabled)]">
           <button onClick={onBack} className="flex items-center gap-1.5 font-medium text-[var(--color-brand)] hover:underline">
             <ArrowLeft size={13} /> Projects
           </button>
-          <ChevronRight size={11} className="text-neutral-300" />
-          <span className="font-medium text-neutral-600">{projectName}</span>
-          <ChevronRight size={11} className="text-neutral-300" />
-          <span className="font-medium text-neutral-600">Timeline</span>
+          <ChevronRight size={11} className="text-[var(--text-disabled)]" />
+          <span className="font-medium text-[var(--text-2)]">{projectName}</span>
+          <ChevronRight size={11} className="text-[var(--text-disabled)]" />
+          <span className="font-medium text-[var(--text-2)]">Timeline</span>
         </div>
         <div className="ml-auto flex items-center gap-2">
           {/* Today badge */}
@@ -217,15 +217,15 @@ export function GanttPage({ projectName = "Alpha Launch", onBack }: GanttPagePro
       </div>
 
       {/* Gantt grid */}
-      <div className="relative flex flex-1 overflow-hidden rounded-2xl border border-neutral-100 bg-white shadow-card">
+      <div className="relative flex flex-1 overflow-hidden rounded-2xl border border-[var(--border)] bg-white shadow-card">
         <div className="flex-1 overflow-x-auto overflow-y-auto">
           <div className="min-w-[860px]">
 
             {/* Column header */}
-            <div className="sticky top-0 z-20 flex border-b border-neutral-100 bg-white">
+            <div className="sticky top-0 z-20 flex border-b border-[var(--border)] bg-white">
               {/* Left header cell */}
-              <div className="sticky left-0 z-30 flex w-72 shrink-0 items-center border-r border-neutral-100 bg-white px-4 py-2.5">
-                <span className="text-[10px] font-semibold uppercase tracking-widest text-neutral-400">Task</span>
+              <div className="sticky left-0 z-30 flex w-72 shrink-0 items-center border-r border-[var(--border)] bg-white px-4 py-2.5">
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-disabled)]">Task</span>
               </div>
 
               {/* Timeline header */}
@@ -233,7 +233,7 @@ export function GanttPage({ projectName = "Alpha Launch", onBack }: GanttPagePro
                 {WEEK_MARKERS.map((wm) => (
                   <span
                     key={wm.day}
-                    className="absolute top-2.5 text-[10px] font-medium text-neutral-400 -translate-x-1/2"
+                    className="absolute top-2.5 text-[10px] font-medium text-[var(--text-disabled)] -translate-x-1/2"
                     style={{ left: pct(wm.day) }}
                   >
                     {wm.label}
@@ -243,7 +243,7 @@ export function GanttPage({ projectName = "Alpha Launch", onBack }: GanttPagePro
                 {WEEK_MARKERS.map((wm) => (
                   <div
                     key={`grid-${wm.day}`}
-                    className="absolute bottom-0 top-0 w-px bg-neutral-100"
+                    className="absolute bottom-0 top-0 w-px bg-[var(--border)]"
                     style={{ left: pct(wm.day) }}
                   />
                 ))}
@@ -270,24 +270,24 @@ export function GanttPage({ projectName = "Alpha Launch", onBack }: GanttPagePro
                     {/* Left task info — sticky */}
                     <div
                       className={[
-                        "sticky left-0 z-10 flex w-72 shrink-0 items-center gap-2 border-r border-b border-neutral-50 px-3 transition-colors",
+                        "sticky left-0 z-10 flex w-72 shrink-0 items-center gap-2 border-r border-b border-[var(--border)] px-3 transition-colors",
                         isSelected
                           ? "bg-[var(--color-brand)]/5"
                           : depth === 0
-                          ? "bg-white hover:bg-neutral-50/80"
-                          : "bg-neutral-50/40 hover:bg-neutral-50",
+                          ? "bg-white hover:bg-[var(--surface-2)]"
+                          : "bg-[var(--surface-2)]/40 hover:bg-[var(--surface-2)]",
                       ].join(" ")}
                       style={{ paddingLeft: `${12 + depth * 18}px` }}
                     >
                       {/* Expand/collapse */}
                       <button
                         onClick={() => hasChildren && toggle(task.id)}
-                        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded transition-colors ${hasChildren ? "text-neutral-400 hover:text-neutral-600" : "text-transparent"}`}
+                        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded transition-colors ${hasChildren ? "text-[var(--text-disabled)] hover:text-[var(--text-2)]" : "text-transparent"}`}
                       >
                         {hasChildren ? (
                           isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />
                         ) : (
-                          <span className="h-1 w-1 rounded-full bg-neutral-200" />
+                          <span className="h-1 w-1 rounded-full bg-[var(--border)]" />
                         )}
                       </button>
 
@@ -296,7 +296,7 @@ export function GanttPage({ projectName = "Alpha Launch", onBack }: GanttPagePro
 
                       {/* Name */}
                       <span
-                        className={`flex-1 truncate text-xs ${depth === 0 ? "font-semibold text-neutral-800" : "font-medium text-neutral-600"}`}
+                        className={`flex-1 truncate text-xs ${depth === 0 ? "font-semibold text-[var(--text-1)]" : "font-medium text-[var(--text-2)]"}`}
                         title={task.name}
                       >
                         {task.name}
@@ -317,7 +317,7 @@ export function GanttPage({ projectName = "Alpha Launch", onBack }: GanttPagePro
 
                       {/* Comment count */}
                       {task.comments > 0 && (
-                        <span className="flex shrink-0 items-center gap-0.5 text-[10px] text-neutral-300">
+                        <span className="flex shrink-0 items-center gap-0.5 text-[10px] text-[var(--text-disabled)]">
                           <MessageSquare size={10} />
                           {task.comments}
                         </span>
@@ -325,10 +325,10 @@ export function GanttPage({ projectName = "Alpha Launch", onBack }: GanttPagePro
                     </div>
 
                     {/* Timeline bar area */}
-                    <div className="relative flex-1 border-b border-neutral-50">
+                    <div className="relative flex-1 border-b border-[var(--border)]">
                       {/* Week gridlines */}
                       {WEEK_MARKERS.map((wm) => (
-                        <div key={wm.day} className="absolute inset-y-0 w-px bg-neutral-50" style={{ left: pct(wm.day) }} />
+                        <div key={wm.day} className="absolute inset-y-0 w-px bg-[var(--border)]" style={{ left: pct(wm.day) }} />
                       ))}
 
                       {/* Today line */}
@@ -395,12 +395,12 @@ export function GanttPage({ projectName = "Alpha Launch", onBack }: GanttPagePro
       {/* Legend */}
       <div className="mt-3 flex flex-wrap items-center gap-4">
         {(Object.entries(STATUS_CFG) as [Status, typeof STATUS_CFG[Status]][]).map(([key, cfg]) => (
-          <span key={key} className="flex items-center gap-1.5 text-[10px] text-neutral-400">
+          <span key={key} className="flex items-center gap-1.5 text-[10px] text-[var(--text-disabled)]">
             <span className={`h-2 w-2 rounded-full ${cfg.dot}`} />
             {cfg.label}
           </span>
         ))}
-        <span className="flex items-center gap-1.5 text-[10px] text-neutral-400 ml-auto">
+        <span className="flex items-center gap-1.5 text-[10px] text-[var(--text-disabled)] ml-auto">
           <span className="h-3 w-px bg-[var(--color-brand)]/40" />
           Today
         </span>

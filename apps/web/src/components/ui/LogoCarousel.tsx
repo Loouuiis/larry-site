@@ -73,7 +73,7 @@ export function LogoCarousel() {
         {logos.map((logo) => (
           <span
             key={`a-${logo.name}`}
-            className={`px-6 text-neutral-400 opacity-60 transition-opacity duration-300 hover:opacity-90 sm:px-10 ${logo.className}`}
+            className={`px-6 text-[var(--text-disabled)] opacity-60 transition-opacity duration-300 hover:opacity-90 sm:px-10 ${logo.className}`}
           >
             {logo.name}
           </span>
@@ -82,7 +82,7 @@ export function LogoCarousel() {
         {logos.map((logo) => (
           <span
             key={`b-${logo.name}`}
-            className={`px-6 text-neutral-400 opacity-60 transition-opacity duration-300 hover:opacity-90 sm:px-10 ${logo.className}`}
+            className={`px-6 text-[var(--text-disabled)] opacity-60 transition-opacity duration-300 hover:opacity-90 sm:px-10 ${logo.className}`}
             aria-hidden="true"
           >
             {logo.name}

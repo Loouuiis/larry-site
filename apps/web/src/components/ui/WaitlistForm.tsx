@@ -48,7 +48,7 @@ function Field({
 }) {
   return (
     <div className="space-y-1.5">
-      <label htmlFor={id} className="block text-xs font-medium tracking-wide text-neutral-500 uppercase">
+      <label htmlFor={id} className="block text-xs font-medium tracking-wide text-[var(--text-muted)] uppercase">
         {label}
       </label>
       <input
@@ -60,11 +60,11 @@ function Field({
         inputMode={inputMode}
         placeholder={placeholder}
         className={[
-          "w-full rounded-xl px-4 py-3 text-neutral-900 outline-none",
+          "w-full rounded-xl px-4 py-3 text-[var(--text-1)] outline-none",
           "min-h-[44px]",
           "bg-white/30 backdrop-blur-sm",
           "border border-white/50",
-          "placeholder:text-neutral-400",
+          "placeholder:text-[var(--text-disabled)]",
           "transition-all duration-200",
           "focus:bg-white/50 focus:border-white/70 focus:ring-1 focus:ring-white/40",
           error
@@ -162,8 +162,8 @@ export function WaitlistForm() {
           </svg>
         </div>
         <div>
-          <p className="text-lg font-semibold text-neutral-900">You&apos;re on the list.</p>
-          <p className="mt-1.5 text-sm text-neutral-500">
+          <p className="text-lg font-semibold text-[var(--text-1)]">You&apos;re on the list.</p>
+          <p className="mt-1.5 text-sm text-[var(--text-muted)]">
             We&apos;ll be in touch with early access details.
           </p>
         </div>
@@ -249,9 +249,9 @@ export function WaitlistForm() {
           "min-h-[44px]",
           "transition-all duration-200",
           "disabled:opacity-60 disabled:cursor-not-allowed",
-          "border border-neutral-900/70 bg-transparent text-neutral-900",
-          "hover:bg-neutral-900/85 hover:text-white",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2",
+          "border border-[var(--text-1)] bg-transparent text-[var(--text-1)]",
+          "hover:bg-[var(--brand)] hover:text-white",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-1)] focus-visible:ring-offset-2",
         ].join(" ")}
       >
         {status === "submitting" ? (
@@ -267,7 +267,7 @@ export function WaitlistForm() {
         )}
       </button>
 
-      <p className="text-center text-[11px] text-neutral-400">
+      <p className="text-center text-[11px] text-[var(--text-disabled)]">
         No spam. Early access only. Unsubscribe any time.
       </p>
     </form>

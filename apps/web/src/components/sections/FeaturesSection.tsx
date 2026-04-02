@@ -42,16 +42,16 @@ const CAPABILITIES = [
 
 export function FeaturesSection() {
   return (
-    <section id="solution" className="border-t border-neutral-100 py-12 sm:py-24">
+    <section id="solution" className="border-t border-[var(--border)] py-12 sm:py-24">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <FadeUp className="mb-10 max-w-2xl sm:mb-16">
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-neutral-400 sm:mb-3 sm:text-xs">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-disabled)] sm:mb-3 sm:text-xs">
             How it works
           </p>
-          <h2 className="text-2xl font-bold tracking-tight text-neutral-900 sm:text-4xl lg:text-5xl">
+          <h2 className="text-2xl font-bold tracking-tight text-[var(--text-1)] sm:text-4xl lg:text-5xl">
             Coordination that runs itself.
           </h2>
-          <p className="mt-3 text-sm leading-relaxed text-neutral-500 sm:mt-4 sm:text-base">
+          <p className="mt-3 text-sm leading-relaxed text-[var(--text-muted)] sm:mt-4 sm:text-base">
             Larry connects to your existing tools and runs the operational layer
             — no process change, no onboarding overhead.
           </p>
@@ -67,21 +67,21 @@ export function FeaturesSection() {
               key={n}
               className={[
                 "py-6 pr-0 sm:py-8 sm:pr-8",
-                i > 0 && "lg:border-l lg:border-neutral-100 lg:pl-8 lg:pr-8",
-                i > 0 && i < 2 && "sm:border-l sm:border-neutral-100 sm:pl-8",
+                i > 0 && "lg:border-l lg:border-[var(--border)] lg:pl-8 lg:pr-8",
+                i > 0 && i < 2 && "sm:border-l sm:border-[var(--border)] sm:pl-8",
                 i < STEPS.length - 1 &&
-                  "border-b border-neutral-100 sm:border-b-0",
+                  "border-b border-[var(--border)] sm:border-b-0",
               ]
                 .filter(Boolean)
                 .join(" ")}
             >
-              <span className="mb-4 block font-mono text-[10px] font-medium tracking-[0.15em] text-neutral-300">
+              <span className="mb-4 block font-mono text-[10px] font-medium tracking-[0.15em] text-[var(--text-disabled)]">
                 {n}
               </span>
-              <h3 className="mb-2 text-base font-semibold text-neutral-900">
+              <h3 className="mb-2 text-base font-semibold text-[var(--text-1)]">
                 {title}
               </h3>
-              <p className="text-xs leading-relaxed text-neutral-500">
+              <p className="text-xs leading-relaxed text-[var(--text-muted)]">
                 {detail}
               </p>
             </StaggerItem>
@@ -90,8 +90,8 @@ export function FeaturesSection() {
 
         {/* Capability list — in a contained panel */}
         <FadeUp>
-          <div className="rounded-2xl border border-neutral-200 bg-neutral-50 px-5 py-6 sm:px-8 sm:py-8">
-            <p className="mb-5 text-xs font-semibold uppercase tracking-widest text-neutral-400">
+          <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-5 py-6 sm:px-8 sm:py-8">
+            <p className="mb-5 text-xs font-semibold uppercase tracking-widest text-[var(--text-disabled)]">
               In practice, Larry:
             </p>
             <ul
@@ -114,11 +114,11 @@ export function FeaturesSection() {
                       />
                     </svg>
                   </span>
-                  <span className="text-sm text-neutral-600">{cap}</span>
+                  <span className="text-sm text-[var(--text-2)]">{cap}</span>
                 </li>
               ))}
             </ul>
-            <p className="mt-6 text-xs text-neutral-400">
+            <p className="mt-6 text-xs text-[var(--text-disabled)]">
               Connects to Slack · Jira · Linear · Notion · and more
             </p>
           </div>

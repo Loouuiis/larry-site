@@ -13,10 +13,10 @@ const INDUSTRIES = [
 
 export function LogoBar() {
   return (
-    <section className="border-t border-neutral-100 py-8 sm:py-12">
+    <section className="border-t border-[var(--border)] py-8 sm:py-12">
       <FadeUp className="mx-auto max-w-5xl px-4 sm:px-6">
         <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="shrink-0 text-xs font-semibold uppercase tracking-widest text-neutral-400">
+          <p className="shrink-0 text-xs font-semibold uppercase tracking-widest text-[var(--text-disabled)]">
             Built for teams in
           </p>
 
@@ -28,12 +28,12 @@ export function LogoBar() {
           >
             {INDUSTRIES.map((name, i) => (
               <li key={name} className="flex items-center gap-5">
-                <span className="text-sm font-medium text-neutral-600">
+                <span className="text-sm font-medium text-[var(--text-2)]">
                   {name}
                 </span>
                 {i < INDUSTRIES.length - 1 && (
                   <span
-                    className="h-3 w-px bg-neutral-200"
+                    className="h-3 w-px bg-[var(--border)]"
                     aria-hidden="true"
                   />
                 )}
@@ -43,10 +43,10 @@ export function LogoBar() {
         </div>
 
         {/* Provenance line — below a rule, at reduced weight */}
-        <div className="mt-5 border-t border-neutral-100 pt-5">
-          <p className="text-xs text-neutral-400">
+        <div className="mt-5 border-t border-[var(--border)] pt-5">
+          <p className="text-xs text-[var(--text-disabled)]">
             Designed by operators with backgrounds in{" "}
-            <span className="font-medium text-neutral-600">
+            <span className="font-medium text-[var(--text-2)]">
               management consulting, venture, and high-growth tech
             </span>
             .

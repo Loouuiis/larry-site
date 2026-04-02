@@ -189,7 +189,7 @@ export function ProjectCreateSheet({
                   <button
                     type="submit"
                     disabled={busy || name.trim().length < 2}
-                    className="inline-flex h-11 items-center gap-2 rounded-full bg-[#0073EA] px-5 text-[14px] font-semibold text-white transition-transform hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex h-11 items-center gap-2 rounded-full bg-[var(--cta)] px-5 text-[14px] font-semibold text-white transition-transform hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {busy ? <LoaderCircle size={16} className="animate-spin" /> : null}
                     Create project

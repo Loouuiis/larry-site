@@ -47,16 +47,16 @@ const PersonIcon = () => (
 
 export function TemplatesSection() {
   return (
-    <section className="border-t border-neutral-100 bg-[#F2F2EF]/60 py-12 sm:py-24">
+    <section className="border-t border-[var(--border)] bg-[#F2F2EF]/60 py-12 sm:py-24">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <FadeUp className="mb-10 max-w-2xl sm:mb-14">
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-neutral-400 sm:mb-3 sm:text-xs">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-disabled)] sm:mb-3 sm:text-xs">
             Built for control
           </p>
-          <h2 className="mb-3 text-2xl font-bold tracking-tight text-neutral-900 sm:mb-4 sm:text-4xl lg:text-5xl">
+          <h2 className="mb-3 text-2xl font-bold tracking-tight text-[var(--text-1)] sm:mb-4 sm:text-4xl lg:text-5xl">
             AI that stays in its lane.
           </h2>
-          <p className="text-sm leading-relaxed text-neutral-500 sm:text-base">
+          <p className="text-sm leading-relaxed text-[var(--text-muted)] sm:text-base">
             Every action Larry takes is explainable, bounded, and reversible.
             Strategic decisions stay with you — always.
           </p>
@@ -66,10 +66,10 @@ export function TemplatesSection() {
           {/* What Larry handles */}
           <FadeUp>
             <div
-              className="h-full rounded-2xl border border-neutral-200 bg-white p-5 sm:p-8"
+              className="h-full rounded-2xl border border-[var(--border)] bg-white p-5 sm:p-8"
               style={{ boxShadow: "var(--shadow-card)" }}
             >
-              <p className="mb-5 text-xs font-semibold uppercase tracking-widest text-neutral-400">
+              <p className="mb-5 text-xs font-semibold uppercase tracking-widest text-[var(--text-disabled)]">
                 What Larry handles
               </p>
               <ul className="space-y-3" role="list">
@@ -81,7 +81,7 @@ export function TemplatesSection() {
                     >
                       <CheckIcon />
                     </span>
-                    <span className="text-sm text-neutral-700">{item}</span>
+                    <span className="text-sm text-[var(--text-2)]">{item}</span>
                   </li>
                 ))}
               </ul>
@@ -90,7 +90,7 @@ export function TemplatesSection() {
                   (tag) => (
                     <span
                       key={tag}
-                      className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-[11px] font-medium text-neutral-500"
+                      className="rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-3 py-1 text-[11px] font-medium text-[var(--text-muted)]"
                     >
                       {tag}
                     </span>
@@ -103,10 +103,10 @@ export function TemplatesSection() {
           {/* What you control */}
           <FadeUp delay={0.08}>
             <div
-              className="h-full rounded-2xl border border-neutral-200 bg-white p-5 sm:p-8"
+              className="h-full rounded-2xl border border-[var(--border)] bg-white p-5 sm:p-8"
               style={{ boxShadow: "var(--shadow-card)" }}
             >
-              <p className="mb-5 text-xs font-semibold uppercase tracking-widest text-neutral-400">
+              <p className="mb-5 text-xs font-semibold uppercase tracking-widest text-[var(--text-disabled)]">
                 What you control
               </p>
               <ul className="space-y-3" role="list">
@@ -114,16 +114,16 @@ export function TemplatesSection() {
                   <li key={item} className="flex items-start gap-3">
                     <span
                       aria-hidden="true"
-                      className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-500"
+                      className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--surface-2)] text-[var(--text-muted)]"
                     >
                       <PersonIcon />
                     </span>
-                    <span className="text-sm text-neutral-700">{item}</span>
+                    <span className="text-sm text-[var(--text-2)]">{item}</span>
                   </li>
                 ))}
               </ul>
-              <div className="mt-6 rounded-xl border border-neutral-100 bg-neutral-50 px-4 py-3">
-                <p className="text-xs leading-relaxed text-neutral-500">
+              <div className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3">
+                <p className="text-xs leading-relaxed text-[var(--text-muted)]">
                   Strategic decisions always require human approval. Larry
                   handles the operational layer — not the judgment calls.
                 </p>

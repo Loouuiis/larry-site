@@ -2,47 +2,47 @@
 
 /* ─── Design tokens ───────────────────────────────────────────────── */
 :root {
-  /* Brand */
-  --brand:              #6C5CE7;
-  --brand-hover:        #5a4bd1;
-  --cta:                #0073EA;
-  --cta-hover:          #0060c2;
+  /* Brand — Larry palette */
+  --brand:              #6c44f6;
+  --brand-hover:        #5b38d4;
+  --cta:                #6c44f6;
+  --cta-hover:          #5b38d4;
 
   /* Surfaces */
   --page-bg:            #f2f3ff;
   --surface:            #FFFFFF;
-  --surface-2:          #F2F4F7;
+  --surface-2:          #f6f2fc;
 
   /* Borders */
-  --border:             #E4E7EC;
-  --border-2:           #D0D5DD;
+  --border:             #e2d6fc;
+  --border-2:           #bdb7d0;
 
   /* Text */
-  --text-1:             #1A1A2E;
-  --text-2:             #344054;
-  --text-muted:         #667085;
-  --text-disabled:      #98A2B3;
+  --text-1:             #11172c;
+  --text-2:             #4b556b;
+  --text-muted:         #bdb7d0;
+  --text-disabled:      #b7b8ba;
 
-  /* Status — solid fill pills (white text except todo) */
-  --status-todo-bg:     #C4C4C4;
-  --status-todo-text:   #676879;
-  --status-wip-bg:      #FDAB3D;
+  /* Status — Larry palette derived */
+  --status-todo-bg:     #bdb7d0;
+  --status-todo-text:   #4b556b;
+  --status-wip-bg:      #b29cf8;
   --status-wip-text:    #FFFFFF;
-  --status-done-bg:     #00C875;
+  --status-done-bg:     #6c44f6;
   --status-done-text:   #FFFFFF;
-  --status-stuck-bg:    #E2445C;
+  --status-stuck-bg:    #9a7fa7;
   --status-stuck-text:  #FFFFFF;
-  --status-review-bg:   #A25DDC;
-  --status-review-text: #FFFFFF;
+  --status-review-bg:   #d1b7c5;
+  --status-review-text: #11172c;
 
   /* Semantic colours (keep for compatibility) */
-  --pm-green:           #00C875;
-  --pm-green-light:     #e6faf0;
-  --pm-orange:          #FDAB3D;
-  --pm-orange-light:    #fff5e6;
-  --pm-red:             #E2445C;
-  --pm-red-light:       #fde8ec;
-  --pm-gray:            #C4C4C4;
+  --pm-green:           #6c44f6;
+  --pm-green-light:     #e2d6fc;
+  --pm-orange:          #b29cf8;
+  --pm-orange-light:    #f6f2fc;
+  --pm-red:             #9a7fa7;
+  --pm-red-light:       #f6f2fc;
+  --pm-gray:            #bdb7d0;
 
   /* Border radius */
   --radius-card:        12px;
@@ -63,9 +63,9 @@
   --foreground:             var(--text-1);
   --color-brand:            var(--brand);
   --color-brand-dark:       var(--brand-hover);
-  --color-accent-purple:    #c084fc;
-  --color-accent-mid:       #a855f7;
-  --color-accent-blue:      #818cf8;
+  --color-accent-purple:    #b29cf8;
+  --color-accent-mid:       #6c44f6;
+  --color-accent-blue:      #bfd2ff;
   --color-surface:          var(--surface-2);
   --color-border:           var(--border);
   --color-muted:            var(--text-muted);
@@ -93,9 +93,9 @@
   --font-mono:              var(--font-geist-mono);
   --color-brand:            var(--brand);
   --color-brand-dark:       var(--brand-hover);
-  --color-accent-purple:    #c084fc;
-  --color-accent-mid:       #a855f7;
-  --color-accent-blue:      #818cf8;
+  --color-accent-purple:    #b29cf8;
+  --color-accent-mid:       #6c44f6;
+  --color-accent-blue:      #bfd2ff;
   --color-surface:          var(--surface-2);
   --color-border:           var(--border);
   --color-muted:            var(--text-muted);
@@ -103,12 +103,6 @@
   --color-neutral-100:      #EDEAFF;
   --color-neutral-200:      #DAD7F0;
   --color-white:            #FFFFFF;
-}
-
-/* ─── Landing page font override (keep Geist on marketing pages) ─── */
-.landing-page,
-.landing-page * {
-  font-family: var(--font-geist-sans), system-ui, sans-serif !important;
 }
 
 /* ─── Base ────────────────────────────────────────────────────────── */
@@ -140,7 +134,7 @@ select {
 }
 
 ::selection {
-  background: rgba(108, 92, 231, 0.15);
+  background: rgba(108, 68, 246, 0.15);
   color: inherit;
 }
 
@@ -244,14 +238,14 @@ h3, h4 {
   border-radius: 50%;
   background: var(--brand);
   border: 2.5px solid #fff;
-  box-shadow: 0 0 0 1.5px rgba(108, 92, 231, 0.22), 0 1px 4px rgba(0,0,0,0.10);
+  box-shadow: 0 0 0 1.5px rgba(108, 68, 246, 0.22), 0 1px 4px rgba(0,0,0,0.10);
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .roi-slider::-webkit-slider-thumb:hover {
   transform: scale(1.14);
-  box-shadow: 0 0 0 4px rgba(108, 92, 231, 0.15), 0 2px 8px rgba(0,0,0,0.12);
+  box-shadow: 0 0 0 4px rgba(108, 68, 246, 0.15), 0 2px 8px rgba(0,0,0,0.12);
 }
 
 .roi-slider::-moz-range-thumb {
@@ -260,16 +254,16 @@ h3, h4 {
   border-radius: 50%;
   background: var(--brand);
   border: 2.5px solid #fff;
-  box-shadow: 0 0 0 1.5px rgba(108, 92, 231, 0.22), 0 1px 4px rgba(0,0,0,0.10);
+  box-shadow: 0 0 0 1.5px rgba(108, 68, 246, 0.22), 0 1px 4px rgba(0,0,0,0.10);
   cursor: pointer;
 }
 
 .roi-slider:focus-visible::-webkit-slider-thumb {
-  box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.30), 0 1px 4px rgba(0,0,0,0.10);
+  box-shadow: 0 0 0 3px rgba(108, 68, 246, 0.30), 0 1px 4px rgba(0,0,0,0.10);
 }
 
 .roi-slider:focus-visible::-moz-range-thumb {
-  box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.30), 0 1px 4px rgba(0,0,0,0.10);
+  box-shadow: 0 0 0 3px rgba(108, 68, 246, 0.30), 0 1px 4px rgba(0,0,0,0.10);
 }
 
 @keyframes livePulse {
@@ -307,13 +301,13 @@ h3, h4 {
   --pm-accent-soft:      #f0eeff;
   --pm-blue:             var(--cta);
   --pm-blue-hover:       var(--cta-hover);
-  --pm-green:            #00C875;
-  --pm-green-light:      #e6faf0;
-  --pm-orange:           #FDAB3D;
-  --pm-orange-light:     #fff5e6;
-  --pm-red:              #E2445C;
-  --pm-red-light:        #fde8ec;
-  --pm-gray:             #C4C4C4;
+  --pm-green:            #6c44f6;
+  --pm-green-light:      #e2d6fc;
+  --pm-orange:           #b29cf8;
+  --pm-orange-light:     #f6f2fc;
+  --pm-red:              #9a7fa7;
+  --pm-red-light:        #f6f2fc;
+  --pm-gray:             #bdb7d0;
   --pm-gray-light:       var(--surface-2);
   --pm-bg:               var(--page-bg);
   --pm-surface:          var(--surface);

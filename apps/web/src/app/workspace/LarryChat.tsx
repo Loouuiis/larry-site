@@ -188,7 +188,7 @@ export function LarryChat({ projectId, onVoiceInput }: LarryChatProps) {
       className="fixed bottom-6 right-6 z-50 flex flex-col rounded-2xl border border-[var(--pm-border)] bg-white shadow-2xl"
       style={{ width: 400, height: 520 }}
     >
-      <div className="flex items-center justify-between rounded-t-2xl border-b border-[var(--pm-border)] bg-gradient-to-r from-[#6366f1] to-[#0073EA] px-4 py-3">
+      <div className="flex items-center justify-between rounded-t-2xl border-b border-[var(--pm-border)] bg-gradient-to-r from-[#6c44f6] to-[#b29cf8] px-4 py-3">
         <div className="flex items-center gap-2">
           <Sparkles size={16} className="text-white" />
           <span className="text-[14px] font-semibold text-white">Larry</span>

@@ -65,7 +65,7 @@ export function HeroSection() {
       <div className="mx-auto max-w-3xl px-4 text-center sm:px-6">
         <BlurReveal delay={0}>
           <h1
-            className="text-[1.75rem] font-bold text-neutral-900 sm:text-5xl md:text-6xl lg:text-[4.5rem]"
+            className="text-[1.75rem] font-bold text-[var(--text-1)] sm:text-5xl md:text-6xl lg:text-[4.5rem]"
             style={{ letterSpacing: "-0.03em", lineHeight: 1.06 }}
           >
             The AI Project Manager That Actually <em>Runs</em> Execution
@@ -74,7 +74,7 @@ export function HeroSection() {
 
         <motion.p
           {...heroItem(0.1)}
-          className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-neutral-500 sm:mt-6 sm:text-lg"
+          className="mx-auto mt-4 max-w-xl text-sm leading-relaxed text-[var(--text-muted)] sm:mt-6 sm:text-lg"
         >
           Projects don&apos;t fail because of bad strategy.{" "}
           They fail because no one owns coordination.
@@ -82,7 +82,7 @@ export function HeroSection() {
 
         <motion.p
           {...heroItem(0.18)}
-          className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-neutral-500 sm:mt-3 sm:text-lg"
+          className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-[var(--text-muted)] sm:mt-3 sm:text-lg"
         >
           Larry autonomously manages follow-ups, updates, dependencies, and
           alignment — so your team can focus on delivering outcomes.
@@ -110,25 +110,25 @@ export function HeroSection() {
         className="relative mx-auto mt-8 max-w-5xl px-3 sm:mt-16 sm:px-6"
       >
         <div
-          className="overflow-hidden rounded-t-2xl border border-b-0 border-neutral-200 bg-white"
+          className="overflow-hidden rounded-t-2xl border border-b-0 border-[var(--border)] bg-white"
           style={{
             boxShadow:
               "0 32px 64px rgba(0,0,0,0.09), 0 8px 24px rgba(0,0,0,0.05)",
           }}
         >
           {/* Browser chrome */}
-          <div className="flex h-8 items-center gap-1.5 border-b border-neutral-100 bg-neutral-50/70 px-3 sm:h-9 sm:px-4">
-            <span className="h-2 w-2 rounded-full bg-neutral-200 sm:h-2.5 sm:w-2.5" />
-            <span className="h-2 w-2 rounded-full bg-neutral-200 sm:h-2.5 sm:w-2.5" />
-            <span className="h-2 w-2 rounded-full bg-neutral-200 sm:h-2.5 sm:w-2.5" />
-            <div className="mx-auto h-4 w-32 rounded-full bg-neutral-200/70 sm:h-5 sm:w-56" />
+          <div className="flex h-8 items-center gap-1.5 border-b border-[var(--border)] bg-[var(--surface-2)] px-3 sm:h-9 sm:px-4">
+            <span className="h-2 w-2 rounded-full bg-[var(--border)] sm:h-2.5 sm:w-2.5" />
+            <span className="h-2 w-2 rounded-full bg-[var(--border)] sm:h-2.5 sm:w-2.5" />
+            <span className="h-2 w-2 rounded-full bg-[var(--border)] sm:h-2.5 sm:w-2.5" />
+            <div className="mx-auto h-4 w-32 rounded-full bg-[var(--border)] sm:h-5 sm:w-56" />
           </div>
 
           {/* App shell — min-height is shorter on mobile; no min-height on xs to let content dictate height */}
           <div className="flex min-h-[220px] sm:min-h-[380px]">
             {/* Sidebar — hidden on all mobile, visible sm+ */}
-            <aside className="hidden w-52 shrink-0 border-r border-neutral-100 bg-neutral-50/60 p-4 sm:block">
-              <div className="mb-4 text-[10px] font-semibold uppercase tracking-widest text-neutral-400">
+            <aside className="hidden w-52 shrink-0 border-r border-[var(--border)] bg-[var(--surface-2)] p-4 sm:block">
+              <div className="mb-4 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-disabled)]">
                 Projects
               </div>
               {[
@@ -141,13 +141,13 @@ export function HeroSection() {
                   key={p}
                   className={`mb-1 flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs ${
                     i === 0
-                      ? "bg-white font-medium text-neutral-900 shadow-[0_1px_3px_rgba(0,0,0,0.06)]"
-                      : "text-neutral-400"
+                      ? "bg-white font-medium text-[var(--text-1)] shadow-[0_1px_3px_rgba(0,0,0,0.06)]"
+                      : "text-[var(--text-disabled)]"
                   }`}
                 >
                   <span
                     className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                      i === 0 ? "bg-[var(--color-brand)]" : "bg-neutral-200"
+                      i === 0 ? "bg-[var(--color-brand)]" : "bg-[var(--border)]"
                     }`}
                   />
                   {p}
@@ -160,10 +160,10 @@ export function HeroSection() {
               {/* Panel header */}
               <div className="mb-3 flex items-center justify-between sm:mb-4">
                 <div>
-                  <h2 className="text-xs font-semibold text-neutral-900 sm:text-sm">
+                  <h2 className="text-xs font-semibold text-[var(--text-1)] sm:text-sm">
                     Alpha Launch
                   </h2>
-                  <p className="text-[10px] text-neutral-400 sm:text-xs">
+                  <p className="text-[10px] text-[var(--text-disabled)] sm:text-xs">
                     12 open actions · 3 overdue
                   </p>
                 </div>
@@ -185,7 +185,7 @@ export function HeroSection() {
                 {MOCK_TASKS.slice(0, 3).map(({ id, title, assignee, status }) => (
                   <div
                     key={id}
-                    className="flex items-center gap-2 rounded-lg border border-neutral-100 bg-white px-2.5 py-2 text-xs transition-colors hover:border-neutral-200 sm:gap-3 sm:rounded-xl sm:px-3 sm:py-2.5"
+                    className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-white px-2.5 py-2 text-xs transition-colors hover:border-[var(--border)] sm:gap-3 sm:rounded-xl sm:px-3 sm:py-2.5"
                     style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.03)" }}
                   >
                     <span
@@ -193,10 +193,10 @@ export function HeroSection() {
                     >
                       {STATUS_LABEL[status]}
                     </span>
-                    <span className="flex-1 truncate text-[11px] text-neutral-700 sm:text-xs">
+                    <span className="flex-1 truncate text-[11px] text-[var(--text-2)] sm:text-xs">
                       {title}
                     </span>
-                    <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-[8px] font-bold text-neutral-500 sm:h-5 sm:w-5 sm:text-[9px]">
+                    <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--surface-2)] text-[8px] font-bold text-[var(--text-muted)] sm:h-5 sm:w-5 sm:text-[9px]">
                       {assignee}
                     </span>
                   </div>

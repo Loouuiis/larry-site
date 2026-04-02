@@ -231,7 +231,7 @@ function SuggestedActionCard({
   }
 
   return (
-    <div className={`flex items-start gap-3 rounded-xl border p-3.5 transition-colors ${state === "done" ? "border-emerald-100 bg-emerald-50/60" : "border-neutral-100 bg-white hover:border-neutral-200"}`}>
+    <div className={`flex items-start gap-3 rounded-xl border p-3.5 transition-colors ${state === "done" ? "border-emerald-100 bg-emerald-50/60" : "border-[var(--border)] bg-white hover:border-[var(--border)]"}`}>
       <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${state === "done" ? "bg-emerald-100" : iconBg}`}>
         {state === "done"
           ? <Check size={14} className="text-emerald-500" strokeWidth={2.5} />
@@ -239,8 +239,8 @@ function SuggestedActionCard({
         }
       </span>
       <div className="min-w-0 flex-1">
-        <p className={`text-xs font-semibold leading-snug ${state === "done" ? "text-emerald-700" : "text-neutral-800"}`}>{title}</p>
-        <p className="mt-0.5 text-[10px] leading-relaxed text-neutral-400">{description}</p>
+        <p className={`text-xs font-semibold leading-snug ${state === "done" ? "text-emerald-700" : "text-[var(--text-1)]"}`}>{title}</p>
+        <p className="mt-0.5 text-[10px] leading-relaxed text-[var(--text-disabled)]">{description}</p>
       </div>
       <motion.button
         onClick={execute}
@@ -281,7 +281,7 @@ function UploadButton() {
         "flex w-full items-center gap-2 rounded-xl border-2 border-dashed px-4 py-3 text-xs font-medium transition-all duration-150",
         dragging
           ? "border-[var(--color-brand)]/50 bg-[var(--color-brand)]/5 text-[var(--color-brand)]"
-          : "border-neutral-200 text-neutral-400 hover:border-[var(--color-brand)]/40 hover:bg-[var(--color-brand)]/4 hover:text-[var(--color-brand)]",
+          : "border-[var(--border)] text-[var(--text-disabled)] hover:border-[var(--color-brand)]/40 hover:bg-[var(--color-brand)]/4 hover:text-[var(--color-brand)]",
       ].join(" ")}
     >
       <Upload size={13} className="shrink-0" />
@@ -306,15 +306,15 @@ function MeetingDetail({ meeting, onClose }: { meeting: Meeting; onClose: () => 
       className="flex h-full flex-col"
     >
       {/* Detail header */}
-      <div className="flex items-start justify-between gap-3 border-b border-neutral-100 px-5 py-4 shrink-0">
+      <div className="flex items-start justify-between gap-3 border-b border-[var(--border)] px-5 py-4 shrink-0">
         <div className="min-w-0">
           <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-widest text-[var(--color-brand)]">
             {meeting.project}
           </p>
-          <h2 className="text-sm font-bold text-neutral-900 leading-snug tracking-[-0.02em]">
+          <h2 className="text-sm font-bold text-[var(--text-1)] leading-snug tracking-[-0.02em]">
             {meeting.title}
           </h2>
-          <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[10px] text-neutral-400">
+          <div className="mt-1.5 flex flex-wrap items-center gap-3 text-[10px] text-[var(--text-disabled)]">
             <span className="flex items-center gap-1"><Calendar size={10} />{meeting.date}</span>
             <span className="flex items-center gap-1"><Clock size={10} />{meeting.duration}</span>
             <span className="flex items-center gap-1"><Users size={10} />{meeting.attendees.join(", ")}</span>
@@ -326,19 +326,19 @@ function MeetingDetail({ meeting, onClose }: { meeting: Meeting; onClose: () => 
             <Sparkles size={10} />
             AI Processed
           </span>
-          <button onClick={onClose} className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-300 hover:bg-neutral-100 hover:text-neutral-600 transition-colors">
+          <button onClick={onClose} className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-disabled)] hover:bg-[var(--surface-2)] hover:text-[var(--text-2)] transition-colors">
             <X size={14} />
           </button>
         </div>
       </div>
 
       {/* Mobile tabs (transcript vs summary) */}
-      <div className="flex border-b border-neutral-100 lg:hidden">
+      <div className="flex border-b border-[var(--border)] lg:hidden">
         {(["transcript", "summary"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setActiveTab(t)}
-            className={`flex-1 py-2.5 text-xs font-medium capitalize transition-colors relative ${activeTab === t ? "text-[var(--color-brand)]" : "text-neutral-400 hover:text-neutral-600"}`}
+            className={`flex-1 py-2.5 text-xs font-medium capitalize transition-colors relative ${activeTab === t ? "text-[var(--color-brand)]" : "text-[var(--text-disabled)] hover:text-[var(--text-2)]"}`}
           >
             {t === "transcript" ? "Transcript" : "Summary & Actions"}
             {activeTab === t && (
@@ -352,30 +352,30 @@ function MeetingDetail({ meeting, onClose }: { meeting: Meeting; onClose: () => 
       <div className="flex flex-1 overflow-hidden">
 
         {/* Transcript panel */}
-        <div className={`flex flex-col border-r border-neutral-100 lg:flex lg:w-[55%] lg:shrink-0 ${activeTab === "transcript" ? "flex w-full" : "hidden"}`}>
-          <div className="flex items-center gap-2 border-b border-neutral-50 px-4 py-2.5">
-            <FileText size={12} className="text-neutral-300" />
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-neutral-400">Transcript</span>
-            <span className="ml-auto text-[10px] text-neutral-400">{meeting.transcript.length} lines</span>
+        <div className={`flex flex-col border-r border-[var(--border)] lg:flex lg:w-[55%] lg:shrink-0 ${activeTab === "transcript" ? "flex w-full" : "hidden"}`}>
+          <div className="flex items-center gap-2 border-b border-[var(--border)] px-4 py-2.5">
+            <FileText size={12} className="text-[var(--text-disabled)]" />
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-disabled)]">Transcript</span>
+            <span className="ml-auto text-[10px] text-[var(--text-disabled)]">{meeting.transcript.length} lines</span>
           </div>
           <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
             {meeting.transcript.map((line, i) => {
-              const sc = SPEAKER_COLORS[line.speaker] ?? { bg: "bg-neutral-100", text: "text-neutral-500" };
+              const sc = SPEAKER_COLORS[line.speaker] ?? { bg: "bg-[var(--surface-2)]", text: "text-[var(--text-muted)]" };
               return (
                 <motion.div
                   key={i}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ delay: i * 0.025, duration: 0.3 }}
-                  className="group flex items-start gap-3 rounded-lg px-2 py-2 hover:bg-neutral-50/80 transition-colors"
+                  className="group flex items-start gap-3 rounded-lg px-2 py-2 hover:bg-[var(--surface-2)] transition-colors"
                 >
-                  <span className="mt-0.5 w-10 shrink-0 text-[10px] font-mono text-neutral-300 tabular-nums">
+                  <span className="mt-0.5 w-10 shrink-0 text-[10px] font-mono text-[var(--text-disabled)] tabular-nums">
                     {line.time}
                   </span>
                   <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[8px] font-bold ${sc.bg} ${sc.text}`}>
                     {line.speaker}
                   </span>
-                  <p className="flex-1 text-xs leading-relaxed text-neutral-600">{line.text}</p>
+                  <p className="flex-1 text-xs leading-relaxed text-[var(--text-2)]">{line.text}</p>
                 </motion.div>
               );
             })}
@@ -395,9 +395,9 @@ function MeetingDetail({ meeting, onClose }: { meeting: Meeting; onClose: () => 
             <motion.div variants={item}>
               <div className="mb-2 flex items-center gap-1.5">
                 <Sparkles size={11} className="text-[var(--color-brand)]" />
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-neutral-400">AI Summary</p>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-disabled)]">AI Summary</p>
               </div>
-              <p className="text-xs leading-relaxed text-neutral-600 bg-[var(--color-brand)]/4 rounded-xl border border-[var(--color-brand)]/10 px-4 py-3">
+              <p className="text-xs leading-relaxed text-[var(--text-2)] bg-[var(--color-brand)]/4 rounded-xl border border-[var(--color-brand)]/10 px-4 py-3">
                 {meeting.summary}
               </p>
             </motion.div>
@@ -405,10 +405,10 @@ function MeetingDetail({ meeting, onClose }: { meeting: Meeting; onClose: () => 
             {/* Key decisions */}
             {meeting.decisions.length > 0 && (
               <motion.div variants={item}>
-                <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-neutral-400">Key Decisions</p>
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-disabled)]">Key Decisions</p>
                 <ul className="space-y-1.5">
                   {meeting.decisions.map((d, i) => (
-                    <li key={i} className="flex items-start gap-2 text-xs text-neutral-600">
+                    <li key={i} className="flex items-start gap-2 text-xs text-[var(--text-2)]">
                       <Check size={11} className="mt-0.5 shrink-0 text-emerald-500" strokeWidth={2.5} />
                       {d}
                     </li>
@@ -420,21 +420,21 @@ function MeetingDetail({ meeting, onClose }: { meeting: Meeting; onClose: () => 
             {/* Action items */}
             <motion.div variants={item}>
               <div className="mb-2 flex items-center justify-between">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-neutral-400">Action Items</p>
-                <span className="text-[10px] text-neutral-400">{meeting.actions.length} tasks</span>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-disabled)]">Action Items</p>
+                <span className="text-[10px] text-[var(--text-disabled)]">{meeting.actions.length} tasks</span>
               </div>
               <div className="space-y-2">
                 {meeting.actions.map(({ owner, task, due, status }, i) => {
-                  const sc = SPEAKER_COLORS[owner] ?? { bg: "bg-neutral-100", text: "text-neutral-500" };
+                  const sc = SPEAKER_COLORS[owner] ?? { bg: "bg-[var(--surface-2)]", text: "text-[var(--text-muted)]" };
                   return (
-                    <div key={i} className="flex items-start gap-2.5 rounded-xl border border-neutral-50 bg-neutral-50/70 px-3 py-2.5">
+                    <div key={i} className="flex items-start gap-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5">
                       <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[8px] font-bold ${sc.bg} ${sc.text}`}>
                         {owner}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="text-xs font-medium text-neutral-700 leading-snug">{task}</p>
+                        <p className="text-xs font-medium text-[var(--text-2)] leading-snug">{task}</p>
                         <div className="mt-1 flex items-center gap-2">
-                          <span className="text-[10px] text-neutral-400">Due {due}</span>
+                          <span className="text-[10px] text-[var(--text-disabled)]">Due {due}</span>
                           <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-medium capitalize ${STATUS_STYLE[status]}`}>
                             {status}
                           </span>
@@ -449,12 +449,12 @@ function MeetingDetail({ meeting, onClose }: { meeting: Meeting; onClose: () => 
             {/* Risks */}
             {meeting.risks.length > 0 && (
               <motion.div variants={item}>
-                <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-neutral-400">Flagged Risks</p>
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-disabled)]">Flagged Risks</p>
                 <div className="space-y-1.5">
                   {meeting.risks.map((risk, i) => (
                     <div key={i} className="flex items-start gap-2">
                       <AlertTriangle size={11} className="mt-0.5 shrink-0 text-amber-400" />
-                      <p className="text-xs leading-relaxed text-neutral-600">{risk}</p>
+                      <p className="text-xs leading-relaxed text-[var(--text-2)]">{risk}</p>
                     </div>
                   ))}
                 </div>
@@ -462,13 +462,13 @@ function MeetingDetail({ meeting, onClose }: { meeting: Meeting; onClose: () => 
             )}
 
             {/* Divider */}
-            <motion.div variants={item} className="border-t border-neutral-100" />
+            <motion.div variants={item} className="border-t border-[var(--border)]" />
 
             {/* Suggested actions */}
             <motion.div variants={item}>
               <div className="mb-3 flex items-center gap-1.5">
                 <Sparkles size={11} className="text-[var(--color-brand)]" />
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-neutral-400">Suggested Actions</p>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-disabled)]">Suggested Actions</p>
               </div>
               <div className="space-y-2">
                 <SuggestedActionCard
@@ -512,23 +512,23 @@ export function MeetingNotesPage() {
   const meeting = MEETINGS.find((m) => m.id === selected) ?? null;
 
   return (
-    <div className="flex h-[calc(100vh-7rem)] gap-0 overflow-hidden rounded-2xl border border-neutral-100 bg-white shadow-card">
+    <div className="flex h-[calc(100vh-7rem)] gap-0 overflow-hidden rounded-2xl border border-[var(--border)] bg-white shadow-card">
 
       {/* Left: meeting list */}
-      <div className="flex w-64 shrink-0 flex-col border-r border-neutral-100">
+      <div className="flex w-64 shrink-0 flex-col border-r border-[var(--border)]">
         {/* List header */}
-        <div className="flex items-center border-b border-neutral-100 px-4 py-3.5">
+        <div className="flex items-center border-b border-[var(--border)] px-4 py-3.5">
           <div className="flex items-center gap-2">
             <Mic size={13} className="text-[var(--color-brand)]" />
-            <p className="text-xs font-semibold text-neutral-800">Meetings</p>
+            <p className="text-xs font-semibold text-[var(--text-1)]">Meetings</p>
           </div>
-          <span className="ml-2 rounded-full bg-neutral-100 px-1.5 py-0.5 text-[10px] font-medium text-neutral-500">
+          <span className="ml-2 rounded-full bg-[var(--surface-2)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-muted)]">
             {MEETINGS.length}
           </span>
         </div>
 
         {/* Meeting list */}
-        <ul role="list" className="flex-1 overflow-y-auto divide-y divide-neutral-50">
+        <ul role="list" className="flex-1 overflow-y-auto divide-y divide-[var(--border)]">
           {MEETINGS.map((m) => {
             const isActive = m.id === selected;
             return (
@@ -538,19 +538,19 @@ export function MeetingNotesPage() {
                   className={`w-full text-left px-4 py-3.5 transition-colors ${isActive ? "bg-[var(--color-brand)]/5" : ""}`}
                 >
                   <div className="flex items-start justify-between gap-1">
-                    <p className={`text-xs font-semibold leading-snug ${isActive ? "text-[var(--color-brand)]" : "text-neutral-800"}`}>
+                    <p className={`text-xs font-semibold leading-snug ${isActive ? "text-[var(--color-brand)]" : "text-[var(--text-1)]"}`}>
                       {m.title}
                     </p>
-                    <ChevronRight size={11} className={`mt-0.5 shrink-0 transition-colors ${isActive ? "text-[var(--color-brand)]" : "text-neutral-200"}`} />
+                    <ChevronRight size={11} className={`mt-0.5 shrink-0 transition-colors ${isActive ? "text-[var(--color-brand)]" : "text-[var(--text-disabled)]"}`} />
                   </div>
-                  <p className="mt-0.5 text-[10px] font-medium text-neutral-400">{m.project}</p>
-                  <div className="mt-2 flex items-center gap-2.5 text-[10px] text-neutral-400">
+                  <p className="mt-0.5 text-[10px] font-medium text-[var(--text-disabled)]">{m.project}</p>
+                  <div className="mt-2 flex items-center gap-2.5 text-[10px] text-[var(--text-disabled)]">
                     <span className="flex items-center gap-1"><Calendar size={9} />{m.date}</span>
                     <span className="flex items-center gap-1"><Clock size={9} />{m.duration}</span>
                   </div>
                   <div className="mt-2 flex -space-x-1">
                     {m.attendees.slice(0, 4).map((a) => {
-                      const sc = SPEAKER_COLORS[a] ?? { bg: "bg-neutral-100", text: "text-neutral-500" };
+                      const sc = SPEAKER_COLORS[a] ?? { bg: "bg-[var(--surface-2)]", text: "text-[var(--text-muted)]" };
                       return (
                         <span key={a} className={`flex h-4 w-4 items-center justify-center rounded-full border border-white text-[7px] font-bold ${sc.bg} ${sc.text}`}>
                           {a}
@@ -565,7 +565,7 @@ export function MeetingNotesPage() {
         </ul>
 
         {/* Upload button */}
-        <div className="border-t border-neutral-100 p-3">
+        <div className="border-t border-[var(--border)] p-3">
           <UploadButton />
         </div>
       </div>
@@ -587,11 +587,11 @@ export function MeetingNotesPage() {
               exit={{ opacity: 0 }}
               className="flex flex-1 flex-col items-center justify-center gap-3 text-center p-8"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-neutral-100">
-                <Mic size={20} className="text-neutral-300" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--surface-2)]">
+                <Mic size={20} className="text-[var(--text-disabled)]" />
               </div>
-              <p className="text-sm font-semibold text-neutral-700">Select a meeting</p>
-              <p className="text-xs text-neutral-400">Choose a meeting from the list to view its transcript and AI summary.</p>
+              <p className="text-sm font-semibold text-[var(--text-2)]">Select a meeting</p>
+              <p className="text-xs text-[var(--text-disabled)]">Choose a meeting from the list to view its transcript and AI summary.</p>
             </motion.div>
           )}
         </AnimatePresence>

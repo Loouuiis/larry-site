@@ -250,7 +250,7 @@ export default function WorkspaceActionsPage() {
 
         {error && (
           <div
-            className="rounded-[18px] border px-4 py-3 text-[13px]"
+            className="rounded-xl border px-4 py-3 text-[13px]"
             style={{ borderColor: "#fecaca", background: "#fef2f2", color: "#b91c1c" }}
           >
             {error}
@@ -282,7 +282,7 @@ export default function WorkspaceActionsPage() {
                 </p>
               ) : suggested.length === 0 ? (
                 <div
-                  className="rounded-[18px] border border-dashed px-4 py-6 text-center"
+                  className="rounded-xl border border-dashed px-4 py-6 text-center"
                   style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
                 >
                   <p className="text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
@@ -296,7 +296,7 @@ export default function WorkspaceActionsPage() {
                 suggested.map((event) => (
                   <div
                     key={event.id}
-                    className="rounded-[18px] border px-4 py-4"
+                    className="rounded-xl border px-4 py-4"
                     style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
                   >
                     <div className="flex flex-wrap items-start justify-between gap-4">
@@ -434,7 +434,7 @@ export default function WorkspaceActionsPage() {
                 activity.map((event) => (
                   <div
                     key={event.id}
-                    className="rounded-[18px] border px-4 py-4"
+                    className="rounded-xl border px-4 py-4"
                     style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
                   >
                     <div className="flex items-start gap-3">

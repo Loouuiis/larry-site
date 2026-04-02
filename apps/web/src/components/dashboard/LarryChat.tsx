@@ -81,12 +81,12 @@ function TypingIndicator() {
     >
       <LarryAvatar size={26} />
       <div className="flex flex-col gap-0.5">
-        <span className="text-[9px] text-neutral-400 pl-1">Larry is thinking…</span>
+        <span className="text-[9px] text-[var(--text-disabled)] pl-1">Larry is thinking…</span>
         <div className="flex gap-1 rounded-2xl rounded-bl-sm bg-[var(--color-surface)] px-3.5 py-2.5">
           {[0, 0.14, 0.28].map((delay, i) => (
             <motion.span
               key={i}
-              className="h-1.5 w-1.5 rounded-full bg-neutral-400"
+              className="h-1.5 w-1.5 rounded-full bg-[var(--text-muted)]"
               animate={{ y: [0, -5, 0] }}
               transition={{ duration: 0.55, repeat: Infinity, delay, ease: "easeInOut" }}
             />
@@ -109,20 +109,20 @@ function MessageBubble({ msg }: { msg: Message }) {
       {isLarry && <LarryAvatar size={26} />}
       <div className="flex flex-col gap-0.5 max-w-[82%]">
         {isLarry && (
-          <span className="text-[9px] text-neutral-400 pl-1">Larry · {msg.time}</span>
+          <span className="text-[9px] text-[var(--text-disabled)] pl-1">Larry · {msg.time}</span>
         )}
         <div
           className={[
             "px-3.5 py-2.5 text-xs leading-relaxed whitespace-pre-line",
             isLarry
-              ? "bg-[var(--color-surface)] text-neutral-700 rounded-2xl rounded-bl-sm"
+              ? "bg-[var(--color-surface)] text-[var(--text-2)] rounded-2xl rounded-bl-sm"
               : "bg-[var(--color-brand)] text-white rounded-2xl rounded-br-sm",
           ].join(" ")}
         >
           {msg.text}
         </div>
         {!isLarry && (
-          <span className="text-[9px] text-neutral-400 pr-1 text-right">You · {msg.time}</span>
+          <span className="text-[9px] text-[var(--text-disabled)] pr-1 text-right">You · {msg.time}</span>
         )}
       </div>
     </motion.div>
@@ -203,17 +203,17 @@ export function LarryChat() {
                 <Sparkles size={15} className="text-white" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-neutral-900 tracking-[-0.02em]">Larry</p>
+                <p className="text-sm font-semibold text-[var(--text-1)] tracking-[-0.02em]">Larry</p>
                 <div className="flex items-center gap-1.5">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden="true" />
-                  <p className="text-[10px] text-neutral-400">AI Project Manager · always on</p>
+                  <p className="text-[10px] text-[var(--text-disabled)]">AI Project Manager · always on</p>
                 </div>
               </div>
               {hasMessages && (
                 <motion.button
                   onClick={() => setMessages([])}
                   whileTap={{ scale: 0.92 }}
-                  className="flex h-6 items-center gap-1 rounded-lg px-2 text-[10px] font-medium text-neutral-400 hover:bg-white/70 hover:text-neutral-600 transition-colors"
+                  className="flex h-6 items-center gap-1 rounded-lg px-2 text-[10px] font-medium text-[var(--text-disabled)] hover:bg-white/70 hover:text-[var(--text-2)] transition-colors"
                   title="Clear chat"
                 >
                   Clear
@@ -222,7 +222,7 @@ export function LarryChat() {
               <motion.button
                 onClick={() => setMinimised((v) => !v)}
                 whileTap={{ scale: 0.92 }}
-                className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 hover:bg-white/70 hover:text-neutral-600 transition-colors"
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-disabled)] hover:bg-white/70 hover:text-[var(--text-2)] transition-colors"
                 aria-label="Minimise"
               >
                 <ChevronDown size={14} className={minimised ? "rotate-180" : ""} />
@@ -230,7 +230,7 @@ export function LarryChat() {
               <motion.button
                 onClick={() => { setOpen(false); setMinimised(false); }}
                 whileTap={{ scale: 0.92 }}
-                className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-400 hover:bg-white/70 hover:text-neutral-600 transition-colors"
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-disabled)] hover:bg-white/70 hover:text-[var(--text-2)] transition-colors"
                 aria-label="Close"
               >
                 <X size={14} />
@@ -260,10 +260,10 @@ export function LarryChat() {
                           <Sparkles size={24} className="text-white" />
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-neutral-900 tracking-[-0.02em]">
+                          <p className="text-sm font-semibold text-[var(--text-1)] tracking-[-0.02em]">
                             Hey, I&apos;m Larry 👋
                           </p>
-                          <p className="mt-1 text-xs text-neutral-500 leading-relaxed max-w-[260px]">
+                          <p className="mt-1 text-xs text-[var(--text-muted)] leading-relaxed max-w-[260px]">
                             Your AI project manager. I keep tabs on everything so you don&apos;t have to.
                           </p>
                         </div>
@@ -281,8 +281,8 @@ export function LarryChat() {
                             >
                               <span className="text-lg shrink-0">{p.emoji}</span>
                               <div className="min-w-0">
-                                <p className="text-xs font-semibold text-neutral-800 truncate">{p.label}</p>
-                                <p className="text-[10px] text-neutral-400 leading-snug truncate">{p.sub}</p>
+                                <p className="text-xs font-semibold text-[var(--text-1)] truncate">{p.label}</p>
+                                <p className="text-[10px] text-[var(--text-disabled)] leading-snug truncate">{p.sub}</p>
                               </div>
                             </motion.button>
                           ))}
@@ -343,7 +343,7 @@ export function LarryChat() {
                         "relative flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-all duration-200",
                         listening
                           ? "bg-red-500 text-white shadow-[0_0_0_4px_rgba(239,68,68,0.2)]"
-                          : "bg-[var(--color-surface)] text-neutral-500 hover:text-[var(--color-brand)]",
+                          : "bg-[var(--color-surface)] text-[var(--text-muted)] hover:text-[var(--color-brand)]",
                       ].join(" ")}
                     >
                       {listening ? (
@@ -367,7 +367,7 @@ export function LarryChat() {
                       onChange={(e) => setInput(e.target.value)}
                       placeholder={listening ? "Listening…" : "Ask Larry anything…"}
                       disabled={listening}
-                      className="flex-1 rounded-xl bg-[var(--color-surface)] px-3.5 py-2 text-xs text-neutral-700 placeholder:text-neutral-400 outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 transition-shadow disabled:opacity-50"
+                      className="flex-1 rounded-xl bg-[var(--color-surface)] px-3.5 py-2 text-xs text-[var(--text-2)] placeholder:text-[var(--text-disabled)] outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 transition-shadow disabled:opacity-50"
                     />
 
                     <motion.button

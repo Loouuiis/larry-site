@@ -31,8 +31,8 @@ const CHARS_PER_FRAME = 4; // ~240 chars/sec at 60fps — rapid but readable
 function EmailLine({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex gap-3 text-xs">
-      <span className="w-12 shrink-0 text-neutral-400">{label}</span>
-      <span className="text-neutral-600">{value}</span>
+      <span className="w-12 shrink-0 text-[var(--text-disabled)]">{label}</span>
+      <span className="text-[var(--text-2)]">{value}</span>
     </div>
   );
 }
@@ -117,8 +117,8 @@ export function FounderContact() {
           </svg>
         </div>
         <div>
-          <p className="text-lg font-semibold text-neutral-900">Message sent.</p>
-          <p className="mt-1.5 text-sm text-neutral-500">
+          <p className="text-lg font-semibold text-[var(--text-1)]">Message sent.</p>
+          <p className="mt-1.5 text-sm text-[var(--text-muted)]">
             The founders will be in touch shortly.
           </p>
         </div>
@@ -130,7 +130,7 @@ export function FounderContact() {
     <form onSubmit={handleSubmit} noValidate className="space-y-5">
       {/* Email input — shown immediately, feeds the From line */}
       <div className="space-y-1.5">
-        <label htmlFor={`${uid}-email`} className="block text-xs font-medium uppercase tracking-wide text-neutral-500">
+        <label htmlFor={`${uid}-email`} className="block text-xs font-medium uppercase tracking-wide text-[var(--text-muted)]">
           Your email
         </label>
         <input
@@ -145,11 +145,11 @@ export function FounderContact() {
           autoComplete="email"
           placeholder="you@yourcompany.com"
           className={[
-            "w-full rounded-xl px-4 py-3 text-neutral-900 outline-none",
+            "w-full rounded-xl px-4 py-3 text-[var(--text-1)] outline-none",
             "min-h-[44px]",
             "bg-white/30 backdrop-blur-sm",
             "border border-white/50",
-            "placeholder:text-neutral-400 transition-all duration-200",
+            "placeholder:text-[var(--text-disabled)] transition-all duration-200",
             "focus:bg-white/50 focus:border-white/70 focus:ring-1 focus:ring-white/40",
             emailError
               ? "border-red-300/60 focus:border-red-400/60 focus:ring-red-200/40"
@@ -186,11 +186,11 @@ export function FounderContact() {
         {/* Body — animated pre during typing, editable textarea after */}
         <div className="px-5 py-4">
           {!typingDone ? (
-            <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-neutral-700 min-h-[140px] sm:min-h-[180px]">
+            <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-[var(--text-2)] min-h-[140px] sm:min-h-[180px]">
               {EMAIL_BODY.slice(0, visibleChars)}
               <span
                 aria-hidden="true"
-                className="inline-block w-[2px] h-[1em] bg-neutral-400 align-[-0.05em] opacity-70"
+                className="inline-block w-[2px] h-[1em] bg-[var(--text-disabled)] align-[-0.05em] opacity-70"
                 style={{ animation: "livePulse 1s ease-in-out infinite" }}
               />
             </pre>
@@ -204,7 +204,7 @@ export function FounderContact() {
               onChange={(e) => setBody(e.target.value)}
               rows={10}
               maxLength={4000}
-              className="w-full resize-none bg-transparent outline-none font-sans leading-relaxed text-neutral-700 placeholder:text-neutral-400"
+              className="w-full resize-none bg-transparent outline-none font-sans leading-relaxed text-[var(--text-2)] placeholder:text-[var(--text-disabled)]"
               // Explicit 16px prevents iOS Safari auto-zoom on focus
               style={{ fontSize: "1rem" }}
             />
@@ -233,11 +233,11 @@ export function FounderContact() {
                 className={[
                   "flex-1 rounded-full border py-3 text-sm font-medium",
                   "min-h-[44px]",
-                  "border-neutral-900 bg-transparent text-neutral-900",
-                  "hover:bg-neutral-900 hover:text-white",
+                  "border-[var(--text-1)] bg-transparent text-[var(--text-1)]",
+                  "hover:bg-[var(--brand)] hover:text-white",
                   "transition-colors duration-200",
                   "disabled:opacity-60 disabled:cursor-not-allowed",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-1)] focus-visible:ring-offset-2",
                 ].join(" ")}
               >
                 {status === "submitting" ? (
@@ -260,7 +260,7 @@ export function FounderContact() {
                 className={[
                   "flex-1 rounded-full border py-3 text-center text-sm font-medium",
                   "min-h-[44px] flex items-center justify-center",
-                  "border-white/50 bg-white/20 text-neutral-700",
+                  "border-white/50 bg-white/20 text-[var(--text-2)]",
                   "hover:bg-white/35 hover:border-white/60",
                   "transition-colors duration-200",
                 ].join(" ")}

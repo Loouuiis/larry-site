@@ -59,7 +59,7 @@ const ASSIGNEE_DATA = [
 function buildStats(breakdown: BreakdownData | null) {
   if (!breakdown) {
     return [
-      { label: "Total Tasks",  value: "—",  icon: Circle,        color: "text-neutral-500",              bg: "bg-neutral-100"           },
+      { label: "Total Tasks",  value: "—",  icon: Circle,        color: "text-[var(--text-muted)]",      bg: "bg-[var(--surface-2)]"    },
       { label: "Completed",    value: "—",  icon: CheckCircle2,  color: "text-emerald-500",              bg: "bg-emerald-50"            },
       { label: "At Risk",      value: "—",  icon: AlertTriangle, color: "text-amber-500",                bg: "bg-amber-50"              },
       { label: "On Time %",    value: "—",  icon: TrendingUp,    color: "text-[var(--color-brand)]",    bg: "bg-[var(--color-brand)]/8" },
@@ -71,7 +71,7 @@ function buildStats(breakdown: BreakdownData | null) {
   const total = Object.values(bs).reduce((s, v) => s + v, 0);
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
   return [
-    { label: "Total Tasks",  value: String(total),    icon: Circle,        color: "text-neutral-500",              bg: "bg-neutral-100"           },
+    { label: "Total Tasks",  value: String(total),    icon: Circle,        color: "text-[var(--text-muted)]",      bg: "bg-[var(--surface-2)]"    },
     { label: "Completed",    value: String(completed), icon: CheckCircle2, color: "text-emerald-500",              bg: "bg-emerald-50"            },
     { label: "At Risk",      value: String(atRisk),   icon: AlertTriangle, color: "text-amber-500",                bg: "bg-amber-50"              },
     { label: "On Time %",    value: `${pct}%`,        icon: TrendingUp,    color: "text-[var(--color-brand)]",    bg: "bg-[var(--color-brand)]/8" },
@@ -115,21 +115,21 @@ function ChartTooltip({ active, payload, label }: {
   if (!active || !payload?.length) return null;
   const total = payload.reduce((s, p) => s + p.value, 0);
   return (
-    <div className="rounded-xl border border-neutral-100 bg-white px-3.5 py-3 shadow-card-xl text-xs min-w-[140px]">
-      {label && <p className="mb-2 font-semibold text-neutral-700">{label}</p>}
+    <div className="rounded-xl border border-[var(--border)] bg-white px-3.5 py-3 shadow-card-xl text-xs min-w-[140px]">
+      {label && <p className="mb-2 font-semibold text-[var(--text-2)]">{label}</p>}
       {payload.map((p) => (
         <div key={p.name} className="flex items-center justify-between gap-4 py-0.5">
-          <span className="flex items-center gap-1.5 text-neutral-500">
+          <span className="flex items-center gap-1.5 text-[var(--text-muted)]">
             <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: p.color }} />
             {p.name}
           </span>
-          <span className="font-medium text-neutral-800 tabular-nums">{p.value}</span>
+          <span className="font-medium text-[var(--text-1)] tabular-nums">{p.value}</span>
         </div>
       ))}
       {payload.length > 1 && (
-        <div className="mt-2 flex items-center justify-between border-t border-neutral-100 pt-2">
-          <span className="text-neutral-400">Total</span>
-          <span className="font-bold text-neutral-800 tabular-nums">{total}</span>
+        <div className="mt-2 flex items-center justify-between border-t border-[var(--border)] pt-2">
+          <span className="text-[var(--text-disabled)]">Total</span>
+          <span className="font-bold text-[var(--text-1)] tabular-nums">{total}</span>
         </div>
       )}
     </div>
@@ -147,7 +147,7 @@ function LegendPills() {
         { label: "At risk",     color: C.atRisk     },
         { label: "Not started", color: C.notStarted },
       ].map(({ label, color }) => (
-        <span key={label} className="flex items-center gap-1.5 text-[11px] text-neutral-500">
+        <span key={label} className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
           <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
           {label}
         </span>
@@ -164,12 +164,12 @@ function ChartCard({ title, subtitle, children }: {
   children: React.ReactNode;
 }) {
   return (
-    <motion.div variants={item} className="rounded-2xl border border-neutral-100 bg-white p-5 shadow-card">
+    <motion.div variants={item} className="rounded-2xl border border-[var(--border)] bg-white p-5 shadow-card">
       <div className="mb-4">
-        <h3 className="text-sm font-semibold text-neutral-800">
+        <h3 className="text-sm font-semibold text-[var(--text-1)]">
           {title}
         </h3>
-        {subtitle && <p className="mt-0.5 text-[11px] text-neutral-400">{subtitle}</p>}
+        {subtitle && <p className="mt-0.5 text-[11px] text-[var(--text-disabled)]">{subtitle}</p>}
       </div>
       {children}
     </motion.div>
@@ -204,8 +204,8 @@ function DonutCard({ donutData }: { donutData: { name: string; value: number; co
           </PieChart>
           {/* Centre label */}
           <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-2xl font-bold text-neutral-900 leading-none">{completePct}%</span>
-            <span className="mt-0.5 text-[10px] font-medium text-neutral-400">Complete</span>
+            <span className="text-2xl font-bold text-[var(--text-1)] leading-none">{completePct}%</span>
+            <span className="mt-0.5 text-[10px] font-medium text-[var(--text-disabled)]">Complete</span>
           </div>
         </div>
 
@@ -216,13 +216,13 @@ function DonutCard({ donutData }: { donutData: { name: string; value: number; co
             return (
               <div key={name}>
                 <div className="mb-1 flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 text-xs text-neutral-600">
+                  <span className="flex items-center gap-1.5 text-xs text-[var(--text-2)]">
                     <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
                     {name}
                   </span>
-                  <span className="text-xs font-semibold text-neutral-700 tabular-nums">{value} <span className="font-normal text-neutral-400">({pct}%)</span></span>
+                  <span className="text-xs font-semibold text-[var(--text-2)] tabular-nums">{value} <span className="font-normal text-[var(--text-disabled)]">({pct}%)</span></span>
                 </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-neutral-100">
+                <div className="h-1.5 overflow-hidden rounded-full bg-[var(--surface-2)]">
                   <motion.div
                     className="h-full rounded-full"
                     style={{ backgroundColor: color }}
@@ -303,16 +303,16 @@ function GenerateReportCard() {
         <div className="flex-1">
           <div className="mb-1 flex items-center gap-2">
             <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[var(--color-brand)] text-[9px] font-bold text-white">L</span>
-            <h3 className="text-sm font-semibold text-neutral-800">
+            <h3 className="text-sm font-semibold text-[var(--text-1)]">
               Generate Report
             </h3>
           </div>
-          <p className="text-xs leading-relaxed text-neutral-500 max-w-sm">
+          <p className="text-xs leading-relaxed text-[var(--text-muted)] max-w-sm">
             Export a formatted summary of this project&apos;s current status, tasks, risks, and progress — ready to share with stakeholders.
           </p>
-          <div className="mt-2 flex items-center gap-1.5 text-[11px] text-neutral-400">
+          <div className="mt-2 flex items-center gap-1.5 text-[11px] text-[var(--text-disabled)]">
             <Sparkles size={11} className="text-[var(--color-brand)]/60" />
-            Last generated: <span className="font-medium text-neutral-500">Mar 20, 2026 at 09:14am</span>
+            Last generated: <span className="font-medium text-[var(--text-muted)]">Mar 20, 2026 at 09:14am</span>
           </div>
         </div>
 
@@ -354,7 +354,7 @@ function GenerateReportCard() {
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.97 }}
             transition={{ duration: 0.16, ease: EASE }}
-            className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 text-xs font-medium text-neutral-500 hover:border-neutral-300 hover:text-neutral-700 transition-colors"
+            className="flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-3.5 py-2.5 text-xs font-medium text-[var(--text-muted)] hover:border-[var(--border)] hover:text-[var(--text-2)] transition-colors"
           >
             <Download size={13} />
             Raw CSV
@@ -377,19 +377,19 @@ function ProjectSelector() {
     <div className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3.5 py-2 text-xs font-medium text-neutral-700 shadow-sm hover:border-neutral-300 transition-colors"
+        className="flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-3.5 py-2 text-xs font-medium text-[var(--text-2)] shadow-sm hover:border-[var(--border)] transition-colors"
       >
         <span className="flex h-4 w-4 items-center justify-center rounded bg-[var(--color-brand)] text-[7px] font-bold text-white">L</span>
         {selected}
-        <ChevronDown size={12} className={`ml-1 text-neutral-400 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+        <ChevronDown size={12} className={`ml-1 text-[var(--text-disabled)] transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 w-48 overflow-hidden rounded-xl border border-neutral-100 bg-white shadow-card-xl">
+        <div className="absolute left-0 top-full z-50 mt-1 w-48 overflow-hidden rounded-xl border border-[var(--border)] bg-white shadow-card-xl">
           {PROJECTS.map((p) => (
             <button
               key={p}
               onClick={() => { setSelected(p); setOpen(false); }}
-              className={`flex w-full items-center gap-2 px-3.5 py-2 text-xs transition-colors ${p === selected ? "bg-[var(--color-brand)]/5 font-semibold text-[var(--color-brand)]" : "text-neutral-600 hover:bg-neutral-50"}`}
+              className={`flex w-full items-center gap-2 px-3.5 py-2 text-xs transition-colors ${p === selected ? "bg-[var(--color-brand)]/5 font-semibold text-[var(--color-brand)]" : "text-[var(--text-2)] hover:bg-[var(--surface-2)]"}`}
             >
               {p === selected && <span className="h-1 w-1 rounded-full bg-[var(--color-brand)]" />}
               {p}
@@ -429,14 +429,14 @@ export function AnalyticsPage({ projectId }: { projectId?: string }) {
       {/* Page header */}
       <motion.div variants={item} className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-neutral-800">
+          <h2 className="text-sm font-semibold text-[var(--text-1)]">
             Dashboard &amp; Results
           </h2>
-          <p className="text-[11px] text-neutral-400">Mar 1 – Apr 30, 2026</p>
+          <p className="text-[11px] text-[var(--text-disabled)]">Mar 1 – Apr 30, 2026</p>
         </div>
         <div className="flex items-center gap-2">
           <ProjectSelector />
-          <button className="flex items-center gap-1.5 rounded-xl border border-neutral-200 bg-white px-3 py-2 text-[11px] font-medium text-neutral-500 shadow-sm hover:border-neutral-300 transition-colors">
+          <button className="flex items-center gap-1.5 rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-[11px] font-medium text-[var(--text-muted)] shadow-sm hover:border-[var(--border)] transition-colors">
             <RefreshCw size={11} />
             Refresh
           </button>
@@ -446,12 +446,12 @@ export function AnalyticsPage({ projectId }: { projectId?: string }) {
       {/* KPI cards */}
       <motion.div variants={item} className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {stats.map(({ label, value, icon: Icon, color, bg }) => (
-          <div key={label} className="rounded-2xl border border-neutral-100 bg-white p-4 sm:p-5 shadow-card">
+          <div key={label} className="rounded-2xl border border-[var(--border)] bg-white p-4 sm:p-5 shadow-card">
             <div className={`mb-3 flex h-8 w-8 items-center justify-center rounded-xl ${bg}`}>
               <Icon size={15} className={color} />
             </div>
-            <p className="text-2xl font-bold text-neutral-900 leading-none tracking-tight">{value}</p>
-            <p className="mt-1.5 text-xs text-neutral-500">{label}</p>
+            <p className="text-2xl font-bold text-[var(--text-1)] leading-none tracking-tight">{value}</p>
+            <p className="mt-1.5 text-xs text-[var(--text-muted)]">{label}</p>
           </div>
         ))}
       </motion.div>

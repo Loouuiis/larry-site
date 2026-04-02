@@ -37,46 +37,46 @@ const STATS = [
 
 export function ROISection() {
   return (
-    <section className="border-t border-neutral-100 py-12 sm:py-24">
+    <section className="border-t border-[var(--border)] py-12 sm:py-24">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <FadeUp className="mb-10 max-w-xl sm:mb-16">
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-neutral-400 sm:mb-3 sm:text-xs">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-disabled)] sm:mb-3 sm:text-xs">
             Measurable ROI
           </p>
-          <h2 className="text-2xl font-bold tracking-tight text-neutral-900 sm:text-4xl lg:text-5xl">
+          <h2 className="text-2xl font-bold tracking-tight text-[var(--text-1)] sm:text-4xl lg:text-5xl">
             Results from week one.
           </h2>
         </FadeUp>
 
         {/* Stats — divided columns, numbers as the visual anchor */}
         <FadeUp>
-          <div className="grid grid-cols-1 divide-y divide-neutral-100 sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-4">
+          <div className="grid grid-cols-1 divide-y divide-[var(--border)] sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-4">
             {STATS.map(({ value, unit, label, detail }, i) => (
               <div
                 key={label}
                 className={[
                   "py-6 sm:py-8",
-                  i > 0 && "lg:border-l lg:border-neutral-100 lg:pl-8",
+                  i > 0 && "lg:border-l lg:border-[var(--border)] lg:pl-8",
                   i < STATS.length - 1 && "lg:pr-8",
-                  i > 0 && i < 3 && "sm:border-l sm:border-neutral-100 sm:pl-8",
+                  i > 0 && i < 3 && "sm:border-l sm:border-[var(--border)] sm:pl-8",
                 ]
                   .filter(Boolean)
                   .join(" ")}
               >
                 <div className="mb-3 flex items-end gap-1 leading-none">
-                  <span className="text-[3rem] font-bold tracking-tight text-neutral-900 leading-none">
+                  <span className="text-[3rem] font-bold tracking-tight text-[var(--text-1)] leading-none">
                     {value}
                   </span>
                   {unit && (
-                    <span className="mb-1.5 text-xl font-semibold text-neutral-400">
+                    <span className="mb-1.5 text-xl font-semibold text-[var(--text-disabled)]">
                       {unit}
                     </span>
                   )}
                 </div>
-                <p className="mb-2 text-sm font-semibold text-neutral-700">
+                <p className="mb-2 text-sm font-semibold text-[var(--text-2)]">
                   {label}
                 </p>
-                <p className="text-xs leading-relaxed text-neutral-400">
+                <p className="text-xs leading-relaxed text-[var(--text-disabled)]">
                   {detail}
                 </p>
               </div>

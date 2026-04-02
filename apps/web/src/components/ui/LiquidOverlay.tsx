@@ -102,7 +102,7 @@ function Overlay({ type, origin, onClose }: LiquidOverlayProps) {
       >
         {/* Floating glass panel — click inside does not close */}
         <div
-          className="w-full max-w-lg rounded-3xl overflow-hidden max-h-[92vh] overflow-y-auto sm:max-h-[85vh]"
+          className="w-full max-w-lg rounded-xl overflow-hidden max-h-[92vh] overflow-y-auto sm:max-h-[85vh]"
           style={{
             background: "rgba(247, 247, 244, 0.78)",
             backdropFilter: "blur(24px)",
@@ -121,22 +121,22 @@ function Overlay({ type, origin, onClose }: LiquidOverlayProps) {
             {/* Header row */}
             <div className="mb-6 flex items-center justify-between sm:mb-8">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-widest text-neutral-400">
+                <p className="text-xs font-semibold uppercase tracking-widest text-[var(--text-disabled)]">
                   {isWaitlist ? "Early access" : "Get in touch"}
                 </p>
-                <h2 className="mt-1 text-xl font-bold text-neutral-900 sm:text-2xl">
+                <h2 className="mt-1 text-xl font-bold text-[var(--text-1)] sm:text-2xl">
                   {title}
                 </h2>
-                <p className="mt-1 text-sm text-neutral-500">{subtitle}</p>
+                <p className="mt-1 text-sm text-[var(--text-muted)]">{subtitle}</p>
               </div>
               <button
                 ref={firstFocusRef}
                 onClick={onClose}
                 className={[
                   "ml-4 flex h-11 w-11 shrink-0 items-center justify-center rounded-full",
-                  "border border-neutral-200 bg-white/60 text-neutral-400",
-                  "transition-colors duration-200 hover:border-neutral-400 hover:text-neutral-700",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-900 focus-visible:ring-offset-2",
+                  "border border-[var(--border)] bg-white/60 text-[var(--text-disabled)]",
+                  "transition-colors duration-200 hover:border-[var(--border)] hover:text-[var(--text-2)]",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-1)] focus-visible:ring-offset-2",
                 ].join(" ")}
                 aria-label="Close"
               >

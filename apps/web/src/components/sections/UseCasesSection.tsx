@@ -39,13 +39,13 @@ const ChevronIcon = () => (
 
 export function UseCasesSection() {
   return (
-    <section className="border-t border-neutral-100 bg-[#F2F2EF] py-12 sm:py-24">
+    <section className="border-t border-[var(--border)] bg-[#F2F2EF] py-12 sm:py-24">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <FadeUp className="mb-10 max-w-2xl sm:mb-14">
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-neutral-400 sm:mb-3 sm:text-xs">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-disabled)] sm:mb-3 sm:text-xs">
             The problem
           </p>
-          <h2 className="text-2xl font-bold tracking-tight text-neutral-900 sm:text-4xl lg:text-5xl">
+          <h2 className="text-2xl font-bold tracking-tight text-[var(--text-1)] sm:text-4xl lg:text-5xl">
             Where execution breaks down.
           </h2>
         </FadeUp>
@@ -54,10 +54,10 @@ export function UseCasesSection() {
           {/* Pain points */}
           <FadeUp>
             <div
-              className="h-full rounded-2xl border border-neutral-200 bg-white p-5 sm:p-8"
+              className="h-full rounded-2xl border border-[var(--border)] bg-white p-5 sm:p-8"
               style={{ boxShadow: "var(--shadow-card)" }}
             >
-              <p className="mb-5 text-sm text-neutral-500">
+              <p className="mb-5 text-sm text-[var(--text-muted)]">
                 Every day, project managers lose hours to:
               </p>
               <ul className="space-y-3" role="list">
@@ -65,32 +65,32 @@ export function UseCasesSection() {
                   <li key={point} className="flex items-center gap-3">
                     <span
                       aria-hidden="true"
-                      className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-400"
+                      className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--surface-2)] text-[var(--text-disabled)]"
                     >
                       <MinusIcon />
                     </span>
-                    <span className="text-sm text-neutral-700">{point}</span>
+                    <span className="text-sm text-[var(--text-2)]">{point}</span>
                   </li>
                 ))}
               </ul>
 
               {/* Scattered sources */}
-              <div className="mt-8 rounded-xl border border-neutral-100 bg-neutral-50 p-4">
-                <p className="mb-3 text-xs text-neutral-500">
+              <div className="mt-8 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-4">
+                <p className="mb-3 text-xs text-[var(--text-muted)]">
                   Critical information is scattered across:
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {SCATTERED_SOURCES.map((src) => (
                     <span
                       key={src}
-                      className="rounded-full border border-neutral-200 bg-white px-3 py-1 text-xs font-medium text-neutral-600"
+                      className="rounded-full border border-[var(--border)] bg-white px-3 py-1 text-xs font-medium text-[var(--text-2)]"
                       style={{ boxShadow: "0 1px 2px rgba(0,0,0,0.04)" }}
                     >
                       {src}
                     </span>
                   ))}
                 </div>
-                <p className="mt-3 text-xs font-semibold text-neutral-700">
+                <p className="mt-3 text-xs font-semibold text-[var(--text-2)]">
                   Nothing owns execution.
                 </p>
               </div>
@@ -100,30 +100,30 @@ export function UseCasesSection() {
           {/* Consequences — dark card signals gravity without alarm-state red */}
           <FadeUp delay={0.08}>
             <div
-              className="h-full rounded-2xl border border-neutral-800 bg-neutral-950 p-5 sm:p-8"
+              className="h-full rounded-2xl border border-[var(--text-2)] bg-[var(--text-1)] p-5 sm:p-8"
               style={{ boxShadow: "var(--shadow-card)" }}
             >
-              <p className="mb-5 text-sm text-neutral-400">The result:</p>
+              <p className="mb-5 text-sm text-[var(--text-disabled)]">The result:</p>
               <ul className="space-y-3" role="list">
                 {CONSEQUENCES.map((item) => (
                   <li key={item} className="flex items-center gap-3">
                     <span
                       aria-hidden="true"
-                      className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-neutral-800 text-neutral-400"
+                      className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--text-2)] text-[var(--text-disabled)]"
                     >
                       <ChevronIcon />
                     </span>
-                    <span className="text-sm font-medium text-neutral-200">
+                    <span className="text-sm font-medium text-[var(--text-2)]">
                       {item}
                     </span>
                   </li>
                 ))}
               </ul>
 
-              <div className="mt-8 rounded-xl bg-neutral-900 p-4">
-                <p className="text-xs leading-relaxed text-neutral-400">
+              <div className="mt-8 rounded-xl bg-[var(--text-2)] p-4">
+                <p className="text-xs leading-relaxed text-[var(--text-disabled)]">
                   Globally, project inefficiencies cost{" "}
-                  <strong className="text-neutral-100">trillions annually</strong> — and the majority of
+                  <strong className="text-white">trillions annually</strong> — and the majority of
                   projects miss deadlines or budgets.
                 </p>
               </div>
@@ -133,13 +133,13 @@ export function UseCasesSection() {
 
         <FadeUp delay={0.1} className="mt-5 sm:mt-8">
           <div
-            className="rounded-2xl border border-neutral-200 bg-white px-5 py-6 text-center sm:px-8 sm:py-8"
+            className="rounded-2xl border border-[var(--border)] bg-white px-5 py-6 text-center sm:px-8 sm:py-8"
             style={{ boxShadow: "var(--shadow-card)" }}
           >
-            <p className="text-lg font-medium text-neutral-500">
+            <p className="text-lg font-medium text-[var(--text-muted)]">
               This is not a tracking problem.
             </p>
-            <p className="mt-1 text-2xl font-bold tracking-tight text-neutral-900 sm:text-3xl">
+            <p className="mt-1 text-2xl font-bold tracking-tight text-[var(--text-1)] sm:text-3xl">
               It&apos;s an execution gap.
             </p>
           </div>

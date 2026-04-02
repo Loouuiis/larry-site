@@ -237,7 +237,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
   }, [health?.completionRate, tasks]);
 
   const openTasks = tasks.filter((task) => task.status !== "completed").length;
-  const blockedTasks = tasks.filter((task) => task.status === "blocked").length;
+  const blockedTasks = tasks.filter((task) => task.status === "at_risk").length;
   const recentTasks = (timeline?.gantt ?? tasks).slice(0, 6);
   const riskTone = getRiskTone(project?.riskLevel ?? health?.riskLevel ?? "low");
   const isArchived = project?.status === "archived";
@@ -612,7 +612,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
               <div className="mt-5 space-y-3">
                 {memoryError && (
                   <div
-                    className="rounded-[18px] border px-4 py-3 text-[13px]"
+                    className="rounded-xl border px-4 py-3 text-[13px]"
                     style={{ borderColor: "#fecaca", background: "#fef2f2", color: "#b91c1c" }}
                   >
                     {memoryError}
@@ -630,7 +630,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
                   memoryEntries.map((entry) => (
                     <div
                       key={entry.id}
-                      className="rounded-[18px] border px-4 py-3"
+                      className="rounded-xl border px-4 py-3"
                       style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -677,7 +677,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
                   recentTasks.map((task) => (
                     <div
                       key={task.id}
-                      className="flex items-start justify-between gap-4 rounded-[18px] border px-4 py-3"
+                      className="flex items-start justify-between gap-4 rounded-xl border px-4 py-3"
                       style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
                     >
                       <div className="min-w-0 flex-1">
@@ -720,7 +720,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
                   meetings.slice(0, 4).map((meeting) => (
                     <div
                       key={meeting.id}
-                      className="rounded-[18px] border px-4 py-3"
+                      className="rounded-xl border px-4 py-3"
                       style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
                     >
                       <div className="flex items-center justify-between gap-4">
@@ -789,7 +789,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
                       suggested.map((event) => (
                         <div
                           key={event.id}
-                          className="rounded-[18px] border px-4 py-4"
+                          className="rounded-xl border px-4 py-4"
                           style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
                         >
                           <div className="flex items-start justify-between gap-4">
@@ -873,7 +873,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
                       </p>
                     ) : (
                       activity.map((event) => (
-                        <div key={event.id} className="rounded-[18px] border px-4 py-3" style={{ borderColor: "var(--border)" }}>
+                        <div key={event.id} className="rounded-xl border px-4 py-3" style={{ borderColor: "var(--border)" }}>
                           <div className="flex items-start gap-3">
                             <CheckCircle2 size={16} className="mt-0.5 shrink-0" style={{ color: "var(--cta)" }} />
                             <div className="min-w-0 flex-1">
@@ -944,7 +944,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
 
               <div className="mt-5 space-y-3">
                 {actionCentreError && (
-                  <div className="rounded-[18px] border px-4 py-3 text-[13px]" style={{ borderColor: "#fecaca", background: "#fef2f2", color: "#b91c1c" }}>
+                  <div className="rounded-xl border px-4 py-3 text-[13px]" style={{ borderColor: "#fecaca", background: "#fef2f2", color: "#b91c1c" }}>
                     {actionCentreError}
                   </div>
                 )}
@@ -953,7 +953,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
                     Loading conversation history...
                   </p>
                 ) : conversations.length === 0 ? (
-                  <div className="rounded-[18px] border border-dashed px-4 py-6 text-center" style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}>
+                  <div className="rounded-xl border border-dashed px-4 py-6 text-center" style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}>
                     <p className="text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
                       No project chats yet
                     </p>
@@ -976,7 +976,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
                       key={conversation.id}
                       type="button"
                       onClick={() => openConversation(conversation.id)}
-                      className="flex w-full items-start gap-3 rounded-[18px] border px-4 py-3 text-left"
+                      className="flex w-full items-start gap-3 rounded-xl border px-4 py-3 text-left"
                       style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
                     >
                       <MessageSquare size={16} className="mt-0.5 shrink-0" style={{ color: "var(--cta)" }} />

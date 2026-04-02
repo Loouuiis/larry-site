@@ -1,7 +1,8 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, Circle, ExternalLink, Zap } from "lucide-react";
+import { Calendar, CheckCircle2, Circle, ExternalLink, Mail, MessageSquare, Zap } from "lucide-react";
 import { SettingsSubnav } from "../SettingsSubnav";
 
 interface ConnectorStatus {
@@ -31,34 +32,41 @@ interface CalendarProjectLinkResponse {
   error?: string;
 }
 
+const CONNECTOR_ICONS: Record<string, ReactNode> = {
+  slack: <MessageSquare size={20} />,
+  calendar: <Calendar size={20} />,
+  outlookCalendar: <Calendar size={20} />,
+  email: <Mail size={20} />,
+};
+
 const CONNECTOR_INFO = {
   slack: {
     label: "Slack",
-    icon: "💬",
+    icon: "slack",
     description:
       "Larry monitors project-related channels, sends DM reminders to task owners, posts daily standup summaries, and escalates blocked tasks to manager channels.",
-    color: "#4A154B",
+    color: "#6c44f6",
   },
   calendar: {
     label: "Google Calendar",
-    icon: "📅",
+    icon: "calendar",
     description:
       "Larry detects upcoming meetings and offers to transcribe them, links calendar events to projects, and can create meeting invites (pending your approval in Action Center).",
-    color: "#0073EA",
+    color: "#6c44f6",
   },
   outlookCalendar: {
     label: "Outlook Calendar",
-    icon: "📆",
+    icon: "outlookCalendar",
     description:
       "Larry connects to Microsoft 365 calendars so invites and updates can sync into project activity and action workflows.",
-    color: "#0067B8",
+    color: "#6c44f6",
   },
   email: {
     label: "Email",
-    icon: "✉️",
+    icon: "email",
     description:
       "Larry drafts follow-up emails after meetings and weekly status reports. All drafts appear in Action Center for your review before sending.",
-    color: "#00C875",
+    color: "#6c44f6",
   },
 } as const;
 
@@ -291,7 +299,7 @@ export function ConnectorsPage() {
                 >
                   <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "16px" }}>
                     <div style={{ display: "flex", alignItems: "flex-start", gap: "12px" }}>
-                      <span style={{ fontSize: "22px", lineHeight: 1 }}>{info.icon}</span>
+                      <span style={{ color: info.color, display: "flex", alignItems: "center" }}>{CONNECTOR_ICONS[key]}</span>
                       <div>
                         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                           <h3 className="text-h2">{info.label}</h3>

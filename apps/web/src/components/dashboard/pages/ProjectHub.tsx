@@ -610,7 +610,7 @@ interface ProjectHubProps {
 const PHASE_STYLE: Record<Phase["status"], { track: string; fill: string; label: string }> = {
   done:     { track: "bg-emerald-100", fill: "bg-emerald-400",                          label: "text-emerald-600"              },
   active:   { track: "bg-[var(--color-brand)]/10", fill: "bg-[var(--color-brand)]",     label: "text-[var(--color-brand)]"     },
-  upcoming: { track: "bg-neutral-100", fill: "bg-neutral-300",                          label: "text-neutral-400"              },
+  upcoming: { track: "bg-[var(--surface-2)]", fill: "bg-[var(--text-disabled)]",         label: "text-[var(--text-disabled)]"   },
 };
 
 const TASK_STATUS_CFG: Record<HubTask["status"], { badge: string; label: string }> = {
@@ -622,13 +622,13 @@ const TASK_STATUS_CFG: Record<HubTask["status"], { badge: string; label: string 
 const IMPACT_CFG: Record<Risk["impact"], { badge: string; label: string }> = {
   high:   { badge: "bg-red-50 text-red-500 border-red-100",        label: "High"   },
   medium: { badge: "bg-amber-50 text-amber-600 border-amber-100",  label: "Medium" },
-  low:    { badge: "bg-neutral-100 text-neutral-500 border-neutral-200", label: "Low" },
+  low:    { badge: "bg-[var(--surface-2)] text-[var(--text-muted)] border-[var(--border)]", label: "Low" },
 };
 
 const LIKELIHOOD_CFG: Record<Risk["likelihood"], { badge: string }> = {
   high:   { badge: "bg-red-50 text-red-500 border-red-100"        },
   medium: { badge: "bg-amber-50 text-amber-600 border-amber-100"  },
-  low:    { badge: "bg-neutral-100 text-neutral-500 border-neutral-200" },
+  low:    { badge: "bg-[var(--surface-2)] text-[var(--text-muted)] border-[var(--border)]" },
 };
 
 const RISK_STATUS_CFG: Record<Risk["status"], { badge: string; label: string }> = {
@@ -639,7 +639,7 @@ const RISK_STATUS_CFG: Record<Risk["status"], { badge: string; label: string }> 
 
 const MILESTONE_CFG: Record<Milestone["status"], { dot: string; line: string; badge: string; label: string }> = {
   done:     { dot: "bg-emerald-400 border-emerald-200", line: "bg-emerald-200", badge: "bg-emerald-50 text-emerald-600 border-emerald-100",    label: "Done"     },
-  upcoming: { dot: "bg-[var(--color-brand)] border-[var(--color-brand)]/30", line: "bg-neutral-100", badge: "bg-[var(--color-brand)]/8 text-[var(--color-brand)] border-[var(--color-brand)]/20", label: "Upcoming" },
+  upcoming: { dot: "bg-[var(--color-brand)] border-[var(--color-brand)]/30", line: "bg-[var(--border)]", badge: "bg-[var(--color-brand)]/8 text-[var(--color-brand)] border-[var(--color-brand)]/20", label: "Upcoming" },
   overdue:  { dot: "bg-red-400 border-red-200",         line: "bg-red-100",    badge: "bg-red-50 text-red-500 border-red-100",                label: "Overdue"  },
 };
 
@@ -664,7 +664,7 @@ function ProgressRing({ pct, color = "#8b5cf6", size = 72 }: { pct: number; colo
           transition={{ duration: 1.1, ease: EASE }}
         />
       </svg>
-      <span className="relative text-base font-bold text-neutral-900">{pct}%</span>
+      <span className="relative text-base font-bold text-[var(--text-1)]">{pct}%</span>
     </div>
   );
 }
@@ -688,8 +688,8 @@ function Avatar({ initials, size = "sm" }: { initials: string; size?: "xs" | "sm
 
 function KpiCard({ label, children, accent = false }: { label: string; children: React.ReactNode; accent?: boolean }) {
   return (
-    <div className={`rounded-2xl border border-neutral-100 bg-white p-5 shadow-card ${accent ? "ring-1 ring-[var(--color-brand)]/10" : ""}`}>
-      <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-neutral-400">{label}</p>
+    <div className={`rounded-2xl border border-[var(--border)] bg-white p-5 shadow-card ${accent ? "ring-1 ring-[var(--color-brand)]/10" : ""}`}>
+      <p className="mb-3 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-disabled)]">{label}</p>
       {children}
     </div>
   );
@@ -716,17 +716,17 @@ function OverviewTab({ data }: { data: HubData }) {
           <div className="flex items-center gap-4">
             <ProgressRing pct={data.progress} color="#8b5cf6" size={64} />
             <div>
-              <p className="text-2xl font-bold text-neutral-900">{data.progress}%</p>
-              <p className="mt-0.5 text-[10px] text-neutral-400">Complete</p>
+              <p className="text-2xl font-bold text-[var(--text-1)]">{data.progress}%</p>
+              <p className="mt-0.5 text-[10px] text-[var(--text-disabled)]">Complete</p>
             </div>
           </div>
         </KpiCard>
 
         <KpiCard label="Days Remaining">
-          <p className={`text-3xl font-bold leading-none ${deadlineUrgent ? "text-red-500" : "text-neutral-900"}`}>
+          <p className={`text-3xl font-bold leading-none ${deadlineUrgent ? "text-red-500" : "text-[var(--text-1)]"}`}>
             {data.deadlineDays <= 0 ? "Due" : data.deadlineDays}
           </p>
-          <p className={`mt-1.5 text-[10px] ${deadlineUrgent ? "text-red-400" : "text-neutral-400"}`}>
+          <p className={`mt-1.5 text-[10px] ${deadlineUrgent ? "text-red-400" : "text-[var(--text-disabled)]"}`}>
             {data.deadlineDays <= 0 ? "Today" : `Until ${data.deadline}`}
           </p>
           {deadlineUrgent && (
@@ -738,7 +738,7 @@ function OverviewTab({ data }: { data: HubData }) {
 
         <KpiCard label="Open Actions">
           <p className="text-3xl font-bold leading-none text-amber-500">{data.openActions}</p>
-          <p className="mt-1.5 text-[10px] text-neutral-400">Require attention</p>
+          <p className="mt-1.5 text-[10px] text-[var(--text-disabled)]">Require attention</p>
           {data.openActions === 0 && (
             <span className="mt-2 inline-flex rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[9px] font-medium text-emerald-600">
               All clear
@@ -753,7 +753,7 @@ function OverviewTab({ data }: { data: HubData }) {
               <Avatar key={m} initials={m} size="xs" />
             ))}
           </div>
-          <p className="mt-1.5 text-[10px] text-neutral-400">Members</p>
+          <p className="mt-1.5 text-[10px] text-[var(--text-disabled)]">Members</p>
         </KpiCard>
       </div>
 
@@ -761,10 +761,10 @@ function OverviewTab({ data }: { data: HubData }) {
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
 
         {/* Project phases */}
-        <div className="rounded-2xl border border-neutral-100 bg-white p-5 shadow-card">
-          <h3 className="mb-4 text-xs font-semibold text-neutral-800">Project Phases</h3>
+        <div className="rounded-2xl border border-[var(--border)] bg-white p-5 shadow-card">
+          <h3 className="mb-4 text-xs font-semibold text-[var(--text-1)]">Project Phases</h3>
           {data.phases.length === 0 ? (
-            <p className="text-xs italic text-neutral-400">No phases defined yet.</p>
+            <p className="text-xs italic text-[var(--text-disabled)]">No phases defined yet.</p>
           ) : (
             <div className="space-y-3.5">
               {data.phases.map((phase, i) => {
@@ -780,7 +780,7 @@ function OverviewTab({ data }: { data: HubData }) {
                         transition={{ duration: 0.85, ease: EASE, delay: i * 0.06 }}
                       />
                     </div>
-                    <span className="w-8 shrink-0 text-right text-[10px] text-neutral-400">
+                    <span className="w-8 shrink-0 text-right text-[10px] text-[var(--text-disabled)]">
                       {phase.pct > 0 ? `${phase.pct}%` : "—"}
                     </span>
                   </div>
@@ -790,14 +790,14 @@ function OverviewTab({ data }: { data: HubData }) {
           )}
 
           {/* Budget summary bar */}
-          <div className="mt-5 border-t border-neutral-50 pt-4">
-            <div className="flex items-center justify-between text-[10px] text-neutral-400 mb-2">
+          <div className="mt-5 border-t border-[var(--border)] pt-4">
+            <div className="flex items-center justify-between text-[10px] text-[var(--text-disabled)] mb-2">
               <span>Budget spent</span>
-              <span className={overBudget ? "text-red-400 font-medium" : "text-neutral-400"}>
+              <span className={overBudget ? "text-red-400 font-medium" : "text-[var(--text-disabled)]"}>
                 £{data.budget.spent.toLocaleString()} / £{data.budget.total.toLocaleString()}
               </span>
             </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-neutral-100">
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-2)]">
               <motion.div
                 className={`h-full rounded-full ${overBudget ? "bg-red-400" : "bg-[var(--color-brand)]"}`}
                 initial={{ width: 0 }}
@@ -815,11 +815,11 @@ function OverviewTab({ data }: { data: HubData }) {
               L
             </span>
             <div>
-              <p className="text-xs font-semibold text-neutral-800">Larry&apos;s Note</p>
-              <p className="text-[10px] text-neutral-400">AI project intelligence</p>
+              <p className="text-xs font-semibold text-[var(--text-1)]">Larry&apos;s Note</p>
+              <p className="text-[10px] text-[var(--text-disabled)]">AI project intelligence</p>
             </div>
           </div>
-          <p className="text-xs leading-relaxed text-neutral-600">{data.larryNote}</p>
+          <p className="text-xs leading-relaxed text-[var(--text-2)]">{data.larryNote}</p>
           {data.flaggedRisks.length > 0 && (
             <div className="mt-4 border-t border-[var(--color-brand)]/10 pt-3">
               <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-amber-500">Flagged Risks</p>
@@ -827,7 +827,7 @@ function OverviewTab({ data }: { data: HubData }) {
                 {data.flaggedRisks.map((r, i) => (
                   <li key={i} className="flex items-start gap-2">
                     <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
-                    <p className="text-[11px] leading-relaxed text-neutral-600">{r}</p>
+                    <p className="text-[11px] leading-relaxed text-[var(--text-2)]">{r}</p>
                   </li>
                 ))}
               </ul>
@@ -864,7 +864,7 @@ function TasksTab({ data }: { data: HubData }) {
   ];
 
   const FILTER_ACTIVE: Record<TaskFilter, string> = {
-    all:     "bg-neutral-800 text-white",
+    all:     "bg-[var(--text-1)] text-white",
     pending: "bg-amber-500 text-white",
     done:    "bg-emerald-500 text-white",
     overdue: "bg-red-500 text-white",
@@ -890,11 +890,11 @@ function TasksTab({ data }: { data: HubData }) {
               "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-150",
               filter === id
                 ? `${FILTER_ACTIVE[id]} border-transparent shadow-sm`
-                : "border-neutral-200 bg-white text-neutral-500 hover:border-neutral-300 hover:text-neutral-700",
+                : "border-[var(--border)] bg-white text-[var(--text-muted)] hover:border-[var(--border)] hover:text-[var(--text-2)]",
             ].join(" ")}
           >
             {label}
-            <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold ${filter === id ? "bg-white/20" : "bg-neutral-100 text-neutral-400"}`}>
+            <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold ${filter === id ? "bg-white/20" : "bg-[var(--surface-2)] text-[var(--text-disabled)]"}`}>
               {counts[id]}
             </span>
           </motion.button>
@@ -909,9 +909,9 @@ function TasksTab({ data }: { data: HubData }) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="rounded-2xl border border-neutral-100 bg-white p-10 text-center shadow-card"
+            className="rounded-2xl border border-[var(--border)] bg-white p-10 text-center shadow-card"
           >
-            <p className="text-sm text-neutral-400">No {filter === "all" ? "" : filter} tasks.</p>
+            <p className="text-sm text-[var(--text-disabled)]">No {filter === "all" ? "" : filter} tasks.</p>
           </motion.div>
         ) : (
           <motion.div
@@ -920,9 +920,9 @@ function TasksTab({ data }: { data: HubData }) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.2, ease: EASE }}
-            className="rounded-2xl border border-neutral-100 bg-white shadow-card overflow-hidden"
+            className="rounded-2xl border border-[var(--border)] bg-white shadow-card overflow-hidden"
           >
-            <ul role="list" className="divide-y divide-neutral-50">
+            <ul role="list" className="divide-y divide-[var(--border)]">
               {filtered.map((t, i) => {
                 const sc = TASK_STATUS_CFG[t.status];
                 return (
@@ -931,13 +931,13 @@ function TasksTab({ data }: { data: HubData }) {
                     initial={{ opacity: 0, x: -8 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ duration: 0.2, ease: EASE, delay: i * 0.04 }}
-                    className="flex items-start gap-3 px-5 py-4 hover:bg-neutral-50/60 transition-colors"
+                    className="flex items-start gap-3 px-5 py-4 hover:bg-[var(--surface-2)] transition-colors"
                   >
                     <Avatar initials={t.owner} size="sm" />
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium text-neutral-700 leading-snug">{t.task}</p>
+                      <p className="text-xs font-medium text-[var(--text-2)] leading-snug">{t.task}</p>
                       <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                        <span className="rounded-lg bg-neutral-50 px-2 py-0.5 text-[10px] text-neutral-400">
+                        <span className="rounded-lg bg-[var(--surface-2)] px-2 py-0.5 text-[10px] text-[var(--text-disabled)]">
                           Due {t.due}
                         </span>
                         <span className={`rounded-full border px-2 py-0.5 text-[9px] font-medium ${sc.badge}`}>
@@ -985,12 +985,12 @@ function RisksTab({ data }: { data: HubData }) {
       className="space-y-5"
     >
       {/* Risk matrix */}
-      <div className="rounded-2xl border border-neutral-100 bg-white p-5 shadow-card">
-        <h3 className="mb-4 text-xs font-semibold text-neutral-800">Risk Matrix</h3>
+      <div className="rounded-2xl border border-[var(--border)] bg-white p-5 shadow-card">
+        <h3 className="mb-4 text-xs font-semibold text-[var(--text-1)]">Risk Matrix</h3>
         <div className="flex gap-4 items-start">
           {/* Y axis label */}
           <div className="flex flex-col items-center justify-center self-stretch gap-1 pb-6">
-            <span className="text-[9px] font-semibold uppercase tracking-widest text-neutral-400"
+            <span className="text-[9px] font-semibold uppercase tracking-widest text-[var(--text-disabled)]"
               style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}>
               Impact
             </span>
@@ -998,7 +998,7 @@ function RisksTab({ data }: { data: HubData }) {
 
           <div className="flex-1 min-w-0">
             {/* Matrix grid */}
-            <div className="relative grid grid-cols-2 grid-rows-2 gap-px rounded-xl overflow-hidden border border-neutral-100"
+            <div className="relative grid grid-cols-2 grid-rows-2 gap-px rounded-xl overflow-hidden border border-[var(--border)]"
               style={{ height: 200 }}>
               <div className="bg-red-50/70 flex items-start justify-start p-2">
                 <span className="text-[9px] font-medium text-red-300">High Impact / Low Likelihood</span>
@@ -1032,9 +1032,9 @@ function RisksTab({ data }: { data: HubData }) {
 
             {/* X axis */}
             <div className="mt-1.5 flex justify-between px-2">
-              <span className="text-[9px] font-semibold uppercase tracking-widest text-neutral-400">Low</span>
-              <span className="text-[9px] font-semibold uppercase tracking-widest text-neutral-400">Likelihood</span>
-              <span className="text-[9px] font-semibold uppercase tracking-widest text-neutral-400">High</span>
+              <span className="text-[9px] font-semibold uppercase tracking-widest text-[var(--text-disabled)]">Low</span>
+              <span className="text-[9px] font-semibold uppercase tracking-widest text-[var(--text-disabled)]">Likelihood</span>
+              <span className="text-[9px] font-semibold uppercase tracking-widest text-[var(--text-disabled)]">High</span>
             </div>
           </div>
         </div>
@@ -1046,7 +1046,7 @@ function RisksTab({ data }: { data: HubData }) {
             { color: "bg-amber-400",   label: "Medium impact" },
             { color: "bg-emerald-400", label: "Low impact"    },
           ].map(({ color, label }) => (
-            <span key={label} className="flex items-center gap-1.5 text-[10px] text-neutral-400">
+            <span key={label} className="flex items-center gap-1.5 text-[10px] text-[var(--text-disabled)]">
               <span className={`h-2 w-2 rounded-full ${color}`} />
               {label}
             </span>
@@ -1055,15 +1055,15 @@ function RisksTab({ data }: { data: HubData }) {
       </div>
 
       {/* Risk register */}
-      <div className="rounded-2xl border border-neutral-100 bg-white shadow-card overflow-hidden">
-        <div className="border-b border-neutral-50 px-5 py-3.5">
-          <h3 className="text-xs font-semibold text-neutral-800">Risk Register</h3>
+      <div className="rounded-2xl border border-[var(--border)] bg-white shadow-card overflow-hidden">
+        <div className="border-b border-[var(--border)] px-5 py-3.5">
+          <h3 className="text-xs font-semibold text-[var(--text-1)]">Risk Register</h3>
         </div>
 
         {data.risks.length === 0 ? (
-          <p className="px-5 py-8 text-center text-xs italic text-neutral-400">No risks logged for this project.</p>
+          <p className="px-5 py-8 text-center text-xs italic text-[var(--text-disabled)]">No risks logged for this project.</p>
         ) : (
-          <ul role="list" className="divide-y divide-neutral-50">
+          <ul role="list" className="divide-y divide-[var(--border)]">
             {data.risks.map((risk) => {
               const ic = IMPACT_CFG[risk.impact];
               const lc = LIKELIHOOD_CFG[risk.likelihood];
@@ -1074,10 +1074,10 @@ function RisksTab({ data }: { data: HubData }) {
                 <li key={risk.id}>
                   <button
                     onClick={() => setExpandedId(isExpanded ? null : risk.id)}
-                    className="w-full text-left px-5 py-4 hover:bg-neutral-50/60 transition-colors"
+                    className="w-full text-left px-5 py-4 hover:bg-[var(--surface-2)] transition-colors"
                   >
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-                      <p className="flex-1 text-xs font-medium text-neutral-700">{risk.title}</p>
+                      <p className="flex-1 text-xs font-medium text-[var(--text-2)]">{risk.title}</p>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className={`rounded-full border px-2 py-0.5 text-[9px] font-medium ${ic.badge}`}>
                           {ic.label}
@@ -1092,7 +1092,7 @@ function RisksTab({ data }: { data: HubData }) {
                         <motion.span
                           animate={{ rotate: isExpanded ? 180 : 0 }}
                           transition={{ duration: 0.2, ease: EASE }}
-                          className="text-neutral-300"
+                          className="text-[var(--text-disabled)]"
                         >
                           <ChevronDown size={13} />
                         </motion.span>
@@ -1109,9 +1109,9 @@ function RisksTab({ data }: { data: HubData }) {
                         transition={{ duration: 0.22, ease: EASE }}
                         className="overflow-hidden"
                       >
-                        <div className="border-t border-neutral-50 bg-neutral-50/40 px-5 py-4">
-                          <p className="text-[10px] font-semibold uppercase tracking-widest text-neutral-400 mb-2">Mitigation</p>
-                          <p className="text-xs leading-relaxed text-neutral-600">{risk.mitigation}</p>
+                        <div className="border-t border-[var(--border)] bg-[var(--surface-2)] px-5 py-4">
+                          <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-disabled)] mb-2">Mitigation</p>
+                          <p className="text-xs leading-relaxed text-[var(--text-2)]">{risk.mitigation}</p>
                         </div>
                       </motion.div>
                     )}
@@ -1146,14 +1146,14 @@ function CostsTab({ data }: { data: HubData }) {
       {/* Top 3 KPIs */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <KpiCard label="Total Budget">
-          <p className="text-2xl font-bold text-neutral-900">£{budget.total.toLocaleString()}</p>
-          <p className="mt-1 text-[10px] text-neutral-400">Approved</p>
+          <p className="text-2xl font-bold text-[var(--text-1)]">£{budget.total.toLocaleString()}</p>
+          <p className="mt-1 text-[10px] text-[var(--text-disabled)]">Approved</p>
         </KpiCard>
 
         <KpiCard label="Spent to Date">
-          <p className="text-2xl font-bold text-neutral-900">£{budget.spent.toLocaleString()}</p>
-          <p className="mt-1 text-[10px] text-neutral-400">{spentPct}% of budget</p>
-          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-neutral-100">
+          <p className="text-2xl font-bold text-[var(--text-1)]">£{budget.spent.toLocaleString()}</p>
+          <p className="mt-1 text-[10px] text-[var(--text-disabled)]">{spentPct}% of budget</p>
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--surface-2)]">
             <motion.div
               className="h-full rounded-full bg-[var(--color-brand)]"
               initial={{ width: 0 }}
@@ -1178,8 +1178,8 @@ function CostsTab({ data }: { data: HubData }) {
       </div>
 
       {/* Spend by category */}
-      <div className="rounded-2xl border border-neutral-100 bg-white p-5 shadow-card">
-        <h3 className="mb-4 text-xs font-semibold text-neutral-800">Spend by Category</h3>
+      <div className="rounded-2xl border border-[var(--border)] bg-white p-5 shadow-card">
+        <h3 className="mb-4 text-xs font-semibold text-[var(--text-1)]">Spend by Category</h3>
         <div className="space-y-4">
           {budget.categories.map((cat, i) => {
             const budgetPct = budget.total > 0 ? (cat.budget / budget.total) * 100 : 0;
@@ -1187,17 +1187,17 @@ function CostsTab({ data }: { data: HubData }) {
             return (
               <div key={cat.name}>
                 <div className="mb-1.5 flex items-center justify-between">
-                  <span className="text-[10px] font-medium text-neutral-600">{cat.name}</span>
-                  <div className="flex items-center gap-3 text-[10px] text-neutral-400">
+                  <span className="text-[10px] font-medium text-[var(--text-2)]">{cat.name}</span>
+                  <div className="flex items-center gap-3 text-[10px] text-[var(--text-disabled)]">
                     <span className="text-[var(--color-brand)] font-medium">£{cat.spent.toLocaleString()}</span>
                     <span>/ £{cat.budget.toLocaleString()}</span>
                   </div>
                 </div>
                 {/* Budget bar track */}
-                <div className="relative h-3 rounded-full bg-neutral-100 overflow-hidden">
+                <div className="relative h-3 rounded-full bg-[var(--surface-2)] overflow-hidden">
                   {/* Budget allocation relative to total */}
                   <div
-                    className="absolute inset-y-0 left-0 rounded-full bg-neutral-200"
+                    className="absolute inset-y-0 left-0 rounded-full bg-[var(--border)]"
                     style={{ width: `${budgetPct}%` }}
                   />
                   {/* Spent amount */}
@@ -1208,7 +1208,7 @@ function CostsTab({ data }: { data: HubData }) {
                     transition={{ duration: 0.8, ease: EASE, delay: i * 0.05 }}
                   />
                 </div>
-                <div className="mt-1 text-right text-[9px] text-neutral-400">{Math.round(spentOfBudget)}% of category budget</div>
+                <div className="mt-1 text-right text-[9px] text-[var(--text-disabled)]">{Math.round(spentOfBudget)}% of category budget</div>
               </div>
             );
           })}
@@ -1216,30 +1216,30 @@ function CostsTab({ data }: { data: HubData }) {
       </div>
 
       {/* Line items table */}
-      <div className="rounded-2xl border border-neutral-100 bg-white shadow-card overflow-hidden">
-        <div className="border-b border-neutral-50 px-5 py-3.5">
-          <h3 className="text-xs font-semibold text-neutral-800">Line Items</h3>
+      <div className="rounded-2xl border border-[var(--border)] bg-white shadow-card overflow-hidden">
+        <div className="border-b border-[var(--border)] px-5 py-3.5">
+          <h3 className="text-xs font-semibold text-[var(--text-1)]">Line Items</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[560px] text-xs">
             <thead>
-              <tr className="border-b border-neutral-50 bg-neutral-50/60">
-                <th className="py-2.5 pl-5 pr-3 text-left text-[10px] font-semibold uppercase tracking-widest text-neutral-400">Category</th>
-                <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-neutral-400">Description</th>
-                <th className="px-3 py-2.5 text-right text-[10px] font-semibold uppercase tracking-widest text-neutral-400">Budget</th>
-                <th className="px-3 py-2.5 text-right text-[10px] font-semibold uppercase tracking-widest text-neutral-400">Spent</th>
-                <th className="py-2.5 pl-3 pr-5 text-right text-[10px] font-semibold uppercase tracking-widest text-neutral-400">Variance</th>
+              <tr className="border-b border-[var(--border)] bg-[var(--surface-2)]">
+                <th className="py-2.5 pl-5 pr-3 text-left text-[10px] font-semibold uppercase tracking-widest text-[var(--text-disabled)]">Category</th>
+                <th className="px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-widest text-[var(--text-disabled)]">Description</th>
+                <th className="px-3 py-2.5 text-right text-[10px] font-semibold uppercase tracking-widest text-[var(--text-disabled)]">Budget</th>
+                <th className="px-3 py-2.5 text-right text-[10px] font-semibold uppercase tracking-widest text-[var(--text-disabled)]">Spent</th>
+                <th className="py-2.5 pl-3 pr-5 text-right text-[10px] font-semibold uppercase tracking-widest text-[var(--text-disabled)]">Variance</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-neutral-50">
+            <tbody className="divide-y divide-[var(--border)]">
               {budget.lineItems.map((item, i) => {
                 const variance = item.budget - item.spent;
                 return (
-                  <tr key={i} className="hover:bg-neutral-50/50 transition-colors">
-                    <td className="py-3 pl-5 pr-3 text-[10px] font-medium text-neutral-500">{item.category}</td>
-                    <td className="px-3 py-3 text-neutral-600">{item.description}</td>
-                    <td className="px-3 py-3 text-right font-mono text-neutral-500">£{item.budget.toLocaleString()}</td>
-                    <td className="px-3 py-3 text-right font-mono text-neutral-700">£{item.spent.toLocaleString()}</td>
+                  <tr key={i} className="hover:bg-[var(--surface-2)] transition-colors">
+                    <td className="py-3 pl-5 pr-3 text-[10px] font-medium text-[var(--text-muted)]">{item.category}</td>
+                    <td className="px-3 py-3 text-[var(--text-2)]">{item.description}</td>
+                    <td className="px-3 py-3 text-right font-mono text-[var(--text-muted)]">£{item.budget.toLocaleString()}</td>
+                    <td className="px-3 py-3 text-right font-mono text-[var(--text-2)]">£{item.spent.toLocaleString()}</td>
                     <td className={`py-3 pl-3 pr-5 text-right font-mono font-medium ${variance >= 0 ? "text-emerald-500" : "text-red-500"}`}>
                       {variance >= 0 ? "+" : ""}£{variance.toLocaleString()}
                     </td>
@@ -1267,9 +1267,9 @@ function MeetingsTab({ data }: { data: HubData }) {
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -6 }}
         transition={{ duration: 0.28, ease: EASE }}
-        className="rounded-2xl border border-neutral-100 bg-white p-10 text-center shadow-card"
+        className="rounded-2xl border border-[var(--border)] bg-white p-10 text-center shadow-card"
       >
-        <p className="text-sm text-neutral-400">No meetings recorded yet.</p>
+        <p className="text-sm text-[var(--text-disabled)]">No meetings recorded yet.</p>
       </motion.div>
     );
   }
@@ -1289,21 +1289,21 @@ function MeetingsTab({ data }: { data: HubData }) {
         const pendingActions = meeting.actions.filter((a) => a.status === "pending").length;
 
         return (
-          <div key={meeting.id} className="overflow-hidden rounded-2xl border border-neutral-100 bg-white shadow-card">
+          <div key={meeting.id} className="overflow-hidden rounded-2xl border border-[var(--border)] bg-white shadow-card">
             <button
               onClick={() => setExpandedId(isExpanded ? null : meeting.id)}
-              className="w-full text-left p-5 hover:bg-neutral-50/40 transition-colors"
+              className="w-full text-left p-5 hover:bg-[var(--surface-2)] transition-colors"
             >
               <div className="flex items-start gap-4">
                 {/* Date badge */}
-                <div className="flex shrink-0 flex-col items-center rounded-xl border border-neutral-100 bg-neutral-50 px-3 py-2.5 min-w-[52px]">
-                  <span className="text-lg font-bold leading-none text-neutral-900">{day}</span>
-                  <span className="mt-0.5 text-[9px] font-medium uppercase tracking-wide text-neutral-400">{month}</span>
+                <div className="flex shrink-0 flex-col items-center rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5 min-w-[52px]">
+                  <span className="text-lg font-bold leading-none text-[var(--text-1)]">{day}</span>
+                  <span className="mt-0.5 text-[9px] font-medium uppercase tracking-wide text-[var(--text-disabled)]">{month}</span>
                 </div>
 
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-start gap-2 justify-between">
-                    <p className="text-sm font-semibold text-neutral-800">{meeting.title}</p>
+                    <p className="text-sm font-semibold text-[var(--text-1)]">{meeting.title}</p>
                     <div className="flex items-center gap-2">
                       {pendingActions > 0 && (
                         <span className="rounded-full border border-amber-100 bg-amber-50 px-2 py-0.5 text-[9px] font-medium text-amber-600">
@@ -1313,7 +1313,7 @@ function MeetingsTab({ data }: { data: HubData }) {
                       <motion.span
                         animate={{ rotate: isExpanded ? 180 : 0 }}
                         transition={{ duration: 0.2, ease: EASE }}
-                        className="text-neutral-300"
+                        className="text-[var(--text-disabled)]"
                       >
                         <ChevronDown size={14} />
                       </motion.span>
@@ -1328,13 +1328,13 @@ function MeetingsTab({ data }: { data: HubData }) {
                       ))}
                     </div>
                     {meeting.attendees.length > 4 && (
-                      <span className="text-[10px] text-neutral-400">+{meeting.attendees.length - 4}</span>
+                      <span className="text-[10px] text-[var(--text-disabled)]">+{meeting.attendees.length - 4}</span>
                     )}
                   </div>
 
                   {/* Summary preview */}
                   {!isExpanded && (
-                    <p className="mt-2 text-xs leading-relaxed text-neutral-500 line-clamp-2">{meeting.summary}</p>
+                    <p className="mt-2 text-xs leading-relaxed text-[var(--text-muted)] line-clamp-2">{meeting.summary}</p>
                   )}
                 </div>
               </div>
@@ -1349,23 +1349,23 @@ function MeetingsTab({ data }: { data: HubData }) {
                   transition={{ duration: 0.22, ease: EASE }}
                   className="overflow-hidden"
                 >
-                  <div className="border-t border-neutral-50 px-5 pb-5 pt-4 space-y-4">
+                  <div className="border-t border-[var(--border)] px-5 pb-5 pt-4 space-y-4">
                     {/* Full summary */}
                     <div>
-                      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-neutral-400">Summary</p>
-                      <p className="text-xs leading-relaxed text-neutral-600">{meeting.summary}</p>
+                      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-disabled)]">Summary</p>
+                      <p className="text-xs leading-relaxed text-[var(--text-2)]">{meeting.summary}</p>
                     </div>
 
                     {/* Actions */}
                     {meeting.actions.length > 0 && (
                       <div>
-                        <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-neutral-400">Actions</p>
+                        <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-disabled)]">Actions</p>
                         <ul className="space-y-2">
                           {meeting.actions.map((action, ai) => (
                             <li key={ai} className="flex items-start gap-3">
                               <Avatar initials={action.owner[0] ?? action.owner} size="xs" />
                               <div className="flex-1 min-w-0">
-                                <p className="text-xs text-neutral-600">{action.text}</p>
+                                <p className="text-xs text-[var(--text-2)]">{action.text}</p>
                                 <span className={`mt-1 inline-flex rounded-full border px-1.5 py-0.5 text-[9px] font-medium ${TASK_STATUS_CFG[action.status].badge}`}>
                                   {TASK_STATUS_CFG[action.status].label}
                                 </span>
@@ -1403,12 +1403,12 @@ function MilestonesTab({ data }: { data: HubData }) {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -6 }}
       transition={{ duration: 0.28, ease: EASE }}
-      className="rounded-2xl border border-neutral-100 bg-white p-6 shadow-card"
+      className="rounded-2xl border border-[var(--border)] bg-white p-6 shadow-card"
     >
-      <h3 className="mb-6 text-xs font-semibold text-neutral-800">Milestone Timeline</h3>
+      <h3 className="mb-6 text-xs font-semibold text-[var(--text-1)]">Milestone Timeline</h3>
       <div className="relative">
         {/* Vertical line */}
-        <div className="absolute left-[88px] top-0 bottom-0 w-px bg-neutral-100" />
+        <div className="absolute left-[88px] top-0 bottom-0 w-px bg-[var(--border)]" />
 
         <ul className="space-y-0">
           {sorted.map((ms, i) => {
@@ -1436,8 +1436,8 @@ function MilestonesTab({ data }: { data: HubData }) {
                 >
                   {/* Date column */}
                   <div className="w-[80px] shrink-0 text-right pr-4">
-                    <span className="text-xs font-bold text-neutral-700 block">{ms.date.split(" ")[0]}</span>
-                    <span className="text-[9px] text-neutral-400">{ms.date.split(" ")[1]}</span>
+                    <span className="text-xs font-bold text-[var(--text-2)] block">{ms.date.split(" ")[0]}</span>
+                    <span className="text-[9px] text-[var(--text-disabled)]">{ms.date.split(" ")[1]}</span>
                   </div>
 
                   {/* Dot */}
@@ -1452,14 +1452,14 @@ function MilestonesTab({ data }: { data: HubData }) {
 
                   {/* Content */}
                   <div className="flex flex-wrap items-center gap-2 pl-4 flex-1 min-w-0">
-                    <p className={`text-xs font-medium ${isToday ? "text-neutral-900" : "text-neutral-700"}`}>
+                    <p className={`text-xs font-medium ${isToday ? "text-[var(--text-1)]" : "text-[var(--text-2)]"}`}>
                       {ms.label}
                     </p>
                     <span className={`rounded-full border px-2 py-0.5 text-[9px] font-medium ${mc.badge}`}>
                       {mc.label}
                     </span>
                     {ms.daysFromToday !== 0 && (
-                      <span className="text-[10px] text-neutral-400">
+                      <span className="text-[10px] text-[var(--text-disabled)]">
                         {ms.daysFromToday > 0
                           ? `in ${ms.daysFromToday}d`
                           : `${Math.abs(ms.daysFromToday)}d ago`}
@@ -1490,7 +1490,7 @@ export function ProjectHub({ projectId, projectName, onBack }: ProjectHubProps) 
   return (
     <div className="flex flex-col min-h-0 pb-10">
       {/* Breadcrumb */}
-      <div className="mb-3 flex items-center gap-1.5 text-xs text-neutral-400 flex-wrap">
+      <div className="mb-3 flex items-center gap-1.5 text-xs text-[var(--text-disabled)] flex-wrap">
         <motion.button
           onClick={onBack}
           whileTap={{ scale: 0.95 }}
@@ -1499,15 +1499,15 @@ export function ProjectHub({ projectId, projectName, onBack }: ProjectHubProps) 
           <ArrowLeft size={13} />
           Projects
         </motion.button>
-        <ChevronRight size={11} className="text-neutral-300" />
-        <span className="font-medium text-neutral-600">{projectName}</span>
-        <ChevronRight size={11} className="text-neutral-300" />
-        <span className="font-medium text-neutral-500">{activeLabel}</span>
+        <ChevronRight size={11} className="text-[var(--text-disabled)]" />
+        <span className="font-medium text-[var(--text-2)]">{projectName}</span>
+        <ChevronRight size={11} className="text-[var(--text-disabled)]" />
+        <span className="font-medium text-[var(--text-muted)]">{activeLabel}</span>
       </div>
 
       {/* Sticky tab bar */}
       <div className="sticky top-0 z-20 -mx-1 mb-5 overflow-x-auto">
-        <div className="flex min-w-max gap-0 rounded-2xl border border-neutral-100 bg-white px-2 py-1.5 shadow-card">
+        <div className="flex min-w-max gap-0 rounded-2xl border border-[var(--border)] bg-white px-2 py-1.5 shadow-card">
           {TABS.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -1520,7 +1520,7 @@ export function ProjectHub({ projectId, projectName, onBack }: ProjectHubProps) 
                   "relative flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium transition-colors duration-150",
                   isActive
                     ? "text-[var(--color-brand)]"
-                    : "text-neutral-500 hover:text-neutral-700",
+                    : "text-[var(--text-muted)] hover:text-[var(--text-2)]",
                 ].join(" ")}
               >
                 <Icon size={14} className="shrink-0" />

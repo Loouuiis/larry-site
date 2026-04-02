@@ -28,26 +28,26 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
  */
 const variantStyles: Record<Variant, string> = {
   primary: [
-    "border border-neutral-900 bg-transparent text-neutral-900",
-    "hover:bg-neutral-900 hover:text-white",
+    "border border-[var(--text-1)] bg-transparent text-[var(--text-1)]",
+    "hover:bg-[var(--brand)] hover:text-white",
     "hover:scale-[1.012]",
     "active:scale-100",
-    "focus-visible:ring-neutral-900",
+    "focus-visible:ring-[var(--text-1)]",
     "transition-colors duration-200",
   ].join(" "),
   secondary: [
-    "border border-neutral-300 bg-transparent text-neutral-600",
-    "hover:border-neutral-700 hover:text-neutral-900",
+    "border border-[var(--border)] bg-transparent text-[var(--text-2)]",
+    "hover:border-[var(--brand)] hover:text-[var(--text-1)]",
     "hover:scale-[1.012]",
     "active:scale-100",
-    "focus-visible:ring-neutral-400",
+    "focus-visible:ring-[var(--text-muted)]",
     "transition-colors duration-200",
   ].join(" "),
   ghost: [
-    "text-neutral-600",
-    "hover:bg-neutral-100 hover:text-neutral-900",
-    "active:bg-neutral-200",
-    "focus-visible:ring-neutral-400",
+    "text-[var(--text-2)]",
+    "hover:bg-[var(--surface-2)] hover:text-[var(--text-1)]",
+    "active:bg-[var(--surface-2)]",
+    "focus-visible:ring-[var(--text-muted)]",
     "transition-colors duration-200",
   ].join(" "),
 };

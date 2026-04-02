@@ -19,7 +19,7 @@ const FEED_SEQUENCE: Omit<FeedItem, "id">[] = [
 ];
 
 const TYPE_COLOR: Record<FeedItem["type"], string> = {
-  capture:  "bg-neutral-400",
+  capture:  "bg-[var(--text-muted)]",
   extract:  "bg-[#8b5cf6]",
   assign:   "bg-[#818cf8]",
   remind:   "bg-amber-400",
@@ -88,13 +88,13 @@ export function AmbientFeed() {
             />
             <span
               className={`text-[11px] leading-tight truncate ${
-                i === 0 ? "text-neutral-700 font-medium" : "text-neutral-400"
+                i === 0 ? "text-[var(--text-2)] font-medium" : "text-[var(--text-disabled)]"
               }`}
             >
               {item.message}
             </span>
             {i === 0 && (
-              <span className="ml-auto shrink-0 text-[10px] text-neutral-300 font-medium">
+              <span className="ml-auto shrink-0 text-[10px] text-[var(--text-disabled)] font-medium">
                 now
               </span>
             )}

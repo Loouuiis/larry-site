@@ -178,7 +178,7 @@ function NotificationCard({
       <span
         className={[
           "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg",
-          notif.read ? "bg-neutral-100 text-neutral-500" : `${sev.bg} ${sev.text}`,
+          notif.read ? "bg-[var(--surface-2)] text-[var(--text-muted)]" : `${sev.bg} ${sev.text}`,
         ].join(" ")}
         style={{ marginLeft: notif.read ? 0 : undefined }}
       >
@@ -191,7 +191,7 @@ function NotificationCard({
           <p
             className={[
               "text-xs font-semibold leading-snug",
-              notif.read ? "text-neutral-700" : sev.text,
+              notif.read ? "text-[var(--text-2)]" : sev.text,
             ].join(" ")}
           >
             {notif.message}
@@ -209,13 +209,13 @@ function NotificationCard({
           </span>
         </div>
         {notif.detail && (
-          <p className="mt-0.5 text-[11px] text-neutral-500 leading-snug">{notif.detail}</p>
+          <p className="mt-0.5 text-[11px] text-[var(--text-muted)] leading-snug">{notif.detail}</p>
         )}
         <div className="mt-1.5 flex items-center gap-2">
-          <span className="rounded-full border border-neutral-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-neutral-500">
+          <span className="rounded-full border border-[var(--border)] bg-white px-1.5 py-0.5 text-[10px] font-medium text-[var(--text-muted)]">
             {TYPE_LABELS[notif.type]}
           </span>
-          <span className="text-[10px] text-neutral-400">{relativeTime(notif.timestamp)}</span>
+          <span className="text-[10px] text-[var(--text-disabled)]">{relativeTime(notif.timestamp)}</span>
         </div>
       </div>
 
@@ -224,7 +224,7 @@ function NotificationCard({
         onClick={() => onDismiss(notif.id)}
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.9 }}
-        className="absolute right-2.5 top-2.5 flex h-5 w-5 items-center justify-center rounded-full text-neutral-300 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-neutral-100 hover:text-neutral-500"
+        className="absolute right-2.5 top-2.5 flex h-5 w-5 items-center justify-center rounded-full text-[var(--text-disabled)] opacity-0 transition-opacity group-hover:opacity-100 hover:bg-[var(--surface-2)] hover:text-[var(--text-muted)]"
         aria-label="Dismiss"
       >
         <X size={10} />
@@ -268,7 +268,7 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
       {/* Header */}
       <div className="flex items-center gap-2 border-b border-[var(--color-border)] px-4 py-3.5">
         <Bell size={15} className="text-[var(--color-brand)]" />
-        <h2 className="flex-1 text-sm font-semibold text-neutral-900 tracking-[-0.02em]">
+        <h2 className="flex-1 text-sm font-semibold text-[var(--text-1)] tracking-[-0.02em]">
           Notifications
         </h2>
         {unreadCount > 0 && (
@@ -280,7 +280,7 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
           onClick={markAllRead}
           whileHover={{ scale: 1.03 }}
           whileTap={{ scale: 0.97 }}
-          className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+          className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium text-[var(--text-disabled)] hover:bg-[var(--surface-2)] hover:text-[var(--text-2)]"
         >
           <CheckCheck size={11} />
           <span className="hidden sm:inline">Mark all read</span>
@@ -289,7 +289,7 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
           onClick={onClose}
           whileHover={{ scale: 1.08 }}
           whileTap={{ scale: 0.92 }}
-          className="flex h-6 w-6 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-600"
+          className="flex h-6 w-6 items-center justify-center rounded-lg text-[var(--text-disabled)] hover:bg-[var(--surface-2)] hover:text-[var(--text-2)]"
           aria-label="Close"
         >
           <X size={13} />
@@ -312,7 +312,7 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
                   "relative flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-colors",
                   isActive
                     ? "text-[var(--color-brand)]"
-                    : "text-neutral-500 hover:text-neutral-700",
+                    : "text-[var(--text-muted)] hover:text-[var(--text-2)]",
                 ].join(" ")}
               >
                 {tab.label}
@@ -322,7 +322,7 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
                       "rounded-full px-1 text-[9px] font-bold",
                       isActive
                         ? "bg-[var(--color-brand)]/10 text-[var(--color-brand)]"
-                        : "bg-neutral-100 text-neutral-500",
+                        : "bg-[var(--surface-2)] text-[var(--text-muted)]",
                     ].join(" ")}
                   >
                     {count}
@@ -354,11 +354,11 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
               animate={{ opacity: 1 }}
               className="flex flex-col items-center gap-2 py-12 text-center"
             >
-              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-neutral-100">
-                <Bell size={18} className="text-neutral-400" />
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--surface-2)]">
+                <Bell size={18} className="text-[var(--text-disabled)]" />
               </span>
-              <p className="text-xs font-medium text-neutral-500">No notifications here</p>
-              <p className="text-[11px] text-neutral-400">You&apos;re all caught up.</p>
+              <p className="text-xs font-medium text-[var(--text-muted)]">No notifications here</p>
+              <p className="text-[11px] text-[var(--text-disabled)]">You&apos;re all caught up.</p>
             </motion.div>
           ) : (
             <div className="flex flex-col gap-2">

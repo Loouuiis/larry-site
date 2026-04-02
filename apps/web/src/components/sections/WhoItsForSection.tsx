@@ -49,16 +49,16 @@ const SECONDARY_ROLES = [
 
 export function WhoItsForSection() {
   return (
-    <section id="audience" className="border-t border-neutral-100 py-12 sm:py-24">
+    <section id="audience" className="border-t border-[var(--border)] py-12 sm:py-24">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <FadeUp className="mb-10 max-w-2xl sm:mb-14">
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-neutral-400 sm:mb-3 sm:text-xs">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-disabled)] sm:mb-3 sm:text-xs">
             Who this is for
           </p>
-          <h2 className="mb-3 text-2xl font-bold tracking-tight text-neutral-900 sm:mb-4 sm:text-4xl lg:text-5xl">
+          <h2 className="mb-3 text-2xl font-bold tracking-tight text-[var(--text-1)] sm:mb-4 sm:text-4xl lg:text-5xl">
             Built for the people who own execution.
           </h2>
-          <p className="text-sm leading-relaxed text-neutral-500 sm:text-base">
+          <p className="text-sm leading-relaxed text-[var(--text-muted)] sm:text-base">
             Especially in organisations with 50–500+ employees where
             coordination intensity is high — multiple stakeholders,
             dependencies, and delivery pressure.
@@ -70,13 +70,13 @@ export function WhoItsForSection() {
           {PRIMARY_ROLES.map(({ id, title, description }) => (
             <div
               key={id}
-              className="rounded-2xl border border-neutral-200 bg-white p-5 sm:p-8"
+              className="rounded-2xl border border-[var(--border)] bg-white p-5 sm:p-8"
               style={{ boxShadow: "var(--shadow-card)" }}
             >
-              <h3 className="mb-3 text-base font-semibold text-neutral-900">
+              <h3 className="mb-3 text-base font-semibold text-[var(--text-1)]">
                 {title}
               </h3>
-              <p className="text-sm leading-relaxed text-neutral-500">
+              <p className="text-sm leading-relaxed text-[var(--text-muted)]">
                 {description}
               </p>
             </div>
@@ -88,13 +88,13 @@ export function WhoItsForSection() {
           {SECONDARY_ROLES.map(({ id, title, description }) => (
             <div
               key={id}
-              className="rounded-xl border border-neutral-200 bg-white p-5"
+              className="rounded-xl border border-[var(--border)] bg-white p-5"
               style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.03)" }}
             >
-              <h3 className="mb-1.5 text-sm font-semibold text-neutral-800">
+              <h3 className="mb-1.5 text-sm font-semibold text-[var(--text-1)]">
                 {title}
               </h3>
-              <p className="text-xs leading-relaxed text-neutral-500">
+              <p className="text-xs leading-relaxed text-[var(--text-muted)]">
                 {description}
               </p>
             </div>

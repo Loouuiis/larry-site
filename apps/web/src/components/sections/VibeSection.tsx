@@ -74,18 +74,18 @@ function Cell({ value }: { value: CellValue }) {
     );
   }
   // "Manual" or "Partial" — text so the nuance is legible
-  return <span className="text-[11px] font-medium text-neutral-400">{value}</span>;
+  return <span className="text-[11px] font-medium text-[var(--text-disabled)]">{value}</span>;
 }
 
 export function VibeSection() {
   return (
-    <section id="differentiator" className="border-t border-neutral-100 bg-[#F2F2EF]/60 py-12 sm:py-24">
+    <section id="differentiator" className="border-t border-[var(--border)] bg-[#F2F2EF]/60 py-12 sm:py-24">
       <div className="mx-auto max-w-5xl px-4 sm:px-6">
         <FadeUp className="mb-10 max-w-2xl sm:mb-14">
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-neutral-400 sm:mb-3 sm:text-xs">
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-disabled)] sm:mb-3 sm:text-xs">
             Why this is different
           </p>
-          <h2 className="text-2xl font-bold tracking-tight text-neutral-900 sm:text-4xl lg:text-5xl">
+          <h2 className="text-2xl font-bold tracking-tight text-[var(--text-1)] sm:text-4xl lg:text-5xl">
             The first tool that owns follow-through.
           </h2>
         </FadeUp>
@@ -93,7 +93,7 @@ export function VibeSection() {
         <FadeUp>
           {/* Mobile: simple Larry checklist — avoids the 4-col table overflowing */}
           <div
-            className="md:hidden rounded-2xl border border-neutral-200 bg-white px-5 py-6"
+            className="md:hidden rounded-2xl border border-[var(--border)] bg-white px-5 py-6"
             style={{ boxShadow: "var(--shadow-card)" }}
           >
             <p className="mb-4 text-xs font-semibold uppercase tracking-widest text-[var(--color-brand)]">
@@ -110,22 +110,22 @@ export function VibeSection() {
                       <path d="M2 5.5L4 7.5L8 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   </span>
-                  <span className="text-sm text-neutral-700">{label}</span>
+                  <span className="text-sm text-[var(--text-2)]">{label}</span>
                 </li>
               ))}
             </ul>
-            <p className="mt-5 text-xs text-neutral-400">
+            <p className="mt-5 text-xs text-[var(--text-disabled)]">
               PM Tools and AI Copilots cover only a fraction of the above — Larry does all of it.
             </p>
           </div>
 
           {/* Desktop: full comparison table */}
           <div
-            className="hidden md:block overflow-hidden rounded-2xl border border-neutral-200 bg-white"
+            className="hidden md:block overflow-hidden rounded-2xl border border-[var(--border)] bg-white"
             style={{ boxShadow: "var(--shadow-card)" }}
           >
             {/* Column headers */}
-            <div className="grid grid-cols-[1fr_96px_96px_96px] border-b border-neutral-100 sm:grid-cols-[1fr_120px_120px_120px]">
+            <div className="grid grid-cols-[1fr_96px_96px_96px] border-b border-[var(--border)] sm:grid-cols-[1fr_120px_120px_120px]">
               <div className="px-6 py-4" />
               {[
                 { label: "PM Tools", accent: false },
@@ -138,7 +138,7 @@ export function VibeSection() {
                     "py-4 text-center text-xs font-semibold px-2",
                     accent
                       ? "border-l border-[var(--color-brand)]/15 bg-[var(--color-brand)]/[0.03] text-[var(--color-brand)]"
-                      : "text-neutral-400",
+                      : "text-[var(--text-disabled)]",
                   ]
                     .join(" ")}
                 >
@@ -153,12 +153,12 @@ export function VibeSection() {
                 key={label}
                 className={[
                   "grid grid-cols-[1fr_96px_96px_96px] sm:grid-cols-[1fr_120px_120px_120px]",
-                  i < CAPABILITIES.length - 1 && "border-b border-neutral-100/60",
+                  i < CAPABILITIES.length - 1 && "border-b border-[var(--border)]",
                 ]
                   .filter(Boolean)
                   .join(" ")}
               >
-                <div className="px-6 py-3.5 text-sm text-neutral-700">
+                <div className="px-6 py-3.5 text-sm text-[var(--text-2)]">
                   {label}
                 </div>
                 <div className="flex items-center justify-center py-3.5 px-2">
@@ -176,9 +176,9 @@ export function VibeSection() {
         </FadeUp>
 
         <FadeUp delay={0.12} className="mt-8 sm:mt-10">
-          <p className="max-w-xl text-base text-neutral-500">
+          <p className="max-w-xl text-base text-[var(--text-muted)]">
             PM tools give you visibility. AI copilots help you draft.{" "}
-            <span className="font-semibold text-neutral-900">
+            <span className="font-semibold text-[var(--text-1)]">
               Larry is the first to own the action lifecycle — end to end.
             </span>
           </p>

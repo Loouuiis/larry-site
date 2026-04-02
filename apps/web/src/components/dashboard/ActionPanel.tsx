@@ -136,7 +136,7 @@ function ActionCard({
         "overflow-hidden rounded-xl border bg-white transition-colors",
         item.urgent
           ? "border-amber-100 shadow-[0_0_0_1px_rgba(251,191,36,0.1)]"
-          : "border-neutral-100",
+          : "border-[var(--border)]",
       ].join(" ")}
     >
       <div className="p-4">
@@ -153,8 +153,8 @@ function ActionCard({
               <span className={`text-[10px] font-semibold uppercase tracking-widest ${cfg.iconColor}`}>
                 {cfg.label}
               </span>
-              <span className="text-[10px] text-neutral-300">·</span>
-              <span className="text-[10px] text-neutral-400">{item.project}</span>
+              <span className="text-[10px] text-[var(--text-disabled)]">·</span>
+              <span className="text-[10px] text-[var(--text-disabled)]">{item.project}</span>
               {item.urgent && (
                 <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold text-amber-500 border border-amber-100">
                   Urgent
@@ -162,18 +162,18 @@ function ActionCard({
               )}
             </div>
             {/* Title */}
-            <p className="text-xs font-semibold text-neutral-800 leading-snug">{item.title}</p>
+            <p className="text-xs font-semibold text-[var(--text-1)] leading-snug">{item.title}</p>
           </div>
         </div>
 
         {/* Preview */}
-        <p className="mb-2.5 ml-11 line-clamp-2 text-[11px] leading-relaxed text-neutral-500">
+        <p className="mb-2.5 ml-11 line-clamp-2 text-[11px] leading-relaxed text-[var(--text-muted)]">
           {item.preview}
         </p>
 
         {/* Meta + buttons */}
         <div className="ml-11 flex items-center justify-between gap-2">
-          <span className="flex items-center gap-1 text-[10px] text-neutral-400 min-w-0 truncate">
+          <span className="flex items-center gap-1 text-[10px] text-[var(--text-disabled)] min-w-0 truncate">
             <Bell size={9} className="shrink-0" />
             {item.meta}
           </span>
@@ -184,7 +184,7 @@ function ActionCard({
               whileHover={{ scale: 1.04 }}
               whileTap={{ scale: 0.95 }}
               transition={{ duration: 0.13 }}
-              className="rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-neutral-500 hover:border-red-200 hover:bg-red-50 hover:text-red-500 transition-colors"
+              className="rounded-lg border border-[var(--border)] bg-white px-2.5 py-1.5 text-[10px] font-semibold text-[var(--text-muted)] hover:border-red-200 hover:bg-red-50 hover:text-red-500 transition-colors"
             >
               Reject
             </motion.button>
@@ -218,8 +218,8 @@ function EmptyState() {
       <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50">
         <Check size={20} className="text-emerald-500" strokeWidth={2.5} />
       </div>
-      <p className="text-sm font-semibold text-neutral-700">All caught up!</p>
-      <p className="mt-1 text-xs text-neutral-400">No pending actions. Larry will notify you when something needs your input.</p>
+      <p className="text-sm font-semibold text-[var(--text-2)]">All caught up!</p>
+      <p className="mt-1 text-xs text-[var(--text-disabled)]">No pending actions. Larry will notify you when something needs your input.</p>
     </motion.div>
   );
 }
@@ -267,19 +267,19 @@ export function ActionPanel({ onClose }: ActionPanelProps) {
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: -8, scale: 0.98 }}
         transition={{ duration: 0.24, ease: EASE }}
-        className="fixed right-4 top-[72px] z-50 flex w-[420px] max-w-[calc(100vw-2rem)] flex-col rounded-2xl border border-neutral-100 bg-white shadow-card-xl"
+        className="fixed right-4 top-[72px] z-50 flex w-[420px] max-w-[calc(100vw-2rem)] flex-col rounded-2xl border border-[var(--border)] bg-white shadow-card-xl"
         style={{ maxHeight: "calc(100vh - 90px)" }}
       >
         {/* Header */}
-        <div className="flex items-center gap-3 border-b border-neutral-100 px-5 py-4">
+        <div className="flex items-center gap-3 border-b border-[var(--border)] px-5 py-4">
           <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-[var(--color-brand)] shadow-[0_2px_8px_rgba(139,92,246,0.3)]">
             <Zap size={13} className="text-white" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-neutral-900">
+            <p className="text-sm font-bold text-[var(--text-1)]">
               Action Tab
             </p>
-            <p className="text-[10px] text-neutral-400 flex items-center gap-1">
+            <p className="text-[10px] text-[var(--text-disabled)] flex items-center gap-1">
               <Sparkles size={9} className="text-[var(--color-brand)]/60" />
               {items.length > 0
                 ? `Larry flagged ${items.length} item${items.length !== 1 ? "s" : ""} for your review`
@@ -300,7 +300,7 @@ export function ActionPanel({ onClose }: ActionPanelProps) {
             )}
             <button
               onClick={onClose}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-neutral-300 hover:bg-neutral-100 hover:text-neutral-600 transition-colors"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-disabled)] hover:bg-[var(--surface-2)] hover:text-[var(--text-2)] transition-colors"
             >
               <X size={14} />
             </button>
@@ -308,7 +308,7 @@ export function ActionPanel({ onClose }: ActionPanelProps) {
         </div>
 
         {/* Tabs */}
-        <div className="flex items-center gap-1 border-b border-neutral-100 px-4 pt-2">
+        <div className="flex items-center gap-1 border-b border-[var(--border)] px-4 pt-2">
           {TABS.map(({ key, label }) => {
             const count = key === "all" ? items.length : items.filter((i) => i.type === key).length;
             const isActive = tab === key;
@@ -318,12 +318,12 @@ export function ActionPanel({ onClose }: ActionPanelProps) {
                 onClick={() => setTab(key)}
                 className={[
                   "relative flex items-center gap-1.5 rounded-t-lg px-3 py-2 text-[11px] font-medium transition-colors",
-                  isActive ? "text-[var(--color-brand)]" : "text-neutral-400 hover:text-neutral-600",
+                  isActive ? "text-[var(--color-brand)]" : "text-[var(--text-disabled)] hover:text-[var(--text-2)]",
                 ].join(" ")}
               >
                 {label}
                 {count > 0 && (
-                  <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold tabular-nums ${isActive ? "bg-[var(--color-brand)]/10 text-[var(--color-brand)]" : "bg-neutral-100 text-neutral-400"}`}>
+                  <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold tabular-nums ${isActive ? "bg-[var(--color-brand)]/10 text-[var(--color-brand)]" : "bg-[var(--surface-2)] text-[var(--text-disabled)]"}`}>
                     {count}
                   </span>
                 )}
@@ -367,8 +367,8 @@ export function ActionPanel({ onClose }: ActionPanelProps) {
 
         {/* Footer */}
         {items.length > 0 && (
-          <div className="flex items-center justify-between border-t border-neutral-100 px-5 py-3">
-            <p className="text-[10px] text-neutral-400">
+          <div className="flex items-center justify-between border-t border-[var(--border)] px-5 py-3">
+            <p className="text-[10px] text-[var(--text-disabled)]">
               Larry auto-drafts these — review before approving
             </p>
             <button className="flex items-center gap-1 text-[10px] font-medium text-[var(--color-brand)] hover:underline">

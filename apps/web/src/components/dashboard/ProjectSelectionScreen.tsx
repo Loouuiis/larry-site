@@ -100,9 +100,9 @@ const HEALTH_CFG: Record<
     label: "Overdue",
   },
   "not-started": {
-    dot: "bg-neutral-300",
-    bar: "bg-neutral-300",
-    badge: "bg-neutral-100 text-neutral-500 border-neutral-200",
+    dot: "bg-[var(--text-disabled)]",
+    bar: "bg-[var(--text-disabled)]",
+    badge: "bg-[var(--surface-2)] text-[var(--text-muted)] border-[var(--border)]",
     label: "Not started",
   },
 };
@@ -157,7 +157,7 @@ function ProjectCard({
       {/* Top row */}
       <div className="mb-2 flex items-center gap-2">
         <span className={`h-2 w-2 shrink-0 rounded-full ${cfg.dot}`} />
-        <span className="flex-1 truncate text-sm font-semibold text-neutral-900">
+        <span className="flex-1 truncate text-sm font-semibold text-[var(--text-1)]">
           {project.name}
         </span>
         <span
@@ -168,14 +168,14 @@ function ProjectCard({
       </div>
 
       {/* Description */}
-      <p className="mb-3.5 truncate text-xs text-neutral-400">
+      <p className="mb-3.5 truncate text-xs text-[var(--text-disabled)]">
         {project.description}
       </p>
 
       {/* Progress bar */}
-      <div className="mb-4 h-1.5 overflow-hidden rounded-full bg-neutral-100">
+      <div className="mb-4 h-1.5 overflow-hidden rounded-full bg-[var(--surface-2)]">
         <motion.div
-          className="h-full rounded-full bg-neutral-900"
+          className="h-full rounded-full bg-[var(--text-1)]"
           initial={{ width: 0 }}
           animate={{ width: `${project.progress}%` }}
           transition={{ duration: 0.7, ease: EASE, delay: 0.15 }}
@@ -185,7 +185,7 @@ function ProjectCard({
       {/* Bottom row */}
       <div className="flex items-center gap-2">
         {/* Deadline */}
-        <span className="flex items-center gap-1 rounded-full border border-[var(--color-border)] px-2 py-0.5 text-[10px] text-neutral-500">
+        <span className="flex items-center gap-1 rounded-full border border-[var(--color-border)] px-2 py-0.5 text-[10px] text-[var(--text-muted)]">
           <Calendar size={9} />
           {project.deadline}
         </span>
@@ -198,7 +198,7 @@ function ProjectCard({
         </div>
 
         {/* Progress % */}
-        <span className="ml-auto text-xs font-bold text-neutral-900 tabular-nums">
+        <span className="ml-auto text-xs font-bold text-[var(--text-1)] tabular-nums">
           {project.progress}%
         </span>
       </div>
@@ -230,11 +230,11 @@ export function ProjectSelectionScreen({
       <header className="flex h-14 shrink-0 items-center justify-end px-6">
         {/* User avatar */}
         <div className="group relative">
-          <button className="flex h-8 w-8 items-center justify-center rounded-full bg-neutral-900 text-[10px] font-bold text-white transition-colors hover:bg-neutral-700">
+          <button className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--text-1)] text-[10px] font-bold text-white transition-colors hover:bg-[var(--brand)]">
             A
           </button>
           {/* Sign-out tooltip */}
-          <div className="pointer-events-none absolute right-0 top-full mt-2 flex items-center gap-1.5 whitespace-nowrap rounded-xl border border-[var(--color-border)] bg-white px-3 py-2 text-[11px] text-neutral-500 opacity-0 shadow-sm transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100">
+          <div className="pointer-events-none absolute right-0 top-full mt-2 flex items-center gap-1.5 whitespace-nowrap rounded-xl border border-[var(--color-border)] bg-white px-3 py-2 text-[11px] text-[var(--text-muted)] opacity-0 shadow-sm transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100">
             <LogOut size={11} />
             Sign out
           </div>
@@ -245,10 +245,10 @@ export function ProjectSelectionScreen({
       <main className="mx-auto w-full max-w-4xl flex-1 px-6 py-12">
         {/* Heading */}
         <div className="mb-8">
-          <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
+          <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-1)]">
             Your Projects
           </h1>
-          <p className="mt-1.5 text-sm text-neutral-500">
+          <p className="mt-1.5 text-sm text-[var(--text-muted)]">
             Select a project to get started.
           </p>
         </div>
@@ -257,10 +257,10 @@ export function ProjectSelectionScreen({
         {isEmpty ? (
           <div className="flex flex-col items-center justify-center py-24 text-center">
             <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--color-surface)] border border-[var(--color-border)]">
-              <span className="text-2xl font-bold text-neutral-300">L</span>
+              <span className="text-2xl font-bold text-[var(--text-disabled)]">L</span>
             </div>
-            <p className="text-base font-medium text-neutral-700">No projects yet</p>
-            <p className="mt-1 text-sm text-neutral-400">Create your first project to get started.</p>
+            <p className="text-base font-medium text-[var(--text-2)]">No projects yet</p>
+            <p className="mt-1 text-sm text-[var(--text-disabled)]">Create your first project to get started.</p>
           </div>
         ) : (
           <motion.div
@@ -286,7 +286,7 @@ export function ProjectSelectionScreen({
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             transition={{ duration: 0.18, ease: EASE }}
-            className="rounded-xl border border-[var(--color-border)] px-5 py-2.5 text-sm font-medium text-neutral-500 transition-colors hover:border-[var(--color-brand)]/40 hover:text-[var(--color-brand)]"
+            className="rounded-xl border border-[var(--color-border)] px-5 py-2.5 text-sm font-medium text-[var(--text-muted)] transition-colors hover:border-[var(--color-brand)]/40 hover:text-[var(--color-brand)]"
           >
             + New Project
           </motion.button>

@@ -43,9 +43,9 @@ function statusLabel(status: string): string {
 
 function priorityDotStyle(priority: string | null | undefined): React.CSSProperties {
   switch (priority) {
-    case "critical": return { background: "#E2445C" };
-    case "high": return { background: "#FDAB3D" };
-    case "medium": return { background: "#0073EA" };
+    case "critical": return { background: "var(--status-stuck-bg)" };
+    case "high": return { background: "var(--status-wip-bg)" };
+    case "medium": return { background: "var(--cta)" };
     default: return { background: "#98A2B3" };
   }
 }

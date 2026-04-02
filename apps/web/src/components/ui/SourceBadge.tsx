@@ -35,8 +35,8 @@ const SOURCE_CFG: Record<TaskSource, SourceConfig> = {
   manual: {
     label: "Manual",
     icon:  <PenLine size={10} strokeWidth={2.5} />,
-    pill:  "bg-neutral-100 text-neutral-500 border-neutral-200",
-    dot:   "bg-neutral-100 text-neutral-400",
+    pill:  "bg-[var(--surface-2)] text-[var(--text-muted)] border-[var(--border)]",
+    dot:   "bg-[var(--surface-2)] text-[var(--text-disabled)]",
   },
 };
 

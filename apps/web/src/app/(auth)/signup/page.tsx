@@ -74,22 +74,19 @@ export default function SignupPage() {
   return (
     <div className="w-full max-w-sm">
       <div
-        className="rounded-3xl border border-neutral-200/80 bg-white p-8"
-        style={{
-          boxShadow:
-            "0 32px 80px rgba(0,0,0,0.08), 0 8px 24px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.9)",
-        }}
+        className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-8"
+        style={{ boxShadow: "var(--shadow-2)" }}
       >
         <div className="mb-7">
-          <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-neutral-400">
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-disabled)]">
             Get started
           </p>
-          <h1 className="text-xl font-bold tracking-tight text-neutral-900">Create your account</h1>
+          <h1 className="text-xl font-bold tracking-tight text-[var(--text-1)]">Create your account</h1>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-3" noValidate>
           <div>
-            <label htmlFor="email" className="mb-1.5 block text-xs font-medium text-neutral-600">
+            <label htmlFor="email" className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">
               Email
             </label>
             <input
@@ -100,13 +97,13 @@ export default function SignupPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@company.com"
-              className="min-h-[44px] w-full rounded-xl border border-neutral-200 bg-neutral-50/60 px-4 py-3 text-neutral-900 placeholder:text-neutral-400 outline-none transition-colors duration-150 focus:border-neutral-400 focus:bg-white"
+              className="min-h-[44px] w-full rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 text-[var(--text-1)] placeholder:text-[var(--text-disabled)] outline-none transition-colors duration-150 focus:border-[var(--border-2)] focus:bg-[var(--surface)]"
               style={{ fontSize: "1rem" }}
             />
           </div>
 
           <div>
-            <label htmlFor="password" className="mb-1.5 block text-xs font-medium text-neutral-600">
+            <label htmlFor="password" className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">
               Password
             </label>
             <input
@@ -117,13 +114,13 @@ export default function SignupPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Min. 8 characters"
-              className="min-h-[44px] w-full rounded-xl border border-neutral-200 bg-neutral-50/60 px-4 py-3 text-neutral-900 placeholder:text-neutral-400 outline-none transition-colors duration-150 focus:border-neutral-400 focus:bg-white"
+              className="min-h-[44px] w-full rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 text-[var(--text-1)] placeholder:text-[var(--text-disabled)] outline-none transition-colors duration-150 focus:border-[var(--border-2)] focus:bg-[var(--surface)]"
               style={{ fontSize: "1rem" }}
             />
           </div>
 
           <div>
-            <label htmlFor="confirm-password" className="mb-1.5 block text-xs font-medium text-neutral-600">
+            <label htmlFor="confirm-password" className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">
               Confirm password
             </label>
             <input
@@ -134,13 +131,13 @@ export default function SignupPage() {
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               placeholder="••••••••"
-              className="min-h-[44px] w-full rounded-xl border border-neutral-200 bg-neutral-50/60 px-4 py-3 text-neutral-900 placeholder:text-neutral-400 outline-none transition-colors duration-150 focus:border-neutral-400 focus:bg-white"
+              className="min-h-[44px] w-full rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 text-[var(--text-1)] placeholder:text-[var(--text-disabled)] outline-none transition-colors duration-150 focus:border-[var(--border-2)] focus:bg-[var(--surface)]"
               style={{ fontSize: "1rem" }}
             />
           </div>
 
           {error && (
-            <p className="rounded-xl border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-600">
+            <p className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 text-sm text-[var(--text-2)]">
               {error}
             </p>
           )}
@@ -149,7 +146,7 @@ export default function SignupPage() {
             type="submit"
             disabled={loading}
             aria-busy={loading}
-            className="mt-1 inline-flex h-[2.75rem] w-full items-center justify-center rounded-full border border-neutral-900 bg-transparent px-7 text-[0.9375rem] font-medium tracking-[-0.01em] text-neutral-900 transition-colors duration-200 hover:bg-neutral-900 hover:text-white disabled:pointer-events-none disabled:opacity-50"
+            className="mt-1 inline-flex h-[2.75rem] w-full items-center justify-center rounded-lg border-none bg-[var(--cta)] px-7 text-[0.9375rem] font-medium tracking-[-0.01em] text-white transition-colors duration-200 hover:bg-[var(--cta-hover)] disabled:pointer-events-none disabled:opacity-50"
           >
             {loading ? "Creating account…" : "Create account"}
           </button>
@@ -159,26 +156,26 @@ export default function SignupPage() {
               type="button"
               onClick={handleDevBypass}
               disabled={devLoading}
-              className="inline-flex h-[2.5rem] w-full items-center justify-center rounded-full border border-neutral-300 bg-white px-6 text-sm font-medium text-neutral-700 transition-colors duration-200 hover:border-neutral-900 hover:text-neutral-900 disabled:pointer-events-none disabled:opacity-50"
+              className="inline-flex h-[2.5rem] w-full items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] px-6 text-sm font-medium text-[var(--text-2)] transition-colors duration-200 hover:border-[var(--border-2)] hover:text-[var(--text-1)] disabled:pointer-events-none disabled:opacity-50"
             >
               {devLoading ? "Opening dashboard…" : "Enter Dashboard (Dev)"}
             </button>
           )}
         </form>
 
-        <p className="mt-6 text-center text-sm text-neutral-400">
+        <p className="mt-6 text-center text-sm text-[var(--text-muted)]">
           Already have an account?{" "}
           <Link
             href="/login"
-            className="font-medium text-neutral-900 underline underline-offset-2 transition-colors hover:text-neutral-600"
+            className="font-medium text-[var(--brand)] underline underline-offset-2 transition-colors hover:text-[var(--brand-hover)]"
           >
             Log in
           </Link>
         </p>
       </div>
 
-      <p className="mt-6 text-center text-xs text-neutral-400">
-        <Link href="/" className="transition-colors hover:text-neutral-600">
+      <p className="mt-6 text-center text-xs text-[var(--text-muted)]">
+        <Link href="/" className="transition-colors hover:text-[var(--text-2)]">
           {"<-"} Back to Larry
         </Link>
       </p>

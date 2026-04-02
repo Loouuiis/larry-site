@@ -97,15 +97,15 @@ export function ROICalculator() {
 
   return (
     <div
-      className="rounded-2xl border border-neutral-200 bg-white p-4 sm:p-8 lg:p-10"
+      className="rounded-2xl border border-[var(--border)] bg-white p-4 sm:p-8 lg:p-10"
       style={{ boxShadow: "var(--shadow-card)" }}
     >
       {/* Header ─────────────────────────────────────────────────────────── */}
       <div className="mb-6 max-w-lg sm:mb-8">
-        <h3 className="text-base font-semibold tracking-tight text-neutral-900 sm:text-xl">
+        <h3 className="text-base font-semibold tracking-tight text-[var(--text-1)] sm:text-xl">
           See how much time you can reclaim
         </h3>
-        <p className="mt-1.5 text-xs leading-relaxed text-neutral-500 sm:mt-2 sm:text-sm">
+        <p className="mt-1.5 text-xs leading-relaxed text-[var(--text-muted)] sm:mt-2 sm:text-sm">
           If Larry automates 20% of coordination and admin work, how much time
           does that free up across your project?
         </p>
@@ -117,11 +117,11 @@ export function ROICalculator() {
         <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 sm:mb-4">
           <label
             htmlFor="roi-hours"
-            className="shrink-0 text-xs font-semibold uppercase tracking-widest text-neutral-400"
+            className="shrink-0 text-xs font-semibold uppercase tracking-widest text-[var(--text-disabled)]"
           >
             Project hours
           </label>
-          <span className="text-sm font-semibold tabular-nums text-neutral-700">
+          <span className="text-sm font-semibold tabular-nums text-[var(--text-2)]">
             {hours === 0 ? "—" : `${hours.toLocaleString()} hrs`}
           </span>
         </div>
@@ -145,14 +145,14 @@ export function ROICalculator() {
         />
 
         <div className="mt-2.5 flex justify-between">
-          <span className="text-xs tabular-nums text-neutral-300">0</span>
-          <span className="text-xs tabular-nums text-neutral-300">1,000 hrs</span>
+          <span className="text-xs tabular-nums text-[var(--text-disabled)]">0</span>
+          <span className="text-xs tabular-nums text-[var(--text-disabled)]">1,000 hrs</span>
         </div>
       </div>
 
       {/* Result ──────────────────────────────────────────────────────────── */}
-      <div className="border-t border-neutral-100 pt-6 sm:pt-8">
-        <p className="mb-2 text-xs text-neutral-400 sm:mb-3 sm:text-sm">Larry will save you</p>
+      <div className="border-t border-[var(--border)] pt-6 sm:pt-8">
+        <p className="mb-2 text-xs text-[var(--text-disabled)] sm:mb-3 sm:text-sm">Larry will save you</p>
 
         <div className="flex items-end gap-2 leading-none">
           {/*
@@ -166,14 +166,14 @@ export function ROICalculator() {
             suppressHydrationWarning
             aria-live="polite"
             aria-atomic="true"
-            className="text-[3.25rem] font-bold leading-none tracking-tight tabular-nums text-neutral-900"
+            className="text-[3.25rem] font-bold leading-none tracking-tight tabular-nums text-[var(--text-1)]"
           />
-          <span className="mb-1.5 text-xl font-semibold text-neutral-400">
+          <span className="mb-1.5 text-xl font-semibold text-[var(--text-disabled)]">
             hours.
           </span>
         </div>
 
-        <p className="mt-5 text-sm leading-relaxed text-neutral-500">
+        <p className="mt-5 text-sm leading-relaxed text-[var(--text-muted)]">
           That&apos;s time your team can spend delivering outcomes —{" "}
           not coordinating around them.
         </p>
