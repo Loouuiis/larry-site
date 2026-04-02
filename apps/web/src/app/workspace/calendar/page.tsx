@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import Link from "next/link";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { useCalendarEvents, type CalendarEvent } from "@/hooks/useCalendarEvents";
 
@@ -273,6 +274,24 @@ export default function CalendarPage() {
                         <p className="text-[11px]" style={{ color: "var(--text-disabled)" }}>
                           {evt.kind === "deadline" ? "Task deadline" : evt.kind === "meeting" ? "Meeting" : "Event"}
                         </p>
+                        {evt.kind === "meeting" && evt.meetingId && (
+                          <Link
+                            href={`/workspace/meetings?id=${evt.meetingId}`}
+                            className="text-[11px] font-medium"
+                            style={{ color: "var(--cta)" }}
+                          >
+                            View meeting notes
+                          </Link>
+                        )}
+                        {evt.kind === "deadline" && evt.projectId && (
+                          <Link
+                            href={`/workspace/projects/${evt.projectId}`}
+                            className="text-[11px] font-medium"
+                            style={{ color: "var(--cta)" }}
+                          >
+                            Open project
+                          </Link>
+                        )}
                       </div>
                     </div>
                   ))}
