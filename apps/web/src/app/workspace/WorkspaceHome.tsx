@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { TriangleAlert, Plus } from "lucide-react";
-import type { WorkspaceProject, WorkspaceSnapshot, WorkspaceTask } from "@/app/dashboard/types";
+import type { WorkspaceProject, WorkspaceHomeData, WorkspaceTask } from "@/app/dashboard/types";
 import { ProjectCreateSheet } from "./ProjectCreateSheet";
 import { useWorkspaceChrome } from "./WorkspaceChromeContext";
 
@@ -146,7 +146,7 @@ function buildProjectCard(
 export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: string | null } = {}) {
   const router = useRouter();
   const chrome = useWorkspaceChrome();
-  const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
+  const [snapshot, setSnapshot] = useState<WorkspaceHomeData | null>(null);
   const [viewer, setViewer] = useState<AuthMePayload["user"] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -160,11 +160,11 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
       setError(null);
 
       const [snapshotResponse, meResponse] = await Promise.all([
-        fetch("/api/workspace/snapshot?includeProjectContext=false", { cache: "no-store" }),
+        fetch("/api/workspace/home", { cache: "no-store" }),
         fetch("/api/auth/me", { cache: "no-store" }),
       ]);
 
-      const snapshotPayload = await readJson<WorkspaceSnapshot>(snapshotResponse);
+      const snapshotPayload = await readJson<WorkspaceHomeData>(snapshotResponse);
       const mePayload = await readJson<AuthMePayload>(meResponse);
 
       if (!snapshotResponse.ok) {

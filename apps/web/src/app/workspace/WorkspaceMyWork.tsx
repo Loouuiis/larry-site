@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { WorkspaceSnapshot, WorkspaceTask } from "@/app/dashboard/types";
+import type { WorkspaceHomeData, WorkspaceTask } from "@/app/dashboard/types";
 
 async function readJson<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -58,7 +58,7 @@ const BUCKET_ORDER = ["Past due", "Today", "This week", "Next week", "Later", "N
 const GROUP_ACTIVE_OPTS = ["By project", "By status", "By due date"];
 
 export function WorkspaceMyWork() {
-  const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
+  const [snapshot, setSnapshot] = useState<WorkspaceHomeData | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -70,10 +70,10 @@ export function WorkspaceMyWork() {
     setError("");
     try {
       const [snapRes, meRes] = await Promise.all([
-        fetch("/api/workspace/snapshot?includeProjectContext=false", { cache: "no-store" }),
+        fetch("/api/workspace/home", { cache: "no-store" }),
         fetch("/api/auth/me", { cache: "no-store" }),
       ]);
-      const snap = await readJson<WorkspaceSnapshot>(snapRes);
+      const snap = await readJson<WorkspaceHomeData>(snapRes);
       if (!snapRes.ok) {
         setError("error" in snap && typeof snap.error === "string" ? snap.error : "Failed to load tasks.");
         return;
