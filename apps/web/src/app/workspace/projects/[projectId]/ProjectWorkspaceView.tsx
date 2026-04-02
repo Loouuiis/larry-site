@@ -33,6 +33,7 @@ import { useProjectMemory } from "@/hooks/useProjectMemory";
 import { useCalendarEvents, type CalendarEvent } from "@/hooks/useCalendarEvents";
 import { CollaboratorsPanel } from "./CollaboratorsPanel";
 import { ProjectNotesPanel } from "./ProjectNotesPanel";
+import { TaskCenter } from "./TaskCenter";
 
 async function readJson<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -808,18 +809,9 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
           </div>
         )}
 
-        {/* ── Tab: Task center (placeholder) ───────────── */}
+        {/* ── Tab: Task center ──────────────────────────── */}
         {activeTab === "tasks" && (
-          <div
-            className="text-center px-6 py-12"
-            style={{ borderRadius: "var(--radius-card)", border: "1px dashed var(--border-2)", background: "var(--surface)" }}
-          >
-            <ListChecks size={32} className="mx-auto mb-3" style={{ color: "var(--text-disabled)" }} />
-            <p className="text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>Task center</p>
-            <p className="mt-2 text-[13px]" style={{ color: "var(--text-2)" }}>
-              A dedicated task management view with filtering by status and assignee is coming in the next phase.
-            </p>
-          </div>
+          <TaskCenter projectId={projectId} tasks={tasks} refresh={refresh} />
         )}
 
         {/* ── Tab: Calendar ──────────────── */}
