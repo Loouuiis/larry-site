@@ -132,6 +132,7 @@ export interface QueueMessage {
 
 export type LarryActionType =
   | "task_create"
+  | "task_update"
   | "status_update"
   | "risk_flag"
   | "reminder_send"

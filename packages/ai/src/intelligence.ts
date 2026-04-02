@@ -32,6 +32,7 @@ function sanitise(text: string): string {
 
 const LarryActionTypeEnum = z.enum([
   "task_create",
+  "task_update",
   "status_update",
   "risk_flag",
   "reminder_send",
@@ -100,6 +101,7 @@ Include in autoActions ONLY for these exact situations:
 
 NEVER put these in autoActions — they must always go in suggestedActions:
 - task_create (even when the user asks — let them review first)
+- task_update (review before applying multi-field changes)
 - deadline_change
 - owner_change
 - scope_change
@@ -154,6 +156,15 @@ Each action in autoActions and suggestedActions must have exactly these fields:
 
 "task_create" [ACTION CENTRE ONLY]
   payload: { "title": string, "description": string|null, "dueDate": "YYYY-MM-DD"|null, "assigneeName": string|null, "priority": "low"|"medium"|"high"|"critical" }
+
+"task_update" [ACTION CENTRE ONLY]
+  payload: { "taskId": string (use ID from snapshot), "taskTitle": string,
+             "title": string|null, "description": string|null,
+             "status": "backlog"|"not_started"|"in_progress"|"waiting"|"completed"|"blocked"|null,
+             "priority": "low"|"medium"|"high"|"critical"|null,
+             "assigneeName": string|null, "dueDate": "YYYY-MM-DD"|null }
+  Omit or set null any field you are NOT changing. Use this instead of combining multiple
+  discrete action types when the user asks to update several properties of one task at once.
 
 "status_update" [auto or action centre]
   payload: { "taskId": string (use ID from snapshot), "taskTitle": string, "newStatus": "backlog"|"not_started"|"in_progress"|"waiting"|"completed"|"blocked", "newRiskLevel": "low"|"medium"|"high" }

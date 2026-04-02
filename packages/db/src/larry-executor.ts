@@ -48,6 +48,17 @@ interface TaskCreatePayload {
   priority: "low" | "medium" | "high" | "critical";
 }
 
+interface TaskUpdatePayload {
+  taskId: string;
+  taskTitle: string;
+  title?: string | null;
+  description?: string | null;
+  status?: string | null;
+  priority?: "low" | "medium" | "high" | "critical" | null;
+  assigneeName?: string | null;
+  dueDate?: string | null;
+}
+
 interface StatusUpdatePayload {
   taskId: string;
   taskTitle: string;
@@ -168,6 +179,7 @@ interface AutoExecutionDecision {
 
 const APPROVAL_ONLY_ACTION_TYPES = new Set<LarryActionType>([
   "task_create",
+  "task_update",
   "deadline_change",
   "owner_change",
   "scope_change",
@@ -251,6 +263,16 @@ function missingPayloadFields(action: LarryAction): string[] {
         "location",
         "attendees",
       ].some((field) => hasPayloadValue(action.payload, field));
+      if (!hasAnyMutationField) {
+        missing.push("updateFields");
+      }
+      return missing;
+    }
+    case "task_update": {
+      const missing = ["taskId", "taskTitle"].filter((field) => !hasPayloadValue(action.payload, field));
+      const hasAnyMutationField = ["title", "description", "status", "priority", "assigneeName", "dueDate"].some(
+        (field) => hasPayloadValue(action.payload, field)
+      );
       if (!hasAnyMutationField) {
         missing.push("updateFields");
       }
@@ -471,7 +493,8 @@ async function insertLarryEvent(
   triggeredBy: TriggeredBy,
   chatMessage: string | undefined,
   executed: boolean,
-  context?: LarryEventContext
+  context?: LarryEventContext,
+  governanceDecision?: AutoExecutionDecision
 ): Promise<string> {
   const executionMode: LarryExecutionMode = eventType === "auto_executed" ? "auto" : "approval";
   const executedByKind: LarryExecutedByKind | null = eventType === "auto_executed" ? "larry" : null;
@@ -480,9 +503,10 @@ async function insertLarryEvent(
     tenantId,
     `INSERT INTO larry_events
        (tenant_id, project_id, event_type, action_type, display_text, reasoning, payload, executed_at, triggered_by, chat_message,
-         conversation_id, request_message_id, response_message_id, requested_by_user_id, executed_by_kind, execution_mode, source_kind, source_record_id)
+         conversation_id, request_message_id, response_message_id, requested_by_user_id, executed_by_kind, execution_mode, source_kind, source_record_id,
+         governance_decision, governance_rule)
      VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10,
-             $11, $12, $13, $14, $15, $16, $17, $18)
+             $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
      RETURNING id`,
     [
       tenantId,
@@ -503,6 +527,8 @@ async function insertLarryEvent(
       executionMode,
       normalizedContext.sourceKind,
       normalizedContext.sourceRecordId,
+      governanceDecision?.decision ?? null,
+      governanceDecision?.rule ?? null,
     ]
   );
   return rows[0].id;
@@ -538,6 +564,68 @@ export async function executeTaskCreate(
     triggeredBy: "larry",
   });
 
+  return task;
+}
+
+export async function executeTaskUpdate(
+  db: Db,
+  tenantId: string,
+  projectId: string,
+  payload: TaskUpdatePayload
+): Promise<Record<string, unknown>> {
+  const setClauses: string[] = [];
+  const values: unknown[] = [tenantId, payload.taskId];
+
+  if (payload.title != null) {
+    values.push(payload.title);
+    setClauses.push(`title = $${values.length}`);
+  }
+  if (payload.description != null) {
+    values.push(payload.description);
+    setClauses.push(`description = $${values.length}`);
+  }
+  if (payload.status != null) {
+    values.push(payload.status);
+    setClauses.push(`status = $${values.length}`);
+  }
+  if (payload.priority != null) {
+    values.push(payload.priority);
+    setClauses.push(`priority = $${values.length}`);
+  }
+  if (payload.dueDate != null) {
+    values.push(payload.dueDate);
+    setClauses.push(`due_date = $${values.length}`);
+  }
+  if (payload.assigneeName != null) {
+    const assigneeId = await resolveUserByName(db, tenantId, payload.assigneeName);
+    values.push(assigneeId);
+    setClauses.push(`assignee_user_id = $${values.length}`);
+  }
+
+  if (setClauses.length === 0) {
+    throw new Error("executeTaskUpdate: no fields to update");
+  }
+
+  setClauses.push("updated_at = NOW()");
+
+  const rows = await db.queryTenant<Record<string, unknown>>(
+    tenantId,
+    `UPDATE tasks
+     SET ${setClauses.join(", ")}
+     WHERE tenant_id = $1 AND id = $2
+     RETURNING id, tenant_id, project_id, title, description, status, priority, assignee_user_id, due_date, updated_at`,
+    values
+  );
+  if (rows.length === 0) {
+    throw new Error(`executeTaskUpdate: task ${payload.taskId} not found for tenant ${tenantId}`);
+  }
+  const task = rows[0];
+  await logActivity(db, tenantId, projectId, payload.taskId, {
+    action: "task_update",
+    taskTitle: payload.taskTitle,
+    updatedFields: setClauses.filter((c) => !c.startsWith("updated_at")),
+    triggeredBy: "larry",
+  });
   return task;
 }
 
@@ -1124,6 +1212,9 @@ export async function executeAction(
     case "task_create":
       return executeTaskCreate(db, tenantId, projectId, payload as unknown as TaskCreatePayload);
 
+    case "task_update":
+      return executeTaskUpdate(db, tenantId, projectId, payload as unknown as TaskUpdatePayload);
+
     case "status_update": {
       if (payload.taskId === null || payload.taskId === undefined) {
         throw new Error("Cannot execute status_update — taskId is ambiguous. Edit the event to specify a taskId before accepting.");
@@ -1230,7 +1321,7 @@ export async function runAutoActions(
     getRequesterRole(db, tenantId, requesterUserId),
   ]);
 
-  const autoExecutableActions: LarryAction[] = [];
+  const autoExecutableActions: Array<{ action: LarryAction; decision: AutoExecutionDecision }> = [];
   const reroutedSuggestionActions: LarryAction[] = [];
 
   for (const action of actions) {
@@ -1242,7 +1333,7 @@ export async function runAutoActions(
     });
 
     if (decision.decision === "auto_execute") {
-      autoExecutableActions.push(action);
+      autoExecutableActions.push({ action, decision });
       continue;
     }
 
@@ -1265,7 +1356,7 @@ export async function runAutoActions(
   const eventIds: string[] = [];
   let executedCount = 0;
 
-  for (const action of autoExecutableActions) {
+  for (const { action, decision } of autoExecutableActions) {
     // Insert the event record FIRST (executed_at = null) so that if the action
     // throws, we can delete it and avoid leaving an invisible mutation with no audit trail.
     let eventId: string;
@@ -1279,7 +1370,8 @@ export async function runAutoActions(
         triggeredBy,
         chatMessage,
         false,
-        context
+        context,
+        decision
       );
     } catch (err) {
       if (err instanceof Error && err.message.startsWith("insertLarryEvent:")) {

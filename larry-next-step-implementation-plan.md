@@ -382,6 +382,30 @@ These are not optional cleanups; they are part of the implementation strategy:
   - Updated meeting finalize to execute the full bootstrap contract after canonical event publication: `executeTaskCreate` for each bootstrap task, `storeSuggestions` for non-task actions, and `insertProjectMemoryEntry` — matching the contract already enforced for chat and manual modes.
   - Split the meeting intake frontend flow in `WorkspaceProjectIntake.tsx` into two steps: (1) upsert + bootstrap on form submit, (2) review preview then confirm finalize. Added `meetingBootstrappedDraft` and `meetingFinalizeBusy` states, a new `handleMeetingFinalize` handler, and a bootstrap preview panel (summary, starter tasks, suggested actions) matching the existing chat intake preview design.
   - Added "Edit transcript" back-navigation in the preview panel so users can revise input before confirming.
+- **Phase 6 - Clarification-First Chat, Task Management, And Governed Auto-Execution starter slice (completed)**:
+  - Added `"task_update"` to the `LarryActionType` union in `packages/shared/src/index.ts` so multi-field task mutations are a first-class governed action type.
+  - Added `TaskUpdatePayload` interface, `executeTaskUpdate()` function (dynamic SET clause, resolves assignee by name, logs to `activity_log`), and `case "task_update"` dispatcher in `packages/db/src/larry-executor.ts`. Added `"task_update"` to `APPROVAL_ONLY_ACTION_TYPES` so multi-field task mutations always require PM/admin approval.
+  - Extended `missingPayloadFields` check for `"task_update"` to require `taskId` + `taskTitle` + at least one mutation field before the action can be admitted.
+  - Added `"task_update"` to the `LarryActionTypeEnum` Zod validator in `packages/ai/src/intelligence.ts`, added it to the NEVER-autoActions list in the system prompt, and documented its full payload contract in the ACTION TYPES section.
+  - Added `governance_decision` (enum `auto_execute`/`approval_required`) and `governance_rule` (text) columns to `larry_events` in `packages/db/src/schema.sql`. Updated `insertLarryEvent()` to accept and persist an optional `AutoExecutionDecision` so every auto-executed action carries a queryable audit record of the policy decision that cleared it.
+  - Updated `runAutoActions()` to pair each action with its `AutoExecutionDecision` and pass the decision to `insertLarryEvent` at the auto-execute insert site, completing the governance audit trail without changes to the approval or suggestion paths.
+- **Phase 6 - Product-sheet gap closure (completed)**:
+  - Wired multi-turn conversational chat: prior `larry_messages` rows are now loaded and injected as `CONVERSATION HISTORY` into the LLM hint on both global and project-scoped paths so dialogues are stateful rather than one-shot.
+  - Added `FEEDBACK LEARNING` section to system prompt and improved correction formatting from raw JSON to structured summaries so the LLM actively calibrates from accepted/dismissed history.
+  - Added `USER-DEFINED RULES` section to system prompt so `larry_rules` rows actually influence LLM behavior rather than being silently ignored.
+  - Added `MEETING TRANSCRIPT PROCESSING` section to system prompt so transcripts produce structured minutes, action items, follow-up calendar events, and email drafts.
+  - Added LLM-driven `followUpQuestions` field to `IntelligenceResult` (shared types + Zod schema + system prompt) and wired it through the chat handler to return `requiresClarification: true` — complementing the existing hardcoded `detectClarificationNeed` for nuanced ambiguity cases.
+  - Added `slack_message_draft` action type end-to-end: shared type, Zod enum, system prompt docs, `executeSlackMessageDraft` executor, and `postSlackMessage()` wired to the accept handler.
+  - Fixed briefing path to load rules and corrections (was running without guidance), added dismiss handler writing to `project_memory_entries` (was asymmetric with accept), and aligned source kind tags (`chat → direct_chat`, `scan → project_review`).
+  - Added full Outlook Calendar webhook handler with Microsoft Graph change-notification validation handshake, subscription columns, and creation helper in `apps/api/src/routes/v1/connectors-outlook-calendar.ts`.
+- **Phase 7 - Project Collaboration, Shared Larry, And Notes starter slice (completed)**:
+  - All Phase 7 infrastructure was already fully in place: `project_memberships` table with owner/editor/viewer roles, full collaborator CRUD API (`GET/POST/PATCH/DELETE /v1/projects/:id/members`), `CollaboratorsPanel.tsx` frontend, and all three collaborator executor functions (`executeCollaboratorAdd`, `executeCollaboratorRoleUpdate`, `executeCollaboratorRemove`) wired through the canonical action system.
+  - `project_notes` table with `shared`/`personal` visibility enforcement, full CRUD API, and `ProjectNotesPanel.tsx` frontend were already present. `executeProjectNoteSend` executor validates recipient project membership and enforces visibility constraints.
+  - `listLarryConversationPreviews()` already shows project-scoped conversations to all project members via a membership EXISTS check, making project Larry threads genuinely shared across collaborators.
+  - Chat message history already stores `actor_user_id` and `actor_display_name` on every `larry_messages` row. Clicking a conversation in the Action Centre dispatches `larry:load-conversation`; `useLarryChat` loads the full history with per-message attribution.
+  - `collaborator_add`, `collaborator_role_update`, `collaborator_remove`, and `project_note_send` were already in `LarryActionTypeEnum`, the NEVER-autoActions list, and the system prompt ACTION TYPES section, so Larry can propose all of these from chat.
+  - Re-applied Phase 6 `task_update` changes (lost when Fergus's `818f9f0` pull overwrote uncommitted source files): re-added `"task_update"` to `LarryActionType` union, `TaskUpdatePayload` interface, `executeTaskUpdate()` function with dynamic SET clause and assignee resolution, `APPROVAL_ONLY_ACTION_TYPES` entry, `missingPayloadFields` guard, `executeAction()` dispatcher case, `LarryActionTypeEnum` Zod entry, NEVER-autoActions list entry, and ACTION TYPES documentation.
+  - Re-applied Phase 6 governance audit wiring (also lost): re-added `governance_decision` and `governance_rule` columns to `schema.sql`, updated `insertLarryEvent()` with optional 10th `governanceDecision` param writing to those columns, and updated `runAutoActions()` to pair each action with its `AutoExecutionDecision` and pass it to `insertLarryEvent` at the auto-execute insert site.
 - **Phase 1 - Legacy Dashboard Retirement And Snapshot Fence (completed)**:
   - Replaced legacy `GET /api/workspace/snapshot` behavior with an explicit `410 Gone` retired-contract payload that points callers to canonical scoped workspace routes.
   - Added a `/dashboard/* -> /workspace` catch-all redirect route so legacy dashboard entry paths no longer expose runtime behavior.
@@ -435,17 +459,31 @@ None. Phase 1 is fully closed as of 2026-03-30.
 
 None. Phase 2 is fully closed as of 2026-03-30.
 
+### Still To Do For Phase 4
+
+None. Phase 4 is fully closed as of 2026-03-31.
+
 ### Still To Do For Phase 5
 
 None. Phase 5 starter slice is fully closed as of 2026-04-01.
+
+### Still To Do For Phase 6
+
+None. Phase 6 starter slice is fully closed as of 2026-04-02.
+
+### Still To Do For Phase 7
+
+None. Phase 7 starter slice is fully closed as of 2026-04-02.
 
 ### Recommended Next Slice
 
 - Closed in this update:
   - **Phase 1 - Legacy Dashboard Retirement And Snapshot Fence** (completed).
   - **Phase 5 - Unified Project Intake** starter slice (completed).
+  - **Phase 6 - Clarification-First Chat, Task Management, And Governed Auto-Execution** starter slice (completed).
+  - **Phase 7 - Project Collaboration, Shared Larry, And Notes** starter slice (completed).
 - Candidate milestone for the next update (not opened in this change):
-  - **Phase 6 - Clarification-First Chat, Task Management, And Governed Auto-Execution** starter slice.
+  - **Phase 8 - Communications, Documents, Templates, And Task Attachments** starter slice.
 
 ---
 
@@ -461,8 +499,8 @@ Deliver a single canonical workspace slice by cutting active product behavior fu
 
 ### Acceptance criteria
 
-- [ ] `/workspace` is the only active product surface for workspace behavior and project creation entry points.
-- [ ] Legacy dashboard-only flows are retired, redirected, or clearly fenced off from production behavior.
+- [x] `/workspace` is the only active product surface for workspace behavior and project creation entry points.
+- [x] Legacy dashboard-only flows are retired, redirected, or clearly fenced off from production behavior.
 - [x] The home and project workspace views read from scoped workspace data contracts instead of depending on one broad snapshot for everything.
 - [x] The project workspace has stable slots for context, Action Centre, and project Larry chat so later phases deepen one canonical surface instead of creating parallel UIs.
 - [x] A single project workspace path is demoable end-to-end on the new data plane.
@@ -487,11 +525,11 @@ Consolidate Larry onto one canonical runtime by establishing `larry_events`, con
 
 ### Acceptance criteria
 
-- [ ] New Larry behavior writes only to the canonical Larry runtime model.
-- [ ] Project chat, transcript-driven suggestions, and scheduled or signal-driven actions are visible through the same action ledger.
-- [ ] Conversation turns and resulting actions share stable linkage and attribution fields so histories can show what actions each chat created and who requested, approved, or executed them.
-- [ ] The system exposes a clear migration boundary between canonical Larry data and legacy data.
-- [ ] No new UI behavior depends on the legacy extraction-led pipeline.
+- [x] New Larry behavior writes only to the canonical Larry runtime model.
+- [x] Project chat, transcript-driven suggestions, and scheduled or signal-driven actions are visible through the same action ledger.
+- [x] Conversation turns and resulting actions share stable linkage and attribution fields so histories can show what actions each chat created and who requested, approved, or executed them.
+- [x] The system exposes a clear migration boundary between canonical Larry data and legacy data.
+- [x] No new UI behavior depends on the legacy extraction-led pipeline.
 
 ### Suggested ownership
 
@@ -539,10 +577,10 @@ Add a durable project memory layer fed by direct chat, meetings, accepted Larry 
 
 ### Acceptance criteria
 
-- [ ] Project memory entries are written from chat, meetings, accepted actions, and connector signals.
-- [ ] Larry reasoning reads from project memory in addition to current workspace state.
-- [ ] The project workspace exposes a context timeline with source and record linkage.
-- [ ] Memory writes are tied to canonical Larry and connector records rather than ad hoc text blobs.
+- [x] Project memory entries are written from chat, meetings, accepted actions, and connector signals.
+- [x] Larry reasoning reads from project memory in addition to current workspace state.
+- [x] The project workspace exposes a context timeline with source and record linkage.
+- [x] Memory writes are tied to canonical Larry and connector records rather than ad hoc text blobs.
 
 ### Suggested ownership
 
@@ -591,13 +629,13 @@ Turn Larry chat into a real planning and confirmation loop. Add ambiguity handli
 
 ### Acceptance criteria
 
-- [ ] Ambiguous requests trigger clarification instead of silent failure or premature execution.
-- [ ] Chat shows a reviewable action plan before executing medium- or high-impact actions.
-- [ ] Larry enriches planned tasks and actions with available project context and asks for any missing required details before execution.
-- [ ] Auto-execution checks policy eligibility, user authority, action risk, and audit-safety before proceeding without approval.
-- [ ] Unambiguous low-risk actions can run automatically, while medium-risk, high-risk, externally visible, or destructive actions require explicit user confirmation.
-- [ ] Larry can create and update project-scoped tasks through the same governed flow used for other action types.
-- [ ] Chat, connector-triggered actions, and fallback scans use the same execution policy path.
+- [x] Ambiguous requests trigger clarification instead of silent failure or premature execution.
+- [x] Chat shows a reviewable action plan before executing medium- or high-impact actions.
+- [x] Larry enriches planned tasks and actions with available project context and asks for any missing required details before execution.
+- [x] Auto-execution checks policy eligibility, user authority, action risk, and audit-safety before proceeding without approval.
+- [x] Unambiguous low-risk actions can run automatically, while medium-risk, high-risk, externally visible, or destructive actions require explicit user confirmation.
+- [x] Larry can create and update project-scoped tasks through the same governed flow used for other action types.
+- [x] Chat, connector-triggered actions, and fallback scans use the same execution policy path.
 
 ### Suggested ownership
 
@@ -620,12 +658,12 @@ Introduce project-scoped collaboration on top of tenant membership. Add project 
 
 ### Acceptance criteria
 
-- [ ] Projects have project-scoped collaboration membership and role management.
-- [ ] Project Larry conversations can be shared across project collaborators.
-- [ ] Project chat history is expandable and shows actor attribution, approvals, and resulting actions clearly.
-- [ ] Shared notes and personal notes exist inside project collaboration surfaces with correct visibility rules.
-- [ ] Users can draft and send collaborator notes, including Larry-drafted personal notes addressed to specific project members.
-- [ ] Larry can propose and, where permitted, execute project collaborator updates through the canonical action system.
+- [x] Projects have project-scoped collaboration membership and role management.
+- [x] Project Larry conversations can be shared across project collaborators.
+- [x] Project chat history is expandable and shows actor attribution, approvals, and resulting actions clearly.
+- [x] Shared notes and personal notes exist inside project collaboration surfaces with correct visibility rules.
+- [x] Users can draft and send collaborator notes, including Larry-drafted personal notes addressed to specific project members.
+- [x] Larry can propose and, where permitted, execute project collaborator updates through the canonical action system.
 
 ### Suggested ownership
 

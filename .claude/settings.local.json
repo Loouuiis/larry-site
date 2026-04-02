@@ -32,7 +32,13 @@
       "Bash(lsof -i :8080 -sTCP:LISTEN)",
       "Bash(ls /home/augustus/Work/larry/larry-site/apps/web/src/app/workspace/projects/[projectId]/)",
       "Bash(ls:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(find /home/augustus/Work/larry/larry-site/apps/web/src/app/workspace -type f -name *action* -o -name *Action*)",
+      "Bash(find /home/augustus/Work/larry/larry-site/apps/web/src/components -type f -name *action* -o -name *Action*)",
+      "Bash(find /home/augustus/Work/larry/larry-site/apps/web/src/app/workspace/projects/[projectId] -type f -name \"*.tsx\")",
+      "Bash(find /home/augustus/Work/larry/larry-site/apps/web/src/app/workspace -name *EventSummary* -o -name *Event*)",
+      "Bash(wc:*)",
+      "Bash(npm test:*)"
     ]
   }
 }

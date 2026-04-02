@@ -1075,6 +1075,11 @@ ALTER TABLE larry_events
   ADD COLUMN IF NOT EXISTS source_kind TEXT;
 ALTER TABLE larry_events
   ADD COLUMN IF NOT EXISTS source_record_id UUID;
+ALTER TABLE larry_events
+  ADD COLUMN IF NOT EXISTS governance_decision TEXT
+    CHECK (governance_decision IN ('auto_execute', 'approval_required'));
+ALTER TABLE larry_events
+  ADD COLUMN IF NOT EXISTS governance_rule TEXT;
 
 UPDATE larry_events
 SET execution_mode = CASE
