@@ -253,6 +253,7 @@ export async function proxyApiRequest(
   }
 
   if (response.status === 401) {
+    // Try token refresh first
     const refreshed = await refreshApiSession(baseUrl, activeSession);
     if (refreshed?.apiAccessToken) {
       activeSession = refreshed;
@@ -265,6 +266,25 @@ export async function proxyApiRequest(
           body: { error: message },
           session: activeSession,
         };
+      }
+    }
+
+    // If still 401 (refresh failed or refreshed token rejected), fall back to
+    // service credentials so the user isn't locked out by a stale session.
+    if (response.status === 401) {
+      const serviceLogin = await loginWithServiceCredentials(baseUrl);
+      if (serviceLogin.session?.apiAccessToken) {
+        activeSession = serviceLogin.session;
+        try {
+          response = await perform(serviceLogin.session.apiAccessToken);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Upstream API request failed.";
+          return {
+            status: 504,
+            body: { error: message },
+            session: activeSession,
+          };
+        }
       }
     }
   }
