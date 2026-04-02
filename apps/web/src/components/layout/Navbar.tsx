@@ -133,7 +133,7 @@ export function Navbar() {
           className="flex items-center gap-2 text-sm font-semibold text-neutral-900"
           onClick={() => setMenuOpen(false)}
         >
-          <Image src="/Larry_logo.png" alt="Larry" width={90} height={30} className="object-contain" />
+          <Image src="/Larry_logos.png" alt="Larry" width={50} height={18} className="object-contain" />
         </Link>
 
         {/* Nav links — hidden on mobile */}

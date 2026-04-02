@@ -1,9 +1,8 @@
 export type TaskStatus =
-  | "backlog"
   | "not_started"
-  | "in_progress"
-  | "waiting"
-  | "blocked"
+  | "on_track"
+  | "at_risk"
+  | "overdue"
   | "completed";
 
 export type TaskPriority = "low" | "medium" | "high" | "critical";
@@ -342,7 +341,7 @@ export interface BoardTaskRow {
 }
 
 export interface TaskGroup {
-  key: "todo" | "in_progress" | "blocked" | "completed";
+  key: "not_started" | "on_track" | "at_risk" | "overdue" | "completed";
   label: string;
   accentClass: string;
   targetStatus: TaskStatus;
