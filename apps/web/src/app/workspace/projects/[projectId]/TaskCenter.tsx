@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, ListChecks, Plus } from "lucide-react";
 import type { WorkspaceTask } from "@/app/dashboard/types";
 
@@ -77,10 +77,16 @@ interface TaskCenterProps {
   refresh: () => Promise<void>;
 }
 
-export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const startCreating = (_groupId: string) => {};
+/* ── status group → DB status mapping ──────────────────── */
 
+const GROUP_TO_DB_STATUS: Record<string, string> = {
+  not_started: "not_started",
+  in_progress: "in_progress",
+  blocked: "blocked",
+  completed: "completed",
+};
+
+export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
   const initialCollapsed = () => {
     const m: Record<string, boolean> = {};
     for (const g of STATUS_GROUPS) {
@@ -91,6 +97,104 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
 
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(initialCollapsed);
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
+
+  /* ── inline creation state ─────────────────────────────── */
+
+  const [creatingInGroup, setCreatingInGroup] = useState<string | null>(null);
+  const [newTitle, setNewTitle] = useState("");
+  const [newPriority, setNewPriority] = useState<"low" | "medium" | "high" | "critical">("medium");
+  const [newAssignee, setNewAssignee] = useState("");
+  const [newDueDate, setNewDueDate] = useState("");
+  const [saving, setSaving] = useState(false);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  const [members, setMembers] = useState<Array<{ userId: string; name: string }>>([]);
+
+  /* ── fetch project members ─────────────────────────────── */
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/workspace/projects/${encodeURIComponent(projectId)}/members`, { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled && Array.isArray(data?.members)) {
+          setMembers(
+            data.members.map((m: { userId: string; name?: string; email?: string }) => ({
+              userId: m.userId,
+              name: m.name || m.email || "Unknown",
+            }))
+          );
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [projectId]);
+
+  /* ── creation helpers ──────────────────────────────────── */
+
+  const startCreating = (groupId: string) => {
+    setCreatingInGroup(groupId);
+    setNewTitle("");
+    setNewPriority("medium");
+    setNewAssignee("");
+    setNewDueDate("");
+    setCollapsed((prev) => ({ ...prev, [groupId]: false }));
+    setTimeout(() => titleInputRef.current?.focus(), 0);
+  };
+
+  const cancelCreating = () => {
+    setCreatingInGroup(null);
+    setNewTitle("");
+    setNewPriority("medium");
+    setNewAssignee("");
+    setNewDueDate("");
+  };
+
+  const saveTask = async () => {
+    if (!newTitle.trim() || saving || !creatingInGroup) return;
+    setSaving(true);
+    try {
+      const body: Record<string, string> = {
+        projectId,
+        title: newTitle.trim(),
+        priority: newPriority,
+      };
+      if (newAssignee) body.assigneeUserId = newAssignee;
+      if (newDueDate) body.dueDate = newDueDate;
+
+      const res = await fetch("/api/workspace/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        console.error("Failed to create task:", res.status);
+        return;
+      }
+
+      const created = await res.json();
+
+      /* If the target status differs from the API default, update it */
+      const targetStatus = GROUP_TO_DB_STATUS[creatingInGroup];
+      if (targetStatus && targetStatus !== "not_started" && created?.id) {
+        const statusRes = await fetch(`/api/workspace/tasks/${created.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: targetStatus }),
+        });
+        if (!statusRes.ok) {
+          console.error("Failed to update task status:", statusRes.status);
+        }
+      }
+
+      cancelCreating();
+      await refresh();
+    } catch (err) {
+      console.error("Error creating task:", err);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const toggleGroup = (groupId: string) => {
     setCollapsed((prev) => ({ ...prev, [groupId]: !prev[groupId] }));
@@ -105,7 +209,7 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
 
   /* ── empty state ──────────────────────────────────────── */
 
-  if (tasks.length === 0) {
+  if (tasks.length === 0 && creatingInGroup === null) {
     return (
       <div
         className="flex flex-col items-center justify-center px-6 py-16"
@@ -293,8 +397,153 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
               </div>
             )}
 
+            {/* ── inline creation row ──────────────────── */}
+            {!isCollapsed && creatingInGroup === group.id && (
+              <div>
+                <div
+                  className="flex items-center gap-3 px-4 py-2.5"
+                  style={{
+                    border: "1px dashed var(--cta)",
+                    background: "rgba(108,68,246,0.04)",
+                    margin: 4,
+                    borderRadius: 6,
+                  }}
+                >
+                  {/* status dot */}
+                  <span
+                    style={{
+                      width: 7,
+                      height: 7,
+                      borderRadius: "50%",
+                      background: group.dotColour,
+                      flexShrink: 0,
+                    }}
+                  />
+
+                  {/* title input */}
+                  <input
+                    ref={titleInputRef}
+                    type="text"
+                    placeholder="Task title..."
+                    value={newTitle}
+                    onChange={(e) => setNewTitle(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") { e.preventDefault(); void saveTask(); }
+                      if (e.key === "Escape") cancelCreating();
+                    }}
+                    disabled={saving}
+                    className="flex-1 text-[13px]"
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      outline: "none",
+                      color: "var(--text-1)",
+                      padding: 0,
+                      minWidth: 0,
+                    }}
+                  />
+
+                  {/* priority select */}
+                  <select
+                    value={newPriority}
+                    onChange={(e) => setNewPriority(e.target.value as "low" | "medium" | "high" | "critical")}
+                    onKeyDown={(e) => { if (e.key === "Escape") cancelCreating(); }}
+                    disabled={saving}
+                    className="text-[12px] rounded-md px-1.5 py-0.5"
+                    style={{
+                      background: "var(--surface-2)",
+                      border: "1px solid var(--border)",
+                      color: "var(--text-2)",
+                      cursor: "pointer",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="critical">Critical</option>
+                  </select>
+
+                  {/* assignee select */}
+                  <select
+                    value={newAssignee}
+                    onChange={(e) => setNewAssignee(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Escape") cancelCreating(); }}
+                    disabled={saving}
+                    className="w-[100px] truncate text-[12px] rounded-md px-1.5 py-0.5"
+                    style={{
+                      background: "var(--surface-2)",
+                      border: "1px solid var(--border)",
+                      color: newAssignee ? "var(--text-2)" : "var(--text-disabled)",
+                      cursor: "pointer",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <option value="">Assign...</option>
+                    {members.map((m) => (
+                      <option key={m.userId} value={m.userId}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* due date input */}
+                  <input
+                    type="date"
+                    value={newDueDate}
+                    onChange={(e) => setNewDueDate(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Escape") cancelCreating(); }}
+                    disabled={saving}
+                    className="w-[60px] text-[12px]"
+                    style={{
+                      background: "var(--surface-2)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 6,
+                      color: newDueDate ? "var(--text-2)" : "var(--text-disabled)",
+                      padding: "2px 4px",
+                      flexShrink: 0,
+                    }}
+                  />
+                </div>
+
+                {/* keyboard hints + action buttons */}
+                <div className="flex items-center justify-between px-5 py-2">
+                  <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+                    Enter to save &middot; Tab to next field &middot; Esc to cancel
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={cancelCreating}
+                      disabled={saving}
+                      className="rounded-md px-3 py-1 text-[12px] font-medium"
+                      style={{
+                        color: "var(--text-2)",
+                        border: "1px solid var(--border-2)",
+                        background: "transparent",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => void saveTask()}
+                      disabled={saving || !newTitle.trim()}
+                      className="rounded-md px-3 py-1 text-[12px] font-semibold text-white"
+                      style={{
+                        background: saving || !newTitle.trim() ? "var(--text-disabled)" : "var(--cta)",
+                        cursor: saving || !newTitle.trim() ? "not-allowed" : "pointer",
+                        border: "none",
+                      }}
+                    >
+                      {saving ? "Creating..." : "Create"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* ── empty group message ───────────────────── */}
-            {!isCollapsed && group.tasks.length === 0 && (
+            {!isCollapsed && group.tasks.length === 0 && creatingInGroup !== group.id && (
               <div className="px-4 py-4 text-center text-[12px]" style={{ color: "var(--text-muted)" }}>
                 No {group.label.toLowerCase()} tasks
               </div>
