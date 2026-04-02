@@ -1,11 +1,11 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, CalendarRange, Check, FileText, Loader2, MessageSquare, Sparkles } from "lucide-react";
+import { ArrowRight, CalendarRange, Check, FileText, Loader2, MessageSquare, Sparkles, Upload } from "lucide-react";
 import { triggerBoundedWorkspaceRefresh } from "@/app/workspace/refresh";
 
-type IntakeMode = "manual" | "chat" | "meeting";
+type IntakeMode = "manual" | "chat" | "meeting" | "import";
 type IntakeDraftStatus = "draft" | "bootstrapped" | "finalized";
 type MeetingTargetMode = "create" | "attach";
 
@@ -172,6 +172,12 @@ const MODE_META: Record<IntakeMode, { label: string; title: string; description:
     description: "Create the project first, then run the transcript into that project so context starts attached to the right workspace.",
     icon: FileText,
   },
+  import: {
+    label: "Import",
+    title: "Start from a document",
+    description: "Let Larry extract and structure your project from a PDF, Word document, or spreadsheet.",
+    icon: Upload,
+  },
 };
 
 function ModeButton({
@@ -288,6 +294,10 @@ export function WorkspaceProjectIntake() {
   const [meetingCreatedProjectId, setMeetingCreatedProjectId] = useState<string | null>(null);
   const [meetingNoteId, setMeetingNoteId] = useState<string | null>(null);
   const [meetingCanonicalEventId, setMeetingCanonicalEventId] = useState<string | null>(null);
+
+  const [file, setFile] = useState<File | null>(null);
+  const [importBusy, setImportBusy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const chatProgress = useMemo(() => ((chatQuestionIndex + 1) / CHAT_QUESTIONS.length) * 100, [chatQuestionIndex]);
   const chatBootstrapReady = Boolean(chatDraft?.bootstrap.tasks.length || chatDraft?.bootstrap.actions.length);
@@ -520,6 +530,51 @@ export function WorkspaceProjectIntake() {
     }
   }
 
+  async function handleImportSubmit() {
+    if (!file) return;
+    setImportBusy(true);
+    setManualError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const draftRes = await fetch("/api/workspace/projects/intake/drafts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "import" }),
+      });
+      const draftData = await readJson<IntakeDraftResponse>(draftRes);
+      if (!draftRes.ok) {
+        setManualError(draftData.error ?? "Failed to start import.");
+        return;
+      }
+
+      const draftId = draftData.draft?.id;
+      if (!draftId) {
+        setManualError("Failed to create intake draft.");
+        return;
+      }
+
+      const bootstrapRes = await fetch(
+        `/api/workspace/projects/intake/drafts/${draftId}/bootstrap`,
+        { method: "POST", body: formData }
+      );
+      const bootstrapData = await readJson<IntakeDraftResponse>(bootstrapRes);
+      if (!bootstrapRes.ok) {
+        setManualError(bootstrapData.error ?? "Failed to process document.");
+        return;
+      }
+
+      if (bootstrapData.draft) {
+        setChatDraft(bootstrapData.draft);
+      }
+    } catch {
+      setManualError("Upload failed. Please try again.");
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
   return (
     <div className="min-h-0 flex-1 overflow-y-auto" style={{ background: "var(--page-bg)" }}>
       <div className="mx-auto max-w-[1100px] px-6 py-8">
@@ -543,7 +598,7 @@ export function WorkspaceProjectIntake() {
             </p>
           </section>
 
-          <section className="grid gap-4 md:grid-cols-3">
+          <section className="grid gap-4 md:grid-cols-4">
             {(Object.keys(MODE_META) as IntakeMode[]).map((entry) => (
               <ModeButton key={entry} mode={entry} active={mode === entry} onSelect={setMode} />
             ))}
@@ -1075,6 +1130,73 @@ export function WorkspaceProjectIntake() {
                   </button>
                 </div>
               )}
+            </SectionCard>
+          )}
+
+          {mode === "import" && (
+            <SectionCard
+              title="Start from a document"
+              description="Upload a PDF, Word document, or Excel file. Larry will extract the project structure."
+            >
+              <div className="space-y-4">
+                <div
+                  className="flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-8 cursor-pointer transition-colors"
+                  style={{ borderColor: file ? "var(--brand)" : "var(--border)" }}
+                  onClick={() => fileInputRef.current?.click()}
+                  onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const droppedFile = e.dataTransfer.files[0];
+                    if (droppedFile) setFile(droppedFile);
+                  }}
+                >
+                  <Upload size={28} style={{ color: file ? "var(--brand)" : "var(--text-disabled)" }} />
+                  {file ? (
+                    <p className="text-[14px] font-medium" style={{ color: "var(--text-1)" }}>
+                      {file.name}
+                    </p>
+                  ) : (
+                    <p className="text-[13px]" style={{ color: "var(--text-disabled)" }}>
+                      Drop a file here or click to browse
+                    </p>
+                  )}
+                  <p className="text-[11px]" style={{ color: "var(--text-disabled)" }}>
+                    Supports .pdf, .docx, .xlsx
+                  </p>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,.docx,.xlsx"
+                    className="hidden"
+                    onChange={(e) => {
+                      const selected = e.target.files?.[0];
+                      if (selected) setFile(selected);
+                    }}
+                  />
+                </div>
+
+                {manualError && (
+                  <p className="text-[13px]" style={{ color: "#be123c" }}>{manualError}</p>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleImportSubmit}
+                  disabled={!file || importBusy}
+                  className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg text-[14px] font-semibold text-white disabled:opacity-50"
+                  style={{ background: "var(--cta)" }}
+                >
+                  {importBusy ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      Larry is reading your document...
+                    </>
+                  ) : (
+                    "Process with Larry"
+                  )}
+                </button>
+              </div>
             </SectionCard>
           )}
         </div>
