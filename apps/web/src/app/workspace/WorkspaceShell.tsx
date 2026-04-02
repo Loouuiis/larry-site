@@ -43,6 +43,7 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
     if (pathname?.startsWith("/workspace/my-work")) return "my-work";
     if (pathname?.startsWith("/workspace/actions")) return "actions";
     if (pathname?.startsWith("/workspace/meetings")) return "meetings";
+    if (pathname?.startsWith("/workspace/calendar")) return "calendar";
     if (pathname?.startsWith("/workspace/documents")) return "documents";
     if (pathname?.startsWith("/workspace/chats")) return "chats";
     if (pathname?.startsWith("/workspace/settings")) return "settings";

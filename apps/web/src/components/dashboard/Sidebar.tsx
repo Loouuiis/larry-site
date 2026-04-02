@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  FileText, MessageSquare, ClipboardList,
+  FileText, MessageSquare, ClipboardList, Calendar,
   X, FolderOpen, Home, ListTodo, Settings,
   Search, LogOut, User, FolderKanban, CheckSquare,
   Plus, BarChart2, Sparkles, PanelLeftClose, PanelLeftOpen,
@@ -18,17 +18,18 @@ const DRAWER_EASE = [0.22, 1, 0.36, 1] as const;
 /* ─── Types ────────────────────────────────────────────────────────── */
 
 export type NavSection = "projects" | "documents" | "chats" | "meetings" | "analytics";
-export type WorkspaceSidebarNav = "home" | "my-work" | "actions" | "project" | "meetings" | "documents" | "chats" | "larry" | "settings";
+export type WorkspaceSidebarNav = "home" | "my-work" | "actions" | "project" | "meetings" | "calendar" | "documents" | "chats" | "larry" | "settings";
 
 const WORKSPACE_NAV: { id: WorkspaceSidebarNav; label: string; icon: React.ElementType; href: string }[] = [
-  { id: "home",      label: "Home",      icon: Home,         href: "/workspace"           },
-  { id: "my-work",   label: "My work",   icon: ListTodo,     href: "/workspace/my-work"   },
-  { id: "actions",   label: "Actions",   icon: CheckSquare,  href: "/workspace/actions"   },
-  { id: "meetings",  label: "Meetings",  icon: ClipboardList, href: "/workspace/meetings" },
-  { id: "documents", label: "Documents", icon: FileText,     href: "/workspace/documents" },
-  { id: "chats",     label: "Chats",     icon: MessageSquare, href: "/workspace/chats"    },
-  { id: "larry",     label: "Ask Larry", icon: Sparkles,     href: "/workspace/chats"     },
-  { id: "settings",  label: "Settings",  icon: Settings,     href: "/workspace/settings"  },
+  { id: "home",      label: "Home",       icon: Home,          href: "/workspace"           },
+  { id: "my-work",   label: "My tasks",   icon: ListTodo,      href: "/workspace/my-work"   },
+  { id: "actions",   label: "Actions",    icon: CheckSquare,   href: "/workspace/actions"   },
+  { id: "meetings",  label: "Meetings",   icon: ClipboardList, href: "/workspace/meetings"  },
+  { id: "calendar",  label: "Calendar",   icon: Calendar,      href: "/workspace/calendar"  },
+  { id: "documents", label: "Documents",  icon: FileText,      href: "/workspace/documents" },
+  { id: "chats",     label: "Chats",      icon: MessageSquare, href: "/workspace/chats"     },
+  { id: "larry",     label: "Ask Larry",  icon: Sparkles,      href: "/workspace/chats"     },
+  { id: "settings",  label: "Settings",   icon: Settings,      href: "/workspace/settings"  },
 ];
 
 /* ─── WorkspaceSidebarInner ───────────────────────────────────────── */
