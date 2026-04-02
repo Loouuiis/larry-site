@@ -40,6 +40,7 @@ export function CollaboratorsPanel({ projectId }: { projectId: string }) {
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [addUserId, setAddUserId] = useState("");
   const [addRole, setAddRole] = useState<ProjectMembershipRole>("viewer");
+  const [viewMode, setViewMode] = useState<"list" | "tree">("list");
 
   const canManage = membersPayload?.canManage ?? false;
 
@@ -228,14 +229,40 @@ export function CollaboratorsPanel({ projectId }: { projectId: string }) {
             Project-scoped members and roles for shared chat and action visibility.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void refresh()}
-          className="text-[12px] font-semibold"
-          style={{ color: "var(--cta)" }}
-        >
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 rounded-lg border p-0.5" style={{ borderColor: "var(--border)" }}>
+            <button
+              type="button"
+              onClick={() => setViewMode("list")}
+              className="rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors"
+              style={{
+                background: viewMode === "list" ? "var(--surface-2)" : "transparent",
+                color: viewMode === "list" ? "var(--text-1)" : "var(--text-muted)",
+              }}
+            >
+              List
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("tree")}
+              className="rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors"
+              style={{
+                background: viewMode === "tree" ? "var(--surface-2)" : "transparent",
+                color: viewMode === "tree" ? "var(--text-1)" : "var(--text-muted)",
+              }}
+            >
+              Tree
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            className="text-[12px] font-semibold"
+            style={{ color: "var(--cta)" }}
+          >
+            Refresh
+          </button>
+        </div>
       </div>
 
       {loading && (
@@ -319,82 +346,127 @@ export function CollaboratorsPanel({ projectId }: { projectId: string }) {
             </div>
           )}
 
-          <div className="space-y-2">
-            {membersPayload.members.length === 0 ? (
-              <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>
-                No collaborators found.
-              </p>
-            ) : (
-              membersPayload.members.map((member) => {
-                const updateKey = `update:${member.userId}`;
-                const removeKey = `remove:${member.userId}`;
-                return (
-                  <div
-                    key={member.userId}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-[16px] border px-4 py-3"
-                    style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] font-semibold" style={{ color: "var(--text-1)" }}>
-                        {member.name}
-                      </p>
-                      <p className="truncate text-[12px]" style={{ color: "var(--text-muted)" }}>
-                        {member.email} - Tenant {formatRole(member.tenantRole)}
-                      </p>
-                    </div>
-
-                    {canManage ? (
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={roleDrafts[member.userId] ?? member.projectRole}
-                          onChange={(event) =>
-                            setRoleDrafts((current) => ({
-                              ...current,
-                              [member.userId]: event.target.value as ProjectMembershipRole,
-                            }))
-                          }
-                          disabled={busyAction === updateKey || busyAction === removeKey}
-                          className="rounded-full border px-3 py-1.5 text-[12px] font-semibold"
-                          style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-1)" }}
-                        >
-                          {ROLE_OPTIONS.map((role) => (
-                            <option key={role} value={role}>
-                              {formatRole(role)}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => void updateRole(member.userId)}
-                          disabled={busyAction === updateKey || busyAction === removeKey}
-                          className="rounded-full border px-3 py-1.5 text-[12px] font-semibold"
-                          style={{ borderColor: "var(--border)", color: "var(--text-2)" }}
-                        >
-                          {busyAction === updateKey ? "Updating..." : "Update"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void removeMember(member.userId)}
-                          disabled={busyAction === updateKey || busyAction === removeKey}
-                          className="rounded-full border px-3 py-1.5 text-[12px] font-semibold"
-                          style={{ borderColor: "#fecaca", color: "#b91c1c", background: "#fff" }}
-                        >
-                          {busyAction === removeKey ? "Removing..." : "Remove"}
-                        </button>
+          {viewMode === "list" && (
+            <div className="space-y-2">
+              {membersPayload.members.length === 0 ? (
+                <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>
+                  No collaborators found.
+                </p>
+              ) : (
+                membersPayload.members.map((member) => {
+                  const updateKey = `update:${member.userId}`;
+                  const removeKey = `remove:${member.userId}`;
+                  return (
+                    <div
+                      key={member.userId}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-[16px] border px-4 py-3"
+                      style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[13px] font-semibold" style={{ color: "var(--text-1)" }}>
+                          {member.name}
+                        </p>
+                        <p className="truncate text-[12px]" style={{ color: "var(--text-muted)" }}>
+                          {member.email} - Tenant {formatRole(member.tenantRole)}
+                        </p>
                       </div>
-                    ) : (
-                      <span
-                        className="rounded-full border px-3 py-1 text-[12px] font-semibold"
-                        style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-2)" }}
+
+                      {canManage ? (
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={roleDrafts[member.userId] ?? member.projectRole}
+                            onChange={(event) =>
+                              setRoleDrafts((current) => ({
+                                ...current,
+                                [member.userId]: event.target.value as ProjectMembershipRole,
+                              }))
+                            }
+                            disabled={busyAction === updateKey || busyAction === removeKey}
+                            className="rounded-full border px-3 py-1.5 text-[12px] font-semibold"
+                            style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-1)" }}
+                          >
+                            {ROLE_OPTIONS.map((role) => (
+                              <option key={role} value={role}>
+                                {formatRole(role)}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => void updateRole(member.userId)}
+                            disabled={busyAction === updateKey || busyAction === removeKey}
+                            className="rounded-full border px-3 py-1.5 text-[12px] font-semibold"
+                            style={{ borderColor: "var(--border)", color: "var(--text-2)" }}
+                          >
+                            {busyAction === updateKey ? "Updating..." : "Update"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void removeMember(member.userId)}
+                            disabled={busyAction === updateKey || busyAction === removeKey}
+                            className="rounded-full border px-3 py-1.5 text-[12px] font-semibold"
+                            style={{ borderColor: "#fecaca", color: "#b91c1c", background: "#fff" }}
+                          >
+                            {busyAction === removeKey ? "Removing..." : "Remove"}
+                          </button>
+                        </div>
+                      ) : (
+                        <span
+                          className="rounded-full border px-3 py-1 text-[12px] font-semibold"
+                          style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-2)" }}
+                        >
+                          {formatRole(member.projectRole)}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+
+          {viewMode === "tree" && (
+            <div className="space-y-1">
+              {(["owner", "editor", "viewer"] as const).map((role) => {
+                const roleMembers = membersPayload.members.filter((m) => m.projectRole === role);
+                if (roleMembers.length === 0) return null;
+                return (
+                  <div key={role}>
+                    <p
+                      className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider"
+                      style={{ color: "var(--text-disabled)" }}
+                    >
+                      {role === "owner" ? "Owners" : role === "editor" ? "Editors" : "Viewers"}
+                    </p>
+                    {roleMembers.map((member) => (
+                      <div
+                        key={member.userId}
+                        className="flex items-center gap-3 rounded-lg px-3 py-2 transition-colors"
+                        style={{ marginLeft: role === "editor" ? "16px" : role === "viewer" ? "32px" : "0" }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "")}
                       >
-                        {formatRole(member.projectRole)}
-                      </span>
-                    )}
+                        <div
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold"
+                          style={{ background: "var(--brand-soft, #e2d6fc)", color: "var(--brand)" }}
+                        >
+                          {member.name?.charAt(0)?.toUpperCase() ?? "?"}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[13px] font-medium truncate" style={{ color: "var(--text-1)" }}>
+                            {member.name}
+                          </p>
+                          <p className="text-[11px] truncate" style={{ color: "var(--text-disabled)" }}>
+                            {member.email}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 );
-              })
-            )}
-          </div>
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>
