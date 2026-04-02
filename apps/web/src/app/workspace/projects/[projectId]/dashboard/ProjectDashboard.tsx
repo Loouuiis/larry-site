@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Download } from "lucide-react";
 
 interface DashboardData {
   health?: {
@@ -130,6 +131,8 @@ function AssigneeBar({ byAssignee }: { byAssignee: Record<string, { total: numbe
 export function ProjectDashboard({ projectId }: { projectId: string }) {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const dashboardRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -146,7 +149,34 @@ export function ProjectDashboard({ projectId }: { projectId: string }) {
 
   useEffect(() => { void load(); }, [load]);
 
-  const handlePrint = () => window.print();
+  async function handleExport() {
+    if (!dashboardRef.current) return;
+    setExporting(true);
+    try {
+      const html2canvas = (await import("html2canvas-pro")).default;
+      const { jsPDF } = await import("jspdf");
+
+      const canvas = await html2canvas(dashboardRef.current, {
+        scale: 2,
+        backgroundColor: "#ffffff",
+        useCORS: true,
+      });
+
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF({
+        orientation: "landscape",
+        unit: "px",
+        format: [canvas.width, canvas.height],
+      });
+
+      pdf.addImage(imgData, "PNG", 0, 0, canvas.width, canvas.height);
+      pdf.save("project-dashboard.pdf");
+    } catch {
+      // Silently fail — user can try again
+    } finally {
+      setExporting(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -167,14 +197,17 @@ export function ProjectDashboard({ projectId }: { projectId: string }) {
         <h1 className="text-[22px] font-semibold text-[var(--pm-text)]">Project Dashboard</h1>
         <button
           type="button"
-          onClick={handlePrint}
-          className="h-9 rounded-lg border border-[var(--pm-border)] bg-white px-4 text-[13px] font-medium text-[var(--pm-text-secondary)] hover:bg-[var(--pm-gray-light)]"
+          onClick={handleExport}
+          disabled={exporting || loading}
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[13px] font-medium transition-colors disabled:opacity-50"
+          style={{ borderColor: "var(--border, var(--pm-border))", color: "var(--text-2, var(--pm-text-secondary))" }}
         >
-          Generate Report (PDF)
+          <Download size={14} />
+          {exporting ? "Exporting..." : "Export PDF"}
         </button>
       </div>
 
-      <div className="mx-auto max-w-5xl px-8 py-6 space-y-6">
+      <div ref={dashboardRef} className="mx-auto max-w-5xl px-8 py-6 space-y-6">
         {/* KPI row */}
         <div className="grid grid-cols-3 gap-4">
           {[
