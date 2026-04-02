@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { Activity, CheckCircle2, FolderKanban, RefreshCw, Sparkles } from "lucide-react";
+import { Activity, CheckCircle2, FolderKanban, Mail, RefreshCw, Sparkles } from "lucide-react";
 import type { WorkspaceLarryEvent } from "@/app/dashboard/types";
 import { useLarryActionCentre } from "@/hooks/useLarryActionCentre";
+import { useEmailDrafts } from "@/hooks/useEmailDrafts";
 
 export const dynamic = "force-dynamic";
 
@@ -162,6 +163,8 @@ export default function WorkspaceActionsPage() {
     refresh,
   } = useLarryActionCentre();
 
+  const { drafts: emailDrafts, sending: sendingDraft, send: sendDraft, dismiss: dismissDraft } = useEmailDrafts();
+
   const projectsTouched = new Set([...suggested, ...activity].map((event) => event.projectId)).size;
   const linkedConversationCount = new Set(
     [...suggested, ...activity].map((event) => event.conversationId).filter(Boolean)
@@ -247,6 +250,67 @@ export default function WorkspaceActionsPage() {
             </div>
           ))}
         </section>
+
+        {emailDrafts.length > 0 && (
+          <section
+            style={{
+              borderRadius: "var(--radius-card)",
+              border: "1px solid var(--border)",
+              background: "var(--surface)",
+              padding: "20px",
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <Mail size={18} style={{ color: "var(--cta)" }} />
+              <div>
+                <p className="text-[18px] font-semibold" style={{ color: "var(--text-1)" }}>
+                  Email drafts
+                </p>
+                <p className="mt-1 text-[13px]" style={{ color: "var(--text-2)" }}>
+                  Larry has prepared these emails for your review.
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 space-y-3">
+              {emailDrafts.map((draft) => (
+                <div
+                  key={draft.id}
+                  className="rounded-xl border px-4 py-4"
+                  style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
+                >
+                  <p className="text-[13px] font-semibold" style={{ color: "var(--text-1)" }}>
+                    To: {draft.recipient}
+                  </p>
+                  <p className="text-[14px] font-semibold mt-1" style={{ color: "var(--text-1)" }}>
+                    {draft.subject}
+                  </p>
+                  <p className="mt-2 text-[13px] leading-6 line-clamp-3" style={{ color: "var(--text-2)" }}>
+                    {draft.body}
+                  </p>
+                  <div className="mt-3 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void dismissDraft(draft.id)}
+                      className="rounded-lg border px-3 py-1.5 text-[12px] font-semibold"
+                      style={{ borderColor: "var(--border)", color: "var(--text-2)" }}
+                    >
+                      Dismiss
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void sendDraft(draft.id)}
+                      disabled={sendingDraft === draft.id}
+                      className="rounded-lg px-3 py-1.5 text-[12px] font-semibold text-white"
+                      style={{ background: "var(--cta)" }}
+                    >
+                      {sendingDraft === draft.id ? "Sending..." : "Approve & Send"}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {error && (
           <div
