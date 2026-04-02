@@ -16,62 +16,54 @@ function Breadcrumb({ workspaceName }: { workspaceName: string }) {
   const pathname = usePathname();
   const parts: { label: string; href?: string }[] = [];
 
-  if (pathname?.startsWith("/workspace/projects/new")) {
+  const projectMatch = pathname?.match(/^\/workspace\/projects\/([^/]+)(\/(.+))?/);
+  if (projectMatch) {
     parts.push({ label: workspaceName || "Home", href: "/workspace" });
-    parts.push({ label: "New Project" });
-  } else {
-    const projectMatch = pathname?.match(/^\/workspace\/projects\/([^/]+)(\/(.+))?/);
-    if (projectMatch) {
-      parts.push({ label: workspaceName || "Home", href: "/workspace" });
-      parts.push({ label: "Project" });
-      if (projectMatch[3]) {
-        const section = projectMatch[3];
-        parts.push({ label: section.charAt(0).toUpperCase() + section.slice(1) });
-      }
-    } else if (pathname?.startsWith("/workspace/meetings")) {
-      parts.push({ label: workspaceName || "Home", href: "/workspace" });
-      parts.push({ label: "Meetings" });
-    } else if (pathname?.startsWith("/workspace/actions")) {
-      parts.push({ label: workspaceName || "Home", href: "/workspace" });
-      parts.push({ label: "Actions" });
-    } else if (pathname?.startsWith("/workspace/documents")) {
-      parts.push({ label: workspaceName || "Home", href: "/workspace" });
-      parts.push({ label: "Documents" });
-    } else if (pathname?.startsWith("/workspace/chats")) {
-      parts.push({ label: workspaceName || "Home", href: "/workspace" });
-      parts.push({ label: "Chats" });
-    } else if (pathname?.startsWith("/workspace/settings")) {
-      parts.push({ label: workspaceName || "Home", href: "/workspace" });
-      parts.push({ label: "Settings" });
-    } else if (pathname?.startsWith("/workspace/my-work")) {
-      parts.push({ label: workspaceName || "Home", href: "/workspace" });
-      parts.push({ label: "My Work" });
-    } else if (pathname === "/workspace") {
-      parts.push({ label: "Home" });
+    parts.push({ label: "Project" });
+    if (projectMatch[3]) {
+      const section = projectMatch[3];
+      parts.push({ label: section.charAt(0).toUpperCase() + section.slice(1) });
     }
+  } else if (pathname?.startsWith("/workspace/meetings")) {
+    parts.push({ label: workspaceName || "Home", href: "/workspace" });
+    parts.push({ label: "Meetings" });
+  } else if (pathname?.startsWith("/workspace/documents")) {
+    parts.push({ label: workspaceName || "Home", href: "/workspace" });
+    parts.push({ label: "Documents" });
+  } else if (pathname?.startsWith("/workspace/chats")) {
+    parts.push({ label: workspaceName || "Home", href: "/workspace" });
+    parts.push({ label: "Chats" });
+  } else if (pathname?.startsWith("/workspace/settings")) {
+    parts.push({ label: workspaceName || "Home", href: "/workspace" });
+    parts.push({ label: "Settings" });
+  } else if (pathname?.startsWith("/workspace/my-work")) {
+    parts.push({ label: workspaceName || "Home", href: "/workspace" });
+    parts.push({ label: "My Work" });
+  } else if (pathname === "/workspace") {
+    parts.push({ label: "Home" });
   }
 
   if (parts.length === 0) return null;
 
   return (
-    <nav className="flex min-w-0 items-center gap-1" aria-label="Breadcrumb">
-      {parts.map((part, index) => (
-        <span key={index} className="flex min-w-0 items-center gap-1">
-          {index > 0 && (
-            <span className="select-none text-[13px]" style={{ color: "var(--text-disabled)" }}>
+    <nav className="flex items-center gap-1 min-w-0" aria-label="Breadcrumb">
+      {parts.map((part, i) => (
+        <span key={i} className="flex items-center gap-1 min-w-0">
+          {i > 0 && (
+            <span className="text-[13px] select-none" style={{ color: "var(--text-disabled)" }}>
               &gt;
             </span>
           )}
           {part.href ? (
             <Link
               href={part.href}
-              className="truncate text-[14px] transition-colors hover:opacity-80"
+              className="text-[14px] truncate transition-colors hover:opacity-80"
               style={{ color: "var(--text-muted)" }}
             >
               {part.label}
             </Link>
           ) : (
-            <span className="truncate text-[14px] font-medium" style={{ color: "var(--text-2)" }}>
+            <span className="text-[14px] font-medium truncate" style={{ color: "var(--text-2)" }}>
               {part.label}
             </span>
           )}
@@ -81,21 +73,15 @@ function Breadcrumb({ workspaceName }: { workspaceName: string }) {
   );
 }
 
-export function WorkspaceTopBar({
-  workspaceName = "Larry Workspace",
-  onMobileMenuOpen,
-}: WorkspaceTopBarProps) {
+export function WorkspaceTopBar({ userEmail: _userEmail, workspaceName = "Larry Workspace", onMobileMenuOpen }: WorkspaceTopBarProps) {
   const chrome = useWorkspaceChrome();
 
   return (
     <header
-      className="flex h-12 shrink-0 items-center justify-between gap-4 px-4"
-      style={{
-        height: "48px",
-        background: "var(--surface)",
-        borderBottom: "1px solid var(--border)",
-      }}
+      className="flex h-12 shrink-0 items-center justify-between px-4 gap-4"
+      style={{ height: "48px" }}
     >
+      {/* Mobile: hamburger */}
       <button
         className="flex h-8 w-8 items-center justify-center rounded-lg md:hidden"
         style={{ color: "var(--text-muted)" }}
@@ -105,11 +91,8 @@ export function WorkspaceTopBar({
         <Menu size={18} />
       </button>
 
-      <div className="hidden min-w-0 flex-1 md:block">
-        <Breadcrumb workspaceName={workspaceName} />
-      </div>
-
-      <div className="flex shrink-0 items-center">
+      {/* Right: bell */}
+      <div className="flex items-center shrink-0 ml-auto">
         <NotificationBell count={chrome?.notifCount ?? 0} onCountChange={() => undefined} />
       </div>
     </header>

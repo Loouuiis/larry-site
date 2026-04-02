@@ -767,7 +767,7 @@ describe("Larry action centre routes", () => {
 
     expect(response.statusCode).toBe(422);
     expect(response.json()).toMatchObject({
-      message: expect.stringContaining("Google Calendar is not linked to this project"),
+      message: expect.stringContaining("No calendar connector is linked to this project"),
     });
     expect(markLarryEventAccepted).not.toHaveBeenCalled();
     expect(createGoogleCalendarEvent).not.toHaveBeenCalled();

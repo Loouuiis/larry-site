@@ -69,9 +69,9 @@ function mapApiComment(c: ApiComment): Comment {
 
 const PANEL_TO_API_STATUS: Record<TaskStatus, string> = {
   done:       "completed",
-  "on-track": "in_progress",
-  "at-risk":  "blocked",
-  overdue:    "blocked",
+  "on-track": "on_track",
+  "at-risk":  "at_risk",
+  overdue:    "overdue",
   upcoming:   "not_started",
 };
 

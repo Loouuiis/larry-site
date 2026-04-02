@@ -48,11 +48,11 @@ interface ProjectDocumentOption {
 }
 
 const STATUS_OPTIONS: { value: TaskStatus; label: string; pillClass: string }[] = [
-  { value: "not_started", label: "Not Started",  pillClass: "pm-pill-not-started" },
-  { value: "in_progress", label: "In Progress",  pillClass: "pm-pill-working"     },
-  { value: "waiting",     label: "Waiting",      pillClass: "pm-pill-not-started" },
-  { value: "blocked",     label: "Blocked",      pillClass: "pm-pill-stuck"       },
-  { value: "completed",   label: "Done",         pillClass: "pm-pill-done"        },
+  { value: "not_started", label: "Not started", pillClass: "pm-pill-not-started" },
+  { value: "on_track",    label: "On track",    pillClass: "pm-pill-working"     },
+  { value: "at_risk",     label: "At risk",     pillClass: "pm-pill-review"      },
+  { value: "overdue",     label: "Overdue",     pillClass: "pm-pill-stuck"       },
+  { value: "completed",   label: "Completed",   pillClass: "pm-pill-done"        },
 ];
 
 async function readJson<T>(res: Response): Promise<T> {

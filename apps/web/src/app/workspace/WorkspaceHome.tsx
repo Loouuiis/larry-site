@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { TriangleAlert, Plus } from "lucide-react";
-import type { WorkspaceHomeData, WorkspaceProject, WorkspaceTask } from "@/app/dashboard/types";
+import type { WorkspaceProject, WorkspaceSnapshot, WorkspaceTask } from "@/app/dashboard/types";
 import { ProjectCreateSheet } from "./ProjectCreateSheet";
 import { useWorkspaceChrome } from "./WorkspaceChromeContext";
 
@@ -24,6 +24,13 @@ interface LarryBriefingContent {
   totalNeedsYou: number;
 }
 
+interface AuthMePayload {
+  user?: {
+    email?: string | null;
+    displayName?: string | null;
+  } | null;
+}
+
 interface ProjectCardModel {
   id: string;
   name: string;
@@ -36,10 +43,6 @@ interface ProjectCardModel {
   totalTasks: number;
   openTasks: number;
   blockedTasks: number;
-}
-
-interface WorkspaceHomeProps {
-  viewerEmail?: string | null;
 }
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -65,6 +68,30 @@ function formatRelativeTime(value: string | null | undefined): string {
   return `${Math.floor(days / 30)}mo ago`;
 }
 
+const PROJECT_STATUS_LABEL: Record<string, string> = {
+  active: "On track",
+  on_track: "On track",
+  at_risk: "At risk",
+  overdue: "Overdue",
+  completed: "Completed",
+  not_started: "Not started",
+};
+
+function projectStatusLabel(status: string | undefined): string {
+  return PROJECT_STATUS_LABEL[status ?? ""] ?? "Not started";
+}
+
+function projectStatusPillClass(status: string | undefined): string {
+  const normalized = status === "active" ? "on_track" : status;
+  switch (normalized) {
+    case "completed": return "pm-pill-done";
+    case "overdue":   return "pm-pill-stuck";
+    case "on_track":  return "pm-pill-working";
+    case "at_risk":   return "pm-pill-review";
+    default: return "pm-pill-not-started";
+  }
+}
+
 function titleCase(value: string): string {
   return value
     .split(/[\s._-]+/)
@@ -73,9 +100,12 @@ function titleCase(value: string): string {
     .join(" ");
 }
 
-function deriveGreetingName(email: string | null | undefined): string {
-  if (email) {
-    const local = email.split("@")[0] ?? "there";
+function deriveGreetingName(user: AuthMePayload["user"] | null | undefined): string {
+  if (user?.displayName && user.displayName.trim().length > 0) {
+    return user.displayName.trim().split(/\s+/)[0];
+  }
+  if (user?.email) {
+    const local = user.email.split("@")[0] ?? "there";
     return titleCase(local);
   }
   return "there";
@@ -83,12 +113,12 @@ function deriveGreetingName(email: string | null | undefined): string {
 
 function buildProjectCard(
   project: WorkspaceProject,
-  tasks: WorkspaceTask[],
+  tasks: WorkspaceTask[]
 ): ProjectCardModel {
   const projectTasks = tasks.filter((task) => task.projectId === project.id);
   const completedTasks = projectTasks.filter((task) => task.status === "completed").length;
   const openTasks = projectTasks.filter((task) => task.status !== "completed").length;
-  const blockedTasks = projectTasks.filter((task) => task.status === "blocked").length;
+  const blockedTasks = projectTasks.filter((task) => task.status === "overdue" || task.status === "at_risk").length;
   const progress =
     project.completionRate != null
       ? Math.round(Number(project.completionRate) * 100)
@@ -101,9 +131,7 @@ function buildProjectCard(
     name: project.name,
     description:
       project.description?.trim() ||
-      (projectTasks.length > 0
-        ? "Live workspace with active delivery signals."
-        : "Ready for the first task and meeting signal."),
+      (projectTasks.length > 0 ? "Live workspace with active delivery signals." : "Ready for the first task and meeting signal."),
     status: project.status,
     riskLevel: project.riskLevel ?? "low",
     targetDate: project.targetDate,
@@ -115,15 +143,15 @@ function buildProjectCard(
   };
 }
 
-export function WorkspaceHome({ viewerEmail }: WorkspaceHomeProps) {
+export function WorkspaceHome() {
   const router = useRouter();
   const chrome = useWorkspaceChrome();
-  const [homeData, setHomeData] = useState<WorkspaceHomeData | null>(null);
+  const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
+  const [viewer, setViewer] = useState<AuthMePayload["user"] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [nudgeDismissed, setNudgeDismissed] = useState(false);
   const [briefing, setBriefing] = useState<LarryBriefingContent | null>(null);
-  const [archivedProjectsOpen, setArchivedProjectsOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
 
   const loadWorkspace = useCallback(async () => {
@@ -131,29 +159,29 @@ export function WorkspaceHome({ viewerEmail }: WorkspaceHomeProps) {
       setLoading(true);
       setError(null);
 
-      const homeResponse = await fetch("/api/workspace/home", { cache: "no-store" });
-      const homePayload = await readJson<WorkspaceHomeData>(homeResponse);
+      const [snapshotResponse, meResponse] = await Promise.all([
+        fetch("/api/workspace/snapshot?includeProjectContext=false", { cache: "no-store" }),
+        fetch("/api/auth/me", { cache: "no-store" }),
+      ]);
 
-      if (!homeResponse.ok) {
-        throw new Error(homePayload.error ?? "Could not load the workspace.");
+      const snapshotPayload = await readJson<WorkspaceSnapshot>(snapshotResponse);
+      const mePayload = await readJson<AuthMePayload>(meResponse);
+
+      if (!snapshotResponse.ok) {
+        throw new Error(snapshotPayload.error ?? "Could not load the workspace.");
       }
 
-      setHomeData(homePayload);
-      setError(homePayload.error ?? null);
+      setSnapshot(snapshotPayload);
+      setViewer(meResponse.ok ? mePayload.user ?? null : null);
 
+      // Fire-and-forget — briefing should not block the page render
       fetch("/api/workspace/larry/briefing", { cache: "no-store" })
-        .then((response) => (response.ok ? readJson<{ briefing: LarryBriefingContent }>(response) : null))
-        .then((payload) => {
-          if (payload?.briefing) {
-            setBriefing(payload.briefing);
-          }
-        })
-        .catch(() => {
-          // Briefing is supplementary. Ignore failures here.
-        });
+        .then((r) => (r.ok ? readJson<{ briefing: LarryBriefingContent }>(r) : null))
+        .then((payload) => { if (payload?.briefing) setBriefing(payload.briefing); })
+        .catch(() => { /* non-critical, ignore */ });
     } catch (loadError) {
       setError(
-        loadError instanceof Error ? loadError.message : "Could not load the workspace.",
+        loadError instanceof Error ? loadError.message : "Could not load the workspace."
       );
     } finally {
       setLoading(false);
@@ -174,17 +202,16 @@ export function WorkspaceHome({ viewerEmail }: WorkspaceHomeProps) {
   }, [loadWorkspace]);
 
   const projectCards = useMemo(() => {
-    const projects = homeData?.projects ?? [];
-    const tasks = homeData?.tasks ?? [];
+    const projects = snapshot?.projects ?? [];
+    const tasks = snapshot?.tasks ?? [];
     return projects.map((project) => buildProjectCard(project, tasks));
-  }, [homeData]);
+  }, [snapshot]);
 
-  const greetingName = deriveGreetingName(viewerEmail);
-  const archivedProjects = homeData?.archivedProjects ?? [];
+  const greetingName = deriveGreetingName(viewer);
   const connectedCount = [
-    homeData?.connectors?.slack?.connected,
-    homeData?.connectors?.calendar?.connected,
-    homeData?.connectors?.email?.connected,
+    snapshot?.connectors?.slack?.connected,
+    snapshot?.connectors?.calendar?.connected,
+    snapshot?.connectors?.email?.connected,
   ].filter(Boolean).length;
 
   return (
@@ -199,7 +226,7 @@ export function WorkspaceHome({ viewerEmail }: WorkspaceHomeProps) {
           <h1 className="text-[2.5rem] font-bold leading-tight" style={{ color: "var(--text-1)" }}>
             Your projects
           </h1>
-          <p className="text-body-sm mt-1" style={{ color: "var(--text-muted)" }}>
+          <p className="text-[15px] mt-1" style={{ color: "var(--text-muted)" }}>
             Select a project to get started.
           </p>
           <div className="mt-4 flex justify-center">
@@ -221,6 +248,7 @@ export function WorkspaceHome({ viewerEmail }: WorkspaceHomeProps) {
           </div>
         </header>
 
+        {/* Larry briefing — per-project summaries */}
         {briefing && briefing.projects.length > 0 && (
           <div
             style={{
@@ -230,17 +258,18 @@ export function WorkspaceHome({ viewerEmail }: WorkspaceHomeProps) {
               overflow: "hidden",
             }}
           >
-            {briefing.projects.map((bp, index) => (
+            {briefing.projects.map((bp, i) => (
               <div
                 key={bp.projectId}
                 style={{
                   padding: "14px 20px",
-                  borderTop: index > 0 ? "1px solid var(--border)" : undefined,
+                  borderTop: i > 0 ? "1px solid var(--border)" : undefined,
                   display: "flex",
                   alignItems: "flex-start",
                   gap: "12px",
                 }}
               >
+                {/* Status pill */}
                 <span
                   className="shrink-0 text-[11px] font-semibold leading-none"
                   style={{
@@ -264,15 +293,20 @@ export function WorkspaceHome({ viewerEmail }: WorkspaceHomeProps) {
                   {bp.statusLabel}
                 </span>
 
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13px] font-semibold leading-snug" style={{ color: "var(--text-1)" }}>
+                {/* Summary */}
+                <div className="flex-1 min-w-0">
+                  <p
+                    className="text-[13px] font-semibold leading-snug truncate"
+                    style={{ color: "var(--text-1)" }}
+                  >
                     {bp.name}
                   </p>
-                  <p className="mt-0.5 line-clamp-2 text-body-sm" style={{ color: "var(--text-2)" }}>
+                  <p className="text-body-sm mt-0.5 line-clamp-2" style={{ color: "var(--text-2)" }}>
                     {bp.summary}
                   </p>
                 </div>
 
+                {/* Needs you badge */}
                 {bp.needsYou && (
                   <span
                     className="shrink-0 text-[11px] font-semibold leading-none"
@@ -292,9 +326,10 @@ export function WorkspaceHome({ viewerEmail }: WorkspaceHomeProps) {
           </div>
         )}
 
+        {/* Error banner */}
         {error && (
           <div
-            className="flex items-start gap-3 rounded-lg px-4 py-3 text-[14px]"
+            className="flex items-start gap-3 px-4 py-3 rounded-lg text-[14px]"
             style={{
               background: "var(--pm-red-light, #fff6f7)",
               border: "1px solid var(--pm-red)",
@@ -307,6 +342,7 @@ export function WorkspaceHome({ viewerEmail }: WorkspaceHomeProps) {
           </div>
         )}
 
+        {/* Project cards grid */}
         {loading ? (
           <div className="grid gap-4 md:grid-cols-2">
             {Array.from({ length: 4 }).map((_, index) => (
@@ -327,15 +363,13 @@ export function WorkspaceHome({ viewerEmail }: WorkspaceHomeProps) {
             }}
           >
             <p className="text-h1" style={{ color: "var(--text-1)" }}>
-              {archivedProjects.length > 0 ? "No active projects" : "No projects yet"}
+              No projects yet
             </p>
             <p
               className="mx-auto mt-2 max-w-[520px] text-[15px] leading-7"
               style={{ color: "var(--text-muted)" }}
             >
-              {archivedProjects.length > 0
-                ? "Everything in this workspace is archived for reference. Open one below or start a new project to bring fresh work back into the active shell."
-                : "Start with a live project so Larry can begin collecting task movement, meeting context, and approval-worthy actions in one place."}
+              Start with a live project so Larry can begin collecting task movement, meeting context, and approval-worthy actions in one place.
             </p>
             <Link
               href="/workspace/projects/new"
@@ -365,10 +399,27 @@ export function WorkspaceHome({ viewerEmail }: WorkspaceHomeProps) {
                   padding: "20px",
                 }}
               >
-                <p className="truncate text-[16px] font-semibold leading-snug" style={{ color: "var(--text-1)" }}>
-                  {project.name}
+                {/* Project name + status */}
+                <div className="flex items-center justify-between gap-2">
+                  <p
+                    className="text-[16px] font-semibold leading-snug truncate"
+                    style={{ color: "var(--text-1)" }}
+                  >
+                    {project.name}
+                  </p>
+                  <span className={`pm-pill shrink-0 ${projectStatusPillClass(project.status)}`}>
+                    {projectStatusLabel(project.status)}
+                  </span>
+                </div>
+
+                {/* Description — 1 line truncated */}
+                <p
+                  className="text-body-sm mt-1 truncate"
+                >
+                  {project.description}
                 </p>
-                <p className="mt-1 truncate text-body-sm">{project.description}</p>
+
+                {/* Progress bar */}
                 <div
                   className="mt-4 w-full overflow-hidden"
                   style={{
@@ -386,7 +437,11 @@ export function WorkspaceHome({ viewerEmail }: WorkspaceHomeProps) {
                     }}
                   />
                 </div>
-                <div className="mt-3 flex items-center justify-between text-body-sm">
+
+                {/* Footer row */}
+                <div
+                  className="mt-3 flex items-center justify-between text-body-sm"
+                >
                   <span>{project.progress}%</span>
                   <span>{project.openTasks} open tasks</span>
                   <span>Updated {formatRelativeTime(project.updatedAt)}</span>
@@ -396,78 +451,7 @@ export function WorkspaceHome({ viewerEmail }: WorkspaceHomeProps) {
           </div>
         )}
 
-        {!loading && archivedProjects.length > 0 && (
-          <section
-            style={{
-              border: "1px solid var(--border)",
-              borderRadius: "var(--radius-card)",
-              background: "var(--surface)",
-              padding: "16px 20px",
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => setArchivedProjectsOpen((open) => !open)}
-              className="flex w-full items-center justify-between gap-4 text-left"
-              aria-expanded={archivedProjectsOpen}
-              aria-controls="workspace-archived-projects"
-            >
-              <div>
-                <p className="text-[16px] font-semibold" style={{ color: "var(--text-1)" }}>
-                  Archived projects
-                </p>
-                <p className="mt-1 text-[13px]" style={{ color: "var(--text-muted)" }}>
-                  {archivedProjects.length} project{archivedProjects.length !== 1 ? "s" : ""} hidden from the active workspace shell.
-                </p>
-              </div>
-              <span className="text-[13px] font-semibold" style={{ color: "var(--cta)" }}>
-                {archivedProjectsOpen ? "Hide" : "Show"}
-              </span>
-            </button>
-
-            {archivedProjectsOpen && (
-              <div id="workspace-archived-projects" className="mt-4 grid gap-3 md:grid-cols-2">
-                {archivedProjects.map((project) => (
-                  <button
-                    key={project.id}
-                    type="button"
-                    onClick={() => router.push(`/workspace/projects/${project.id}`)}
-                    className="text-left transition-shadow hover:shadow-[var(--shadow-1)]"
-                    style={{
-                      borderRadius: "var(--radius-card)",
-                      border: "1px solid var(--border)",
-                      background: "var(--surface-2)",
-                      padding: "16px",
-                    }}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="truncate text-[15px] font-semibold" style={{ color: "var(--text-1)" }}>
-                        {project.name}
-                      </p>
-                      <span
-                        className="inline-flex items-center rounded-full border px-2 py-1 text-[11px] font-medium"
-                        style={{
-                          borderColor: "var(--border)",
-                          background: "var(--surface)",
-                          color: "var(--text-2)",
-                        }}
-                      >
-                        Archived
-                      </span>
-                    </div>
-                    <p className="mt-2 line-clamp-2 text-[13px] leading-6" style={{ color: "var(--text-2)" }}>
-                      {project.description?.trim() || "Reference workspace kept available by direct link."}
-                    </p>
-                    <p className="mt-3 text-[12px]" style={{ color: "var(--text-muted)" }}>
-                      Updated {formatRelativeTime(project.updatedAt)}
-                    </p>
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
-        )}
-
+        {/* Connected inputs nudge — only when all connectors are disconnected */}
         {!nudgeDismissed && connectedCount === 0 && (
           <div
             className="flex items-center justify-between gap-4"
@@ -480,7 +464,11 @@ export function WorkspaceHome({ viewerEmail }: WorkspaceHomeProps) {
           >
             <p className="text-[14px]" style={{ color: "var(--text-2)" }}>
               Connect Slack or Calendar to let Larry monitor signals automatically.{" "}
-              <Link href="/workspace/settings/connectors" className="font-semibold" style={{ color: "var(--cta)" }}>
+              <Link
+                href="/workspace/settings/connectors"
+                className="font-semibold"
+                style={{ color: "var(--cta)" }}
+              >
                 Set up →
               </Link>
             </p>
@@ -495,6 +483,7 @@ export function WorkspaceHome({ viewerEmail }: WorkspaceHomeProps) {
             </button>
           </div>
         )}
+
       </div>
 
       <ProjectCreateSheet

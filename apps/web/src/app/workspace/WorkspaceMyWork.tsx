@@ -1,8 +1,8 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { WorkspaceMyWorkData, WorkspaceTask } from "@/app/dashboard/types";
+import type { WorkspaceSnapshot, WorkspaceTask } from "@/app/dashboard/types";
 
 async function readJson<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -14,28 +14,30 @@ async function readJson<T>(response: Response): Promise<T> {
   }
 }
 
+type MeResponse = { user?: { id?: string | null } | null };
+
 function dueBucket(due: string | null, now: Date): string {
   if (!due) return "No date";
-  const date = new Date(`${due}T12:00:00`);
-  if (Number.isNaN(date.getTime())) return "No date";
+  const d = new Date(due + "T12:00:00");
+  if (Number.isNaN(d.getTime())) return "No date";
   const day = 86_400_000;
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const dueStart = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-  const diff = Math.round((dueStart - todayStart) / day);
+  const t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const t1 = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const diff = Math.round((t1 - t0) / day);
   if (diff < 0) return "Past due";
   if (diff === 0) return "Today";
-  if (diff <= 7) return "This week";
-  if (diff <= 14) return "Next week";
+  if (diff > 0 && diff <= 7) return "This week";
+  if (diff > 7 && diff <= 14) return "Next week";
   return "Later";
 }
 
 function isOverdue(due: string | null, now: Date): boolean {
   if (!due) return false;
-  const date = new Date(`${due}T12:00:00`);
-  if (Number.isNaN(date.getTime())) return false;
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const dueStart = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-  return dueStart < todayStart;
+  const d = new Date(due + "T12:00:00");
+  if (Number.isNaN(d.getTime())) return false;
+  const t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const t1 = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  return t1 < t0;
 }
 
 const GROUP_STYLE: Record<string, React.CSSProperties> = {
@@ -52,10 +54,12 @@ const GROUP_STYLE: Record<string, React.CSSProperties> = {
 };
 
 const BUCKET_ORDER = ["Past due", "Today", "This week", "Next week", "Later", "No date"];
+
 const GROUP_ACTIVE_OPTS = ["By project", "By status", "By due date"];
 
 export function WorkspaceMyWork() {
-  const [data, setData] = useState<WorkspaceMyWorkData | null>(null);
+  const [snapshot, setSnapshot] = useState<WorkspaceSnapshot | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [groupBy, setGroupBy] = useState("By due date");
@@ -65,14 +69,20 @@ export function WorkspaceMyWork() {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch("/api/workspace/my-work", { cache: "no-store" });
-      const payload = await readJson<WorkspaceMyWorkData>(response);
-      if (!response.ok) {
-        setError(payload.error ?? "Failed to load tasks.");
+      const [snapRes, meRes] = await Promise.all([
+        fetch("/api/workspace/snapshot?includeProjectContext=false", { cache: "no-store" }),
+        fetch("/api/auth/me", { cache: "no-store" }),
+      ]);
+      const snap = await readJson<WorkspaceSnapshot>(snapRes);
+      if (!snapRes.ok) {
+        setError("error" in snap && typeof snap.error === "string" ? snap.error : "Failed to load tasks.");
         return;
       }
-      setData(payload);
-      setError(payload.error ?? "");
+      setSnapshot(snap);
+      if (meRes.ok) {
+        const me = await readJson<MeResponse>(meRes);
+        setUserId(me.user?.id ?? null);
+      }
     } catch {
       setError("Network error.");
     } finally {
@@ -84,30 +94,20 @@ export function WorkspaceMyWork() {
     void load();
   }, [load]);
 
-  useEffect(() => {
-    function onRefresh() {
-      void load();
-    }
-
-    window.addEventListener("larry:refresh-snapshot", onRefresh);
-    return () => window.removeEventListener("larry:refresh-snapshot", onRefresh);
-  }, [load]);
-
   const projectNameById = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const project of data?.projects ?? []) {
-      map.set(project.id, project.name);
+    const m = new Map<string, string>();
+    for (const p of snapshot?.projects ?? []) {
+      m.set(p.id, p.name);
     }
-    return map;
-  }, [data?.projects]);
+    return m;
+  }, [snapshot?.projects]);
 
   const filtered = useMemo(() => {
-    const tasks = data?.tasks ?? [];
-    const viewerUserId = data?.viewerUserId;
-    if (!viewerUserId) return tasks;
-    const mine = tasks.filter((task) => task.assigneeUserId === viewerUserId);
+    const tasks = snapshot?.tasks ?? [];
+    if (!userId) return tasks;
+    const mine = tasks.filter((t) => t.assigneeUserId === userId);
     return mine.length > 0 ? mine : tasks;
-  }, [data?.tasks, data?.viewerUserId]);
+  }, [snapshot?.tasks, userId]);
 
   const now = useMemo(() => new Date(), []);
 
@@ -120,13 +120,11 @@ export function WorkspaceMyWork() {
       Later: [],
       "No date": [],
     };
-
-    for (const task of filtered) {
-      const bucket = dueBucket(task.dueDate, now);
-      const key = bucket in buckets ? bucket : "Later";
-      buckets[key].push(task);
+    for (const t of filtered) {
+      const b = dueBucket(t.dueDate, now);
+      const key = b in buckets ? b : "Later";
+      buckets[key].push(t);
     }
-
     return buckets;
   }, [filtered, now]);
 
@@ -144,6 +142,7 @@ export function WorkspaceMyWork() {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
+      {/* Header */}
       <div
         style={{
           padding: "24px 32px",
@@ -152,24 +151,25 @@ export function WorkspaceMyWork() {
         }}
       >
         <h1 className="text-h1">My Work</h1>
+        {/* Group toggle */}
         <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
-          {GROUP_ACTIVE_OPTS.map((option) => (
+          {GROUP_ACTIVE_OPTS.map((opt) => (
             <button
-              key={option}
+              key={opt}
               type="button"
-              onClick={() => setGroupBy(option)}
+              onClick={() => setGroupBy(opt)}
               style={{
                 background: "none",
                 border: "none",
                 padding: "2px 0",
                 fontSize: "13px",
-                fontWeight: groupBy === option ? 600 : 400,
-                color: groupBy === option ? "var(--cta)" : "var(--text-muted)",
+                fontWeight: groupBy === opt ? 600 : 400,
+                color: groupBy === opt ? "var(--cta)" : "var(--text-muted)",
                 cursor: "pointer",
                 transition: "color 0.15s",
               }}
             >
-              {option}
+              {opt}
             </button>
           ))}
         </div>
@@ -193,7 +193,7 @@ export function WorkspaceMyWork() {
         )}
 
         {loading ? (
-          <p className="text-body-sm">Loading...</p>
+          <p className="text-body-sm">Loading…</p>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
             {BUCKET_ORDER.map((label) => {
@@ -204,6 +204,7 @@ export function WorkspaceMyWork() {
 
               return (
                 <section key={label}>
+                  {/* Section header */}
                   <button
                     type="button"
                     onClick={() => toggleCollapsed(label)}
@@ -244,7 +245,13 @@ export function WorkspaceMyWork() {
                     >
                       {items.length}
                     </span>
-                    <span style={{ fontSize: "11px", color: "var(--text-disabled)", marginLeft: "auto" }}>
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        color: "var(--text-disabled)",
+                        marginLeft: "auto",
+                      }}
+                    >
                       {isCollapsed ? "Show" : "Hide"}
                     </span>
                   </button>
@@ -259,7 +266,11 @@ export function WorkspaceMyWork() {
                         ...(label === "Past due" || label === "Today" ? groupStyle : {}),
                       }}
                     >
-                      <div className="pm-table-header" style={{ gridTemplateColumns: "minmax(0,1fr) 140px 120px 100px" }}>
+                      {/* Table header */}
+                      <div
+                        className="pm-table-header"
+                        style={{ gridTemplateColumns: "minmax(0,1fr) 140px 120px 100px" }}
+                      >
                         <span>Task</span>
                         <span>Project</span>
                         <span>Status</span>
@@ -277,6 +288,7 @@ export function WorkspaceMyWork() {
                               borderLeft: overdue ? "3px solid var(--pm-red)" : "3px solid transparent",
                             }}
                           >
+                            {/* Task name */}
                             <Link
                               href={`/workspace/projects/${task.projectId}`}
                               className="text-h3"
@@ -291,6 +303,7 @@ export function WorkspaceMyWork() {
                               {task.title}
                             </Link>
 
+                            {/* Project */}
                             <span
                               className="text-body-sm"
                               style={{
@@ -302,28 +315,33 @@ export function WorkspaceMyWork() {
                               {projectNameById.get(task.projectId) ?? "Project"}
                             </span>
 
+                            {/* Status */}
                             <span>
                               <span
                                 className="pm-pill"
                                 style={
                                   task.status === "completed"
                                     ? { background: "#e6f9f0", color: "#00854d" }
-                                    : task.status === "in_progress"
-                                      ? { background: "#EBF5FF", color: "var(--cta)" }
-                                      : {}
+                                    : task.status === "on_track"
+                                    ? { background: "#EBF5FF", color: "var(--cta)" }
+                                    : {}
                                 }
                               >
                                 {task.status.replace(/_/g, " ").toLowerCase()}
                               </span>
                             </span>
 
-                            <span className="text-body-sm" style={overdue ? { color: "var(--pm-red)", fontWeight: 500 } : {}}>
+                            {/* Due date */}
+                            <span
+                              className="text-body-sm"
+                              style={overdue ? { color: "var(--pm-red)", fontWeight: 500 } : {}}
+                            >
                               {task.dueDate
-                                ? new Date(`${task.dueDate}T12:00:00`).toLocaleDateString("en-GB", {
+                                ? new Date(task.dueDate + "T12:00:00").toLocaleDateString("en-GB", {
                                     day: "numeric",
                                     month: "short",
                                   })
-                                : "-"}
+                                : "—"}
                             </span>
                           </div>
                         );
@@ -334,7 +352,9 @@ export function WorkspaceMyWork() {
               );
             })}
 
-            {filtered.length === 0 && <p className="text-body-sm">No tasks in this workspace yet.</p>}
+            {filtered.length === 0 && (
+              <p className="text-body-sm">No tasks in this workspace yet.</p>
+            )}
           </div>
         )}
       </div>
