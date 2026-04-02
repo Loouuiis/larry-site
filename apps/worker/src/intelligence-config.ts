@@ -8,5 +8,8 @@ export function buildWorkerIntelligenceConfig(): IntelligenceConfig {
   if (env.MODEL_PROVIDER === "anthropic") {
     return { provider: "anthropic", apiKey: env.ANTHROPIC_API_KEY, model: env.ANTHROPIC_MODEL };
   }
+  if (env.MODEL_PROVIDER === "gemini") {
+    return { provider: "gemini", apiKey: env.GEMINI_API_KEY, model: env.GEMINI_MODEL };
+  }
   return { provider: "mock", model: "mock" };
 }

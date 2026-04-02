@@ -75,6 +75,9 @@ function buildIntelligenceConfig(config: ReturnType<typeof getApiEnv>): Intellig
   if (config.MODEL_PROVIDER === "anthropic") {
     return { provider: "anthropic", apiKey: config.ANTHROPIC_API_KEY, model: config.ANTHROPIC_MODEL };
   }
+  if (config.MODEL_PROVIDER === "gemini") {
+    return { provider: "gemini", apiKey: config.GEMINI_API_KEY, model: config.GEMINI_MODEL };
+  }
   return { provider: "mock", model: "mock" };
 }
 

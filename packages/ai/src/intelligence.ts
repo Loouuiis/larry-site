@@ -448,6 +448,42 @@ async function callAnthropic(
   return text;
 }
 
+async function callGemini(
+  apiKey: string,
+  model: string,
+  systemPrompt: string,
+  userPrompt: string
+): Promise<string> {
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+        generationConfig: {
+          temperature: 0.2,
+          responseMimeType: "application/json",
+        },
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Gemini intelligence call failed: ${response.status} — ${err}`);
+  }
+
+  const data = (await response.json()) as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+  };
+
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error("Gemini returned empty content");
+  return text;
+}
+
 // ── JSON extraction and validation ────────────────────────────────────────────
 
 function parseIntelligenceResponse(raw: string): IntelligenceResult {
@@ -740,6 +776,8 @@ export async function runIntelligence(
     raw = await callOpenAI(config.apiKey, config.model, systemPrompt, userPrompt);
   } else if (config.provider === "anthropic") {
     raw = await callAnthropic(config.apiKey, config.model, systemPrompt, userPrompt);
+  } else if (config.provider === "gemini") {
+    raw = await callGemini(config.apiKey, config.model, systemPrompt, userPrompt);
   } else {
     throw new Error(`Unsupported intelligence provider: ${config.provider}`);
   }
