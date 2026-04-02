@@ -1,0 +1,175 @@
+<h2>Task Center — Full Design</h2>
+<p class="subtitle">Approach A: Standalone component with 4 collapsible status groups and per-group inline row creation</p>
+
+<div class="mockup">
+  <div class="mockup-header">Task Center — with tasks</div>
+  <div class="mockup-body" style="padding:0;background:#0f0d1a;">
+
+    <!-- ─── NOT STARTED group ─────────────────── -->
+    <div style="border-bottom:1px solid #1e1b2e;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 20px;cursor:pointer;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="color:#6c44f6;font-size:10px;">▾</span>
+          <span style="font-size:13px;font-weight:600;color:#e2e0ea;">Not Started</span>
+          <span style="font-size:11px;color:#777;background:#1e1b2e;padding:1px 8px;border-radius:10px;">3</span>
+        </div>
+        <span style="font-size:12px;color:#6c44f6;cursor:pointer;">+ New task</span>
+      </div>
+
+      <!-- Task rows -->
+      <div style="padding:0 20px;">
+        <div style="display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:6px;border:1px solid #1e1b2e;margin-bottom:4px;">
+          <span style="width:6px;height:6px;border-radius:50%;background:#6c44f6;flex-shrink:0;"></span>
+          <span style="flex:1;font-size:13px;color:#e2e0ea;">Set up CI/CD pipeline</span>
+          <span style="font-size:11px;color:#f59e0b;background:rgba(245,158,11,0.1);padding:1px 8px;border-radius:4px;">High</span>
+          <span style="font-size:11px;color:#888;width:70px;">Sarah</span>
+          <span style="font-size:11px;color:#888;width:60px;">Apr 15</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:6px;border:1px solid #1e1b2e;margin-bottom:4px;">
+          <span style="width:6px;height:6px;border-radius:50%;background:#6c44f6;flex-shrink:0;"></span>
+          <span style="flex:1;font-size:13px;color:#e2e0ea;">Write onboarding documentation</span>
+          <span style="font-size:11px;color:#22c55e;background:rgba(34,197,94,0.1);padding:1px 8px;border-radius:4px;">Low</span>
+          <span style="font-size:11px;color:#888;width:70px;">Marcus</span>
+          <span style="font-size:11px;color:#888;width:60px;">Apr 20</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:6px;border:1px solid #1e1b2e;margin-bottom:4px;">
+          <span style="width:6px;height:6px;border-radius:50%;background:#6c44f6;flex-shrink:0;"></span>
+          <span style="flex:1;font-size:13px;color:#e2e0ea;">Design system colour tokens</span>
+          <span style="font-size:11px;color:#3b82f6;background:rgba(59,130,246,0.1);padding:1px 8px;border-radius:4px;">Medium</span>
+          <span style="font-size:11px;color:#888;width:70px;">—</span>
+          <span style="font-size:11px;color:#888;width:60px;">—</span>
+        </div>
+      </div>
+      <div style="height:8px;"></div>
+    </div>
+
+    <!-- ─── IN PROGRESS group ─────────────────── -->
+    <div style="border-bottom:1px solid #1e1b2e;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 20px;cursor:pointer;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="color:#f59e0b;font-size:10px;">▾</span>
+          <span style="font-size:13px;font-weight:600;color:#e2e0ea;">In Progress</span>
+          <span style="font-size:11px;color:#777;background:#1e1b2e;padding:1px 8px;border-radius:10px;">2</span>
+        </div>
+        <span style="font-size:12px;color:#6c44f6;cursor:pointer;">+ New task</span>
+      </div>
+      <div style="padding:0 20px;">
+        <div style="display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:6px;border:1px solid #1e1b2e;margin-bottom:4px;">
+          <span style="width:6px;height:6px;border-radius:50%;background:#f59e0b;flex-shrink:0;"></span>
+          <span style="flex:1;font-size:13px;color:#e2e0ea;">API auth middleware</span>
+          <span style="font-size:11px;color:#ef4444;background:rgba(239,68,68,0.1);padding:1px 8px;border-radius:4px;">Critical</span>
+          <span style="font-size:11px;color:#888;width:70px;">Sarah</span>
+          <span style="font-size:11px;color:#888;width:60px;">Apr 10</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:6px;border:1px solid #1e1b2e;margin-bottom:4px;">
+          <span style="width:6px;height:6px;border-radius:50%;background:#f59e0b;flex-shrink:0;"></span>
+          <span style="flex:1;font-size:13px;color:#e2e0ea;">Dashboard data aggregation</span>
+          <span style="font-size:11px;color:#3b82f6;background:rgba(59,130,246,0.1);padding:1px 8px;border-radius:4px;">Medium</span>
+          <span style="font-size:11px;color:#888;width:70px;">Marcus</span>
+          <span style="font-size:11px;color:#888;width:60px;">Apr 12</span>
+        </div>
+
+        <!-- ─── INLINE CREATION ROW (active state) ─── -->
+        <div style="display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:6px;border:1px dashed #6c44f6;background:rgba(108,68,246,0.06);margin-bottom:4px;">
+          <span style="width:6px;height:6px;border-radius:50%;background:#6c44f6;flex-shrink:0;"></span>
+          <span style="flex:1;font-size:13px;color:#a78bfa;border-bottom:1px solid rgba(108,68,246,0.3);padding-bottom:2px;">Integrate Slack webhooks<span style="animation:blink 1s infinite;color:#6c44f6;">|</span></span>
+          <span style="font-size:11px;color:#6c44f6;background:rgba(108,68,246,0.1);padding:1px 8px;border-radius:4px;cursor:pointer;">Medium ▾</span>
+          <span style="font-size:11px;color:#6c44f6;width:70px;cursor:pointer;">Select ▾</span>
+          <span style="font-size:11px;color:#6c44f6;width:60px;cursor:pointer;">Date ▾</span>
+        </div>
+        <div style="padding:2px 10px 4px;display:flex;gap:12px;">
+          <span style="font-size:10px;color:#666;">Enter to save</span>
+          <span style="font-size:10px;color:#666;">Tab to next field</span>
+          <span style="font-size:10px;color:#666;">Esc to cancel</span>
+        </div>
+      </div>
+      <div style="height:8px;"></div>
+    </div>
+
+    <!-- ─── BLOCKED group ─────────────────── -->
+    <div style="border-bottom:1px solid #1e1b2e;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 20px;cursor:pointer;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="color:#ef4444;font-size:10px;">▾</span>
+          <span style="font-size:13px;font-weight:600;color:#e2e0ea;">Blocked</span>
+          <span style="font-size:11px;color:#777;background:#1e1b2e;padding:1px 8px;border-radius:10px;">1</span>
+        </div>
+        <span style="font-size:12px;color:#6c44f6;cursor:pointer;">+ New task</span>
+      </div>
+      <div style="padding:0 20px;">
+        <div style="display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:6px;border:1px solid rgba(239,68,68,0.2);background:rgba(239,68,68,0.03);margin-bottom:4px;">
+          <span style="width:6px;height:6px;border-radius:50%;background:#ef4444;flex-shrink:0;"></span>
+          <span style="flex:1;font-size:13px;color:#e2e0ea;">Payment gateway integration</span>
+          <span style="font-size:11px;color:#ef4444;background:rgba(239,68,68,0.1);padding:1px 8px;border-radius:4px;">Critical</span>
+          <span style="font-size:11px;color:#888;width:70px;">Sarah</span>
+          <span style="font-size:11px;color:#888;width:60px;">Apr 8</span>
+        </div>
+      </div>
+      <div style="height:8px;"></div>
+    </div>
+
+    <!-- ─── COMPLETED group (collapsed) ───────── -->
+    <div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 20px;cursor:pointer;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="color:#22c55e;font-size:10px;">▸</span>
+          <span style="font-size:13px;font-weight:600;color:#e2e0ea;">Completed</span>
+          <span style="font-size:11px;color:#777;background:#1e1b2e;padding:1px 8px;border-radius:10px;">4</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div style="height:24px;"></div>
+
+<div class="mockup">
+  <div class="mockup-header">Task Center — empty state (no tasks yet)</div>
+  <div class="mockup-body" style="padding:40px 20px;background:#0f0d1a;text-align:center;">
+    <div style="margin-bottom:12px;">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto;"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"></path></svg>
+    </div>
+    <div style="font-size:14px;font-weight:600;color:#e2e0ea;margin-bottom:6px;">No tasks yet</div>
+    <div style="font-size:13px;color:#888;margin-bottom:16px;">Create your first task to start tracking work for this project.</div>
+    <div style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:8px;background:#6c44f6;color:white;font-size:13px;font-weight:600;cursor:pointer;">
+      + New task
+    </div>
+  </div>
+</div>
+
+<div style="height:24px;"></div>
+
+<h3>Design details</h3>
+<div class="section" style="font-size:13px;line-height:1.8;color:#ccc;">
+  <p><strong>Inline creation flow:</strong></p>
+  <ul style="padding-left:20px;">
+    <li>Click "+ New task" in any group → dashed-border row appears at bottom of that group</li>
+    <li>Title field is auto-focused. Type the task name.</li>
+    <li>Tab → cycles through priority dropdown, assignee dropdown, due date picker</li>
+    <li>Enter → saves with whatever fields are filled (title required, rest optional)</li>
+    <li>Esc → cancels and removes the row</li>
+    <li>Priority defaults to "Medium", assignee and due date default to empty</li>
+  </ul>
+  <p style="margin-top:12px;"><strong>Groups:</strong></p>
+  <ul style="padding-left:20px;">
+    <li>Each group is collapsible (click header to toggle)</li>
+    <li>"Completed" starts collapsed by default</li>
+    <li>Empty groups still show with "(0)" count and the "+ New task" button</li>
+    <li>Group colours: Not Started = purple (#6c44f6), In Progress = amber (#f59e0b), Blocked = red (#ef4444), Completed = green (#22c55e)</li>
+  </ul>
+  <p style="margin-top:12px;"><strong>Task rows:</strong></p>
+  <ul style="padding-left:20px;">
+    <li>Dot colour matches group colour</li>
+    <li>Priority badge: Low=green, Medium=blue, High=amber, Critical=red</li>
+    <li>Assignee name or "—" if unassigned</li>
+    <li>Due date as "MMM DD" or "—" if none</li>
+    <li>Uses existing CSS variables (--surface, --border, --text-1, --text-2, --cta)</li>
+  </ul>
+  <p style="margin-top:12px;"><strong>API calls:</strong></p>
+  <ul style="padding-left:20px;">
+    <li>Create: POST /v1/tasks (title, projectId, priority, assigneeUserId, dueDate)</li>
+    <li>After creation: call refresh() to re-fetch project data and update overview counts</li>
+    <li>Status mapping: the inline row's group determines the initial status sent to the API</li>
+  </ul>
+</div>
