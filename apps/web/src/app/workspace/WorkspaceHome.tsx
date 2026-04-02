@@ -433,7 +433,7 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
                       width: `${Math.max(project.progress, 2)}%`,
                       height: "100%",
                       borderRadius: "9999px",
-                      background: "#6c44f6",
+                      background: "#b29cf8",
                     }}
                   />
                 </div>

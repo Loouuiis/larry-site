@@ -12,6 +12,11 @@ import {
   FolderKanban,
   MessageSquare,
   Sparkles,
+  LayoutList,
+  ListChecks,
+  FileText,
+  Users,
+  Settings,
 } from "lucide-react";
 import { useWorkspaceChrome } from "@/app/workspace/WorkspaceChromeContext";
 import { triggerBoundedWorkspaceRefresh } from "@/app/workspace/refresh";
@@ -198,8 +203,23 @@ function getMemoryMeta(entry: WorkspaceProjectMemoryEntry): string {
   return pieces.join(" - ");
 }
 
+type ProjectTab = "overview" | "timeline" | "tasks" | "actions" | "calendar" | "dashboard" | "files" | "team" | "settings";
+
+const PROJECT_TABS: { id: ProjectTab; label: string; icon: React.ElementType }[] = [
+  { id: "overview",  label: "Overview",       icon: FolderKanban },
+  { id: "timeline",  label: "Timeline",       icon: LayoutList },
+  { id: "tasks",     label: "Task center",    icon: ListChecks },
+  { id: "actions",   label: "Action center",  icon: CheckCircle2 },
+  { id: "calendar",  label: "Calendar",       icon: CalendarDays },
+  { id: "dashboard", label: "Dashboard",      icon: Activity },
+  { id: "files",     label: "Files",          icon: FileText },
+  { id: "team",      label: "Team",           icon: Users },
+  { id: "settings",  label: "Settings",       icon: Settings },
+];
+
 export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
   const chrome = useWorkspaceChrome();
+  const [activeTab, setActiveTab] = useState<ProjectTab>("overview");
   const [memorySourceFilter, setMemorySourceFilter] = useState("all");
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [statusBusy, setStatusBusy] = useState<"archive" | "unarchive" | null>(null);
@@ -489,6 +509,122 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
           )}
         </section>
 
+        {/* ── Project tab bar ──────────────────────────── */}
+        <nav
+          className="flex items-center gap-1 overflow-x-auto scrollbar-hide"
+          style={{
+            borderRadius: "var(--radius-card)",
+            border: "1px solid var(--border)",
+            background: "var(--surface)",
+            padding: "4px",
+          }}
+        >
+          {PROJECT_TABS.map(({ id, label, icon: Icon }) => {
+            const isActive = activeTab === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setActiveTab(id)}
+                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-150"
+                style={{
+                  background: isActive ? "var(--surface-2)" : "transparent",
+                  color: isActive ? "var(--text-1)" : "var(--text-muted)",
+                }}
+              >
+                <Icon size={14} />
+                {label}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* ── Tab: Timeline (placeholder) ──────────────── */}
+        {activeTab === "timeline" && (
+          <div
+            className="text-center px-6 py-12"
+            style={{ borderRadius: "var(--radius-card)", border: "1px dashed var(--border-2)", background: "var(--surface)" }}
+          >
+            <LayoutList size={32} className="mx-auto mb-3" style={{ color: "var(--text-disabled)" }} />
+            <p className="text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>Timeline view</p>
+            <p className="mt-2 text-[13px]" style={{ color: "var(--text-2)" }}>
+              A visual timeline of tasks, milestones, and dependencies is coming in the next phase.
+            </p>
+          </div>
+        )}
+
+        {/* ── Tab: Task center (placeholder) ───────────── */}
+        {activeTab === "tasks" && (
+          <div
+            className="text-center px-6 py-12"
+            style={{ borderRadius: "var(--radius-card)", border: "1px dashed var(--border-2)", background: "var(--surface)" }}
+          >
+            <ListChecks size={32} className="mx-auto mb-3" style={{ color: "var(--text-disabled)" }} />
+            <p className="text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>Task center</p>
+            <p className="mt-2 text-[13px]" style={{ color: "var(--text-2)" }}>
+              A dedicated task management view with filtering by status and assignee is coming in the next phase.
+            </p>
+          </div>
+        )}
+
+        {/* ── Tab: Calendar (placeholder) ──────────────── */}
+        {activeTab === "calendar" && (
+          <div
+            className="text-center px-6 py-12"
+            style={{ borderRadius: "var(--radius-card)", border: "1px dashed var(--border-2)", background: "var(--surface)" }}
+          >
+            <CalendarDays size={32} className="mx-auto mb-3" style={{ color: "var(--text-disabled)" }} />
+            <p className="text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>Project calendar</p>
+            <p className="mt-2 text-[13px]" style={{ color: "var(--text-2)" }}>
+              A project-scoped calendar with deadlines and meetings is coming in the next phase.
+            </p>
+          </div>
+        )}
+
+        {/* ── Tab: Dashboard ──────────────────────────── */}
+        {activeTab === "dashboard" && (
+          <div className="text-center">
+            <Link
+              href={`/workspace/projects/${projectId}/dashboard`}
+              className="inline-flex h-10 items-center gap-2 rounded-lg px-4 text-[13px] font-semibold text-white"
+              style={{ background: "var(--cta)" }}
+            >
+              <Activity size={14} />
+              Open full dashboard
+            </Link>
+          </div>
+        )}
+
+        {/* ── Tab: Files (placeholder) ──────────────────── */}
+        {activeTab === "files" && (
+          <div
+            className="text-center px-6 py-12"
+            style={{ borderRadius: "var(--radius-card)", border: "1px dashed var(--border-2)", background: "var(--surface)" }}
+          >
+            <FileText size={32} className="mx-auto mb-3" style={{ color: "var(--text-disabled)" }} />
+            <p className="text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>Project files</p>
+            <p className="mt-2 text-[13px]" style={{ color: "var(--text-2)" }}>
+              A document store for project-related files is coming in the next phase.
+            </p>
+          </div>
+        )}
+
+        {/* ── Tab: Settings (placeholder) ──────────────── */}
+        {activeTab === "settings" && (
+          <div
+            className="text-center px-6 py-12"
+            style={{ borderRadius: "var(--radius-card)", border: "1px dashed var(--border-2)", background: "var(--surface)" }}
+          >
+            <Settings size={32} className="mx-auto mb-3" style={{ color: "var(--text-disabled)" }} />
+            <p className="text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>Project settings</p>
+            <p className="mt-2 text-[13px]" style={{ color: "var(--text-2)" }}>
+              Project-level settings for reminders, reports, and permissions are coming in the next phase.
+            </p>
+          </div>
+        )}
+
+        {/* ── Tab: Overview (existing content) ─────────── */}
+        {activeTab === "overview" && (<>
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {[
             { label: "Completion", value: formatPercent(completionRate), detail: `${openTasks} still open` },
@@ -998,6 +1134,75 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
             </div>
           </div>
         </section>
+        </>)}
+
+        {/* ── Tab: Actions — re-uses existing action centre content ─ */}
+        {activeTab === "actions" && (<>
+          <section
+            style={{
+              borderRadius: "var(--radius-card)",
+              border: "1px solid var(--border)",
+              background: "var(--surface)",
+              padding: "20px",
+            }}
+          >
+            <p className="text-[18px] font-semibold" style={{ color: "var(--text-1)" }}>
+              Project Action Centre
+            </p>
+            <p className="mt-1 text-[13px]" style={{ color: "var(--text-2)" }}>
+              Review and manage Larry actions for this project.
+            </p>
+            <div className="mt-4">
+              {suggested.length === 0 ? (
+                <p className="text-[13px] py-4" style={{ color: "var(--text-muted)" }}>
+                  No pending actions. New suggestions will appear as Larry processes signals.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {suggested.map((event) => (
+                    <div
+                      key={event.id}
+                      className="rounded-xl border px-4 py-3"
+                      style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
+                    >
+                      <p className="text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
+                        {event.displayText}
+                      </p>
+                      <p className="mt-1 text-[12px]" style={{ color: "var(--text-muted)" }}>
+                        {getEventMeta(event)}
+                      </p>
+                      <div className="mt-3 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void dismiss(event.id)}
+                          disabled={dismissing === event.id}
+                          className="rounded-lg border px-3 py-1.5 text-[12px] font-semibold"
+                          style={{ borderColor: "var(--border)", color: "var(--text-2)" }}
+                        >
+                          {dismissing === event.id ? "Dismissing..." : "Dismiss"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void accept(event.id)}
+                          disabled={accepting === event.id}
+                          className="rounded-lg px-3 py-1.5 text-[12px] font-semibold text-white"
+                          style={{ background: "var(--cta)" }}
+                        >
+                          {accepting === event.id ? "Accepting..." : "Accept"}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
+        </>)}
+
+        {/* ── Tab: Team — re-uses existing collaborators panel ──── */}
+        {activeTab === "team" && (
+          <CollaboratorsPanel projectId={projectId} />
+        )}
       </div>
       {archiveDialogOpen && (
         <div
