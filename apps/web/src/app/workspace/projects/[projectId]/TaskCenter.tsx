@@ -58,7 +58,7 @@ const PRIORITY_COLOURS: Record<string, { fg: string; bg: string }> = {
 
 function formatDueDate(value: string | null): string {
   if (!value) return "—";
-  const d = new Date(value);
+  const d = new Date(value + "T00:00:00");
   if (isNaN(d.getTime())) return "—";
   const day = String(d.getDate()).padStart(2, "0");
   const month = d.toLocaleDateString("en-GB", { month: "short" });
@@ -96,7 +96,6 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
   };
 
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(initialCollapsed);
-  const [hoveredRow, setHoveredRow] = useState<string | null>(null);
 
   /* ── inline creation state ─────────────────────────────── */
 
@@ -129,6 +128,12 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
     return () => { cancelled = true; };
   }, [projectId]);
 
+  /* ── auto-focus title input when inline creation opens ── */
+
+  useEffect(() => {
+    if (creatingInGroup) titleInputRef.current?.focus();
+  }, [creatingInGroup]);
+
   /* ── creation helpers ──────────────────────────────────── */
 
   const startCreating = (groupId: string) => {
@@ -138,7 +143,6 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
     setNewAssignee("");
     setNewDueDate("");
     setCollapsed((prev) => ({ ...prev, [groupId]: false }));
-    setTimeout(() => titleInputRef.current?.focus(), 0);
   };
 
   const cancelCreating = () => {
@@ -177,7 +181,7 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
       /* If the target status differs from the API default, update it */
       const targetStatus = GROUP_TO_DB_STATUS[creatingInGroup];
       if (targetStatus && targetStatus !== "not_started" && created?.id) {
-        const statusRes = await fetch(`/api/workspace/tasks/${created.id}`, {
+        const statusRes = await fetch(`/api/workspace/tasks/${encodeURIComponent(created.id)}/status`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ status: targetStatus }),
@@ -259,6 +263,7 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
             <div
               role="button"
               tabIndex={0}
+              aria-expanded={!isCollapsed}
               onClick={() => toggleGroup(group.id)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
@@ -339,11 +344,11 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                       className="flex items-center gap-3 px-4 py-2.5"
                       style={{
                         borderBottom: "1px solid var(--border)",
-                        background: hoveredRow === task.id ? "var(--surface-2)" : "transparent",
                         cursor: "default",
+                        transition: "background 120ms ease",
                       }}
-                      onMouseEnter={() => setHoveredRow(task.id)}
-                      onMouseLeave={() => setHoveredRow(null)}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-2)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = ""; }}
                     >
                       {/* status dot */}
                       <span
@@ -425,6 +430,7 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                     ref={titleInputRef}
                     type="text"
                     placeholder="Task title..."
+                    aria-label="Task title"
                     value={newTitle}
                     onChange={(e) => setNewTitle(e.target.value)}
                     onKeyDown={(e) => {
@@ -445,6 +451,7 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
 
                   {/* priority select */}
                   <select
+                    aria-label="Priority"
                     value={newPriority}
                     onChange={(e) => setNewPriority(e.target.value as "low" | "medium" | "high" | "critical")}
                     onKeyDown={(e) => { if (e.key === "Escape") cancelCreating(); }}
@@ -466,6 +473,7 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
 
                   {/* assignee select */}
                   <select
+                    aria-label="Assignee"
                     value={newAssignee}
                     onChange={(e) => setNewAssignee(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Escape") cancelCreating(); }}
@@ -490,6 +498,7 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                   {/* due date input */}
                   <input
                     type="date"
+                    aria-label="Due date"
                     value={newDueDate}
                     onChange={(e) => setNewDueDate(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Escape") cancelCreating(); }}
