@@ -106,11 +106,6 @@
 }
 
 /* ─── Base ────────────────────────────────────────────────────────── */
-@media (pointer: fine) {
-  .cursor-enabled * {
-    cursor: none !important;
-  }
-}
 
 html {
   scroll-behavior: smooth;

@@ -1,6 +1,4 @@
-import { CustomCursor } from "@/components/ui/CustomCursor";
 import { LiquidBackground } from "@/components/ui/LiquidBackground";
-import { MagneticFieldBackground } from "@/components/ui/MagneticFieldBackground";
 import { WelcomeSplash } from "@/components/ui/WelcomeSplash";
 import { OverlayManager } from "@/components/ui/LiquidOverlay";
 import { Navbar } from "@/components/layout/Navbar";
@@ -18,12 +16,10 @@ import { CTASection } from "@/components/sections/CTASection";
 
 export default function Home() {
   return (
-    <div className="use-custom-cursor landing-page">
-      <CustomCursor />
+    <div className="landing-page">
       <OverlayManager />
       <WelcomeSplash />
       <LiquidBackground />
-      <MagneticFieldBackground />
       <Navbar />
       <main>
         {/* 1. Hook — who Larry is and why it matters */}
