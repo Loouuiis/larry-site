@@ -459,7 +459,7 @@ describe("POST /larry/chat", () => {
         requestMessageId: "77777777-7777-4777-8777-777777777777",
         responseMessageId: "88888888-8888-4888-8888-888888888888",
         requesterUserId: USER_ID,
-        sourceKind: "chat",
+        sourceKind: "direct_chat",
         sourceRecordId: "77777777-7777-4777-8777-777777777777",
       }
     );
@@ -475,7 +475,7 @@ describe("POST /larry/chat", () => {
         requestMessageId: "77777777-7777-4777-8777-777777777777",
         responseMessageId: "88888888-8888-4888-8888-888888888888",
         requesterUserId: USER_ID,
-        sourceKind: "chat",
+        sourceKind: "direct_chat",
         sourceRecordId: "77777777-7777-4777-8777-777777777777",
       }
     );
@@ -491,7 +491,7 @@ describe("POST /larry/chat", () => {
       PROJECT_ID,
       expect.objectContaining({
         source: "Larry chat",
-        sourceKind: "chat",
+        sourceKind: "direct_chat",
         sourceRecordId: "77777777-7777-4777-8777-777777777777",
       })
     );
@@ -550,7 +550,7 @@ describe("POST /larry/chat", () => {
       actionsExecuted: 0,
       suggestionCount: 0,
       requiresClarification: true,
-      clarificationQuestions: [expect.stringContaining("target task")],
+      clarifications: [expect.objectContaining({ question: expect.stringContaining("target task") })],
     });
     expect(runIntelligence).not.toHaveBeenCalled();
     expect(getPendingSuggestionTexts).not.toHaveBeenCalled();
@@ -921,14 +921,14 @@ describe("POST /larry/chat", () => {
       expect.anything(),
       TENANT_ID,
       PROJECT_ID,
-      expect.objectContaining({ sourceKind: "chat", sourceRecordId: "global-user-1" })
+      expect.objectContaining({ sourceKind: "direct_chat", sourceRecordId: "global-user-1" })
     );
     expect(insertProjectMemoryEntry).toHaveBeenNthCalledWith(
       2,
       expect.anything(),
       TENANT_ID,
       PROJECT_ID_TWO,
-      expect.objectContaining({ sourceKind: "chat", sourceRecordId: "global-user-1" })
+      expect.objectContaining({ sourceKind: "direct_chat", sourceRecordId: "global-user-1" })
     );
   });
 
