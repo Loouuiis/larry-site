@@ -23,17 +23,17 @@
   --text-muted:         #bdb7d0;
   --text-disabled:      #b7b8ba;
 
-  /* Status — Larry palette derived */
-  --status-todo-bg:     #bdb7d0;
-  --status-todo-text:   #4b556b;
-  --status-wip-bg:      #b29cf8;
-  --status-wip-text:    #FFFFFF;
-  --status-done-bg:     #6c44f6;
-  --status-done-text:   #FFFFFF;
-  --status-stuck-bg:    #9a7fa7;
-  --status-stuck-text:  #FFFFFF;
-  --status-review-bg:   #d1b7c5;
-  --status-review-text: #11172c;
+  /* Status — colour-coded palette */
+  --status-todo-bg:     #e8e8e8;
+  --status-todo-text:   #606060;
+  --status-wip-bg:      #a8c0e0;
+  --status-wip-text:    #1a3f70;
+  --status-done-bg:     #b8d9b4;
+  --status-done-text:   #245820;
+  --status-stuck-bg:    #ecaaaa;
+  --status-stuck-text:  #701818;
+  --status-review-bg:   #ece4a0;
+  --status-review-text: #705800;
 
   /* Semantic colours (keep for compatibility) */
   --pm-green:           #6c44f6;

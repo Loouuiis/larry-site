@@ -19,6 +19,7 @@ import {
   FileText,
   Users,
   Settings,
+  Layers,
 } from "lucide-react";
 import { useWorkspaceChrome } from "@/app/workspace/WorkspaceChromeContext";
 import { triggerBoundedWorkspaceRefresh } from "@/app/workspace/refresh";
@@ -91,6 +92,32 @@ function getRiskTone(riskLevel?: string | null) {
     return { background: "#fff7ed", color: "#c2410c", border: "#fdba74" };
   }
   return { background: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" };
+}
+
+const PROJECT_STATUS_LABEL: Record<string, string> = {
+  active: "On track",
+  on_track: "On track",
+  at_risk: "At risk",
+  overdue: "Overdue",
+  completed: "Completed",
+  not_started: "Not started",
+  archived: "Archived",
+};
+
+function projectStatusLabel(status: string | undefined): string {
+  return PROJECT_STATUS_LABEL[status ?? ""] ?? "Not started";
+}
+
+function projectStatusPillClass(status: string | undefined): string {
+  const normalized = status === "active" ? "on_track" : status;
+  switch (normalized) {
+    case "completed": return "pm-pill-done";
+    case "overdue":   return "pm-pill-stuck";
+    case "on_track":  return "pm-pill-working";
+    case "at_risk":   return "pm-pill-review";
+    case "archived":  return "pm-pill-backlog";
+    default:          return "pm-pill-not-started";
+  }
 }
 
 function getProjectStatusTone(status?: string | null) {
@@ -225,7 +252,7 @@ function getMemoryMeta(entry: WorkspaceProjectMemoryEntry): string {
   return pieces.join(" - ");
 }
 
-type ProjectTab = "overview" | "timeline" | "tasks" | "actions" | "calendar" | "dashboard" | "files" | "team" | "settings";
+type ProjectTab = "overview" | "timeline" | "tasks" | "actions" | "calendar" | "dashboard" | "files" | "team" | "settings" | "extra";
 
 const PROJECT_TABS: { id: ProjectTab; label: string; icon: React.ElementType }[] = [
   { id: "overview",  label: "Overview",       icon: FolderKanban },
@@ -237,6 +264,7 @@ const PROJECT_TABS: { id: ProjectTab; label: string; icon: React.ElementType }[]
   { id: "files",     label: "Files",          icon: FileText },
   { id: "team",      label: "Team",           icon: Users },
   { id: "settings",  label: "Settings",       icon: Settings },
+  { id: "extra",     label: "Extra",          icon: Layers },
 ];
 
 function ProjectCalendar({ projectId }: { projectId: string }) {
@@ -664,21 +692,9 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
                 {project.name}
               </h1>
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                {(() => {
-                  const statusTone = getProjectStatusTone(project.status);
-                  return (
-                    <span
-                      className="inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-semibold"
-                      style={{
-                        background: statusTone.background,
-                        color: statusTone.color,
-                        borderColor: statusTone.border,
-                      }}
-                    >
-                      {statusTone.label}
-                    </span>
-                  );
-                })()}
+                <span className={`pm-pill ${projectStatusPillClass(project.status)}`}>
+                  {projectStatusLabel(project.status)}
+                </span>
                 <span
                   className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-semibold"
                   style={{
@@ -855,7 +871,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
           </div>
         )}
 
-        {/* ── Tab: Overview (existing content) ─────────── */}
+        {/* ── Tab: Overview ────────────────────────────── */}
         {activeTab === "overview" && (<>
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {[
@@ -886,225 +902,82 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
           ))}
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(360px,1fr)]">
-          <div className="space-y-6">
-            <CollaboratorsPanel projectId={projectId} />
-            <ProjectNotesPanel projectId={projectId} />
-
-            <div
-              style={{
-                borderRadius: "var(--radius-card)",
-                border: "1px solid var(--border)",
-                background: "var(--surface)",
-                padding: "20px",
-              }}
-            >
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-[18px] font-semibold" style={{ color: "var(--text-1)" }}>
-                    Project Context
-                  </p>
-                  <p className="mt-1 text-[13px]" style={{ color: "var(--text-2)" }}>
-                    Stable workspace-native project summary and context feed.
-                  </p>
-                </div>
-              </div>
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
+        {/* ── Two-column: progress+AI vs action centre ── */}
+        <section className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(360px,1fr)]" style={{ alignItems: "stretch" }}>
+          <div className="flex flex-col gap-6">
+            {/* Progress bar */}
+            {(() => {
+              const pct = Math.round(completionRate);
+              return (
                 <div
                   style={{
-                    borderRadius: "var(--radius-btn)",
+                    borderRadius: "var(--radius-card)",
                     border: "1px solid var(--border)",
-                    background: "var(--surface-2)",
-                    padding: "16px",
+                    background: "var(--surface)",
+                    padding: "20px",
                   }}
                 >
-                  <p className="text-[12px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--text-muted)" }}>
-                    Health Summary
-                  </p>
-                  <p className="mt-3 text-[14px] leading-7" style={{ color: "var(--text-2)" }}>
-                    Completion {formatPercent(health?.completionRate ?? completionRate)} with {blockedTasks} blocked tasks and average risk score {Math.round(health?.avgRiskScore ?? 0)}.
-                  </p>
-                </div>
-                <div
-                  style={{
-                    borderRadius: "var(--radius-btn)",
-                    border: "1px solid var(--border)",
-                    background: "var(--surface-2)",
-                    padding: "16px",
-                  }}
-                >
-                  <p className="text-[12px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--text-muted)" }}>
-                    Larry Narrative
-                  </p>
-                  <p className="mt-3 text-[14px] leading-7" style={{ color: "var(--text-2)" }}>
-                    {outcomes?.narrative?.trim() || "Larry narrative will deepen here as we consolidate project memory and action provenance in later phases."}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div
-              style={{
-                borderRadius: "var(--radius-card)",
-                border: "1px solid var(--border)",
-                background: "var(--surface)",
-                padding: "20px",
-              }}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-[18px] font-semibold" style={{ color: "var(--text-1)" }}>
-                    Project Context Timeline
-                  </p>
-                  <p className="mt-1 text-[13px]" style={{ color: "var(--text-2)" }}>
-                    Durable memory from chat, accepted actions, and worker-processed meeting/email/slack/calendar signals.
-                  </p>
-                </div>
-                <label className="text-[12px] font-semibold" style={{ color: "var(--text-muted)" }}>
-                  Source
-                  <select
-                    value={memorySourceFilter}
-                    onChange={(event) => setMemorySourceFilter(event.target.value)}
-                    className="ml-2 rounded-full border px-3 py-1.5 text-[12px] font-medium"
-                    style={{ borderColor: "var(--border)", background: "var(--surface-2)", color: "var(--text-1)" }}
-                  >
-                    {MEMORY_FILTERS.map((filter) => (
-                      <option key={filter.value} value={filter.value}>
-                        {filter.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              <div className="mt-5 space-y-3">
-                {memoryError && (
-                  <div
-                    className="rounded-xl border px-4 py-3 text-[13px]"
-                    style={{ borderColor: "#fecaca", background: "#fef2f2", color: "#b91c1c" }}
-                  >
-                    {memoryError}
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[15px] font-semibold" style={{ color: "var(--text-1)" }}>Progress</p>
+                    <span className="text-[13px] font-semibold" style={{ color: "var(--text-2)" }}>{pct}%</span>
                   </div>
-                )}
-                {memoryLoading && memoryEntries.length === 0 ? (
-                  <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>
-                    Loading project memory...
-                  </p>
-                ) : memoryEntries.length === 0 ? (
-                  <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>
-                    No memory entries yet for this source filter.
-                  </p>
-                ) : (
-                  memoryEntries.map((entry) => (
+                  <div
+                    className="mt-3 w-full overflow-hidden"
+                    style={{ height: "6px", borderRadius: "9999px", background: "var(--surface-2)" }}
+                  >
                     <div
-                      key={entry.id}
-                      className="rounded-xl border px-4 py-3"
-                      style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <p className="text-[13px] font-semibold" style={{ color: "var(--text-1)" }}>
-                          {getMemoryMeta(entry)}
-                        </p>
-                        <span className="shrink-0 text-[12px]" style={{ color: "var(--text-muted)" }}>
-                          {formatRelativeTime(entry.createdAt)}
-                        </span>
-                      </div>
-                      <p className="mt-2 text-[13px] leading-6" style={{ color: "var(--text-2)" }}>
-                        {entry.content}
-                      </p>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            <div
-              style={{
-                borderRadius: "var(--radius-card)",
-                border: "1px solid var(--border)",
-                background: "var(--surface)",
-                padding: "20px",
-              }}
-            >
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-[18px] font-semibold" style={{ color: "var(--text-1)" }}>
-                    Active Work
-                  </p>
-                  <p className="mt-1 text-[13px]" style={{ color: "var(--text-2)" }}>
-                    Tasks are now loaded from the project overview route instead of the workspace snapshot.
-                  </p>
+                      style={{
+                        width: `${Math.max(pct, 2)}%`,
+                        height: "100%",
+                        borderRadius: "9999px",
+                        background: "#6c44f6",
+                        transition: "width 0.4s ease",
+                      }}
+                    />
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-[12px]" style={{ color: "var(--text-muted)" }}>
+                    <span>{tasks.filter((t) => t.status === "completed").length} of {tasks.length} tasks complete</span>
+                    <span>{openTasks} remaining</span>
+                  </div>
                 </div>
-              </div>
-              <div className="mt-5 space-y-3">
-                {recentTasks.length === 0 ? (
-                  <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>
-                    No tasks yet for this project.
-                  </p>
-                ) : (
-                  recentTasks.map((task) => (
-                    <div
-                      key={task.id}
-                      className="flex items-start justify-between gap-4 rounded-xl border px-4 py-3"
-                      style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
-                          {task.title}
-                        </p>
-                        <p className="mt-1 text-[12px]" style={{ color: "var(--text-muted)" }}>
-                          {formatStatus(task.status)} · Due {formatDate(task.dueDate)}
-                        </p>
-                      </div>
-                      <span
-                        className="shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold"
-                        style={{ borderColor: "var(--border)", color: "var(--text-2)", background: "var(--surface)" }}
-                      >
-                        {formatStatus(task.priority)}
-                      </span>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
+              );
+            })()}
 
+            {/* AI Summary — flex-1 fills remaining height to match action centre */}
             <div
               style={{
+                flex: 1,
                 borderRadius: "var(--radius-card)",
                 border: "1px solid var(--border)",
                 background: "var(--surface)",
                 padding: "20px",
+                display: "flex",
+                flexDirection: "column",
               }}
             >
-              <p className="text-[18px] font-semibold" style={{ color: "var(--text-1)" }}>
-                Recent Meetings
-              </p>
-              <div className="mt-5 space-y-3">
-                {meetings.length === 0 ? (
-                  <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>
-                    No meetings linked to this project yet.
-                  </p>
-                ) : (
-                  meetings.slice(0, 4).map((meeting) => (
-                    <div
-                      key={meeting.id}
-                      className="rounded-xl border px-4 py-3"
-                      style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
-                    >
-                      <div className="flex items-center justify-between gap-4">
-                        <p className="truncate text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
-                          {meeting.title?.trim() || "Untitled meeting"}
-                        </p>
-                        <span className="shrink-0 text-[12px]" style={{ color: "var(--text-muted)" }}>
-                          {formatDate(meeting.meetingDate ?? meeting.createdAt)}
-                        </span>
-                      </div>
-                      <p className="mt-2 line-clamp-2 text-[13px] leading-6" style={{ color: "var(--text-2)" }}>
-                        {meeting.summary?.trim() || `${meeting.actionCount} extracted action${meeting.actionCount === 1 ? "" : "s"}.`}
-                      </p>
-                    </div>
-                  ))
-                )}
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[15px] font-semibold" style={{ color: "var(--text-1)" }}>AI Summary</p>
+                <span
+                  className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
+                  style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}
+                >
+                  Coming soon
+                </span>
+              </div>
+              <div
+                style={{
+                  flex: 1,
+                  marginTop: "12px",
+                  borderRadius: "var(--radius-btn)",
+                  background: "var(--surface-2)",
+                  padding: "14px",
+                  display: "flex",
+                  alignItems: "center",
+                }}
+              >
+                <p className="text-[14px] leading-7 italic" style={{ color: "var(--text-muted)" }}>
+                  Larry will summarise the health, risks, and recent momentum of this project here once AI analysis is connected.
+                </p>
               </div>
             </div>
           </div>
@@ -1288,6 +1161,112 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
               </div>
             </div>
 
+          </div>
+        </section>
+
+        {/* ── Task breakdown — full width ───────────────── */}
+        {(() => {
+          const STATUS_BUCKETS: { key: string[]; label: string; pillClass: string }[] = [
+            { key: ["not_started", "backlog"], label: "Not started", pillClass: "pm-pill-not-started" },
+            { key: ["in_progress"],            label: "In progress",  pillClass: "pm-pill-working"     },
+            { key: ["waiting"],                label: "Waiting",      pillClass: "pm-pill-review"      },
+            { key: ["blocked"],                label: "Blocked",      pillClass: "pm-pill-stuck"       },
+            { key: ["completed"],              label: "Completed",    pillClass: "pm-pill-done"        },
+          ];
+          const buckets = STATUS_BUCKETS.map((b) => ({
+            ...b,
+            count: tasks.filter((t) => b.key.includes(t.status)).length,
+          }));
+          return (
+            <div
+              style={{
+                borderRadius: "var(--radius-card)",
+                border: "1px solid var(--border)",
+                background: "var(--surface)",
+                padding: "20px",
+              }}
+            >
+              <p className="text-[15px] font-semibold" style={{ color: "var(--text-1)" }}>Task breakdown</p>
+              <div className="mt-4 grid grid-cols-5 gap-3">
+                {buckets.map((b) => (
+                  <div
+                    key={b.label}
+                    className="flex flex-col items-center gap-2 rounded-xl py-5 px-2"
+                    style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}
+                  >
+                    <span className={`pm-pill ${b.pillClass} text-[11px]`}>{b.label}</span>
+                    <span className="text-[26px] font-bold" style={{ color: "var(--text-1)" }}>{b.count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ── Task distribution bar chart — full width ──── */}
+        {(() => {
+          const CHART_ITEMS: { key: string[]; label: string; bg: string }[] = [
+            { key: ["not_started", "backlog"], label: "Not started", bg: "var(--status-todo-bg)"   },
+            { key: ["in_progress"],            label: "In progress",  bg: "var(--status-wip-bg)"    },
+            { key: ["waiting"],                label: "Waiting",      bg: "var(--status-review-bg)" },
+            { key: ["blocked"],                label: "Blocked",      bg: "var(--status-stuck-bg)"  },
+            { key: ["completed"],              label: "Completed",    bg: "var(--status-done-bg)"   },
+          ];
+          const segments = CHART_ITEMS.map((s) => ({
+            ...s,
+            count: tasks.filter((t) => s.key.includes(t.status)).length,
+          }));
+          const maxCount = Math.max(...segments.map((s) => s.count), 1);
+          const BAR_HEIGHT = 160;
+          return (
+            <div
+              style={{
+                borderRadius: "var(--radius-card)",
+                border: "1px solid var(--border)",
+                background: "var(--surface)",
+                padding: "20px",
+              }}
+            >
+              <p className="text-[15px] font-semibold" style={{ color: "var(--text-1)" }}>Task distribution</p>
+              {tasks.length === 0 ? (
+                <p className="mt-3 text-[13px]" style={{ color: "var(--text-muted)" }}>No tasks yet.</p>
+              ) : (
+                <>
+                  <div className="mt-5 flex items-end gap-4" style={{ height: `${BAR_HEIGHT}px` }}>
+                    {segments.map((s) => (
+                      <div key={s.label} className="flex flex-1 flex-col items-center gap-1">
+                        <span className="text-[13px] font-semibold" style={{ color: "var(--text-2)" }}>{s.count}</span>
+                        <div
+                          title={`${s.label}: ${s.count}`}
+                          style={{
+                            width: "100%",
+                            height: `${Math.max((s.count / maxCount) * (BAR_HEIGHT - 28), s.count > 0 ? 4 : 0)}px`,
+                            background: s.bg,
+                            borderRadius: "6px 6px 0 0",
+                            transition: "height 0.4s ease",
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-1 flex gap-4">
+                    {segments.map((s) => (
+                      <div key={s.label} className="flex flex-1 justify-center">
+                        <span className="text-[11px] font-medium" style={{ color: "var(--text-muted)" }}>{s.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })()}
+        </>)}
+
+        {/* ── Tab: Extra ────────────────────────────────── */}
+        {activeTab === "extra" && (
+          <div className="space-y-6">
+            {/* Project Larry Chat */}
             <div
               style={{
                 borderRadius: "var(--radius-card)",
@@ -1298,18 +1277,13 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
             >
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <p className="text-[18px] font-semibold" style={{ color: "var(--text-1)" }}>
-                    Project Larry Chat
-                  </p>
-                  <p className="mt-1 text-[13px]" style={{ color: "var(--text-2)" }}>
-                    Stable slot for project-specific conversations and history.
-                  </p>
+                  <p className="text-[18px] font-semibold" style={{ color: "var(--text-1)" }}>Project Larry Chat</p>
+                  <p className="mt-1 text-[13px]" style={{ color: "var(--text-2)" }}>Project-specific conversations and history.</p>
                 </div>
                 <button type="button" onClick={openLarry} className="text-[12px] font-semibold" style={{ color: "var(--cta)" }}>
                   Open panel
                 </button>
               </div>
-
               <div className="mt-5 space-y-3">
                 {actionCentreError && (
                   <div className="rounded-xl border px-4 py-3 text-[13px]" style={{ borderColor: "#fecaca", background: "#fef2f2", color: "#b91c1c" }}>
@@ -1317,17 +1291,10 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
                   </div>
                 )}
                 {actionCentreLoading && conversations.length === 0 ? (
-                  <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>
-                    Loading conversation history...
-                  </p>
+                  <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>Loading conversation history...</p>
                 ) : conversations.length === 0 ? (
                   <div className="rounded-xl border border-dashed px-4 py-6 text-center" style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}>
-                    <p className="text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
-                      No project chats yet
-                    </p>
-                    <p className="mt-2 text-[13px] leading-6" style={{ color: "var(--text-2)" }}>
-                      Start the first project-specific conversation to give this workspace its own Larry history.
-                    </p>
+                    <p className="text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>No project chats yet</p>
                     <button
                       type="button"
                       onClick={startProjectChat}
@@ -1349,9 +1316,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
                     >
                       <MessageSquare size={16} className="mt-0.5 shrink-0" style={{ color: "var(--cta)" }} />
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-[13px] font-semibold" style={{ color: "var(--text-1)" }}>
-                          {getConversationTitle(conversation)}
-                        </p>
+                        <p className="truncate text-[13px] font-semibold" style={{ color: "var(--text-1)" }}>{getConversationTitle(conversation)}</p>
                         <p className="mt-1 line-clamp-2 text-[12px] leading-5" style={{ color: "var(--text-2)" }}>
                           {conversation.lastMessagePreview?.trim() || "No messages saved yet."}
                         </p>
@@ -1364,9 +1329,163 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
                 )}
               </div>
             </div>
+
+            {/* Project Notes */}
+            <ProjectNotesPanel projectId={projectId} />
+
+            {/* Project Context */}
+            <div
+              style={{
+                borderRadius: "var(--radius-card)",
+                border: "1px solid var(--border)",
+                background: "var(--surface)",
+                padding: "20px",
+              }}
+            >
+              <p className="text-[18px] font-semibold" style={{ color: "var(--text-1)" }}>Project Context</p>
+              <p className="mt-1 text-[13px]" style={{ color: "var(--text-2)" }}>Workspace-native project summary and context feed.</p>
+              <div className="mt-5 grid gap-4 md:grid-cols-2">
+                <div style={{ borderRadius: "var(--radius-btn)", border: "1px solid var(--border)", background: "var(--surface-2)", padding: "16px" }}>
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--text-muted)" }}>Health Summary</p>
+                  <p className="mt-3 text-[14px] leading-7" style={{ color: "var(--text-2)" }}>
+                    Completion {formatPercent(health?.completionRate ?? completionRate)} with {blockedTasks} blocked tasks and average risk score {Math.round(health?.avgRiskScore ?? 0)}.
+                  </p>
+                </div>
+                <div style={{ borderRadius: "var(--radius-btn)", border: "1px solid var(--border)", background: "var(--surface-2)", padding: "16px" }}>
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--text-muted)" }}>Larry Narrative</p>
+                  <p className="mt-3 text-[14px] leading-7" style={{ color: "var(--text-2)" }}>
+                    {outcomes?.narrative?.trim() || "Larry narrative will deepen here as we consolidate project memory and action provenance in later phases."}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Project Context Timeline */}
+            <div
+              style={{
+                borderRadius: "var(--radius-card)",
+                border: "1px solid var(--border)",
+                background: "var(--surface)",
+                padding: "20px",
+              }}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-[18px] font-semibold" style={{ color: "var(--text-1)" }}>Project Context Timeline</p>
+                  <p className="mt-1 text-[13px]" style={{ color: "var(--text-2)" }}>
+                    Durable memory from chat, accepted actions, and worker-processed signals.
+                  </p>
+                </div>
+                <label className="text-[12px] font-semibold" style={{ color: "var(--text-muted)" }}>
+                  Source
+                  <select
+                    value={memorySourceFilter}
+                    onChange={(event) => setMemorySourceFilter(event.target.value)}
+                    className="ml-2 rounded-full border px-3 py-1.5 text-[12px] font-medium"
+                    style={{ borderColor: "var(--border)", background: "var(--surface-2)", color: "var(--text-1)" }}
+                  >
+                    {MEMORY_FILTERS.map((filter) => (
+                      <option key={filter.value} value={filter.value}>{filter.label}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="mt-5 space-y-3">
+                {memoryError && (
+                  <div className="rounded-xl border px-4 py-3 text-[13px]" style={{ borderColor: "#fecaca", background: "#fef2f2", color: "#b91c1c" }}>
+                    {memoryError}
+                  </div>
+                )}
+                {memoryLoading && memoryEntries.length === 0 ? (
+                  <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>Loading project memory...</p>
+                ) : memoryEntries.length === 0 ? (
+                  <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>No memory entries yet for this source filter.</p>
+                ) : (
+                  memoryEntries.map((entry) => (
+                    <div key={entry.id} className="rounded-xl border px-4 py-3" style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}>
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-[13px] font-semibold" style={{ color: "var(--text-1)" }}>{getMemoryMeta(entry)}</p>
+                        <span className="shrink-0 text-[12px]" style={{ color: "var(--text-muted)" }}>{formatRelativeTime(entry.createdAt)}</span>
+                      </div>
+                      <p className="mt-2 text-[13px] leading-6" style={{ color: "var(--text-2)" }}>{entry.content}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Active Work */}
+            <div
+              style={{
+                borderRadius: "var(--radius-card)",
+                border: "1px solid var(--border)",
+                background: "var(--surface)",
+                padding: "20px",
+              }}
+            >
+              <p className="text-[18px] font-semibold" style={{ color: "var(--text-1)" }}>Active Work</p>
+              <div className="mt-5 space-y-3">
+                {recentTasks.length === 0 ? (
+                  <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>No tasks yet for this project.</p>
+                ) : (
+                  recentTasks.map((task) => (
+                    <div
+                      key={task.id}
+                      className="flex items-start justify-between gap-4 rounded-xl border px-4 py-3"
+                      style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>{task.title}</p>
+                        <p className="mt-1 text-[12px]" style={{ color: "var(--text-muted)" }}>
+                          {formatStatus(task.status)} · Due {formatDate(task.dueDate)}
+                        </p>
+                      </div>
+                      <span
+                        className="shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold"
+                        style={{ borderColor: "var(--border)", color: "var(--text-2)", background: "var(--surface)" }}
+                      >
+                        {formatStatus(task.priority)}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Recent Meetings */}
+            <div
+              style={{
+                borderRadius: "var(--radius-card)",
+                border: "1px solid var(--border)",
+                background: "var(--surface)",
+                padding: "20px",
+              }}
+            >
+              <p className="text-[18px] font-semibold" style={{ color: "var(--text-1)" }}>Recent Meetings</p>
+              <div className="mt-5 space-y-3">
+                {meetings.length === 0 ? (
+                  <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>No meetings linked to this project yet.</p>
+                ) : (
+                  meetings.slice(0, 4).map((meeting) => (
+                    <div key={meeting.id} className="rounded-xl border px-4 py-3" style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}>
+                      <div className="flex items-center justify-between gap-4">
+                        <p className="truncate text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
+                          {meeting.title?.trim() || "Untitled meeting"}
+                        </p>
+                        <span className="shrink-0 text-[12px]" style={{ color: "var(--text-muted)" }}>
+                          {formatDate(meeting.meetingDate ?? meeting.createdAt)}
+                        </span>
+                      </div>
+                      <p className="mt-2 line-clamp-2 text-[13px] leading-6" style={{ color: "var(--text-2)" }}>
+                        {meeting.summary?.trim() || `${meeting.actionCount} extracted action${meeting.actionCount === 1 ? "" : "s"}.`}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           </div>
-        </section>
-        </>)}
+        )}
 
         {/* ── Tab: Actions — re-uses existing action centre content ─ */}
         {activeTab === "actions" && (<>
