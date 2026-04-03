@@ -1,7 +1,19 @@
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 
+const AUTONOMY_LEVEL_MAP: Record<
+  number,
+  { autoExecuteLowImpact: boolean; low: number; medium: number }
+> = {
+  1: { autoExecuteLowImpact: false, low: 1.0, medium: 1.0 },
+  2: { autoExecuteLowImpact: true, low: 0.95, medium: 1.0 },
+  3: { autoExecuteLowImpact: true, low: 0.75, medium: 0.80 },
+  4: { autoExecuteLowImpact: true, low: 0.50, medium: 0.60 },
+  5: { autoExecuteLowImpact: true, low: 0.0, medium: 0.0 },
+};
+
 const PatchPolicySchema = z.object({
+  autonomyLevel: z.number().int().min(1).max(5).optional(),
   autoExecuteLowImpact: z.boolean().optional(),
   lowImpactMinConfidence: z.number().min(0).max(1).optional(),
   mediumImpactMinConfidence: z.number().min(0).max(1).optional(),
@@ -36,6 +48,7 @@ type PolicyRow = {
   low_impact_min_confidence: number;
   medium_impact_min_confidence: number;
   auto_execute_low_impact: boolean;
+  autonomy_level: number;
   updated_at: string;
 };
 
@@ -49,7 +62,7 @@ export const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       const rows = await fastify.db.queryTenant<PolicyRow>(
         tenantId,
         `SELECT tenant_id, low_impact_min_confidence, medium_impact_min_confidence,
-                auto_execute_low_impact, updated_at
+                auto_execute_low_impact, autonomy_level, updated_at
          FROM tenant_policy_settings
          WHERE tenant_id = $1`,
         [tenantId]
@@ -57,14 +70,16 @@ export const settingsRoutes: FastifyPluginAsync = async (fastify) => {
 
       if (rows.length === 0) {
         return {
+          autonomyLevel: 3,
           autoExecuteLowImpact: true,
           lowImpactMinConfidence: 0.75,
-          mediumImpactMinConfidence: 0.9,
+          mediumImpactMinConfidence: 0.80,
         };
       }
 
       const row = rows[0];
       return {
+        autonomyLevel: Number(row.autonomy_level),
         autoExecuteLowImpact: row.auto_execute_low_impact,
         lowImpactMinConfidence: Number(row.low_impact_min_confidence),
         mediumImpactMinConfidence: Number(row.medium_impact_min_confidence),
@@ -83,23 +98,42 @@ export const settingsRoutes: FastifyPluginAsync = async (fastify) => {
       const body = PatchPolicySchema.parse(request.body);
       const tenantId = request.user.tenantId;
 
+      // When autonomyLevel is provided, derive the other fields from the level map
+      let resolvedAutoExecute = body.autoExecuteLowImpact;
+      let resolvedLow = body.lowImpactMinConfidence;
+      let resolvedMedium = body.mediumImpactMinConfidence;
+      let resolvedLevel = body.autonomyLevel;
+
+      if (body.autonomyLevel !== undefined) {
+        const mapped = AUTONOMY_LEVEL_MAP[body.autonomyLevel];
+        resolvedAutoExecute = mapped.autoExecuteLowImpact;
+        resolvedLow = mapped.low;
+        resolvedMedium = mapped.medium;
+        resolvedLevel = body.autonomyLevel;
+      }
+
       const setClauses: string[] = [];
       const values: unknown[] = [tenantId];
       let paramIndex = 2;
 
-      if (body.autoExecuteLowImpact !== undefined) {
+      if (resolvedLevel !== undefined) {
+        setClauses.push(`autonomy_level = $${paramIndex}`);
+        values.push(resolvedLevel);
+        paramIndex++;
+      }
+      if (resolvedAutoExecute !== undefined) {
         setClauses.push(`auto_execute_low_impact = $${paramIndex}`);
-        values.push(body.autoExecuteLowImpact);
+        values.push(resolvedAutoExecute);
         paramIndex++;
       }
-      if (body.lowImpactMinConfidence !== undefined) {
+      if (resolvedLow !== undefined) {
         setClauses.push(`low_impact_min_confidence = $${paramIndex}`);
-        values.push(body.lowImpactMinConfidence);
+        values.push(resolvedLow);
         paramIndex++;
       }
-      if (body.mediumImpactMinConfidence !== undefined) {
+      if (resolvedMedium !== undefined) {
         setClauses.push(`medium_impact_min_confidence = $${paramIndex}`);
-        values.push(body.mediumImpactMinConfidence);
+        values.push(resolvedMedium);
         paramIndex++;
       }
 
@@ -115,18 +149,20 @@ export const settingsRoutes: FastifyPluginAsync = async (fastify) => {
           tenant_id,
           low_impact_min_confidence,
           medium_impact_min_confidence,
-          auto_execute_low_impact
+          auto_execute_low_impact,
+          autonomy_level
         )
-        VALUES ($1, 0.75, 0.90, true)
+        VALUES ($1, 0.75, 0.80, true, 3)
          ON CONFLICT (tenant_id) DO UPDATE
          SET ${setClauses.join(", ")}
          RETURNING tenant_id, low_impact_min_confidence, medium_impact_min_confidence,
-                   auto_execute_low_impact, updated_at`,
+                   auto_execute_low_impact, autonomy_level, updated_at`,
         values
       );
 
       const row = rows[0];
       return {
+        autonomyLevel: Number(row.autonomy_level),
         autoExecuteLowImpact: row.auto_execute_low_impact,
         lowImpactMinConfidence: Number(row.low_impact_min_confidence),
         mediumImpactMinConfidence: Number(row.medium_impact_min_confidence),

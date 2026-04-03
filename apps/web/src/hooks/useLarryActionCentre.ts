@@ -39,6 +39,7 @@ export function useLarryActionCentre({
   const [error, setError] = useState<string | null>(null);
   const [accepting, setAccepting] = useState<string | null>(null);
   const [dismissing, setDismissing] = useState<string | null>(null);
+  const [modifying, setModifying] = useState<string | null>(null);
   const loadInFlightRef = useRef<Promise<void> | null>(null);
 
   const load = useCallback(
@@ -152,6 +153,23 @@ export function useLarryActionCentre({
     [load, onMutate]
   );
 
+  const modify = useCallback(
+    async (id: string): Promise<string | null> => {
+      setModifying(id);
+      try {
+        const response = await fetch(`/api/workspace/larry/events/${id}/modify`, { method: "POST" });
+        if (!response.ok) return null;
+        const data = await response.json();
+        return data.conversationId ?? null;
+      } catch {
+        return null;
+      } finally {
+        setModifying(null);
+      }
+    },
+    []
+  );
+
   return {
     suggested: data.suggested,
     activity: data.activity,
@@ -160,8 +178,10 @@ export function useLarryActionCentre({
     error,
     accepting,
     dismissing,
+    modifying,
     accept,
     dismiss,
+    modify,
     refresh: load,
   };
 }

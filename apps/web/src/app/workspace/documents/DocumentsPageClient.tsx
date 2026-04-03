@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { FileText, Search, Zap, Upload } from "lucide-react";
+import { FileText, Mail, Search, Upload } from "lucide-react";
 import Link from "next/link";
 import { MeetingDetailDrawer, type MeetingDetail } from "./MeetingDetailDrawer";
+import type { LarryDocument } from "@/app/dashboard/types";
 
 interface MeetingDocument {
   id: string;
@@ -20,9 +21,74 @@ interface Project {
   name: string;
 }
 
-function formatDate(meetingDate: string | null, createdAt: string): string {
-  const raw = meetingDate ?? createdAt;
-  const d = new Date(raw);
+// Unified row displayed in the table
+interface DisplayRow {
+  id: string;
+  title: string;
+  type: "transcript" | "email_draft" | "letter" | "memo" | "report" | "note" | "other";
+  projectId: string | null;
+  date: string; // ISO for sorting
+  /** Only set for transcript rows — triggers the meeting drawer */
+  isMeeting: boolean;
+}
+
+function toDisplayRow(doc: MeetingDocument): DisplayRow {
+  return {
+    id: doc.id,
+    title: doc.title ?? "Meeting transcript",
+    type: "transcript",
+    projectId: doc.projectId ?? null,
+    date: doc.meetingDate ?? doc.createdAt,
+    isMeeting: true,
+  };
+}
+
+function larryDocToDisplayRow(doc: LarryDocument): DisplayRow {
+  return {
+    id: doc.id,
+    title: doc.title,
+    type: doc.docType,
+    projectId: doc.projectId,
+    date: doc.createdAt,
+    isMeeting: false,
+  };
+}
+
+const TYPE_LABELS: Record<DisplayRow["type"], string> = {
+  transcript: "Transcript",
+  email_draft: "Email draft",
+  letter: "Letter",
+  memo: "Memo",
+  report: "Report",
+  note: "Note",
+  other: "Other",
+};
+
+function TypeBadge({ type }: { type: DisplayRow["type"] }) {
+  const isTranscript = type === "transcript";
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "3px",
+        fontSize: "11px",
+        fontWeight: 600,
+        color: isTranscript ? "var(--cta)" : "var(--text-2)",
+        background: isTranscript ? "rgba(0,115,234,0.08)" : "var(--surface-2)",
+        borderRadius: "var(--radius-badge)",
+        padding: "2px 7px",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {isTranscript ? <FileText size={9} /> : <Mail size={9} />}
+      {TYPE_LABELS[type]}
+    </span>
+  );
+}
+
+function formatDate(iso: string): string {
+  const d = new Date(iso);
   if (isNaN(d.getTime())) return "—";
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
@@ -40,68 +106,95 @@ const SELECT_STYLE: React.CSSProperties = {
 };
 
 export function DocumentsPageClient() {
-  const [docs, setDocs] = useState<MeetingDocument[]>([]);
+  const [rows, setRows] = useState<DisplayRow[]>([]);
   const [projects, setProjects] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
 
-  const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+  const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null);
   const [drawerDetail, setDrawerDetail] = useState<MeetingDetail | null>(null);
   const [drawerLoading, setDrawerLoading] = useState(false);
 
   const [search, setSearch] = useState("");
   const [filterProjectId, setFilterProjectId] = useState("");
+  const [filterType, setFilterType] = useState("");
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
 
-  // Initial data load
+  // Initial data load — fetch meetings, larry docs, and projects in parallel
   useEffect(() => {
     Promise.all([
       fetch("/api/workspace/meetings?limit=50", { cache: "no-store" }).then((r) => r.json()),
+      fetch("/api/workspace/larry/documents?limit=50", { cache: "no-store" }).then((r) =>
+        r.json().catch(() => ({ items: [] }))
+      ),
       fetch("/api/workspace/projects", { cache: "no-store" }).then((r) => r.json()),
     ])
-      .then(([meetingsData, projectsData]: [{ meetings?: MeetingDocument[] }, { items?: Project[] }]) => {
-        const withSummary = (meetingsData.meetings ?? []).filter((m) => m.summary != null);
-        setDocs(withSummary);
-        const map: Record<string, string> = {};
-        for (const p of projectsData.items ?? []) map[p.id] = p.name;
-        setProjects(map);
-      })
+      .then(
+        ([
+          meetingsData,
+          larryDocsData,
+          projectsData,
+        ]: [
+          { meetings?: MeetingDocument[] },
+          { items?: LarryDocument[] },
+          { items?: Project[] },
+        ]) => {
+          const meetingRows = (meetingsData.meetings ?? [])
+            .filter((m) => m.summary != null)
+            .map(toDisplayRow);
+
+          const larryRows = (larryDocsData.items ?? []).map(larryDocToDisplayRow);
+
+          setRows([...meetingRows, ...larryRows]);
+
+          const map: Record<string, string> = {};
+          for (const p of projectsData.items ?? []) map[p.id] = p.name;
+          setProjects(map);
+        }
+      )
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
-  // Drawer fetch
+  // Drawer fetch for meeting transcripts
   useEffect(() => {
-    if (!selectedDocId) { setDrawerDetail(null); return; }
+    if (!selectedMeetingId) {
+      setDrawerDetail(null);
+      return;
+    }
     setDrawerLoading(true);
     setDrawerDetail(null);
-    fetch(`/api/workspace/meetings/${selectedDocId}`, { cache: "no-store" })
+    fetch(`/api/workspace/meetings/${selectedMeetingId}`, { cache: "no-store" })
       .then((r) => r.json())
       .then((data: MeetingDetail) => setDrawerDetail(data))
       .catch(() => {})
       .finally(() => setDrawerLoading(false));
-  }, [selectedDocId]);
+  }, [selectedMeetingId]);
 
   // Derived display list
-  const displayDocs = docs
-    .filter((d) => {
+  const displayRows = rows
+    .filter((row) => {
       if (search.trim()) {
-        const q = search.toLowerCase();
-        if (!(d.title ?? "meeting transcript").toLowerCase().includes(q)) return false;
+        if (!row.title.toLowerCase().includes(search.toLowerCase())) return false;
       }
-      if (filterProjectId && d.projectId !== filterProjectId) return false;
+      if (filterProjectId && row.projectId !== filterProjectId) return false;
+      if (filterType && row.type !== filterType) return false;
       return true;
     })
     .sort((a, b) => {
-      const da = new Date(a.meetingDate ?? a.createdAt).getTime();
-      const db = new Date(b.meetingDate ?? b.createdAt).getTime();
+      const da = new Date(a.date).getTime();
+      const db = new Date(b.date).getTime();
       return sortOrder === "newest" ? db - da : da - db;
     });
 
-  const totalActions = docs.reduce((sum, d) => sum + d.actionCount, 0);
-  const hasFilters = search.trim() !== "" || filterProjectId !== "";
+  const hasFilters = search.trim() !== "" || filterProjectId !== "" || filterType !== "";
 
-  // Unique projects that appear in docs
-  const docProjectIds = Array.from(new Set(docs.map((d) => d.projectId).filter(Boolean))) as string[];
+  // Unique projects in the current set
+  const docProjectIds = Array.from(
+    new Set(rows.map((r) => r.projectId).filter(Boolean))
+  ) as string[];
+
+  // Unique types in the current set
+  const docTypes = Array.from(new Set(rows.map((r) => r.type))) as Array<DisplayRow["type"]>;
 
   return (
     <div style={{ minHeight: "100%", overflowY: "auto", background: "var(--page-bg)", padding: "24px" }}>
@@ -122,10 +215,9 @@ export function DocumentsPageClient() {
       </p>
 
       {/* Stats bar */}
-      {!loading && docs.length > 0 && (
+      {!loading && rows.length > 0 && (
         <p className="text-body-sm" style={{ marginBottom: "16px", color: "var(--text-muted)" }}>
-          {docs.length} meeting{docs.length !== 1 ? "s" : ""} processed
-          {totalActions > 0 && ` · ${totalActions} action${totalActions !== 1 ? "s" : ""} extracted`}
+          {rows.length} document{rows.length !== 1 ? "s" : ""}
         </p>
       )}
 
@@ -174,6 +266,19 @@ export function DocumentsPageClient() {
           </select>
         )}
 
+        {docTypes.length > 1 && (
+          <select
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value)}
+            style={SELECT_STYLE}
+          >
+            <option value="">All types</option>
+            {docTypes.map((t) => (
+              <option key={t} value={t}>{TYPE_LABELS[t]}</option>
+            ))}
+          </select>
+        )}
+
         <select
           value={sortOrder}
           onChange={(e) => setSortOrder(e.target.value as "newest" | "oldest")}
@@ -195,10 +300,10 @@ export function DocumentsPageClient() {
       >
         <div
           className="pm-table-header"
-          style={{ gridTemplateColumns: "minmax(0,1fr) 90px 160px 100px" }}
+          style={{ gridTemplateColumns: "minmax(0,1fr) 120px 160px 100px" }}
         >
           <span>Document</span>
-          <span>Actions</span>
+          <span>Type</span>
           <span>Project</span>
           <span>Date</span>
         </div>
@@ -206,18 +311,22 @@ export function DocumentsPageClient() {
         {loading ? (
           <div style={{ display: "flex", flexDirection: "column", gap: "0" }}>
             {[1, 2, 3].map((i) => (
-              <div key={i} className="pm-table-row" style={{ gridTemplateColumns: "minmax(0,1fr) 90px 160px 100px" }}>
+              <div
+                key={i}
+                className="pm-table-row"
+                style={{ gridTemplateColumns: "minmax(0,1fr) 120px 160px 100px" }}
+              >
                 <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                   <div className="pm-shimmer" style={{ height: "28px", width: "28px", borderRadius: "6px", flexShrink: 0 }} />
                   <div className="pm-shimmer" style={{ height: "14px", width: "200px", borderRadius: "4px" }} />
                 </span>
-                <div className="pm-shimmer" style={{ height: "18px", width: "32px", borderRadius: "var(--radius-badge)" }} />
+                <div className="pm-shimmer" style={{ height: "18px", width: "72px", borderRadius: "var(--radius-badge)" }} />
                 <div className="pm-shimmer" style={{ height: "13px", width: "100px", borderRadius: "4px" }} />
                 <div className="pm-shimmer" style={{ height: "13px", width: "60px", borderRadius: "4px" }} />
               </div>
             ))}
           </div>
-        ) : displayDocs.length === 0 ? (
+        ) : displayRows.length === 0 ? (
           <div style={{ padding: "48px", textAlign: "center" }}>
             <div
               style={{
@@ -239,7 +348,7 @@ export function DocumentsPageClient() {
                   No documents match your filters
                 </p>
                 <button
-                  onClick={() => { setSearch(""); setFilterProjectId(""); }}
+                  onClick={() => { setSearch(""); setFilterProjectId(""); setFilterType(""); }}
                   style={{ color: "var(--cta)", fontSize: "13px", fontWeight: 500, background: "none", border: "none", cursor: "pointer" }}
                 >
                   Clear filters
@@ -260,21 +369,24 @@ export function DocumentsPageClient() {
             )}
           </div>
         ) : (
-          displayDocs.map((doc) => {
-            const isSelected = selectedDocId === doc.id;
-            const projectName = doc.projectId ? (projects[doc.projectId] ?? null) : null;
+          displayRows.map((row) => {
+            const isSelected = selectedMeetingId === row.id && row.isMeeting;
+            const projectName = row.projectId ? (projects[row.projectId] ?? null) : null;
             return (
               <div
-                key={doc.id}
+                key={row.id}
                 className="pm-table-row"
                 style={{
-                  gridTemplateColumns: "minmax(0,1fr) 90px 160px 100px",
-                  cursor: "pointer",
+                  gridTemplateColumns: "minmax(0,1fr) 120px 160px 100px",
+                  cursor: row.isMeeting ? "pointer" : "default",
                   borderLeft: isSelected ? "3px solid var(--brand)" : "3px solid transparent",
                   background: isSelected ? "var(--surface-2)" : undefined,
                   paddingLeft: isSelected ? "13px" : "16px",
                 }}
-                onClick={() => setSelectedDocId(isSelected ? null : doc.id)}
+                onClick={() => {
+                  if (!row.isMeeting) return;
+                  setSelectedMeetingId(isSelected ? null : row.id);
+                }}
               >
                 <span style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
                   <div
@@ -295,31 +407,12 @@ export function DocumentsPageClient() {
                     className="text-h3"
                     style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
                   >
-                    {doc.title ?? "Meeting transcript"}
+                    {row.title}
                   </span>
                 </span>
 
                 <span>
-                  {doc.actionCount > 0 ? (
-                    <span
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "3px",
-                        fontSize: "11px",
-                        fontWeight: 600,
-                        color: "var(--cta)",
-                        background: "rgba(0,115,234,0.08)",
-                        borderRadius: "var(--radius-badge)",
-                        padding: "2px 7px",
-                      }}
-                    >
-                      <Zap size={9} />
-                      {doc.actionCount}
-                    </span>
-                  ) : (
-                    <span className="text-body-sm">—</span>
-                  )}
+                  <TypeBadge type={row.type} />
                 </span>
 
                 <span
@@ -330,7 +423,7 @@ export function DocumentsPageClient() {
                 </span>
 
                 <span className="text-body-sm">
-                  {formatDate(doc.meetingDate, doc.createdAt)}
+                  {formatDate(row.date)}
                 </span>
               </div>
             );
@@ -338,13 +431,13 @@ export function DocumentsPageClient() {
         )}
       </div>
 
-      {/* Drawer */}
+      {/* Drawer — only for meeting transcripts */}
       <MeetingDetailDrawer
-        docId={selectedDocId}
+        docId={selectedMeetingId}
         detail={drawerDetail}
         loading={drawerLoading}
         projects={projects}
-        onClose={() => setSelectedDocId(null)}
+        onClose={() => setSelectedMeetingId(null)}
       />
     </div>
   );

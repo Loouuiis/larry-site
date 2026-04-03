@@ -8,6 +8,7 @@ import { slackConnectorRoutes } from "./connectors-slack.js";
 import { googleCalendarConnectorRoutes } from "./connectors-google-calendar.js";
 import { outlookCalendarConnectorRoutes } from "./connectors-outlook-calendar.js";
 import { larryRoutes } from "./larry.js";
+import { larryDocumentsRoutes } from "./larry-documents.js";
 import { emailConnectorRoutes } from "./connectors-email.js";
 import { activityRoutes } from "./activity.js";
 import { notificationRoutes } from "./notifications.js";
@@ -29,6 +30,7 @@ export const v1Routes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(outlookCalendarConnectorRoutes, { prefix: "/connectors/outlook-calendar" });
   await fastify.register(emailConnectorRoutes, { prefix: "/connectors/email" });
   await fastify.register(larryRoutes, { prefix: "/larry" });
+  await fastify.register(larryDocumentsRoutes, { prefix: "/larry/documents" });
   await fastify.register(activityRoutes);
   await fastify.register(reportingRoutes);
   await fastify.register(notificationRoutes);

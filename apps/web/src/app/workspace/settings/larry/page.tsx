@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { SettingsSubnav } from "../SettingsSubnav";
 
 interface PolicySettings {
+  autonomyLevel: number;
   autoExecuteLowImpact: boolean;
   lowImpactMinConfidence: number;
   mediumImpactMinConfidence: number;
@@ -20,10 +21,42 @@ interface LarryRule {
 }
 
 const DEFAULTS: PolicySettings = {
+  autonomyLevel: 3,
   autoExecuteLowImpact: true,
   lowImpactMinConfidence: 0.75,
-  mediumImpactMinConfidence: 0.9,
+  mediumImpactMinConfidence: 0.80,
 };
+
+const AUTONOMY_LEVELS: Array<{ level: number; name: string; description: string }> = [
+  {
+    level: 1,
+    name: "Full Control",
+    description: "Larry asks your approval for everything",
+  },
+  {
+    level: 2,
+    name: "Cautious",
+    description:
+      "Larry auto-accepts only the simplest, clearest tasks you've specified. Asks for everything else",
+  },
+  {
+    level: 3,
+    name: "Balanced",
+    description:
+      "Larry automates simple tasks, your specified tasks, and tasks it deems appropriate. Asks when unsure",
+  },
+  {
+    level: 4,
+    name: "Proactive",
+    description:
+      "Larry automates most things. Only asks for high-impact or ambiguous actions",
+  },
+  {
+    level: 5,
+    name: "Full Autopilot",
+    description: "Larry acts fully autonomously on all actions",
+  },
+];
 
 export default function LarrySettingsPage() {
   const [settings, setSettings] = useState<PolicySettings>(DEFAULTS);
@@ -47,9 +80,11 @@ export default function LarrySettingsPage() {
         if (!res.ok) throw new Error("Failed to load settings");
         const data = await res.json();
         setSettings({
+          autonomyLevel: data.autonomyLevel ?? DEFAULTS.autonomyLevel,
           autoExecuteLowImpact: data.autoExecuteLowImpact ?? DEFAULTS.autoExecuteLowImpact,
           lowImpactMinConfidence: data.lowImpactMinConfidence ?? DEFAULTS.lowImpactMinConfidence,
-          mediumImpactMinConfidence: data.mediumImpactMinConfidence ?? DEFAULTS.mediumImpactMinConfidence,
+          mediumImpactMinConfidence:
+            data.mediumImpactMinConfidence ?? DEFAULTS.mediumImpactMinConfidence,
         });
       })
       .catch(() => showToast("Failed to load policy settings", "error"))
@@ -79,7 +114,7 @@ export default function LarrySettingsPage() {
       const res = await fetch("/api/workspace/settings/policy", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(settings),
+        body: JSON.stringify({ autonomyLevel: settings.autonomyLevel }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -87,6 +122,7 @@ export default function LarrySettingsPage() {
       }
       const data = await res.json();
       setSettings({
+        autonomyLevel: data.autonomyLevel ?? settings.autonomyLevel,
         autoExecuteLowImpact: data.autoExecuteLowImpact,
         lowImpactMinConfidence: data.lowImpactMinConfidence,
         mediumImpactMinConfidence: data.mediumImpactMinConfidence,
@@ -99,8 +135,6 @@ export default function LarrySettingsPage() {
       setSaving(false);
     }
   };
-
-  const pct = (v: number) => Math.round(v * 100);
 
   const saveRule = useCallback(
     async (rule: LarryRule, patch: Partial<Pick<LarryRule, "title" | "description" | "isActive">>) => {
@@ -177,7 +211,9 @@ export default function LarrySettingsPage() {
           const payload = await res.json().catch(() => ({}));
           throw new Error(payload.error || "Failed to delete rule");
         }
-        setRules((current) => current.map((rule) => (rule.id === ruleId ? { ...rule, isActive: false } : rule)));
+        setRules((current) =>
+          current.map((rule) => (rule.id === ruleId ? { ...rule, isActive: false } : rule))
+        );
         showToast("Rule archived", "success");
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Failed to delete rule";
@@ -211,114 +247,49 @@ export default function LarrySettingsPage() {
         </div>
       ) : (
         <div className="mt-6 space-y-6">
-          {/* Auto-execute toggle */}
-          <div
-            className="rounded-lg border p-5"
-            style={{ borderColor: "var(--border)", background: "var(--surface)" }}
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <label className="text-[13px] font-semibold" style={{ color: "var(--text-1)" }}>
-                  Auto-execute low-risk actions
-                </label>
-                <p className="mt-0.5 text-[12px]" style={{ color: "var(--text-2)" }}>
-                  When enabled, Larry will automatically execute low-impact actions that meet the
-                  confidence threshold without waiting for approval.
-                </p>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={settings.autoExecuteLowImpact}
-                onClick={() =>
-                  setSettings((s) => ({ ...s, autoExecuteLowImpact: !s.autoExecuteLowImpact }))
-                }
-                className="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors"
-                style={{
-                  backgroundColor: settings.autoExecuteLowImpact ? "var(--cta)" : "var(--border)",
-                }}
-              >
-                <span
-                  className="pointer-events-none inline-block h-5 w-5 rounded-full shadow-sm transition-transform"
+          {/* Autonomy level selector */}
+          <div className="space-y-2">
+            {AUTONOMY_LEVELS.map(({ level, name, description }) => {
+              const isSelected = settings.autonomyLevel === level;
+              return (
+                <button
+                  key={level}
+                  type="button"
+                  onClick={() => setSettings((s) => ({ ...s, autonomyLevel: level }))}
+                  className="w-full rounded-lg border text-left transition-colors"
                   style={{
-                    transform: settings.autoExecuteLowImpact
-                      ? "translateX(20px)"
-                      : "translateX(0px)",
-                    backgroundColor: "white",
+                    borderColor: isSelected ? "var(--cta)" : "var(--border)",
+                    background: isSelected ? "color-mix(in srgb, var(--cta) 8%, var(--surface))" : "var(--surface)",
+                    borderLeftWidth: "3px",
+                    borderLeftColor: isSelected ? "var(--cta)" : "var(--border)",
+                    padding: "14px 16px",
                   }}
-                />
-              </button>
-            </div>
-          </div>
-
-          {/* Low impact confidence */}
-          <div
-            className="rounded-lg border p-5"
-            style={{ borderColor: "var(--border)", background: "var(--surface)" }}
-          >
-            <label className="text-[13px] font-semibold" style={{ color: "var(--text-1)" }}>
-              Low impact minimum confidence
-            </label>
-            <p className="mt-0.5 text-[12px]" style={{ color: "var(--text-2)" }}>
-              Minimum confidence level required before Larry acts on low-impact items.
-            </p>
-            <div className="mt-3 flex items-center gap-4">
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={pct(settings.lowImpactMinConfidence)}
-                onChange={(e) =>
-                  setSettings((s) => ({
-                    ...s,
-                    lowImpactMinConfidence: Number(e.target.value) / 100,
-                  }))
-                }
-                className="h-2 flex-1 cursor-pointer appearance-none rounded-full"
-                style={{ accentColor: "var(--cta)", background: "var(--border)" }}
-              />
-              <span
-                className="min-w-[3rem] text-right text-[13px] font-semibold"
-                style={{ color: "var(--text-1)" }}
-              >
-                {pct(settings.lowImpactMinConfidence)}%
-              </span>
-            </div>
-          </div>
-
-          {/* Medium impact confidence */}
-          <div
-            className="rounded-lg border p-5"
-            style={{ borderColor: "var(--border)", background: "var(--surface)" }}
-          >
-            <label className="text-[13px] font-semibold" style={{ color: "var(--text-1)" }}>
-              Medium impact minimum confidence
-            </label>
-            <p className="mt-0.5 text-[12px]" style={{ color: "var(--text-2)" }}>
-              Minimum confidence level required before Larry acts on medium-impact items.
-            </p>
-            <div className="mt-3 flex items-center gap-4">
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={pct(settings.mediumImpactMinConfidence)}
-                onChange={(e) =>
-                  setSettings((s) => ({
-                    ...s,
-                    mediumImpactMinConfidence: Number(e.target.value) / 100,
-                  }))
-                }
-                className="h-2 flex-1 cursor-pointer appearance-none rounded-full"
-                style={{ accentColor: "var(--cta)", background: "var(--border)" }}
-              />
-              <span
-                className="min-w-[3rem] text-right text-[13px] font-semibold"
-                style={{ color: "var(--text-1)" }}
-              >
-                {pct(settings.mediumImpactMinConfidence)}%
-              </span>
-            </div>
+                >
+                  <div className="flex items-start gap-3">
+                    <span
+                      className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold"
+                      style={{
+                        background: isSelected ? "var(--cta)" : "var(--surface-2)",
+                        color: isSelected ? "white" : "var(--text-2)",
+                      }}
+                    >
+                      {level}
+                    </span>
+                    <div>
+                      <p
+                        className="text-[13px] font-semibold leading-tight"
+                        style={{ color: isSelected ? "var(--cta)" : "var(--text-1)" }}
+                      >
+                        {name}
+                      </p>
+                      <p className="mt-0.5 text-[12px] leading-snug" style={{ color: "var(--text-2)" }}>
+                        {description}
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
 
           {/* Save button */}
@@ -337,6 +308,7 @@ export default function LarrySettingsPage() {
             </button>
           </div>
 
+          {/* Manual Larry rules — unchanged */}
           <div
             className="rounded-lg border p-5"
             style={{ borderColor: "var(--border)", background: "var(--surface)" }}
@@ -371,7 +343,9 @@ export default function LarrySettingsPage() {
                 />
                 <textarea
                   value={newRule.description}
-                  onChange={(event) => setNewRule((current) => ({ ...current, description: event.target.value }))}
+                  onChange={(event) =>
+                    setNewRule((current) => ({ ...current, description: event.target.value }))
+                  }
                   placeholder="Describe what Larry should always/never do"
                   rows={3}
                   className="w-full rounded-lg border px-3 py-2 text-[13px]"
@@ -417,7 +391,11 @@ export default function LarrySettingsPage() {
                         )
                       }
                       className="w-full rounded-lg border px-3 py-2 text-[13px] font-semibold"
-                      style={{ borderColor: "var(--border)", background: "var(--surface-2)", color: "var(--text-1)" }}
+                      style={{
+                        borderColor: "var(--border)",
+                        background: "var(--surface-2)",
+                        color: "var(--text-1)",
+                      }}
                     />
                     <textarea
                       value={rule.description}
@@ -430,11 +408,18 @@ export default function LarrySettingsPage() {
                       }
                       rows={2}
                       className="mt-2 w-full rounded-lg border px-3 py-2 text-[13px]"
-                      style={{ borderColor: "var(--border)", background: "var(--surface-2)", color: "var(--text-1)" }}
+                      style={{
+                        borderColor: "var(--border)",
+                        background: "var(--surface-2)",
+                        color: "var(--text-1)",
+                      }}
                     />
 
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                      <label className="inline-flex items-center gap-2 text-[12px]" style={{ color: "var(--text-2)" }}>
+                      <label
+                        className="inline-flex items-center gap-2 text-[12px]"
+                        style={{ color: "var(--text-2)" }}
+                      >
                         <input
                           type="checkbox"
                           checked={rule.isActive}

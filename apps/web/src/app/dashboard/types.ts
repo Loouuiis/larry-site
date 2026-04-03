@@ -351,3 +351,18 @@ export interface TaskGroup {
 
 export type BoardView = "table" | "kanban" | "gantt";
 
+export interface LarryDocument {
+  id: string;
+  projectId: string | null;
+  larryEventId: string | null;
+  title: string;
+  docType: "email_draft" | "letter" | "memo" | "report" | "note" | "other";
+  content: string;
+  emailRecipient: string | null;
+  emailSubject: string | null;
+  emailSentAt: string | null;
+  state: "draft" | "final" | "sent";
+  createdAt: string;
+  updatedAt: string;
+}
+

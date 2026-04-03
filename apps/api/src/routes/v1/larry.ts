@@ -1492,6 +1492,75 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
   );
 
   fastify.post(
+    "/events/:id/modify",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
+    async (request, reply) => {
+      const tenantId = request.user.tenantId;
+      const actorUserId = request.user.userId;
+      const { id } = request.params as { id: string };
+
+      const event = await getLarryEventForMutation(fastify.db, tenantId, id);
+      if (!event) {
+        throw fastify.httpErrors.notFound("Event not found.");
+      }
+      await assertProjectAccessOrThrow({
+        tenantId,
+        userId: actorUserId,
+        tenantRole: request.user.role,
+        projectId: event.projectId,
+        mode: "manage",
+        requireWritable: true,
+      });
+      if (event.eventType !== "suggested") {
+        throw fastify.httpErrors.conflict("Only suggested events can be modified.");
+      }
+
+      // Fetch full event details for the chat context message
+      const [fullEvent] = await fastify.db.queryTenant<{
+        conversationId: string | null;
+        displayText: string | null;
+        reasoning: string | null;
+      }>(
+        tenantId,
+        `SELECT conversation_id AS "conversationId",
+                display_text   AS "displayText",
+                reasoning
+           FROM larry_events
+          WHERE tenant_id = $1 AND id = $2
+          LIMIT 1`,
+        [tenantId, id]
+      );
+
+      let conversationId = fullEvent?.conversationId ?? null;
+
+      if (!conversationId) {
+        const conversation = await createLarryConversation(
+          fastify.db,
+          tenantId,
+          actorUserId,
+          { projectId: event.projectId, title: `Modify: ${(fullEvent?.displayText ?? "Larry action").slice(0, 120)}` }
+        );
+        conversationId = conversation.id;
+      }
+
+      const contextMessage = [
+        `The user wants to modify this action: ${fullEvent?.displayText ?? "Unknown action"}.`,
+        `Original reasoning: ${fullEvent?.reasoning ?? "No reasoning provided"}.`,
+        `Action type: ${event.actionType}.`,
+      ].join(" ");
+
+      await insertLarryMessage(fastify.db, tenantId, conversationId, {
+        role: "larry",
+        content: contextMessage,
+      });
+
+      await touchLarryConversation(fastify.db, tenantId, conversationId);
+
+      return reply.code(200).send({ conversationId, eventId: id });
+    }
+  );
+
+  fastify.post(
     "/actions/:id/correct",
     { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
     async (request, reply) => {

@@ -1,10 +1,12 @@
 "use client";
 
+import { useState, useMemo } from "react";
 import Link from "next/link";
-import { Activity, CheckCircle2, FolderKanban, Mail, RefreshCw, Sparkles } from "lucide-react";
+import { Activity, CheckCircle2, FolderKanban, Mail, RefreshCw, Search, Sparkles } from "lucide-react";
 import type { WorkspaceLarryEvent } from "@/app/dashboard/types";
 import { useLarryActionCentre } from "@/hooks/useLarryActionCentre";
 import { useEmailDrafts } from "@/hooks/useEmailDrafts";
+import { getActionTypeTag, getAllActionTypes } from "@/lib/action-types";
 
 export const dynamic = "force-dynamic";
 
@@ -149,6 +151,65 @@ function ProjectBadge({ event }: { event: WorkspaceLarryEvent }) {
   );
 }
 
+function ActionTypeBadge({ actionType }: { actionType: string }) {
+  const tag = getActionTypeTag(actionType);
+  return (
+    <span
+      className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold"
+      style={{
+        background: `${tag.color}18`,
+        color: tag.color,
+        border: `1px solid ${tag.color}30`,
+      }}
+    >
+      {tag.label}
+    </span>
+  );
+}
+
+const SELECT_STYLE: React.CSSProperties = {
+  height: "36px",
+  padding: "0 10px",
+  borderRadius: "var(--radius-btn, 8px)",
+  border: "1px solid var(--border)",
+  background: "var(--surface-2)",
+  color: "var(--text-1)",
+  fontSize: "13px",
+  cursor: "pointer",
+  outline: "none",
+};
+
+type SortOrder = "newest" | "oldest" | "action_type_az";
+
+function matchesSearch(event: WorkspaceLarryEvent, q: string): boolean {
+  const lower = q.toLowerCase();
+  return (
+    event.displayText.toLowerCase().includes(lower) ||
+    (event.reasoning ?? "").toLowerCase().includes(lower) ||
+    (event.projectName ?? "").toLowerCase().includes(lower) ||
+    (event.actionType ?? "").toLowerCase().includes(lower)
+  );
+}
+
+function applyFilters(
+  events: WorkspaceLarryEvent[],
+  search: string,
+  filterActionType: string,
+  filterProjectId: string,
+  sortOrder: SortOrder,
+): WorkspaceLarryEvent[] {
+  let result = events;
+  if (search.trim()) result = result.filter((e) => matchesSearch(e, search.trim()));
+  if (filterActionType) result = result.filter((e) => e.actionType === filterActionType);
+  if (filterProjectId) result = result.filter((e) => e.projectId === filterProjectId);
+  return [...result].sort((a, b) => {
+    if (sortOrder === "action_type_az") return (a.actionType ?? "").localeCompare(b.actionType ?? "");
+    const da = new Date(a.createdAt).getTime();
+    const db = new Date(b.createdAt).getTime();
+    return sortOrder === "newest" ? db - da : da - db;
+  });
+}
+
 export default function WorkspaceActionsPage() {
   const {
     suggested,
@@ -158,17 +219,56 @@ export default function WorkspaceActionsPage() {
     error,
     accepting,
     dismissing,
+    modifying,
     accept,
     dismiss,
+    modify,
     refresh,
   } = useLarryActionCentre();
 
   const { drafts: emailDrafts, sending: sendingDraft, send: sendDraft, dismiss: dismissDraft } = useEmailDrafts();
 
+  // Toolbar state
+  const [search, setSearch] = useState("");
+  const [filterActionType, setFilterActionType] = useState("");
+  const [filterProjectId, setFilterProjectId] = useState("");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("newest");
+
+  // Stats always use the raw unfiltered arrays
   const projectsTouched = new Set([...suggested, ...activity].map((event) => event.projectId)).size;
   const linkedConversationCount = new Set(
     [...suggested, ...activity].map((event) => event.conversationId).filter(Boolean)
   ).size;
+
+  // Unique projects for the project dropdown
+  const projectOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const e of [...suggested, ...activity]) {
+      if (!map.has(e.projectId)) {
+        map.set(e.projectId, e.projectName?.trim() || e.projectId.slice(0, 8));
+      }
+    }
+    return Array.from(map.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  }, [suggested, activity]);
+
+  // Filtered + sorted lists
+  const filteredSuggested = useMemo(
+    () => applyFilters(suggested, search, filterActionType, filterProjectId, sortOrder),
+    [suggested, search, filterActionType, filterProjectId, sortOrder],
+  );
+  const filteredActivity = useMemo(
+    () => applyFilters(activity, search, filterActionType, filterProjectId, sortOrder),
+    [activity, search, filterActionType, filterProjectId, sortOrder],
+  );
+
+  const hasFilters = search.trim() !== "" || filterActionType !== "" || filterProjectId !== "";
+
+  function clearFilters() {
+    setSearch("");
+    setFilterActionType("");
+    setFilterProjectId("");
+    setSortOrder("newest");
+  }
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto" style={{ background: "var(--page-bg)" }}>
@@ -249,6 +349,98 @@ export default function WorkspaceActionsPage() {
               </p>
             </div>
           ))}
+        </section>
+
+        {/* ── Toolbar ── */}
+        <section
+          style={{
+            borderRadius: "var(--radius-card)",
+            border: "1px solid var(--border)",
+            background: "var(--surface)",
+            padding: "14px 16px",
+          }}
+        >
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+            {/* Search */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                height: "36px",
+                padding: "0 10px",
+                borderRadius: "var(--radius-btn, 8px)",
+                border: "1px solid var(--border)",
+                background: "var(--surface-2)",
+                flex: "1 1 200px",
+                maxWidth: "340px",
+              }}
+            >
+              <Search size={13} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+              <input
+                placeholder="Search actions…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={{
+                  flex: 1,
+                  background: "none",
+                  border: "none",
+                  outline: "none",
+                  fontSize: "13px",
+                  color: "var(--text-1)",
+                }}
+              />
+            </div>
+
+            {/* Action type filter */}
+            <select
+              value={filterActionType}
+              onChange={(e) => setFilterActionType(e.target.value)}
+              style={SELECT_STYLE}
+            >
+              <option value="">All action types</option>
+              {getAllActionTypes().map((tag) => (
+                <option key={tag.key} value={tag.key}>{tag.label}</option>
+              ))}
+            </select>
+
+            {/* Project filter — only shown when there are multiple projects */}
+            {projectOptions.length > 1 && (
+              <select
+                value={filterProjectId}
+                onChange={(e) => setFilterProjectId(e.target.value)}
+                style={SELECT_STYLE}
+              >
+                <option value="">All projects</option>
+                {projectOptions.map(([id, name]) => (
+                  <option key={id} value={id}>{name}</option>
+                ))}
+              </select>
+            )}
+
+            {/* Sort order */}
+            <select
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value as SortOrder)}
+              style={SELECT_STYLE}
+            >
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="action_type_az">Action type A–Z</option>
+            </select>
+
+            {/* Clear filters link */}
+            {hasFilters && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="text-[12px] font-semibold"
+                style={{ color: "var(--cta)", background: "none", border: "none", cursor: "pointer", whiteSpace: "nowrap" }}
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
         </section>
 
         {emailDrafts.length > 0 && (
@@ -344,20 +536,32 @@ export default function WorkspaceActionsPage() {
                 <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>
                   Loading suggested actions...
                 </p>
-              ) : suggested.length === 0 ? (
+              ) : filteredSuggested.length === 0 ? (
                 <div
                   className="rounded-xl border border-dashed px-4 py-6 text-center"
                   style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
                 >
                   <p className="text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
-                    Nothing waiting for review
+                    {hasFilters ? "No suggestions match your filters" : "Nothing waiting for review"}
                   </p>
                   <p className="mt-2 text-[13px] leading-6" style={{ color: "var(--text-2)" }}>
-                    New Larry suggestions will appear here as chat, transcript, briefing, and scheduled-scan activity flows into the ledger.
+                    {hasFilters
+                      ? "Try adjusting your search or filter criteria."
+                      : "New Larry suggestions will appear here as chat, transcript, briefing, and scheduled-scan activity flows into the ledger."}
                   </p>
+                  {hasFilters && (
+                    <button
+                      type="button"
+                      onClick={clearFilters}
+                      className="mt-3 text-[12px] font-semibold"
+                      style={{ color: "var(--cta)", background: "none", border: "none", cursor: "pointer" }}
+                    >
+                      Clear filters
+                    </button>
+                  )}
                 </div>
               ) : (
-                suggested.map((event) => (
+                filteredSuggested.map((event) => (
                   <div
                     key={event.id}
                     className="rounded-xl border px-4 py-4"
@@ -377,6 +581,7 @@ export default function WorkspaceActionsPage() {
                           >
                             {getEventTone(event).label}
                           </span>
+                          <ActionTypeBadge actionType={event.actionType} />
                         </div>
                         <p className="mt-3 text-[15px] font-semibold" style={{ color: "var(--text-1)" }}>
                           {event.displayText}
@@ -448,6 +653,21 @@ export default function WorkspaceActionsPage() {
                         </button>
                         <button
                           type="button"
+                          onClick={async () => {
+                            const conversationId = await modify(event.id);
+                            if (conversationId) {
+                              window.dispatchEvent(new CustomEvent("larry:open"));
+                              window.dispatchEvent(new CustomEvent("larry:load-conversation", { detail: conversationId }));
+                            }
+                          }}
+                          disabled={modifying === event.id}
+                          className="rounded-full border px-3 py-1.5 text-[12px] font-semibold"
+                          style={{ borderColor: "var(--cta)", color: "var(--cta)" }}
+                        >
+                          {modifying === event.id ? "Opening..." : "Modify"}
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => {
                             void accept(event.id);
                           }}
@@ -490,12 +710,12 @@ export default function WorkspaceActionsPage() {
                 <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>
                   Loading recent activity...
                 </p>
-              ) : activity.length === 0 ? (
+              ) : filteredActivity.length === 0 ? (
                 <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>
-                  No recent Larry activity logged yet.
+                  {hasFilters ? "No activity matches your filters." : "No recent Larry activity logged yet."}
                 </p>
               ) : (
-                activity.map((event) => (
+                filteredActivity.map((event) => (
                   <div
                     key={event.id}
                     className="rounded-xl border px-4 py-4"
@@ -516,6 +736,7 @@ export default function WorkspaceActionsPage() {
                           >
                             {getEventTone(event).label}
                           </span>
+                          <ActionTypeBadge actionType={event.actionType} />
                         </div>
                         <p className="mt-3 text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
                           {event.displayText}
