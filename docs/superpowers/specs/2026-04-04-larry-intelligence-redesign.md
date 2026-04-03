@@ -349,116 +349,242 @@ Move intent classification INTO the LLM. Remove most of the regex-based pre-clas
 
 ---
 
-## 9. Larry as Executor (Task Completion)
+## 9. Larry as Coordinator AND Executor
 
-### The Gap
-Larry currently operates as a **coordinator only** — he creates tasks, suggests actions, and tracks progress. But he never *does the work*. When Larry creates a task like "Draft follow-up email to client", that task sits in the task center waiting for a human. But Larry can write that email himself. He should create it, do it, produce the output, and mark it complete.
+### Core Principle
+Larry is BOTH a coordinator and an executor. Not one or the other. For every piece of work that surfaces in a project, Larry makes a judgment call:
 
-This is the difference between Larry being a **project tracker** and Larry being a **project manager who gets things done**.
+1. **Can I do this myself?** → Do it, produce the output, mark it complete
+2. **Can I do part of it?** → Do what I can, create the task for the human part
+3. **Is this human work?** → Create and assign the task, then coordinate and follow up
+4. **Am I unsure?** → Suggest it in the Action Centre: "Let Larry complete this task" as an option
 
-### What Larry Can Execute Himself
+This decision happens for EVERY action — whether it came from a user request, a meeting transcript, a scheduled scan, or a Slack signal.
 
-**Writing tasks** (Larry produces a `larry_document`):
-- Draft emails (follow-ups, status updates, stakeholder comms)
-- Draft letters, memos, reports
-- Write meeting agendas
-- Compile status reports / executive summaries
-- Draft Slack messages
-- Write project briefs or scope documents
+### The Decision Matrix
 
-**Operational tasks** (Larry executes directly):
-- Send reminders and nudges
-- Update task statuses based on signals
-- Flag risks and update risk levels
-- Recalculate dependencies
-- Generate and send notifications
+For every action Larry considers, he evaluates along two axes:
 
-**Tasks Larry CANNOT execute** (human work):
-- Actually build/code/design something
-- Attend meetings or make phone calls
-- Make strategic decisions (budget, scope, hiring)
-- Review someone's work quality
-- Anything requiring physical presence or human judgment on non-PM matters
+**Axis 1: Can Larry produce the output?**
+| Category | Examples | Larry can do it? |
+|----------|----------|-----------------|
+| **Writing & drafting** | Emails, letters, memos, reports, agendas, briefs, Slack messages, status updates | YES — Larry produces a `larry_document` |
+| **Data compilation** | Weekly reports, sprint summaries, risk assessments, project health dashboards | YES — Larry has all the data |
+| **Coordination** | Send reminders, nudge stakeholders, schedule follow-ups, notify team | YES — Larry sends directly |
+| **Status management** | Update task status, flag risks, recalculate dependencies, mark overdue | YES — Larry updates directly |
+| **Creative/technical work** | Design, coding, architecture decisions, UX research, copywriting (brand voice) | NO — requires human skill |
+| **Judgment calls** | Budget approval, scope changes, hiring, strategic pivots, client negotiations | NO — requires human authority |
+| **External interactions** | Phone calls, in-person meetings, physical deliveries | NO — requires human presence |
+| **Quality review** | Code review, design critique, copy approval, legal review | NO — requires human expertise |
 
-### How It Works: The Execute-and-Complete Loop
+**Axis 2: Should Larry auto-execute or ask first?**
+This is governed by the autonomy level (1-5) AND the action's impact:
 
-When Larry creates an action, he should also assess: **"Can I do this myself?"**
+| Impact | Autonomy 1 (Full Control) | Autonomy 3 (Balanced) | Autonomy 5 (Autopilot) |
+|--------|--------------------------|----------------------|----------------------|
+| **Low** (reminder, status update) | Ask first | Auto-execute | Auto-execute |
+| **Medium** (draft email, compile report) | Ask first | Ask first | Auto-execute |
+| **High** (create project, change deadline, external comms) | Ask first | Ask first | Ask first |
 
-New field in the action schema:
+### The Five Execution Modes
 
-```json
-{
-  "type": "task_create",
-  "displayText": "Draft follow-up email to client about the design delay",
-  "reasoning": "Client meeting is Thursday, design review slipped 3 days, they need to know",
-  "payload": { ... },
-  "selfExecutable": true,
-  "executionOutput": {
-    "docType": "email_draft",
-    "title": "Follow-up: Design Review Timeline Update",
-    "content": "Hi Sarah,\n\nQuick update on the design review timeline..."
-  }
-}
+**Mode 1: Larry auto-executes and auto-completes**
+Larry does the work silently. The user sees it in the activity feed.
+- *Example*: Task is 3 days overdue → Larry flags it as blocked, sends reminder to assignee
+- *When*: Low-impact operational actions within autonomy threshold
+
+**Mode 2: Larry completes the work, asks for approval**
+Larry does the work, produces the output, but puts it in the Action Centre for review.
+- *Example*: "Draft follow-up email to client about the design delay" → Larry writes the email, creates the document, shows it in Action Centre with [Accept] [Modify] [Dismiss]
+- *When*: Writing tasks, external communications, anything the user might want to review
+
+**Mode 3: Larry offers to do it**
+Larry creates the task and suggests: "I can complete this — want me to handle it?"
+- *Example*: Meeting transcript mentions "someone should write up the project brief" → Larry creates the task and adds an action: "Let Larry write this project brief"
+- *When*: Larry CAN do it but isn't sure the user wants him to. Maybe the user wants a specific person's voice, or the task requires context Larry might not have.
+- *Action Centre shows*: `"Write project brief for the onboarding flow" — [Let Larry do it] [Assign to someone] [Dismiss]`
+
+**Mode 4: Larry creates and coordinates**
+Larry creates the task, assigns it to the right person, sets the deadline, and monitors.
+- *Example*: "Design the new landing page" → Larry creates the task, assigns to the designer, sets deadline based on project timeline, and will follow up if no progress in 3 days
+- *When*: Human work that Larry can't do but can orchestrate
+
+**Mode 5: Larry flags but doesn't act**
+Larry notices something but doesn't know what action to take. Brings it to the user's attention.
+- *Example*: Slack signal mentions a potential scope change but Larry isn't sure of the impact → Larry surfaces it: "I noticed Marcus mentioned changing the auth approach in Slack. This could affect 3 downstream tasks. Want me to look into it?"
+- *When*: Ambiguous signals, strategic decisions, situations requiring human judgment
+
+### Edge Cases — Thoroughly Explored
+
+**Edge Case 1: Larry writes an email, user modifies it, then wants Larry to remember the style**
+- Larry drafts a client email. User clicks Modify, adjusts the tone to be more formal.
+- Larry should notice the correction and record in the project context: "User prefers formal tone for client emails in this project."
+- Next time Larry drafts a client email for this project, he matches that tone.
+- *Implementation*: When a modify-and-accept happens, log the diff as correction feedback. Larry's context update picks it up.
+
+**Edge Case 2: Task says "Draft email" but Larry doesn't have enough context**
+- A meeting transcript produces: "Follow up with the vendor about pricing."
+- Larry can draft an email, but he doesn't know which vendor, what pricing, or what was discussed.
+- Larry should create the task AND ask: "I can draft this email, but I need to know: which vendor and what pricing terms were discussed? Give me the details and I'll write it."
+- *Mode*: Mode 3 (offer to do it) + follow-up question
+
+**Edge Case 3: Larry completes a task but the output isn't good enough**
+- Larry compiles a weekly status report. User dismisses it — "This isn't detailed enough."
+- The task should reopen. Larry should ask what's missing and try again.
+- *Implementation*: Dismiss on a Larry-completed task → task status reverts to `in_progress`, Larry gets the dismiss reason as feedback, user can chat to refine.
+
+**Edge Case 4: Larry thinks he can do it, but shouldn't**
+- Task: "Write the client proposal." Larry has the project data and could technically generate a document.
+- But a client proposal requires strategic positioning, pricing decisions, and brand voice that Larry shouldn't guess at.
+- Larry should use Mode 3: "I can draft a starting version of the client proposal based on the project scope and timeline. Want me to create a first draft for you to refine?"
+- *Rule*: For high-stakes external documents, Larry should always OFFER rather than auto-complete.
+
+**Edge Case 5: Partially executable task**
+- Task: "Prepare for the sprint planning meeting" — this involves creating an agenda (Larry can do) + reviewing the backlog with the team (Larry can't do).
+- Larry should split this: auto-complete "Create sprint planning agenda" and create a separate task "Review backlog with team" assigned to the PM.
+- *Implementation*: Larry can return multiple actions from a single intent — one self-executed, one coordinator-mode.
+
+**Edge Case 6: User explicitly asks Larry to do something Larry-executable**
+- User: "Draft an email to Sarah about the deadline change"
+- This is a clear, direct request. Larry should NOT create a task + put it in the action centre. Larry should just DO it immediately and show the result.
+- *Rule*: When the user directly asks Larry to do something Larry can do, skip the task-creation ceremony. Just do it and show the output.
+
+**Edge Case 7: Scheduled scan finds work Larry can do**
+- Larry's 4-hour scan notices: weekly status report is due tomorrow, nobody has started it.
+- Larry should proactively compile the report, create the document, and surface it: "I compiled this week's status report since it's due tomorrow. Review it and I'll send it out."
+- *Mode*: Mode 2 (complete + ask approval)
+
+**Edge Case 8: Larry creates a task for himself during planning**
+- User asks Larry to plan out a project phase. Larry generates 8 tasks.
+- 3 of them are things Larry can do (write brief, draft kickoff email, compile requirements doc).
+- Larry should mark those 3 as "assigned to Larry" and either auto-complete them or offer to.
+- The other 5 get assigned to team members.
+- *Implementation*: In the `task_create` payload, Larry can set `assigneeName: "Larry"` for self-assigned tasks.
+
+**Edge Case 9: Larry's output needs external data he doesn't have**
+- Task: "Compile the Q2 budget report"
+- Larry has project data but not financial data (budget figures, spend tracking, etc.)
+- Larry should NOT attempt this and fabricate numbers. He should create the task for a human and explain: "I don't have access to the budget data for this. Assigning to you — I can format it once you provide the numbers."
+- *Rule*: Larry NEVER fabricates data he doesn't have. If the snapshot doesn't contain it, Larry doesn't pretend.
+
+**Edge Case 10: Autonomy level changes mid-project**
+- User had autonomy at level 4 (Proactive). Larry was auto-completing drafts and reports.
+- User drops to level 2 (Cautious) because Larry made a mistake.
+- All Larry-executable tasks should now go through approval, even ones Larry was previously auto-completing.
+- *Implementation*: Autonomy level is checked at execution time, not at suggestion time. If it changed, Larry respects the new level.
+
+**Edge Case 11: Multiple actions from one request, mix of executable and not**
+- User: "Let's get the marketing launch ready. We need the press release drafted, the landing page designed, and the social media calendar planned out."
+- Larry should:
+  - Draft the press release himself (Mode 2 — complete + show for approval)
+  - Create "Design landing page" task assigned to the designer (Mode 4 — coordinate)
+  - Create the social media calendar himself (Mode 2 — compile + show for approval)
+- All three appear in the Action Centre, but two have documents attached.
+
+**Edge Case 12: Larry completes a task that turns out to be wrong project context**
+- Larry drafts an email based on what he knows, but the project context file was stale.
+- User dismisses: "That's not right, we changed direction last week."
+- Larry should update the project context, apologise briefly, and re-draft with the corrected information.
+- *Implementation*: Dismiss with reason → context update → retry if user requests.
+
+### The Action Centre UX for Executor Actions
+
+The Action Centre needs to distinguish between:
+
+**Coordinator actions** (Larry suggests, human does):
+```
+Assign "Hire a Plumber" to Alex (You)
+Owner Change · Generated from Project Review
+[Dismiss] [Modify] [Accept]
 ```
 
-When `selfExecutable` is true and `executionOutput` is present:
-1. Larry creates the task in the task center
-2. Larry creates a `larry_document` from `executionOutput`
-3. Larry links the document to the task
-4. Larry marks the task as **"completed by Larry"**
-5. The document appears in the Files tab and Documents page
-6. For emails: the draft goes to the Action Centre for approval before sending
-7. For non-email documents: they're immediately available, marked as "created by Larry"
-
-### The User's View
-The user sees in the Action Centre:
+**Executor actions — completed** (Larry did the work):
 ```
-Larry completed: "Draft follow-up email to client about the design delay"
+Larry completed: "Draft follow-up email to client about design delay"
+Email Draft · Completed by Larry · 2 min ago
 [View document] [Accept] [Modify] [Dismiss]
 ```
 
-If they accept, the email gets queued for sending (future Gmail integration). If they modify, they chat with Larry to refine it. If they dismiss, the task gets reopened.
+**Executor actions — offered** (Larry can do it, asking permission):
+```
+"Write project brief for onboarding flow"
+Larry can complete this task
+[Let Larry do it] [Assign to someone] [Dismiss]
+```
 
 ### System Prompt Addition
 ```
-TASK SELF-EXECUTION:
-When you propose a task that involves writing, drafting, composing, summarising,
-or compiling — you should DO IT, not just suggest it. You are a project manager
-who gets things done.
+YOU ARE BOTH A COORDINATOR AND AN EXECUTOR.
 
-For every action you propose, ask yourself: "Can I actually complete this task
-right now with the information I have?"
+For every action, ask: "Can I actually do this work myself, right now, with
+the information I have?"
 
-If YES: Set selfExecutable to true and include the executionOutput with the
-actual completed work (the email draft, the report, the meeting agenda, etc.).
-The task gets created AND completed in one step.
+EXECUTE when:
+- The task is writing, drafting, compiling, or composing
+- You have all the information needed in the project snapshot
+- The output doesn't require human judgment, creative vision, or external data you don't have
 
-If NO: Set selfExecutable to false. The task gets created for a human to complete.
+OFFER when:
+- You could technically do it but aren't sure the user wants you to
+- The task is high-stakes (client-facing, external comms, strategic docs)
+- You're missing some context but could attempt it with what you have
 
-Examples:
-- "Draft email to client about delay" → YES, you can write this. Do it.
-- "Review the marketing copy" → NO, you don't have the copy to review.
-- "Compile weekly status report" → YES, you have all the project data. Do it.
-- "Fix the authentication bug" → NO, you can't write code.
-- "Create meeting agenda for sprint planning" → YES, you know the tasks and priorities. Do it.
-- "Design the new landing page" → NO, you're not a designer.
+COORDINATE when:
+- The task requires human skills (design, coding, review, decisions)
+- The task requires physical presence or external interaction
+- You don't have the data needed and can't produce meaningful output
+
+NEVER:
+- Fabricate data you don't have (financial figures, metrics not in the snapshot)
+- Auto-complete high-stakes external communications without approval
+- Assume you know something that isn't in the snapshot or context file
+- Create a task and leave it when you could have just done it
+
+When you execute a task:
+- Set selfExecutable: true
+- Include executionOutput with the ACTUAL completed work
+- The system will create the document, link it to the task, and mark it complete
+- The output goes to the Action Centre for review (unless autonomy level is 5)
+
+When you offer to execute:
+- Set offerExecution: true
+- Include a brief explanation of what you'd produce
+- The Action Centre shows "Let Larry do it" as an option
 ```
 
 ### Database/Schema Changes
 - Add `completed_by_larry BOOLEAN DEFAULT FALSE` to `tasks` table
-- Add `larry_document_id UUID REFERENCES larry_documents(id)` to `tasks` table (links task to its output)
+- Add `larry_document_id UUID REFERENCES larry_documents(id)` to `tasks` table
+- Add `assigned_to_larry BOOLEAN DEFAULT FALSE` to `tasks` table (for tasks Larry plans to do)
 - The `larry_documents` table already exists from today's earlier work
 
-### Implementation
-This is a **new Phase 2.5** between the system prompt rewrite and the clarification engine simplification:
-1. Add `selfExecutable` and `executionOutput` to the action schema
-2. Update the system prompt with self-execution instructions
-3. Update `runAutoActions()` and `storeSuggestions()` to handle self-executed tasks:
-   - Create the task
-   - Create the larry_document
-   - Link them
-   - Mark task as completed by Larry
-4. Update the Action Centre frontend to show "completed by Larry" actions with document links
+### New Action Schema Fields
+```typescript
+const LarryActionSchema = z.object({
+  type: LarryActionTypeEnum,
+  displayText: z.string().min(1),
+  reasoning: z.string().min(1),
+  payload: z.record(z.string(), z.unknown()),
+  selfExecutable: z.boolean().optional().default(false),
+  offerExecution: z.boolean().optional().default(false),
+  executionOutput: z.object({
+    docType: z.enum(["email_draft", "letter", "memo", "report", "note", "other"]),
+    title: z.string(),
+    content: z.string(),
+    emailRecipient: z.string().optional(),
+    emailSubject: z.string().optional(),
+  }).nullable().optional(),
+});
+```
+
+### Implementation (Phase 3)
+1. Add `selfExecutable`, `offerExecution`, `executionOutput` to action schema in `packages/shared`
+2. Update system prompt with coordinator+executor instructions
+3. Update `runAutoActions()`: when `selfExecutable` is true, create task + document + link + mark complete
+4. Update `storeSuggestions()`: when `offerExecution` is true, store with a flag so the Action Centre shows the "Let Larry do it" button
+5. Add `assigned_to_larry`, `completed_by_larry`, `larry_document_id` columns to tasks
+6. Update Action Centre frontend with the three display modes (coordinator, completed, offered)
+7. Handle the "Let Larry do it" button: triggers a new intelligence call scoped to that specific task, Larry produces the output, document gets created, task marked complete
 
 ---
 
