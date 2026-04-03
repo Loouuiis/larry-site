@@ -20,6 +20,7 @@ import {
   Users,
   Settings,
   Layers,
+  Search,
   Star,
 } from "lucide-react";
 import { useWorkspaceChrome } from "@/app/workspace/WorkspaceChromeContext";
@@ -36,6 +37,7 @@ import { useCalendarEvents, type CalendarEvent } from "@/hooks/useCalendarEvents
 import { CollaboratorsPanel } from "./CollaboratorsPanel";
 import { ProjectNotesPanel } from "./ProjectNotesPanel";
 import { TaskCenter } from "./TaskCenter";
+import { getActionTypeTag, getAllActionTypes } from "@/lib/action-types";
 
 async function readJson<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -824,6 +826,307 @@ function ProjectFilesTab({ projectId }: { projectId: string }) {
   );
 }
 
+/* ── Project Action Centre Tab ─────────────────────────────────────── */
+
+const ACTION_CENTRE_SELECT_STYLE: React.CSSProperties = {
+  height: "36px",
+  padding: "0 10px",
+  borderRadius: "var(--radius-btn, 8px)",
+  border: "1px solid var(--border)",
+  background: "var(--surface-2)",
+  color: "var(--text-1)",
+  fontSize: "13px",
+  cursor: "pointer",
+  outline: "none",
+};
+
+function ActionTypeBadge({ actionType }: { actionType: string }) {
+  const tag = getActionTypeTag(actionType);
+  return (
+    <span
+      className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+      style={{ background: `${tag.color}18`, color: tag.color, border: `1px solid ${tag.color}30` }}
+    >
+      {tag.label}
+    </span>
+  );
+}
+
+type ActionSortOrder = "newest" | "oldest" | "type";
+
+function matchesActionSearch(event: WorkspaceLarryEvent, query: string): boolean {
+  const q = query.toLowerCase();
+  return (
+    (event.displayText ?? "").toLowerCase().includes(q) ||
+    (event.reasoning ?? "").toLowerCase().includes(q) ||
+    (event.actionType ?? "").toLowerCase().includes(q)
+  );
+}
+
+function filterAndSortEvents(
+  events: WorkspaceLarryEvent[],
+  search: string,
+  filterActionType: string,
+  sortOrder: ActionSortOrder,
+): WorkspaceLarryEvent[] {
+  let result = [...events];
+  if (search.trim()) result = result.filter((e) => matchesActionSearch(e, search));
+  if (filterActionType) result = result.filter((e) => e.actionType === filterActionType);
+  result.sort((a, b) => {
+    if (sortOrder === "oldest") return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    if (sortOrder === "type") return (a.actionType ?? "").localeCompare(b.actionType ?? "");
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
+  return result;
+}
+
+function ProjectActionCentreTab({
+  suggested,
+  activity,
+  accepting,
+  dismissing,
+  modifying,
+  accept,
+  dismiss,
+  modify,
+}: {
+  suggested: WorkspaceLarryEvent[];
+  activity: WorkspaceLarryEvent[];
+  accepting: string | null;
+  dismissing: string | null;
+  modifying: string | null;
+  accept: (id: string) => Promise<void>;
+  dismiss: (id: string) => Promise<void>;
+  modify: (id: string) => Promise<string | null>;
+}) {
+  const [search, setSearch] = useState("");
+  const [filterActionType, setFilterActionType] = useState("");
+  const [sortOrder, setSortOrder] = useState<ActionSortOrder>("newest");
+
+  const filteredSuggested = useMemo(
+    () => filterAndSortEvents(suggested, search, filterActionType, sortOrder),
+    [suggested, search, filterActionType, sortOrder],
+  );
+  const filteredActivity = useMemo(
+    () => filterAndSortEvents(activity, search, filterActionType, sortOrder),
+    [activity, search, filterActionType, sortOrder],
+  );
+
+  const hasFilters = search.trim() !== "" || filterActionType !== "";
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <section
+        style={{
+          borderRadius: "var(--radius-card)",
+          border: "1px solid var(--border)",
+          background: "var(--surface)",
+          padding: "20px",
+        }}
+      >
+        <p className="text-[18px] font-semibold" style={{ color: "var(--text-1)" }}>
+          Project Action Centre
+        </p>
+        <p className="mt-1 text-[13px]" style={{ color: "var(--text-2)" }}>
+          Review and manage Larry actions for this project.
+        </p>
+      </section>
+
+      {/* Toolbar */}
+      <section
+        style={{
+          display: "flex",
+          gap: "8px",
+          flexWrap: "wrap",
+          alignItems: "center",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            height: "36px",
+            padding: "0 10px",
+            borderRadius: "var(--radius-btn, 8px)",
+            border: "1px solid var(--border)",
+            background: "var(--surface-2)",
+            flex: "1 1 200px",
+            maxWidth: "320px",
+          }}
+        >
+          <Search size={13} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+          <input
+            placeholder="Search actions…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            style={{
+              flex: 1,
+              background: "none",
+              border: "none",
+              outline: "none",
+              fontSize: "13px",
+              color: "var(--text-1)",
+            }}
+          />
+        </div>
+        <select
+          value={filterActionType}
+          onChange={(e) => setFilterActionType(e.target.value)}
+          style={ACTION_CENTRE_SELECT_STYLE}
+        >
+          <option value="">All types</option>
+          {getAllActionTypes().map((tag) => (
+            <option key={tag.key} value={tag.key}>{tag.label}</option>
+          ))}
+        </select>
+        <select
+          value={sortOrder}
+          onChange={(e) => setSortOrder(e.target.value as ActionSortOrder)}
+          style={ACTION_CENTRE_SELECT_STYLE}
+        >
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+          <option value="type">Action type A–Z</option>
+        </select>
+        {hasFilters && (
+          <button
+            type="button"
+            onClick={() => { setSearch(""); setFilterActionType(""); }}
+            style={{ color: "var(--cta)", fontSize: "12px", fontWeight: 600, background: "none", border: "none", cursor: "pointer" }}
+          >
+            Clear filters
+          </button>
+        )}
+      </section>
+
+      {/* Pending review */}
+      <section
+        style={{
+          borderRadius: "var(--radius-card)",
+          border: "1px solid var(--border)",
+          background: "var(--surface)",
+          padding: "20px",
+        }}
+      >
+        <p className="text-[15px] font-semibold" style={{ color: "var(--text-1)" }}>
+          Pending review
+        </p>
+        <div className="mt-4">
+          {filteredSuggested.length === 0 ? (
+            <p className="text-[13px] py-4" style={{ color: "var(--text-muted)" }}>
+              {hasFilters
+                ? "No actions match your filters."
+                : "No pending actions. New suggestions will appear as Larry processes signals."}
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {filteredSuggested.map((event) => (
+                <div
+                  key={event.id}
+                  className="rounded-xl border px-4 py-3"
+                  style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <ActionTypeBadge actionType={event.actionType} />
+                  </div>
+                  <p className="mt-2 text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
+                    {event.displayText}
+                  </p>
+                  <p className="mt-1 text-[12px]" style={{ color: "var(--text-muted)" }}>
+                    {getEventMeta(event)}
+                  </p>
+                  <div className="mt-3 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void dismiss(event.id)}
+                      disabled={dismissing === event.id}
+                      className="rounded-lg border px-3 py-1.5 text-[12px] font-semibold"
+                      style={{ borderColor: "var(--border)", color: "var(--text-2)" }}
+                    >
+                      {dismissing === event.id ? "Dismissing..." : "Dismiss"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const conversationId = await modify(event.id);
+                        if (conversationId) {
+                          window.dispatchEvent(new CustomEvent("larry:open"));
+                          window.dispatchEvent(new CustomEvent("larry:load-conversation", { detail: conversationId }));
+                        }
+                      }}
+                      disabled={modifying === event.id}
+                      className="rounded-lg border px-3 py-1.5 text-[12px] font-semibold"
+                      style={{ borderColor: "var(--cta)", color: "var(--cta)" }}
+                    >
+                      {modifying === event.id ? "Opening..." : "Modify"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void accept(event.id)}
+                      disabled={accepting === event.id}
+                      className="rounded-lg px-3 py-1.5 text-[12px] font-semibold text-white"
+                      style={{ background: "var(--cta)" }}
+                    >
+                      {accepting === event.id ? "Accepting..." : "Accept"}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Recent activity */}
+      {filteredActivity.length > 0 && (
+        <section
+          style={{
+            borderRadius: "var(--radius-card)",
+            border: "1px solid var(--border)",
+            background: "var(--surface)",
+            padding: "20px",
+          }}
+        >
+          <p className="text-[15px] font-semibold" style={{ color: "var(--text-1)" }}>
+            Recent activity
+          </p>
+          <div className="mt-4 space-y-3">
+            {filteredActivity.map((event) => (
+              <div
+                key={event.id}
+                className="rounded-xl border px-4 py-3"
+                style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <ActionTypeBadge actionType={event.actionType} />
+                  <span
+                    className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold"
+                    style={{
+                      background: event.eventType === "accepted" ? "#ecfdf3" : "#eff6ff",
+                      color: event.eventType === "accepted" ? "#15803d" : "#1d4ed8",
+                      borderColor: event.eventType === "accepted" ? "#bbf7d0" : "#bfdbfe",
+                    }}
+                  >
+                    {event.eventType === "accepted" ? "Accepted" : "Auto executed"}
+                  </span>
+                </div>
+                <p className="mt-2 text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
+                  {event.displayText}
+                </p>
+                <p className="mt-1 text-[12px]" style={{ color: "var(--text-muted)" }}>
+                  {getEventMeta(event)}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
 export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
   const chrome = useWorkspaceChrome();
   const router = useRouter();
@@ -846,8 +1149,10 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
     error: actionCentreError,
     accepting,
     dismissing,
+    modifying,
     accept,
     dismiss,
+    modify,
     refresh: refreshActionCentre,
   } = useProjectActionCentre(projectId, refresh);
   const {
@@ -1826,68 +2131,17 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
           </div>
         )}
 
-        {/* ── Tab: Actions — re-uses existing action centre content ─ */}
-        {activeTab === "actions" && (<>
-          <section
-            style={{
-              borderRadius: "var(--radius-card)",
-              border: "1px solid var(--border)",
-              background: "var(--surface)",
-              padding: "20px",
-            }}
-          >
-            <p className="text-[18px] font-semibold" style={{ color: "var(--text-1)" }}>
-              Project Action Centre
-            </p>
-            <p className="mt-1 text-[13px]" style={{ color: "var(--text-2)" }}>
-              Review and manage Larry actions for this project.
-            </p>
-            <div className="mt-4">
-              {suggested.length === 0 ? (
-                <p className="text-[13px] py-4" style={{ color: "var(--text-muted)" }}>
-                  No pending actions. New suggestions will appear as Larry processes signals.
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {suggested.map((event) => (
-                    <div
-                      key={event.id}
-                      className="rounded-xl border px-4 py-3"
-                      style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
-                    >
-                      <p className="text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
-                        {event.displayText}
-                      </p>
-                      <p className="mt-1 text-[12px]" style={{ color: "var(--text-muted)" }}>
-                        {getEventMeta(event)}
-                      </p>
-                      <div className="mt-3 flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => void dismiss(event.id)}
-                          disabled={dismissing === event.id}
-                          className="rounded-lg border px-3 py-1.5 text-[12px] font-semibold"
-                          style={{ borderColor: "var(--border)", color: "var(--text-2)" }}
-                        >
-                          {dismissing === event.id ? "Dismissing..." : "Dismiss"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void accept(event.id)}
-                          disabled={accepting === event.id}
-                          className="rounded-lg px-3 py-1.5 text-[12px] font-semibold text-white"
-                          style={{ background: "var(--cta)" }}
-                        >
-                          {accepting === event.id ? "Accepting..." : "Accept"}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </section>
-        </>)}
+        {/* ── Tab: Actions — project action centre with filter/search ─ */}
+        {activeTab === "actions" && (<ProjectActionCentreTab
+          suggested={suggested}
+          activity={activity}
+          accepting={accepting}
+          dismissing={dismissing}
+          modifying={modifying}
+          accept={accept}
+          dismiss={dismiss}
+          modify={modify}
+        />)}
 
         {/* ── Tab: Team — re-uses existing collaborators panel ──── */}
         {activeTab === "team" && (
