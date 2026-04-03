@@ -20,6 +20,7 @@ interface ProjectRow {
   risk_level: string;
   start_date: string | null;
   target_date: string | null;
+  larryContext: string | null;
 }
 
 interface TaskRow {
@@ -79,7 +80,8 @@ export async function getProjectSnapshot(
   const [projectRows, taskRows, dependencyRows, memberRows, activityRows, memoryRows] = await Promise.all([
     db.query<ProjectRow>(
       `SELECT id, tenant_id, name, description, status, risk_score, risk_level,
-              start_date::text, target_date::text
+              start_date::text, target_date::text,
+              larry_context AS "larryContext"
        FROM projects
        WHERE id = $1 AND tenant_id = $2`,
       [projectId, tenantId]
@@ -227,6 +229,7 @@ export async function getProjectSnapshot(
       riskLevel: project.risk_level,
       startDate: project.start_date,
       targetDate: project.target_date,
+      larryContext: project.larryContext ?? null,
     },
     tasks,
     team,
@@ -235,6 +238,19 @@ export async function getProjectSnapshot(
     memoryEntries,
     generatedAt: new Date().toISOString(),
   };
+}
+
+export async function updateProjectLarryContext(
+  db: Db,
+  tenantId: string,
+  projectId: string,
+  context: string,
+): Promise<void> {
+  await db.queryTenant(
+    tenantId,
+    `UPDATE projects SET larry_context = $2, updated_at = NOW() WHERE tenant_id = $1 AND id = $3`,
+    [tenantId, context, projectId],
+  );
 }
 
 function formatActivityDescription(row: ActivityRow): string {
