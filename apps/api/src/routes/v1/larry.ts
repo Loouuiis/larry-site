@@ -302,6 +302,15 @@ function findMentionedTaskIds(message: string, tasks: Array<{ id: string; title:
   return Array.from(matched);
 }
 
+/**
+ * Detect whether a user message needs clarification BEFORE running intelligence.
+ *
+ * Intent classification order matters:
+ *   1. Creation intents (create/add task, draft email, create project) — never fall
+ *      through to task-target checks because they don't operate on existing tasks.
+ *   2. Mutation intents on existing entities (change deadline, assign, update status)
+ *      — require a task target if ambiguous.
+ */
 function detectClarificationNeed(input: {
   message: string;
   tasks: Array<{ id: string; title: string }>;
@@ -310,20 +319,70 @@ function detectClarificationNeed(input: {
 
   const message = input.message.trim();
   const lower = message.toLowerCase();
+
+  // ── CREATION INTENTS ─────────────────────────────────────────────────────
+  // If the user wants to CREATE something, handle it here and RETURN.
+  // Creation intents must NEVER fall through to the task-target checks below,
+  // because those assume the user is trying to modify an existing task.
+
+  const isCreationIntent =
+    /\b(create|add|make|draft|write|compose|new)\b/i.test(lower) &&
+    /\b(task|tasks|email|letter|memo|report|project|note|meeting|event)\b/i.test(lower) &&
+    // Exclude "add [person] to task" which is an assignment, not creation
+    !/\badd\s+[a-z]+\s+to\s+(task|the)\b/i.test(lower);
+
+  if (isCreationIntent) {
+    // Task creation — pass to LLM with enough context for it to ask follow-ups
+    // if details are missing. Only block here if truly bare ("create a task").
+    if (/\btasks?\b/i.test(lower) && /\b(create|add|make|new)\b/i.test(lower)) {
+      const detailMatch = lower.match(
+        /(?:create|add|make|new)\s+(?:a\s+|some\s+|the\s+)?tasks?\s*(?:for|to|about|on|called|named|titled)?\s*(.*)/
+      );
+      const detailText = detailMatch?.[1]?.trim() ?? "";
+      if (detailText.length < 4) {
+        return {
+          question:
+            "I can do that. What task should I create? Reply with a task title and, if you have them, an owner or due date.",
+          reason: "task_create_missing_details",
+        };
+      }
+    }
+
+    // Email / letter / writing creation — pass to LLM for detail extraction
+    if (/\b(email|letter|memo|report)\b/i.test(lower)) {
+      const hasRecipient = /\bto\s+[a-z][a-z .'-]{1,80}\b/i.test(message);
+      const hasSubject = /\b(about|regarding|re:|subject)\b/i.test(lower);
+      if (!hasRecipient && !hasSubject) {
+        return {
+          question:
+            "I can draft that for you. Who is it for, and what should it be about?",
+          reason: "writing_missing_details",
+        };
+      }
+    }
+
+    // Project creation
+    if (/\bprojects?\b/i.test(lower) && /\b(create|add|make|new|start)\b/i.test(lower)) {
+      const projDetail = lower.match(/(?:create|add|make|new|start)\s+(?:a\s+)?projects?\s*(.*)/);
+      if ((projDetail?.[1]?.trim() ?? "").length < 4) {
+        return {
+          question:
+            "I can create a new project. What should it be called, and what's it about?",
+          reason: "project_create_missing_details",
+        };
+      }
+    }
+
+    // For all other creation intents (calendar event, note, etc.) — let the
+    // LLM handle detail extraction via followUpQuestions.
+    return null;
+  }
+
+  // ── MUTATION INTENTS ON EXISTING ENTITIES ─────────────────────────────────
+  // Everything below assumes the user is trying to MODIFY an existing entity.
+
   const mentionedTaskIds = findMentionedTaskIds(message, input.tasks);
   const taskTargetIntent = requiresTaskTargetClarification(message);
-
-  if (/\b(create|add)\b/.test(lower) && /\btask\b/.test(lower)) {
-    const detailMatch = lower.match(/(?:create|add)\s+(?:a\s+)?task(?:\s+(?:for|to)\s+)?(.+)/);
-    const detailText = detailMatch?.[1]?.trim() ?? "";
-    if (detailText.length < 4) {
-      return {
-        question:
-          "I can do that. What task should I create? Reply with a task title and, if you have them, an owner or due date.",
-        reason: "task_create_missing_details",
-      };
-    }
-  }
 
   if (taskTargetIntent && /\b(deadline|due date|due)\b/i.test(message) && !DATE_HINT_PATTERN.test(message)) {
     return {
