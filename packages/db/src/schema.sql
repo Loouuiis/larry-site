@@ -122,7 +122,8 @@ CREATE TABLE IF NOT EXISTS projects (
   start_date DATE,
   target_date DATE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  larry_context TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_projects_tenant ON projects (tenant_id, created_at DESC);
@@ -221,7 +222,10 @@ CREATE TABLE IF NOT EXISTS tasks (
   started_at TIMESTAMPTZ,
   completed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  assigned_to_larry BOOLEAN NOT NULL DEFAULT FALSE,
+  completed_by_larry BOOLEAN NOT NULL DEFAULT FALSE,
+  larry_document_id UUID REFERENCES larry_documents(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_tasks_tenant_project ON tasks (tenant_id, project_id);
