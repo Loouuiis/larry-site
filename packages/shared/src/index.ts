@@ -160,9 +160,23 @@ export interface LarryAction {
   /** One sentence, specific signals. E.g. "7 days inactive, deadline Friday." */
   reasoning: string;
   payload: Record<string, unknown>;
+  /** When true, Larry can execute this action himself without calling an external API mutation. */
+  selfExecutable?: boolean;
+  /** When true, Larry should offer to execute this action and show the output to the user. */
+  offerExecution?: boolean;
+  /** The document Larry produced when executing this action himself. */
+  executionOutput?: {
+    docType: "email_draft" | "letter" | "memo" | "report" | "note" | "other";
+    title: string;
+    content: string;
+    emailRecipient?: string;
+    emailSubject?: string;
+  } | null;
 }
 
 export interface IntelligenceResult {
+  /** Larry's internal chain-of-thought reasoning — logged but never shown to users. */
+  thinking?: string;
   /** 2–4 sentence plain English summary of what is happening in this project. */
   briefing: string;
   /** Actions Larry will execute immediately — low-risk, reversible, operational. */
@@ -174,6 +188,8 @@ export interface IntelligenceResult {
     field: string;    // e.g. "deadline", "assignee", "scope", "recipient", "task_target", "general"
     question: string; // e.g. "What deadline should I set for this task?"
   }>;
+  /** A sentence or two Larry wants persisted as project context for future scans. Null means no update needed. */
+  contextUpdate?: string | null;
 }
 
 export interface LarryConversationPreview {
@@ -335,6 +351,8 @@ export interface ProjectSnapshot {
   signals: ProjectSignal[];
   /** Durable project memory from past Larry interactions (most recent first). */
   memoryEntries?: ProjectMemoryEntry[];
+  /** Larry's accumulated understanding of this project, injected from persisted context updates. */
+  larryContext?: string | null;
   generatedAt: string;
 }
 
