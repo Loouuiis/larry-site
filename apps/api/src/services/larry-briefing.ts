@@ -50,7 +50,7 @@ interface LarryRuleRow {
 interface CorrectionRow {
   correction_type: string;
   correction_payload: Record<string, unknown>;
-  created_at: string;
+  created_at: string | Date;
 }
 
 async function loadTenantGuidanceHint(db: Db, tenantId: string): Promise<string> {
@@ -89,7 +89,8 @@ async function loadTenantGuidanceHint(db: Db, tenantId: string): Promise<string>
       const actionType = (item.correction_payload as Record<string, unknown>)?.actionType ?? "unknown";
       const reason = (item.correction_payload as Record<string, unknown>)?.reason ?? "";
       const reasonSuffix = typeof reason === "string" && reason.length > 0 ? ` — ${reason}` : "";
-      return `${i + 1}. ${item.correction_type.toUpperCase()}: ${actionType} (${item.created_at.slice(0, 10)})${reasonSuffix}`;
+      const dateStr = item.created_at instanceof Date ? item.created_at.toISOString().slice(0, 10) : String(item.created_at).slice(0, 10);
+      return `${i + 1}. ${item.correction_type.toUpperCase()}: ${actionType} (${dateStr})${reasonSuffix}`;
     });
     chunks.push(`PAST CORRECTIONS from the user — use these to calibrate your judgment:\n${lines.join("\n")}`);
   }
