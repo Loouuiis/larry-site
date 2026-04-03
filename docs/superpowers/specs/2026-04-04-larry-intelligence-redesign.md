@@ -349,17 +349,133 @@ Move intent classification INTO the LLM. Remove most of the regex-based pre-clas
 
 ---
 
-## 9. Files to Change
+## 9. Larry as Executor (Task Completion)
+
+### The Gap
+Larry currently operates as a **coordinator only** — he creates tasks, suggests actions, and tracks progress. But he never *does the work*. When Larry creates a task like "Draft follow-up email to client", that task sits in the task center waiting for a human. But Larry can write that email himself. He should create it, do it, produce the output, and mark it complete.
+
+This is the difference between Larry being a **project tracker** and Larry being a **project manager who gets things done**.
+
+### What Larry Can Execute Himself
+
+**Writing tasks** (Larry produces a `larry_document`):
+- Draft emails (follow-ups, status updates, stakeholder comms)
+- Draft letters, memos, reports
+- Write meeting agendas
+- Compile status reports / executive summaries
+- Draft Slack messages
+- Write project briefs or scope documents
+
+**Operational tasks** (Larry executes directly):
+- Send reminders and nudges
+- Update task statuses based on signals
+- Flag risks and update risk levels
+- Recalculate dependencies
+- Generate and send notifications
+
+**Tasks Larry CANNOT execute** (human work):
+- Actually build/code/design something
+- Attend meetings or make phone calls
+- Make strategic decisions (budget, scope, hiring)
+- Review someone's work quality
+- Anything requiring physical presence or human judgment on non-PM matters
+
+### How It Works: The Execute-and-Complete Loop
+
+When Larry creates an action, he should also assess: **"Can I do this myself?"**
+
+New field in the action schema:
+
+```json
+{
+  "type": "task_create",
+  "displayText": "Draft follow-up email to client about the design delay",
+  "reasoning": "Client meeting is Thursday, design review slipped 3 days, they need to know",
+  "payload": { ... },
+  "selfExecutable": true,
+  "executionOutput": {
+    "docType": "email_draft",
+    "title": "Follow-up: Design Review Timeline Update",
+    "content": "Hi Sarah,\n\nQuick update on the design review timeline..."
+  }
+}
+```
+
+When `selfExecutable` is true and `executionOutput` is present:
+1. Larry creates the task in the task center
+2. Larry creates a `larry_document` from `executionOutput`
+3. Larry links the document to the task
+4. Larry marks the task as **"completed by Larry"**
+5. The document appears in the Files tab and Documents page
+6. For emails: the draft goes to the Action Centre for approval before sending
+7. For non-email documents: they're immediately available, marked as "created by Larry"
+
+### The User's View
+The user sees in the Action Centre:
+```
+Larry completed: "Draft follow-up email to client about the design delay"
+[View document] [Accept] [Modify] [Dismiss]
+```
+
+If they accept, the email gets queued for sending (future Gmail integration). If they modify, they chat with Larry to refine it. If they dismiss, the task gets reopened.
+
+### System Prompt Addition
+```
+TASK SELF-EXECUTION:
+When you propose a task that involves writing, drafting, composing, summarising,
+or compiling — you should DO IT, not just suggest it. You are a project manager
+who gets things done.
+
+For every action you propose, ask yourself: "Can I actually complete this task
+right now with the information I have?"
+
+If YES: Set selfExecutable to true and include the executionOutput with the
+actual completed work (the email draft, the report, the meeting agenda, etc.).
+The task gets created AND completed in one step.
+
+If NO: Set selfExecutable to false. The task gets created for a human to complete.
+
+Examples:
+- "Draft email to client about delay" → YES, you can write this. Do it.
+- "Review the marketing copy" → NO, you don't have the copy to review.
+- "Compile weekly status report" → YES, you have all the project data. Do it.
+- "Fix the authentication bug" → NO, you can't write code.
+- "Create meeting agenda for sprint planning" → YES, you know the tasks and priorities. Do it.
+- "Design the new landing page" → NO, you're not a designer.
+```
+
+### Database/Schema Changes
+- Add `completed_by_larry BOOLEAN DEFAULT FALSE` to `tasks` table
+- Add `larry_document_id UUID REFERENCES larry_documents(id)` to `tasks` table (links task to its output)
+- The `larry_documents` table already exists from today's earlier work
+
+### Implementation
+This is a **new Phase 2.5** between the system prompt rewrite and the clarification engine simplification:
+1. Add `selfExecutable` and `executionOutput` to the action schema
+2. Update the system prompt with self-execution instructions
+3. Update `runAutoActions()` and `storeSuggestions()` to handle self-executed tasks:
+   - Create the task
+   - Create the larry_document
+   - Link them
+   - Mark task as completed by Larry
+4. Update the Action Centre frontend to show "completed by Larry" actions with document links
+
+---
+
+## 10. Files to Change
 
 | File | Change |
 |------|--------|
-| `packages/ai/src/intelligence.ts` | Complete system prompt rewrite. Add `thinking` and `contextUpdate` to response schema. Update `buildUserPrompt()` to include project context. |
-| `packages/shared/src/index.ts` | Add `larryContext` to `ProjectSnapshot`. Add `thinking`, `contextUpdate` to `IntelligenceResult`. |
-| `packages/db/src/schema.sql` | Add `larry_context TEXT` to projects table. |
-| `packages/db/src/migrations/012_larry_context.sql` | Migration for the new column. |
-| `packages/db/src/larry-executor.ts` | Update `getProjectSnapshot()` to include `larry_context`. Add function to persist context updates. |
-| `apps/api/src/routes/v1/larry.ts` | Strip most of `detectClarificationNeed()` to thin pre-filter. After intelligence runs, persist `contextUpdate` if present. |
+| `packages/ai/src/intelligence.ts` | Complete system prompt rewrite. Add `thinking`, `contextUpdate`, `selfExecutable`, `executionOutput` to response schema. Update `buildUserPrompt()` to include project context. |
+| `packages/shared/src/index.ts` | Add `larryContext` to `ProjectSnapshot`. Add `thinking`, `contextUpdate` to `IntelligenceResult`. Add `selfExecutable`, `executionOutput` to `LarryAction`. |
+| `packages/db/src/schema.sql` | Add `larry_context TEXT` to projects table. Add `completed_by_larry` and `larry_document_id` to tasks table. |
+| `packages/db/src/migrations/012_larry_context.sql` | Migration for project context column. |
+| `packages/db/src/migrations/013_task_larry_completion.sql` | Migration for `completed_by_larry` and `larry_document_id` on tasks. |
+| `packages/db/src/larry-executor.ts` | Update `getProjectSnapshot()` to include `larry_context`. Add function to persist context updates. Update `executeTaskCreate()` to handle self-execution: create document, link to task, mark complete. |
+| `apps/api/src/routes/v1/larry.ts` | Strip most of `detectClarificationNeed()` to thin pre-filter. After intelligence runs, persist `contextUpdate` if present. Handle self-executed actions in accept/auto-execute flow. |
 | `apps/api/src/services/larry-briefing.ts` | Update login briefing to use new prompt style. |
+| `apps/web/src/app/workspace/actions/page.tsx` | Show "completed by Larry" actions with document view links. |
+| `apps/web/src/app/workspace/projects/[projectId]/ProjectWorkspaceView.tsx` | Show Larry-completed tasks in task center with document links. |
 
 ---
 
@@ -376,17 +492,24 @@ Move intent classification INTO the LLM. Remove most of the regex-based pre-clas
 - Add `thinking` and `contextUpdate` to the response schema
 - Test with real project data
 
-### Phase 3: Clarification Engine Simplification
+### Phase 3: Larry as Executor (Task Self-Completion)
+- Add `selfExecutable` and `executionOutput` to action schema
+- Add self-execution instructions to system prompt
+- Update `executeTaskCreate()` to create document + link + mark complete when self-executed
+- Add `completed_by_larry` and `larry_document_id` columns to tasks table
+- Update Action Centre to show Larry-completed actions with document links
+
+### Phase 4: Clarification Engine Simplification
 - Strip `detectClarificationNeed()` to thin pre-filter
 - Let the LLM's reasoning handle intent classification
 - Remove regex-based intent guessing
 
-### Phase 4: Chat Intelligence
+### Phase 5: Chat Intelligence
 - Improve multi-turn context formatting
 - Add push-back detection to response handling
 - Update frontend to display Larry's push-backs properly
 
-### Phase 5: Monitoring & Briefing
+### Phase 6: Monitoring & Briefing
 - Update scheduled scan prompts to use reasoning framework
 - Rewrite login briefing to be prioritised and specific
 - Test the full loop: scan → context update → briefing → chat
@@ -404,5 +527,7 @@ This isn't a feature addition. It's transforming Larry from a "JSON action gener
 | Regex-based intent classification | LLM-driven reasoning with thin regex safety net |
 | No project memory between sessions | Per-project context files Larry maintains |
 | Executes commands without question | Pushes back when something doesn't add up |
+| Creates tasks for humans to do | Does the work himself when he can (drafts, reports, agendas) |
 | Generic briefings | Prioritised, specific, actionable briefings |
 | "I'd be happy to help" | "The design review slipped again. Third time. Let's fix this." |
+| "Task created: Draft email" | "Done. I drafted the email, linked it to the task, and marked it complete. Review it in the Action Centre." |
