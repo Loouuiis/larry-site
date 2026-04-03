@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
@@ -10,7 +11,6 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleAlert,
-  Clock3,
   FolderKanban,
   MessageSquare,
   Sparkles,
@@ -91,6 +91,24 @@ function getRiskTone(riskLevel?: string | null) {
     return { background: "#fff7ed", color: "#c2410c", border: "#fdba74" };
   }
   return { background: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" };
+}
+
+function getProjectStatusTone(status?: string | null) {
+  switch (status) {
+    case "completed":
+      return { background: "#b8d9b4", color: "#245820", border: "#90c08a", label: "Completed" };
+    case "on_track":
+    case "active":
+      return { background: "#a8c0e0", color: "#1a3f70", border: "#80a0c8", label: status === "active" ? "Active" : "On track" };
+    case "at_risk":
+      return { background: "#ece4a0", color: "#705800", border: "#d4cc70", label: "At risk" };
+    case "overdue":
+      return { background: "#ecaaaa", color: "#701818", border: "#d07070", label: "Overdue" };
+    case "archived":
+      return { background: "#e8e8e8", color: "#505050", border: "#c8c8c8", label: "Archived" };
+    default:
+      return { background: "#ebebeb", color: "#606060", border: "#d0d0d0", label: status ? formatStatus(status) : "Not started" };
+  }
 }
 
 function getEventTone(event: WorkspaceLarryEvent) {
@@ -475,6 +493,7 @@ function ProjectCalendar({ projectId }: { projectId: string }) {
 
 export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
   const chrome = useWorkspaceChrome();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<ProjectTab>("overview");
   const [memorySourceFilter, setMemorySourceFilter] = useState("all");
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
@@ -639,93 +658,45 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
             padding: "24px",
           }}
         >
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-[24px] font-semibold tracking-[-0.04em]" style={{ color: "var(--text-1)" }}>
+                {project.name}
+              </h1>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {(() => {
+                  const statusTone = getProjectStatusTone(project.status);
+                  return (
+                    <span
+                      className="inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-semibold"
+                      style={{
+                        background: statusTone.background,
+                        color: statusTone.color,
+                        borderColor: statusTone.border,
+                      }}
+                    >
+                      {statusTone.label}
+                    </span>
+                  );
+                })()}
                 <span
-                  className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[12px] font-semibold"
+                  className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-semibold"
                   style={{
                     background: riskTone.background,
                     color: riskTone.color,
                     borderColor: riskTone.border,
                   }}
                 >
-                  <CircleAlert size={14} />
-                  {formatStatus(project.riskLevel ?? health?.riskLevel ?? "low risk")}
-                </span>
-                <span
-                  className="inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-medium"
-                  style={{
-                    background: "var(--surface-2)",
-                    color: "var(--text-2)",
-                    borderColor: "var(--border)",
-                  }}
-                >
-                  {formatStatus(project.status)}
-                </span>
-              </div>
-              <h1 className="mt-4 text-[28px] font-semibold tracking-[-0.04em]" style={{ color: "var(--text-1)" }}>
-                {project.name}
-              </h1>
-              <p className="mt-3 max-w-[760px] text-[15px] leading-7" style={{ color: "var(--text-2)" }}>
-                {project.description?.trim() || "This workspace is now running on the scoped Phase 1 project overview contract."}
-              </p>
-              {isArchived && (
-                <p className="mt-3 max-w-[760px] text-[13px] leading-6" style={{ color: "var(--text-muted)" }}>
-                  This project is archived. It stays readable by direct link, but it no longer appears in active workspace lists.
-                </p>
-              )}
-              <div className="mt-4 flex flex-wrap items-center gap-4 text-[13px]" style={{ color: "var(--text-muted)" }}>
-                <span className="inline-flex items-center gap-2">
-                  <CalendarDays size={14} />
-                  Target {formatDate(project.targetDate)}
-                </span>
-                <span className="inline-flex items-center gap-2">
-                  <Clock3 size={14} />
-                  Updated {formatRelativeTime(project.updatedAt)}
-                </span>
-                <span className="inline-flex items-center gap-2">
-                  <FolderKanban size={14} />
-                  {tasks.length} tracked tasks
+                  <CircleAlert size={12} />
+                  {formatStatus(project.riskLevel ?? health?.riskLevel ?? "low")} risk
                 </span>
               </div>
             </div>
             <div className="flex flex-wrap gap-3">
-              {isArchived ? (
-                <button
-                  type="button"
-                  onClick={() => void updateProjectArchiveState("active")}
-                  disabled={statusBusy !== null}
-                  className="inline-flex h-10 items-center gap-2 rounded-full border px-4 text-[13px] font-semibold"
-                  style={{
-                    borderColor: "var(--border)",
-                    color: "var(--text-2)",
-                    background: "var(--surface)",
-                    opacity: statusBusy !== null ? 0.7 : 1,
-                  }}
-                >
-                  {statusBusy === "unarchive" ? "Restoring..." : "Restore to active"}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setArchiveDialogOpen(true)}
-                  disabled={statusBusy !== null}
-                  className="inline-flex h-10 items-center gap-2 rounded-full border px-4 text-[13px] font-semibold"
-                  style={{
-                    borderColor: "var(--border)",
-                    color: "var(--text-2)",
-                    background: "var(--surface)",
-                    opacity: statusBusy !== null ? 0.7 : 1,
-                  }}
-                >
-                  Archive project
-                </button>
-              )}
               <button
                 type="button"
                 onClick={startProjectChat}
-                className="inline-flex h-10 items-center gap-2 rounded-full px-4 text-[13px] font-semibold text-white"
+                className="inline-flex h-9 items-center gap-2 rounded-full px-4 text-[13px] font-semibold text-white"
                 style={{ background: "var(--cta)" }}
               >
                 <Sparkles size={14} />
@@ -733,19 +704,11 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
               </button>
               <Link
                 href={`/workspace/chats?projectId=${projectId}`}
-                className="inline-flex h-10 items-center gap-2 rounded-full border px-4 text-[13px] font-semibold"
+                className="inline-flex h-9 items-center gap-2 rounded-full border px-4 text-[13px] font-semibold"
                 style={{ borderColor: "var(--border)", color: "var(--text-2)" }}
               >
                 <MessageSquare size={14} />
                 Full chat history
-              </Link>
-              <Link
-                href={`/workspace/projects/${projectId}/dashboard`}
-                className="inline-flex h-10 items-center gap-2 rounded-full border px-4 text-[13px] font-semibold"
-                style={{ borderColor: "var(--border)", color: "var(--text-2)" }}
-              >
-                <Activity size={14} />
-                Report view
               </Link>
             </div>
           </div>
@@ -781,7 +744,13 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
               <button
                 key={id}
                 type="button"
-                onClick={() => setActiveTab(id)}
+                onClick={() => {
+                  if (id === "dashboard") {
+                    router.push(`/workspace/projects/${projectId}/dashboard`);
+                  } else {
+                    setActiveTab(id);
+                  }
+                }}
                 className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-150"
                 style={{
                   background: isActive ? "var(--surface-2)" : "transparent",
@@ -819,20 +788,6 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
           <ProjectCalendar projectId={projectId} />
         )}
 
-        {/* ── Tab: Dashboard ──────────────────────────── */}
-        {activeTab === "dashboard" && (
-          <div className="text-center">
-            <Link
-              href={`/workspace/projects/${projectId}/dashboard`}
-              className="inline-flex h-10 items-center gap-2 rounded-lg px-4 text-[13px] font-semibold text-white"
-              style={{ background: "var(--cta)" }}
-            >
-              <Activity size={14} />
-              Open full dashboard
-            </Link>
-          </div>
-        )}
-
         {/* ── Tab: Files (placeholder) ──────────────────── */}
         {activeTab === "files" && (
           <div
@@ -847,17 +802,56 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
           </div>
         )}
 
-        {/* ── Tab: Settings (placeholder) ──────────────── */}
+        {/* ── Tab: Settings ──────────────────────────── */}
         {activeTab === "settings" && (
           <div
-            className="text-center px-6 py-12"
-            style={{ borderRadius: "var(--radius-card)", border: "1px dashed var(--border-2)", background: "var(--surface)" }}
+            style={{ borderRadius: "var(--radius-card)", border: "1px solid var(--border)", background: "var(--surface)", padding: "24px" }}
           >
-            <Settings size={32} className="mx-auto mb-3" style={{ color: "var(--text-disabled)" }} />
             <p className="text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>Project settings</p>
-            <p className="mt-2 text-[13px]" style={{ color: "var(--text-2)" }}>
+            <p className="mt-1 text-[13px]" style={{ color: "var(--text-2)" }}>
               Project-level settings for reminders, reports, and permissions are coming in the next phase.
             </p>
+            <div className="mt-6 border-t pt-6" style={{ borderColor: "var(--border)" }}>
+              <p className="text-[13px] font-semibold" style={{ color: "var(--text-1)" }}>Danger zone</p>
+              <p className="mt-1 text-[13px]" style={{ color: "var(--text-2)" }}>
+                {isArchived
+                  ? "This project is archived. It stays readable by direct link but no longer appears in active workspace lists."
+                  : "Archiving removes this project from active workspace lists. It can be restored at any time."}
+              </p>
+              <div className="mt-4">
+                {isArchived ? (
+                  <button
+                    type="button"
+                    onClick={() => void updateProjectArchiveState("active")}
+                    disabled={statusBusy !== null}
+                    className="inline-flex h-9 items-center gap-2 rounded-full border px-4 text-[13px] font-semibold"
+                    style={{
+                      borderColor: "var(--border)",
+                      color: "var(--text-2)",
+                      background: "var(--surface)",
+                      opacity: statusBusy !== null ? 0.7 : 1,
+                    }}
+                  >
+                    {statusBusy === "unarchive" ? "Restoring..." : "Restore to active"}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setArchiveDialogOpen(true)}
+                    disabled={statusBusy !== null}
+                    className="inline-flex h-9 items-center gap-2 rounded-full border px-4 text-[13px] font-semibold"
+                    style={{
+                      borderColor: "#fecdd3",
+                      color: "#be123c",
+                      background: "#fff1f2",
+                      opacity: statusBusy !== null ? 0.7 : 1,
+                    }}
+                  >
+                    Archive project
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
