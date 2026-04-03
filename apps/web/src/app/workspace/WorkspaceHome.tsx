@@ -222,30 +222,30 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
       <div className="mx-auto max-w-[960px] px-6 py-8 space-y-6">
 
         {/* Header */}
-        <header className="flex items-center justify-between">
-          <div>
-            <h1 className="text-[2rem] font-bold leading-tight" style={{ color: "var(--text-1)" }}>
-              Your projects
-            </h1>
-            <p className="text-[15px] mt-1" style={{ color: "var(--text-muted)" }}>
-              Select a project to get started.
-            </p>
+        <header className="text-center">
+          <h1 className="text-[2rem] font-bold leading-tight" style={{ color: "var(--text-1)" }}>
+            Your projects
+          </h1>
+          <p className="text-[15px] mt-1" style={{ color: "var(--text-muted)" }}>
+            Select a project to get started.
+          </p>
+          <div className="mt-4 flex justify-center">
+            <button
+              type="button"
+              onClick={() => setSheetOpen(true)}
+              className="inline-flex items-center gap-1.5 text-[13px] font-medium transition-opacity hover:opacity-90"
+              style={{
+                height: "36px",
+                padding: "0 16px",
+                borderRadius: "var(--radius-btn)",
+                background: "#e2d6fc",
+                color: "#6c44f6",
+              }}
+            >
+              <Plus size={14} />
+              New Project
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => setSheetOpen(true)}
-            className="inline-flex items-center gap-1.5 text-[13px] font-medium transition-opacity hover:opacity-90 shrink-0"
-            style={{
-              height: "36px",
-              padding: "0 16px",
-              borderRadius: "var(--radius-btn)",
-              background: "#e2d6fc",
-              color: "#6c44f6",
-            }}
-          >
-            <Plus size={14} />
-            New Project
-          </button>
         </header>
 
         {/* Larry briefing — per-project summaries */}
@@ -385,7 +385,7 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
             </Link>
           </div>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-3">
             {projectCards.map((project) => (
               <button
                 key={project.id}

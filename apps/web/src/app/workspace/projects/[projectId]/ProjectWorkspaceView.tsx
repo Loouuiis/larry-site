@@ -20,6 +20,7 @@ import {
   Users,
   Settings,
   Layers,
+  Star,
 } from "lucide-react";
 import { useWorkspaceChrome } from "@/app/workspace/WorkspaceChromeContext";
 import { triggerBoundedWorkspaceRefresh } from "@/app/workspace/refresh";
@@ -552,6 +553,27 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
     refresh: refreshMemory,
   } = useProjectMemory(projectId, activeMemorySource);
 
+  const [isFavorited, setIsFavorited] = useState(false);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("larry:favorite-projects");
+      const favs: string[] = stored ? (JSON.parse(stored) as string[]) : [];
+      setIsFavorited(favs.includes(projectId));
+    } catch { /* ignore */ }
+  }, [projectId]);
+
+  const toggleFavorite = () => {
+    try {
+      const stored = localStorage.getItem("larry:favorite-projects");
+      const favs: string[] = stored ? (JSON.parse(stored) as string[]) : [];
+      const next = isFavorited ? favs.filter((id) => id !== projectId) : [...favs, projectId];
+      localStorage.setItem("larry:favorite-projects", JSON.stringify(next));
+      setIsFavorited(!isFavorited);
+      window.dispatchEvent(new CustomEvent("larry:favorites-changed"));
+    } catch { /* ignore */ }
+  };
+
   const completionRate = useMemo(() => {
     if (health?.completionRate != null) return Number(health.completionRate);
     if (tasks.length === 0) return 0;
@@ -827,6 +849,28 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
             <p className="mt-1 text-[13px]" style={{ color: "var(--text-2)" }}>
               Project-level settings for reminders, reports, and permissions are coming in the next phase.
             </p>
+
+            {/* Favourite */}
+            <div className="mt-6 border-t pt-6" style={{ borderColor: "var(--border)" }}>
+              <p className="text-[13px] font-semibold" style={{ color: "var(--text-1)" }}>Sidebar pin</p>
+              <p className="mt-1 text-[13px]" style={{ color: "var(--text-2)" }}>
+                Favourite this project to pin it in the sidebar for quick access.
+              </p>
+              <button
+                type="button"
+                onClick={toggleFavorite}
+                className="mt-4 inline-flex items-center gap-2 rounded-full border px-4 py-2 text-[13px] font-semibold transition-colors"
+                style={{
+                  borderColor: isFavorited ? "#f59e0b" : "var(--border)",
+                  background: isFavorited ? "#fefce8" : "var(--surface)",
+                  color: isFavorited ? "#b45309" : "var(--text-2)",
+                }}
+              >
+                <Star size={14} fill={isFavorited ? "#f59e0b" : "none"} stroke={isFavorited ? "#f59e0b" : "currentColor"} />
+                {isFavorited ? "Favourited — click to remove" : "Add to favourites"}
+              </button>
+            </div>
+
             <div className="mt-6 border-t pt-6" style={{ borderColor: "var(--border)" }}>
               <p className="text-[13px] font-semibold" style={{ color: "var(--text-1)" }}>Danger zone</p>
               <p className="mt-1 text-[13px]" style={{ color: "var(--text-2)" }}>
