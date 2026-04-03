@@ -9,7 +9,7 @@ import {
   FileText, MessageSquare, ClipboardList, Calendar,
   X, FolderOpen, Home, ListTodo, Settings,
   Search, LogOut, User, FolderKanban, CheckSquare,
-  Plus, BarChart2, Sparkles, PanelLeftClose, PanelLeftOpen,
+  Plus, BarChart2, Sparkles, PanelLeftClose, PanelLeftOpen, Star,
 } from "lucide-react";
 import { WorkspaceProject } from "@/app/dashboard/types";
 
@@ -52,7 +52,33 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, onTogg
   const [tasks, setTasks] = useState<SearchTask[]>([]);
   const [tasksLoaded, setTasksLoaded] = useState(false);
   const [projectsOpen, setProjectsOpen] = useState(true);
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const searchContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("larry:favorite-projects");
+      if (stored) setFavorites(new Set(JSON.parse(stored) as string[]));
+    } catch { /* ignore */ }
+  }, []);
+
+  // Re-read favorites when the window regains focus (settings tab may have changed them)
+  useEffect(() => {
+    function onFocus() {
+      try {
+        const stored = localStorage.getItem("larry:favorite-projects");
+        setFavorites(new Set(stored ? (JSON.parse(stored) as string[]) : []));
+      } catch { /* ignore */ }
+    }
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("larry:favorites-changed", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("larry:favorites-changed", onFocus);
+    };
+  }, []);
+
+  const favoritedProjects = projects.filter((p) => favorites.has(p.id));
 
   const loadTasks = useCallback(async () => {
     if (tasksLoaded) return;
@@ -260,7 +286,7 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, onTogg
 
         {projectsOpen && (
           <div className="space-y-0.5 pb-2">
-            {projects.map((project) => {
+            {favoritedProjects.map((project) => {
               const isActive = isProjectActive(project.id);
               return (
                 <Link
@@ -276,9 +302,9 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, onTogg
                 </Link>
               );
             })}
-            {projects.length === 0 && (
-              <p className="px-6 py-2 text-[13px]" style={{ color: "var(--text-disabled)" }}>
-                No projects yet.
+            {favoritedProjects.length === 0 && (
+              <p className="px-3 py-2 text-[12px]" style={{ color: "var(--text-disabled)" }}>
+                Star a project in its Settings tab to pin it here.
               </p>
             )}
             {/* + New inline */}

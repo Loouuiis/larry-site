@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
+import { Sparkles } from "lucide-react";
 import { LarryChat } from "./LarryChat";
 import { WorkspaceSidebar, type WorkspaceSidebarNav } from "@/components/dashboard/Sidebar";
 import type { WorkspaceProject } from "@/app/dashboard/types";
@@ -158,6 +159,31 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
         busy={meetingBusy}
       />
       <LarryChat projectId={chatProjectId || undefined} />
+      {/* Global floating Larry Chat button */}
+      <button
+        type="button"
+        aria-label="Ask Larry"
+        onClick={() => window.dispatchEvent(new CustomEvent("larry:toggle"))}
+        style={{
+          position: "fixed",
+          bottom: "24px",
+          right: "24px",
+          width: "48px",
+          height: "48px",
+          borderRadius: "12px",
+          background: "#6c44f6",
+          color: "#fff",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          boxShadow: "0 4px 20px rgba(108,68,246,0.45)",
+          zIndex: 60,
+          border: "none",
+          cursor: "pointer",
+        }}
+      >
+        <Sparkles size={20} />
+      </button>
     </WorkspaceChromeProvider>
   );
 }

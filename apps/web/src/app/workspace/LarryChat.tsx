@@ -163,12 +163,14 @@ export function LarryChat({ projectId, onVoiceInput }: LarryChatProps) {
     }
 
     window.addEventListener("larry:open", onOpen);
+    window.addEventListener("larry:toggle", chat.toggle);
     window.addEventListener("larry:push", onPush);
     window.addEventListener("larry:load-conversation", onLoadConversation);
     window.addEventListener("larry:prefill", onPrefill);
 
     return () => {
       window.removeEventListener("larry:open", onOpen);
+      window.removeEventListener("larry:toggle", chat.toggle);
       window.removeEventListener("larry:push", onPush);
       window.removeEventListener("larry:load-conversation", onLoadConversation);
       window.removeEventListener("larry:prefill", onPrefill);
@@ -185,8 +187,8 @@ export function LarryChat({ projectId, onVoiceInput }: LarryChatProps) {
 
   return (
     <div
-      className="fixed bottom-6 right-6 z-50 flex flex-col rounded-2xl border border-[var(--pm-border)] bg-white shadow-2xl"
-      style={{ width: 400, height: 520 }}
+      className="fixed z-50 flex flex-col rounded-2xl border border-[var(--pm-border)] bg-white shadow-2xl"
+      style={{ width: 400, height: 520, bottom: "84px", right: "24px" }}
     >
       <div className="flex items-center justify-between rounded-t-2xl border-b border-[var(--pm-border)] bg-gradient-to-r from-[#6c44f6] to-[#b29cf8] px-4 py-3">
         <div className="flex items-center gap-2">
