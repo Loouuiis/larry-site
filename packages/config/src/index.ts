@@ -35,7 +35,7 @@ const ApiSchema = SharedSchema.extend({
   SLACK_SIGNING_SECRET: z.string().optional(),
   SLACK_BOT_SCOPES: z
     .string()
-    .default("channels:read,channels:history,groups:history,im:history,mpim:history,chat:write,users:read.email,im:write"),
+    .default("channels:read,channels:history,groups:history,im:history,mpim:history,chat:write,users:read,users:read.email,im:write"),
   SLACK_SIGNATURE_TOLERANCE_SECONDS: z.coerce.number().int().positive().default(300),
   SLACK_OAUTH_STATE_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
   GOOGLE_CLIENT_ID: z.string().optional(),
