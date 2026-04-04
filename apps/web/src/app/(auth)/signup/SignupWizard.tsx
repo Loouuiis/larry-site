@@ -233,10 +233,10 @@ export function SignupWizard() {
         {step === 0 && (
           <div className="text-center space-y-5">
             <Image
-              src="/Larry_logos.png"
+              src="/Larryfulllogo.png"
               alt="Larry"
-              width={80}
-              height={32}
+              width={180}
+              height={72}
               className="mx-auto object-contain"
             />
             <h1 className="text-2xl font-bold tracking-tight text-[var(--text-1)]">
@@ -276,7 +276,7 @@ export function SignupWizard() {
         {step === 1 && (
           <div className="space-y-4">
             <div className="text-center mb-6">
-              <Image src="/Larry_logos.png" alt="Larry" width={56} height={22} className="mx-auto object-contain mb-3" />
+              <Image src="/Larryfulllogo.png" alt="Larry" width={125} height={50} className="mx-auto object-contain mb-3" />
               <h2 className="text-lg font-bold text-[var(--text-1)]">Create your account</h2>
             </div>
 
