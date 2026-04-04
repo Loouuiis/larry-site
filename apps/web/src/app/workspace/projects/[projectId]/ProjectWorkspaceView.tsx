@@ -1344,21 +1344,21 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto" style={{ background: "var(--page-bg)" }}>
-      <div className="mx-auto max-w-[1200px] space-y-6 px-6 py-8">
+      <div className="mx-auto max-w-[1200px] space-y-3 px-6 py-4">
         <section
           style={{
             borderRadius: "var(--radius-card)",
             border: "1px solid var(--border)",
             background: "var(--surface)",
-            padding: "24px",
+            padding: "14px 20px",
           }}
         >
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0 flex-1">
-              <h1 className="text-[24px] font-semibold tracking-[-0.04em]" style={{ color: "var(--text-1)" }}>
+              <h1 className="text-[20px] font-semibold tracking-[-0.04em]" style={{ color: "var(--text-1)" }}>
                 {project.name}
               </h1>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
+              <div className="mt-1 flex flex-wrap items-center gap-2">
                 <span className={`pm-pill ${projectStatusPillClass(project.status)}`}>
                   {projectStatusLabel(project.status)}
                 </span>
