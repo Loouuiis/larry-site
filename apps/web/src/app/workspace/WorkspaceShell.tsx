@@ -149,7 +149,9 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
         />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <WorkspaceTopBar userEmail={userEmail} onMobileMenuOpen={() => setMobileOpen(true)} />
-          {children}
+          <div className="flex-1 overflow-y-auto">
+            {children}
+          </div>
         </div>
       </div>
       <MeetingTranscriptModal
