@@ -64,7 +64,7 @@ function DonutChart({ counts, total }: { counts: Record<string, number>; total: 
   const segments = useMemo(() => {
     const entries = STATUS_CONFIG.filter((cfg) => counts[cfg.key] > 0);
     const safeTotal = total || 1;
-    let cumAngle = -90;
+    let cumAngle = 0;
     return entries.map((cfg) => {
       const angle = (counts[cfg.key] / safeTotal) * 360;
       const startAngle = cumAngle;

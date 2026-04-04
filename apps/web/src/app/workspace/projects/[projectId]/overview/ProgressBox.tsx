@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   WorkspaceTask,
   WorkspaceTimeline,
@@ -19,6 +19,20 @@ export function ProgressBox({ tasks, timeline, targetDate, members }: ProgressBo
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
   const [areaDropdownOpen, setAreaDropdownOpen] = useState(false);
   const [employeeDropdownOpen, setEmployeeDropdownOpen] = useState(false);
+
+  const filterRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!areaDropdownOpen && !employeeDropdownOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
+        setAreaDropdownOpen(false);
+        setEmployeeDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [areaDropdownOpen, employeeDropdownOpen]);
 
   const areas = useMemo(() => {
     const cats = new Set<string>();
@@ -95,7 +109,7 @@ export function ProgressBox({ tasks, timeline, targetDate, members }: ProgressBo
         >
           Overall Progress
         </p>
-        <div className="flex gap-1.5">
+        <div ref={filterRef} className="flex gap-1.5">
           {areas.length > 0 && (
             <div style={{ position: "relative" }}>
               <button
@@ -265,7 +279,7 @@ export function ProgressBox({ tasks, timeline, targetDate, members }: ProgressBo
           >
             <div
               style={{
-                width: `${Math.max(pct, 2)}%`,
+                width: `${pct > 0 ? Math.max(pct, 2) : 0}%`,
                 height: "100%",
                 borderRadius: "6px",
                 background: "linear-gradient(90deg, #6c44f6, #9b7aff)",
