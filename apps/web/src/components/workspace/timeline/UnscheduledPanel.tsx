@@ -4,7 +4,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, ChevronRight, GripVertical } from "lucide-react";
 import type { WorkspaceTimelineTask } from "@/app/dashboard/types";
-import { EASE, STATUS_COLOURS, PRIORITY_COLOURS } from "./timeline-utils";
+import { EASE, getStatusColour, PRIORITY_COLOURS } from "./timeline-utils";
 
 interface UnscheduledPanelProps {
   tasks: WorkspaceTimelineTask[];
@@ -47,7 +47,7 @@ export function UnscheduledPanel({ tasks, onScheduleTask }: UnscheduledPanelProp
           >
             <div className="px-4 pb-3 space-y-1">
               {tasks.map((task) => {
-                const sc = STATUS_COLOURS[task.status];
+                const sc = getStatusColour(task.status);
                 return (
                   <div
                     key={task.id}

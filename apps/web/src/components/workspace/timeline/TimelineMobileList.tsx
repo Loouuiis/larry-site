@@ -1,7 +1,7 @@
 "use client";
 
 import type { WorkspaceTimelineTask } from "@/app/dashboard/types";
-import { STATUS_COLOURS, PRIORITY_COLOURS, parseDate, formatDateShort } from "./timeline-utils";
+import { getStatusColour, PRIORITY_COLOURS, parseDate, formatDateShort } from "./timeline-utils";
 
 interface TimelineMobileListProps {
   tasks: WorkspaceTimelineTask[];
@@ -24,7 +24,7 @@ export function TimelineMobileList({ tasks, onSelectTask }: TimelineMobileListPr
         Timeline (sorted by deadline)
       </p>
       {sorted.map((task) => {
-        const sc = STATUS_COLOURS[task.status];
+        const sc = getStatusColour(task.status);
         const dueDate = parseDate(task.endDate) ?? parseDate(task.dueDate);
         const hasMilestones = (task.milestones?.length ?? 0) > 0;
 

@@ -56,6 +56,18 @@ export const STATUS_COLOURS: Record<TaskStatus, StatusColourConfig> = {
   },
 };
 
+const FALLBACK_STATUS: StatusColourConfig = {
+  bg: "var(--tl-not-started)",
+  bgDark: "var(--tl-not-started-dark)",
+  text: "#5b3ec9",
+  label: "Unknown",
+};
+
+/** Safe accessor — returns fallback config for unknown status values */
+export function getStatusColour(status: string): StatusColourConfig {
+  return STATUS_COLOURS[status as TaskStatus] ?? FALLBACK_STATUS;
+}
+
 export const PRIORITY_COLOURS: Record<TaskPriority, string> = {
   critical: "#e84c6f",
   high: "#f59e0b",

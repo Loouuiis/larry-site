@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import type { WorkspaceTimelineTask } from "@/app/dashboard/types";
 import {
-  EASE, STATUS_COLOURS,
+  EASE, getStatusColour,
   parseDate, formatDateRange,
 } from "./timeline-utils";
 
@@ -18,7 +18,7 @@ export function TimelineTooltip({ task, anchorRect, containerRect }: TimelineToo
 
   const start = parseDate(task.startDate);
   const end = parseDate(task.endDate) ?? parseDate(task.dueDate);
-  const sc = STATUS_COLOURS[task.status];
+  const sc = getStatusColour(task.status);
 
   const left = anchorRect.left - containerRect.left + anchorRect.width / 2;
   const top = anchorRect.top - containerRect.top - 8;

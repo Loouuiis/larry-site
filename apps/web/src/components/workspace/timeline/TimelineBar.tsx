@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { motion } from "framer-motion";
 import type { WorkspaceTimelineTask, TimelineMilestone } from "@/app/dashboard/types";
 import {
-  EASE, STATUS_COLOURS, PRIORITY_COLOURS,
+  EASE, STATUS_COLOURS, PRIORITY_COLOURS, getStatusColour,
   type TimelineRange, type ColourBy,
   parseDate, dateToPct, daysBetween,
 } from "./timeline-utils";
@@ -36,7 +36,7 @@ function getBarColour(
   colourBy: ColourBy,
 ): { bg: string; bgDark: string } {
   if (colourBy === "status") {
-    const cfg = STATUS_COLOURS[task.status];
+    const cfg = getStatusColour(task.status);
     return { bg: cfg.bg, bgDark: cfg.bgDark };
   }
   if (colourBy === "priority") {
@@ -113,7 +113,7 @@ export function TimelineBar({
             ? `0 0 0 2px rgba(108, 68, 246, 0.3)`
             : "none",
         }}
-        aria-label={`${task.title}, ${STATUS_COLOURS[task.status].label}, ${progress}% complete`}
+        aria-label={`${task.title}, ${getStatusColour(task.status).label}, ${progress}% complete`}
         role="button"
       >
         <div
@@ -135,7 +135,7 @@ export function TimelineBar({
           <div className="absolute inset-0 flex items-center px-2 overflow-hidden">
             <span
               className="text-[10px] font-semibold truncate drop-shadow-sm"
-              style={{ color: STATUS_COLOURS[task.status].text }}
+              style={{ color: getStatusColour(task.status).text }}
             >
               {task.title.length > 30 ? task.title.slice(0, 29) + "…" : task.title}
             </span>
