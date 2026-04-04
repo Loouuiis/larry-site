@@ -136,7 +136,7 @@ function ActionCard({
         "overflow-hidden rounded-xl border bg-white transition-colors",
         item.urgent
           ? "border-amber-100 shadow-[0_0_0_1px_rgba(251,191,36,0.1)]"
-          : "border-[var(--border)]",
+          : "border-[#f0edfa]",
       ].join(" ")}
     >
       <div className="p-4">
@@ -184,9 +184,9 @@ function ActionCard({
               whileHover={{ scale: 1.04 }}
               whileTap={{ scale: 0.95 }}
               transition={{ duration: 0.13 }}
-              className="rounded-lg border border-[var(--border)] bg-white px-2.5 py-1.5 text-[10px] font-semibold text-[var(--text-muted)] hover:border-red-200 hover:bg-red-50 hover:text-red-500 transition-colors"
+              className="rounded-lg border border-[#f0edfa] bg-white px-2.5 py-1.5 text-[10px] font-semibold text-[var(--text-muted)] hover:border-red-200 hover:bg-red-50 hover:text-red-500 transition-colors"
             >
-              Reject
+              Dismiss
             </motion.button>
             <motion.button
               onClick={() => resolve("approved")}
@@ -257,7 +257,8 @@ export function ActionPanel({ onClose }: ActionPanelProps) {
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.18 }}
-        className="fixed inset-0 z-40 bg-black/10 backdrop-blur-[2px]"
+        className="fixed inset-0 z-40"
+        style={{ background: "rgba(0,0,0,0.06)", backdropFilter: "blur(1px)" }}
         onClick={onClose}
       />
 
@@ -267,11 +268,11 @@ export function ActionPanel({ onClose }: ActionPanelProps) {
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: -8, scale: 0.98 }}
         transition={{ duration: 0.24, ease: EASE }}
-        className="fixed right-4 top-[72px] z-50 flex w-[420px] max-w-[calc(100vw-2rem)] flex-col rounded-2xl border border-[var(--border)] bg-white shadow-card-xl"
-        style={{ maxHeight: "calc(100vh - 90px)" }}
+        className="fixed right-4 top-[72px] z-50 flex w-[420px] max-w-[calc(100vw-2rem)] flex-col rounded-2xl border border-[#f0edfa] bg-white"
+        style={{ boxShadow: "0 0 40px rgba(0,0,0,0.06)", maxHeight: "calc(100vh - 90px)" }}
       >
         {/* Header */}
-        <div className="flex items-center gap-3 border-b border-[var(--border)] px-5 py-4">
+        <div className="flex items-center gap-3 border-b border-[#f0edfa] px-5 py-4">
           <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-[var(--color-brand)] shadow-[0_2px_8px_rgba(139,92,246,0.3)]">
             <Zap size={13} className="text-white" />
           </div>
@@ -308,7 +309,7 @@ export function ActionPanel({ onClose }: ActionPanelProps) {
         </div>
 
         {/* Tabs */}
-        <div className="flex items-center gap-1 border-b border-[var(--border)] px-4 pt-2">
+        <div className="flex items-center gap-1 border-b border-[#f0edfa] px-4 pt-2">
           {TABS.map(({ key, label }) => {
             const count = key === "all" ? items.length : items.filter((i) => i.type === key).length;
             const isActive = tab === key;
@@ -367,7 +368,7 @@ export function ActionPanel({ onClose }: ActionPanelProps) {
 
         {/* Footer */}
         {items.length > 0 && (
-          <div className="flex items-center justify-between border-t border-[var(--border)] px-5 py-3">
+          <div className="flex items-center justify-between border-t border-[#f0edfa] px-5 py-3">
             <p className="text-[10px] text-[var(--text-disabled)]">
               Larry auto-drafts these — review before approving
             </p>

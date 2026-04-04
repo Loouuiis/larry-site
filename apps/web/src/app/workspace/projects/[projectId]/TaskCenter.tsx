@@ -391,7 +391,7 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                       <div
                         className="flex items-center gap-3 px-4 py-2"
                         style={{
-                          borderBottom: "1px solid var(--border)",
+                          borderBottom: "1px solid var(--border-subtle, #faf8ff)",
                           cursor: "default",
                           minHeight: 38,
                         }}
@@ -752,7 +752,7 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                         <div
                           style={{
                             padding: "6px 16px 10px 48px",
-                            borderBottom: "1px solid var(--border)",
+                            borderBottom: "1px solid var(--border-subtle, #faf8ff)",
                           }}
                         >
                           <textarea

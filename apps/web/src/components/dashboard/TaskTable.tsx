@@ -105,7 +105,7 @@ function GroupProgressStrip({ tasks }: { tasks: BoardTaskRow[] }) {
   const other = tasks.length - completed - onTrack - overdue;
 
   return (
-    <div className="pm-summary-bar">
+    <div className="pm-summary-bar" style={{ height: 3 }}>
       <span style={{ width: `${(completed / total) * 100}%`, background: "var(--pm-green)" }} />
       <span style={{ width: `${(onTrack / total) * 100}%`, background: "var(--pm-orange)" }} />
       <span style={{ width: `${(overdue / total) * 100}%`, background: "var(--pm-red)" }} />
@@ -273,6 +273,15 @@ export function TaskTable({ groups, onTaskClick, onOpenAddTask, onAddGroup, onSt
                         }}
                         style={{ cursor: "pointer" }}
                       >
+                        <span style={{
+                          width: 6, height: 6, borderRadius: "50%",
+                          background: task.status === "completed" ? "#34d399"
+                            : task.status === "on_track" ? "#6c44f6"
+                            : task.status === "overdue" ? "#ef4444"
+                            : task.status === "at_risk" ? "#f59e0b"
+                            : "#94a3b8",
+                          flexShrink: 0,
+                        }} />
                         {statusLabel(task.status)}
                       </button>
 
