@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, ChevronRight, ListChecks, Plus } from "lucide-react";
 import type { WorkspaceTask } from "@/app/dashboard/types";
 
@@ -133,7 +134,7 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
   const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({});
   const [editingTitle, setEditingTitle] = useState<string | null>(null);
   const [editTitleValue, setEditTitleValue] = useState("");
-  const [openDropdown, setOpenDropdown] = useState<{ taskId: string; field: "status" | "priority" | "assignee" } | null>(null);
+  const [openDropdown, setOpenDropdown] = useState<{ taskId: string; field: "status" | "priority" | "assignee"; rect: DOMRect } | null>(null);
   const [descriptions, setDescriptions] = useState<Record<string, string>>({});
   const [members, setMembers] = useState<Array<{ userId: string; name: string }>>([]);
 
@@ -277,23 +278,23 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
   if (tasks.length === 0 && creatingInGroup === null) {
     return (
       <div
-        className="flex flex-col items-center justify-center px-6 py-16"
+        className="flex flex-col items-center justify-center px-6 py-14"
         style={{
-          borderRadius: "var(--radius-card)",
-          border: "1px dashed var(--border-2)",
+          borderLeft: "3px solid var(--border-2)",
+          borderBottom: "1px solid var(--border)",
           background: "var(--surface)",
         }}
       >
-        <ListChecks size={36} style={{ color: "var(--text-disabled)", marginBottom: 12 }} />
-        <p className="text-[15px] font-semibold" style={{ color: "var(--text-1)" }}>
+        <ListChecks size={32} style={{ color: "var(--text-disabled)", marginBottom: 10 }} />
+        <p className="text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
           No tasks yet
         </p>
         <p className="mt-1 text-[13px]" style={{ color: "var(--text-2)" }}>
-          Create your first task to start tracking work for this project.
+          Create your first task to start tracking work.
         </p>
         <button
-          className="mt-5 inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-[13px] font-semibold text-white"
-          style={{ background: "var(--cta)" }}
+          className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 text-[13px] font-semibold text-white"
+          style={{ background: "var(--cta)", borderRadius: 3 }}
           onClick={() => startCreating("not_started")}
         >
           <Plus size={14} />
@@ -306,7 +307,7 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
   /* ── main render ──────────────────────────────────────── */
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-0">
       {grouped.map((group) => {
         const isCollapsed = !!collapsed[group.id];
 
@@ -314,10 +315,9 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
           <div
             key={group.id}
             style={{
-              borderRadius: "var(--radius-card)",
-              border: "1px solid var(--border)",
+              borderLeft: `3px solid ${group.dotColour}`,
+              borderBottom: "1px solid var(--border)",
               background: "var(--surface)",
-              overflow: "hidden",
             }}
           >
             {/* ── group header ──────────────────────────── */}
@@ -332,42 +332,26 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                   toggleGroup(group.id);
                 }
               }}
-              className="flex items-center gap-2 px-4 py-3 select-none"
+              className="flex items-center gap-2 px-4 py-2.5 select-none"
               style={{
                 cursor: "pointer",
                 borderBottom: isCollapsed ? "none" : "1px solid var(--border)",
               }}
             >
               {isCollapsed ? (
-                <ChevronRight size={16} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+                <ChevronRight size={14} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
               ) : (
-                <ChevronDown size={16} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+                <ChevronDown size={14} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
               )}
 
-              {/* status dot */}
-              <span
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  background: group.dotColour,
-                  flexShrink: 0,
-                }}
-              />
-
-              <span className="text-[13px] font-semibold" style={{ color: "var(--text-1)" }}>
+              <span className="text-[13px] font-bold" style={{ color: "var(--text-1)" }}>
                 {group.label}
               </span>
 
-              {/* count badge */}
+              {/* count */}
               <span
-                className="ml-1 inline-flex items-center justify-center rounded-full px-2 text-[11px] font-medium"
-                style={{
-                  background: "var(--surface-2)",
-                  color: "var(--text-2)",
-                  minWidth: 20,
-                  height: 20,
-                }}
+                className="text-[12px] font-medium"
+                style={{ color: "var(--text-muted)" }}
               >
                 {group.tasks.length}
               </span>
@@ -376,20 +360,22 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
 
               {/* + New task button */}
               <button
-                className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[12px] font-medium"
+                className="text-[12px] font-medium"
                 style={{
-                  color: "var(--text-2)",
-                  border: "1px solid var(--border-2)",
+                  color: "var(--text-muted)",
                   background: "transparent",
+                  border: "none",
                   cursor: "pointer",
+                  padding: "2px 4px",
                 }}
                 onClick={(e) => {
                   e.stopPropagation();
                   startCreating(group.id);
                 }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text-1)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
               >
-                <Plus size={12} />
-                New task
+                <Plus size={14} />
               </button>
             </div>
 
@@ -403,36 +389,30 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                     <div key={task.id}>
                       {/* ── main row ─────────────────── */}
                       <div
-                        className="flex items-center gap-3 px-4 py-2.5"
+                        className="flex items-center gap-3 px-4 py-2"
                         style={{
-                          borderBottom: expandedTasks[task.id] ? "none" : "1px solid var(--border)",
+                          borderBottom: "1px solid var(--border)",
                           cursor: "default",
-                          transition: "background 120ms ease",
+                          minHeight: 38,
                         }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-2)"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = ""; }}
                       >
                         {/* expand chevron */}
                         <button
                           onClick={() => toggleExpand(task.id)}
                           className="flex items-center justify-center"
                           style={{
-                            width: 20,
-                            height: 20,
+                            width: 18,
+                            height: 18,
                             flexShrink: 0,
                             background: "transparent",
                             border: "none",
                             cursor: "pointer",
                             color: "var(--text-muted)",
-                            borderRadius: 4,
-                            transition: "background 120ms ease",
                           }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-2)"; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = ""; }}
                         >
                           {expandedTasks[task.id]
-                            ? <ChevronDown size={14} />
-                            : <ChevronRight size={14} />}
+                            ? <ChevronDown size={13} />
+                            : <ChevronRight size={13} />}
                         </button>
 
                         {/* status dot — click for dropdown */}
@@ -440,51 +420,53 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
+                              const rect = e.currentTarget.getBoundingClientRect();
                               setOpenDropdown(
                                 openDropdown?.taskId === task.id && openDropdown?.field === "status"
                                   ? null
-                                  : { taskId: task.id, field: "status" }
+                                  : { taskId: task.id, field: "status", rect }
                               );
                             }}
                             style={{
-                              width: 20,
-                              height: 20,
+                              width: 18,
+                              height: 18,
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
                               background: "transparent",
-                              border: "none",
+                              border: `1.5px solid ${STATUS_DOT_COLOURS[task.status] ?? group.dotColour}`,
                               cursor: "pointer",
-                              borderRadius: 4,
-                              transition: "background 120ms ease",
+                              borderRadius: "50%",
                             }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-2)"; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = ""; }}
                           >
-                            <span
-                              style={{
-                                width: 8,
-                                height: 8,
-                                borderRadius: "50%",
-                                background: STATUS_DOT_COLOURS[task.status] ?? group.dotColour,
-                              }}
-                            />
+                            {task.status === "completed" && (
+                              <span
+                                style={{
+                                  width: 8,
+                                  height: 8,
+                                  borderRadius: "50%",
+                                  background: STATUS_DOT_COLOURS[task.status] ?? group.dotColour,
+                                }}
+                              />
+                            )}
                           </button>
 
-                          {openDropdown?.taskId === task.id && openDropdown?.field === "status" && (
+                          {openDropdown?.taskId === task.id && openDropdown?.field === "status" && createPortal(
                             <>
                               <div
-                                className="fixed inset-0 z-40"
+                                className="fixed inset-0 z-[9998]"
                                 onClick={() => setOpenDropdown(null)}
                               />
                               <div
-                                className="absolute left-0 top-full z-50 mt-1 overflow-hidden"
+                                className="fixed z-[9999] overflow-hidden"
                                 style={{
+                                  top: openDropdown.rect.bottom + 4,
+                                  left: openDropdown.rect.left,
                                   minWidth: 160,
-                                  borderRadius: "var(--radius-dropdown, 8px)",
+                                  borderRadius: 4,
                                   border: "1px solid var(--border)",
                                   background: "var(--surface)",
-                                  boxShadow: "var(--shadow-2)",
+                                  boxShadow: "0 4px 16px rgba(0,0,0,0.10)",
                                 }}
                               >
                                 {ALL_STATUSES.map((s) => (
@@ -521,7 +503,8 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                                   </button>
                                 ))}
                               </div>
-                            </>
+                            </>,
+                            document.body
                           )}
                         </div>
 
@@ -553,8 +536,8 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                               color: "var(--text-1)",
                               background: "var(--surface)",
                               border: "1px solid var(--brand)",
-                              borderRadius: 4,
-                              padding: "2px 6px",
+                              borderRadius: 2,
+                              padding: "2px 4px",
                               minWidth: 0,
                             }}
                           />
@@ -563,18 +546,14 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                             className="flex-1 truncate text-[13px]"
                             style={{
                               color: "var(--text-1)",
-                              cursor: "pointer",
-                              borderRadius: 4,
-                              padding: "2px 6px",
-                              transition: "background 120ms ease",
+                              cursor: "text",
+                              padding: "2px 0",
                             }}
                             onClick={(e) => {
                               e.stopPropagation();
                               setEditingTitle(task.id);
                               setEditTitleValue(task.title);
                             }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-2)"; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = ""; }}
                           >
                             {task.title}
                           </span>
@@ -585,40 +564,42 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
+                              const rect = e.currentTarget.getBoundingClientRect();
                               setOpenDropdown(
                                 openDropdown?.taskId === task.id && openDropdown?.field === "priority"
                                   ? null
-                                  : { taskId: task.id, field: "priority" }
+                                  : { taskId: task.id, field: "priority", rect }
                               );
                             }}
-                            className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
+                            className="inline-flex items-center px-2 py-0.5 text-[11px] font-semibold"
                             style={{
                               color: pri.fg,
                               background: pri.bg,
                               cursor: "pointer",
                               border: "none",
-                              transition: "opacity 120ms ease",
+                              borderRadius: 3,
                             }}
-                            onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.8"; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.opacity = "1"; }}
                           >
                             {capitalize(task.priority)}
                           </button>
 
-                          {openDropdown?.taskId === task.id && openDropdown?.field === "priority" && (
+                          {openDropdown?.taskId === task.id && openDropdown?.field === "priority" && createPortal(
                             <>
                               <div
-                                className="fixed inset-0 z-40"
+                                className="fixed inset-0 z-[9998]"
                                 onClick={() => setOpenDropdown(null)}
                               />
                               <div
-                                className="absolute right-0 top-full z-50 mt-1 overflow-hidden"
+                                className="fixed z-[9999] overflow-hidden"
                                 style={{
+                                  top: openDropdown.rect.bottom + 4,
+                                  left: openDropdown.rect.right,
+                                  transform: "translateX(-100%)",
                                   minWidth: 130,
-                                  borderRadius: "var(--radius-dropdown, 8px)",
+                                  borderRadius: 4,
                                   border: "1px solid var(--border)",
                                   background: "var(--surface)",
-                                  boxShadow: "var(--shadow-2)",
+                                  boxShadow: "0 4px 16px rgba(0,0,0,0.10)",
                                 }}
                               >
                                 {(["low", "medium", "high", "critical"] as const).map((p) => {
@@ -645,8 +626,8 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                                       onMouseLeave={(e) => { e.currentTarget.style.background = p === task.priority ? "var(--surface-2)" : ""; }}
                                     >
                                       <span
-                                        className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
-                                        style={{ color: pc.fg, background: pc.bg }}
+                                        className="inline-flex items-center px-2 py-0.5 text-[10px] font-semibold"
+                                        style={{ color: pc.fg, background: pc.bg, borderRadius: 3 }}
                                       >
                                         {capitalize(p)}
                                       </span>
@@ -654,7 +635,8 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                                   );
                                 })}
                               </div>
-                            </>
+                            </>,
+                            document.body
                           )}
                         </div>
 
@@ -663,44 +645,44 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
+                              const rect = e.currentTarget.getBoundingClientRect();
                               setOpenDropdown(
                                 openDropdown?.taskId === task.id && openDropdown?.field === "assignee"
                                   ? null
-                                  : { taskId: task.id, field: "assignee" }
+                                  : { taskId: task.id, field: "assignee", rect }
                               );
                             }}
-                            className="w-[100px] truncate text-right text-[12px]"
+                            className="w-[110px] truncate text-right text-[12px]"
                             style={{
                               color: task.assigneeName ? "var(--text-2)" : "var(--text-disabled)",
                               cursor: "pointer",
                               background: "transparent",
                               border: "none",
-                              borderRadius: 4,
-                              padding: "2px 6px",
-                              transition: "background 120ms ease",
+                              padding: "2px 0",
                             }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-2)"; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = ""; }}
                           >
                             {task.assigneeName ?? "\u2014"}
                           </button>
 
-                          {openDropdown?.taskId === task.id && openDropdown?.field === "assignee" && (
+                          {openDropdown?.taskId === task.id && openDropdown?.field === "assignee" && createPortal(
                             <>
                               <div
-                                className="fixed inset-0 z-40"
+                                className="fixed inset-0 z-[9998]"
                                 onClick={() => setOpenDropdown(null)}
                               />
                               <div
-                                className="absolute right-0 top-full z-50 mt-1 overflow-hidden"
+                                className="fixed z-[9999] overflow-hidden"
                                 style={{
+                                  top: openDropdown.rect.bottom + 4,
+                                  left: openDropdown.rect.right,
+                                  transform: "translateX(-100%)",
                                   minWidth: 180,
                                   maxHeight: 240,
                                   overflowY: "auto",
-                                  borderRadius: "var(--radius-dropdown, 8px)",
+                                  borderRadius: 4,
                                   border: "1px solid var(--border)",
                                   background: "var(--surface)",
-                                  boxShadow: "var(--shadow-2)",
+                                  boxShadow: "0 4px 16px rgba(0,0,0,0.10)",
                                 }}
                               >
                                 {/* Unassign option */}
@@ -751,7 +733,8 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                                   </button>
                                 ))}
                               </div>
-                            </>
+                            </>,
+                            document.body
                           )}
                         </div>
 
@@ -768,9 +751,8 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                       {expandedTasks[task.id] && (
                         <div
                           style={{
-                            padding: "8px 16px 12px 52px",
+                            padding: "6px 16px 10px 48px",
                             borderBottom: "1px solid var(--border)",
-                            background: "rgba(108,68,246,0.02)",
                           }}
                         >
                           <textarea
@@ -800,8 +782,8 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                             className="w-full text-[13px] outline-none resize-none transition-colors"
                             style={{
                               background: "var(--surface)",
-                              border: "1px dashed var(--border-2)",
-                              borderRadius: 6,
+                              border: "1px solid var(--border)",
+                              borderRadius: 2,
                               color: "var(--text-2)",
                               padding: "8px 12px",
                             }}
@@ -820,12 +802,10 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
             {!isCollapsed && creatingInGroup === group.id && (
               <div>
                 <div
-                  className="flex items-center gap-3 px-4 py-2.5"
+                  className="flex items-center gap-3 px-4 py-2"
                   style={{
-                    border: "1px dashed var(--cta)",
-                    background: "rgba(108,68,246,0.04)",
-                    margin: 4,
-                    borderRadius: 6,
+                    borderBottom: "1px solid var(--border)",
+                    background: "rgba(108,68,246,0.03)",
                   }}
                 >
                   {/* status dot */}
@@ -870,7 +850,7 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                     onChange={(e) => setNewPriority(e.target.value as "low" | "medium" | "high" | "critical")}
                     onKeyDown={(e) => { if (e.key === "Escape") cancelCreating(); }}
                     disabled={saving}
-                    className="text-[12px] rounded-md px-1.5 py-0.5"
+                    className="text-[12px] px-1.5 py-0.5"
                     style={{
                       background: "var(--surface-2)",
                       border: "1px solid var(--border)",
@@ -892,7 +872,7 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                     onChange={(e) => setNewAssignee(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Escape") cancelCreating(); }}
                     disabled={saving}
-                    className="w-[100px] truncate text-[12px] rounded-md px-1.5 py-0.5"
+                    className="w-[100px] truncate text-[12px] px-1.5 py-0.5"
                     style={{
                       background: "var(--surface-2)",
                       border: "1px solid var(--border)",
@@ -921,7 +901,7 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                     style={{
                       background: "var(--surface-2)",
                       border: "1px solid var(--border)",
-                      borderRadius: 6,
+                      borderRadius: 2,
                       color: newDueDate ? "var(--text-2)" : "var(--text-disabled)",
                       padding: "2px 4px",
                       flexShrink: 0,
@@ -942,13 +922,13 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                     className="w-full text-[12px] outline-none resize-none transition-colors"
                     style={{
                       background: "var(--surface)",
-                      border: "1px dashed var(--border-2)",
-                      borderRadius: 6,
+                      border: "1px solid var(--border)",
+                      borderRadius: 2,
                       color: "var(--text-2)",
                       padding: "6px 10px",
                     }}
-                    onFocus={(e) => { e.currentTarget.style.borderColor = "var(--brand)"; e.currentTarget.style.borderStyle = "solid"; }}
-                    onBlur={(e) => { e.currentTarget.style.borderColor = "var(--border-2)"; e.currentTarget.style.borderStyle = "dashed"; }}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = "var(--brand)"; }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = "var(--border)"; }}
                   />
                 </div>
 
@@ -961,12 +941,13 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                     <button
                       onClick={cancelCreating}
                       disabled={saving}
-                      className="rounded-md px-3 py-1 text-[12px] font-medium"
+                      className="px-3 py-1 text-[12px] font-medium"
                       style={{
                         color: "var(--text-2)",
                         border: "1px solid var(--border-2)",
                         background: "transparent",
                         cursor: "pointer",
+                        borderRadius: 3,
                       }}
                     >
                       Cancel
@@ -974,11 +955,12 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                     <button
                       onClick={() => void saveTask()}
                       disabled={saving || !newTitle.trim()}
-                      className="rounded-md px-3 py-1 text-[12px] font-semibold text-white"
+                      className="px-3 py-1 text-[12px] font-semibold text-white"
                       style={{
                         background: saving || !newTitle.trim() ? "var(--text-disabled)" : "var(--cta)",
                         cursor: saving || !newTitle.trim() ? "not-allowed" : "pointer",
                         border: "none",
+                        borderRadius: 3,
                       }}
                     >
                       {saving ? "Creating..." : "Create"}
@@ -990,7 +972,7 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
 
             {/* ── empty group message ───────────────────── */}
             {!isCollapsed && group.tasks.length === 0 && creatingInGroup !== group.id && (
-              <div className="px-4 py-4 text-center text-[12px]" style={{ color: "var(--text-muted)" }}>
+              <div className="px-4 py-3 text-[12px]" style={{ color: "var(--text-muted)" }}>
                 No {group.label.toLowerCase()} tasks
               </div>
             )}
