@@ -624,10 +624,10 @@ export default function ChatsPage() {
 
   return (
     <div
-      className="min-h-0 flex-1 overflow-y-auto"
+      className="min-h-0 flex-1 overflow-hidden"
       style={{ background: "var(--page-bg)", padding: "24px" }}
     >
-      <div style={{ display: "flex", minHeight: "100%", width: "100%", maxWidth: "1440px", margin: "0 auto", flexDirection: "column", gap: "20px" }}>
+      <div style={{ display: "flex", height: "100%", width: "100%", maxWidth: "1440px", margin: "0 auto", flexDirection: "column", gap: "20px" }}>
         {error && (
           <div
             style={{
@@ -677,7 +677,8 @@ export default function ChatsPage() {
         <div
           style={{
             display: "grid",
-            minHeight: "720px",
+            flex: 1,
+            minHeight: 0,
             gap: "20px",
             gridTemplateColumns: "300px minmax(0,1fr)",
           }}
