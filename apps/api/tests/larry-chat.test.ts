@@ -497,9 +497,25 @@ describe("POST /larry/chat", () => {
     );
   });
 
-  it("returns a clarification prompt for ambiguous mutation requests and skips action execution", async () => {
+  it("returns a clarification prompt for ambiguous mutation requests via LLM followUpQuestions and skips action execution", async () => {
+    // Post-refactor: detectClarificationNeed only catches messages < 3 chars.
+    // "Please mark this as complete" now flows to runIntelligence, which returns
+    // followUpQuestions when the target is ambiguous. The route then takes the
+    // LLM-driven clarification path (larry.chat.llm_clarification_requested).
     vi.mocked(getLarryConversationForUser).mockResolvedValue(null);
     vi.mocked(getProjectSnapshot).mockResolvedValue(SNAPSHOT_WITH_MULTIPLE_TASKS);
+    vi.mocked(getPendingSuggestionTexts).mockResolvedValue([]);
+    vi.mocked(runIntelligence).mockResolvedValue({
+      briefing: "I can apply that update, but I need to know which task you mean.",
+      autoActions: [],
+      suggestedActions: [],
+      followUpQuestions: [
+        {
+          field: "target_task",
+          question: "Which task should I mark as complete — QA sign-off or the investor deck?",
+        },
+      ],
+    });
     vi.mocked(createLarryConversation).mockResolvedValue({
       id: CONVERSATION_ID,
       projectId: PROJECT_ID,
@@ -526,7 +542,7 @@ describe("POST /larry/chat", () => {
       {
         id: "clarify-assistant-1",
         role: "larry",
-        content: "I can apply that update, but I need the target task first.",
+        content: "I can apply that update, but I need to know which task you mean.",
         reasoning: null,
         createdAt: "2026-03-28T10:04:01.000Z",
         actorUserId: null,
@@ -550,10 +566,11 @@ describe("POST /larry/chat", () => {
       actionsExecuted: 0,
       suggestionCount: 0,
       requiresClarification: true,
-      clarifications: [expect.objectContaining({ question: expect.stringContaining("target task") })],
+      clarifications: [
+        expect.objectContaining({ field: "target_task", question: expect.any(String) }),
+      ],
     });
-    expect(runIntelligence).not.toHaveBeenCalled();
-    expect(getPendingSuggestionTexts).not.toHaveBeenCalled();
+    expect(runIntelligence).toHaveBeenCalledTimes(1);
     expect(runAutoActions).not.toHaveBeenCalled();
     expect(storeSuggestions).not.toHaveBeenCalled();
   });
