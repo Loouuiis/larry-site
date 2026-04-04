@@ -39,6 +39,7 @@ import { CollaboratorsPanel } from "./CollaboratorsPanel";
 import { ProjectNotesPanel } from "./ProjectNotesPanel";
 import { TaskCenter } from "./TaskCenter";
 import { ProjectDashboard } from "./dashboard/ProjectDashboard";
+import { ProjectTimeline } from "@/components/workspace/timeline/ProjectTimeline";
 import { getActionTypeTag, getAllActionTypes } from "@/lib/action-types";
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -1445,18 +1446,14 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
           <ProjectDashboard projectId={projectId} />
         )}
 
-        {/* ── Tab: Timeline (placeholder) ──────────────── */}
+        {/* ── Tab: Timeline ──────────────────────────────── */}
         {activeTab === "timeline" && (
-          <div
-            className="text-center px-6 py-12"
-            style={{ borderRadius: "var(--radius-card)", border: "1px dashed var(--border-2)", background: "var(--surface)" }}
-          >
-            <LayoutList size={32} className="mx-auto mb-3" style={{ color: "var(--text-disabled)" }} />
-            <p className="text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>Timeline view</p>
-            <p className="mt-2 text-[13px]" style={{ color: "var(--text-2)" }}>
-              A visual timeline of tasks, milestones, and dependencies is coming in the next phase.
-            </p>
-          </div>
+          <ProjectTimeline
+            projectId={projectId}
+            tasks={timeline?.gantt ?? []}
+            timeline={timeline}
+            refresh={refresh}
+          />
         )}
 
         {/* ── Tab: Task center ──────────────────────────── */}
