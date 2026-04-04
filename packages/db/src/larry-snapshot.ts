@@ -229,13 +229,13 @@ export async function getProjectSnapshot(
       riskLevel: project.risk_level,
       startDate: project.start_date,
       targetDate: project.target_date,
-      larryContext: project.larryContext ?? null,
     },
     tasks,
     team,
     recentActivity,
     signals,
     memoryEntries,
+    larryContext: project.larryContext ?? null,
     generatedAt: new Date().toISOString(),
   };
 }
