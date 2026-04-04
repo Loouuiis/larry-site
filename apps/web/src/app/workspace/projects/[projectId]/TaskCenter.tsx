@@ -648,13 +648,102 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                           )}
                         </div>
 
-                        {/* assignee */}
-                        <span
-                          className="w-[100px] truncate text-right text-[12px]"
-                          style={{ color: task.assigneeName ? "var(--text-2)" : "var(--text-disabled)", flexShrink: 0 }}
-                        >
-                          {task.assigneeName ?? "\u2014"}
-                        </span>
+                        {/* assignee — click for dropdown */}
+                        <div className="relative" style={{ flexShrink: 0 }}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenDropdown(
+                                openDropdown?.taskId === task.id && openDropdown?.field === "assignee"
+                                  ? null
+                                  : { taskId: task.id, field: "assignee" }
+                              );
+                            }}
+                            className="w-[100px] truncate text-right text-[12px]"
+                            style={{
+                              color: task.assigneeName ? "var(--text-2)" : "var(--text-disabled)",
+                              cursor: "pointer",
+                              background: "transparent",
+                              border: "none",
+                              borderRadius: 4,
+                              padding: "2px 6px",
+                              transition: "background 120ms ease",
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-2)"; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = ""; }}
+                          >
+                            {task.assigneeName ?? "\u2014"}
+                          </button>
+
+                          {openDropdown?.taskId === task.id && openDropdown?.field === "assignee" && (
+                            <>
+                              <div
+                                className="fixed inset-0 z-40"
+                                onClick={() => setOpenDropdown(null)}
+                              />
+                              <div
+                                className="absolute right-0 top-full z-50 mt-1 overflow-hidden"
+                                style={{
+                                  minWidth: 180,
+                                  maxHeight: 240,
+                                  overflowY: "auto",
+                                  borderRadius: "var(--radius-dropdown, 8px)",
+                                  border: "1px solid var(--border)",
+                                  background: "var(--surface)",
+                                  boxShadow: "var(--shadow-2)",
+                                }}
+                              >
+                                {/* Unassign option */}
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setOpenDropdown(null);
+                                    if (task.assigneeUserId) {
+                                      void patchTask(task.id, { assigneeUserId: null });
+                                    }
+                                  }}
+                                  className="flex w-full items-center px-3 py-2 text-left text-[12px] transition-colors"
+                                  style={{
+                                    color: "var(--text-disabled)",
+                                    background: !task.assigneeUserId ? "var(--surface-2)" : "transparent",
+                                    cursor: "pointer",
+                                    border: "none",
+                                    borderBlockEnd: "1px solid var(--border)",
+                                    fontStyle: "italic",
+                                  }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-2)"; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.background = !task.assigneeUserId ? "var(--surface-2)" : ""; }}
+                                >
+                                  Unassign
+                                </button>
+                                {members.map((m) => (
+                                  <button
+                                    key={m.userId}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setOpenDropdown(null);
+                                      if (m.userId !== task.assigneeUserId) {
+                                        void patchTask(task.id, { assigneeUserId: m.userId });
+                                      }
+                                    }}
+                                    className="flex w-full items-center px-3 py-2 text-left text-[12px] transition-colors"
+                                    style={{
+                                      color: "var(--text-1)",
+                                      background: m.userId === task.assigneeUserId ? "var(--surface-2)" : "transparent",
+                                      cursor: "pointer",
+                                      border: "none",
+                                      borderBlockEnd: "1px solid var(--border)",
+                                    }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-2)"; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.background = m.userId === task.assigneeUserId ? "var(--surface-2)" : ""; }}
+                                  >
+                                    {m.name}
+                                  </button>
+                                ))}
+                              </div>
+                            </>
+                          )}
+                        </div>
 
                         {/* due date */}
                         <span
