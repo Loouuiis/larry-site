@@ -426,16 +426,95 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                             : <ChevronRight size={14} />}
                         </button>
 
-                        {/* status dot */}
-                        <span
-                          style={{
-                            width: 7,
-                            height: 7,
-                            borderRadius: "50%",
-                            background: group.dotColour,
-                            flexShrink: 0,
-                          }}
-                        />
+                        {/* status dot — click for dropdown */}
+                        <div className="relative" style={{ flexShrink: 0 }}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenDropdown(
+                                openDropdown?.taskId === task.id && openDropdown?.field === "status"
+                                  ? null
+                                  : { taskId: task.id, field: "status" }
+                              );
+                            }}
+                            style={{
+                              width: 20,
+                              height: 20,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              background: "transparent",
+                              border: "none",
+                              cursor: "pointer",
+                              borderRadius: 4,
+                              transition: "background 120ms ease",
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-2)"; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = ""; }}
+                          >
+                            <span
+                              style={{
+                                width: 8,
+                                height: 8,
+                                borderRadius: "50%",
+                                background: STATUS_DOT_COLOURS[task.status] ?? group.dotColour,
+                              }}
+                            />
+                          </button>
+
+                          {openDropdown?.taskId === task.id && openDropdown?.field === "status" && (
+                            <>
+                              <div
+                                className="fixed inset-0 z-40"
+                                onClick={() => setOpenDropdown(null)}
+                              />
+                              <div
+                                className="absolute left-0 top-full z-50 mt-1 overflow-hidden"
+                                style={{
+                                  minWidth: 160,
+                                  borderRadius: "var(--radius-dropdown, 8px)",
+                                  border: "1px solid var(--border)",
+                                  background: "var(--surface)",
+                                  boxShadow: "var(--shadow-2)",
+                                }}
+                              >
+                                {ALL_STATUSES.map((s) => (
+                                  <button
+                                    key={s}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setOpenDropdown(null);
+                                      if (s !== task.status) {
+                                        void patchTask(task.id, { status: s });
+                                      }
+                                    }}
+                                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12px] transition-colors"
+                                    style={{
+                                      color: "var(--text-1)",
+                                      background: s === task.status ? "var(--surface-2)" : "transparent",
+                                      cursor: "pointer",
+                                      border: "none",
+                                      borderBlockEnd: "1px solid var(--border)",
+                                    }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-2)"; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.background = s === task.status ? "var(--surface-2)" : ""; }}
+                                  >
+                                    <span
+                                      style={{
+                                        width: 8,
+                                        height: 8,
+                                        borderRadius: "50%",
+                                        background: STATUS_DOT_COLOURS[s] ?? "#888",
+                                        flexShrink: 0,
+                                      }}
+                                    />
+                                    {STATUS_LABELS[s] ?? s}
+                                  </button>
+                                ))}
+                              </div>
+                            </>
+                          )}
+                        </div>
 
                         {/* title — click to edit */}
                         {editingTitle === task.id ? (
