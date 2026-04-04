@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, ChevronRight, ListChecks, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, ListChecks, Plus, Trash2 } from "lucide-react";
 import type { WorkspaceTask } from "@/app/dashboard/types";
 
 /* ── status → group mapping ─────────────────────────────── */
@@ -262,6 +262,15 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
     }
   };
 
+  const deleteTask = async (taskId: string) => {
+    try {
+      await fetch(`/api/workspace/tasks/${encodeURIComponent(taskId)}`, { method: "DELETE" });
+      await refresh();
+    } catch (err) {
+      console.error("Error deleting task:", err);
+    }
+  };
+
   const toggleGroup = (groupId: string) => {
     setCollapsed((prev) => ({ ...prev, [groupId]: !prev[groupId] }));
   };
@@ -307,7 +316,33 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
   /* ── main render ──────────────────────────────────────── */
 
   return (
-    <div className="flex flex-col gap-0">
+    <div className="flex flex-col gap-4">
+      {/* ── column headers ──────────────────────────────────── */}
+      <div
+        className="flex items-center gap-3 px-4"
+        style={{
+          height: 28,
+          borderBottom: "1px solid var(--border)",
+          background: "var(--surface-2, #f7f5ff)",
+        }}
+      >
+        {/* chevron + status dot placeholders */}
+        <span style={{ width: 18, flexShrink: 0 }} />
+        <span style={{ width: 18, flexShrink: 0 }} />
+        {/* Task */}
+        <span className="flex-1 text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+          Task
+        </span>
+        {/* Priority */}
+        <span className="w-[72px] text-right text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)", flexShrink: 0 }}>
+          Priority
+        </span>
+        {/* Assignee */}
+        <span className="w-[110px] text-right text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)", flexShrink: 0 }}>
+          Assignee
+        </span>
+      </div>
+
       {grouped.map((group) => {
         const isCollapsed = !!collapsed[group.id];
 
@@ -560,7 +595,7 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                         )}
 
                         {/* priority badge — click for dropdown */}
-                        <div className="relative" style={{ flexShrink: 0 }}>
+                        <div className="relative flex justify-end" style={{ flexShrink: 0, width: 72 }}>
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -738,13 +773,6 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                           )}
                         </div>
 
-                        {/* due date */}
-                        <span
-                          className="w-[60px] text-right text-[12px]"
-                          style={{ color: task.dueDate ? "var(--text-2)" : "var(--text-disabled)", flexShrink: 0 }}
-                        >
-                          {formatDueDate(task.dueDate)}
-                        </span>
                       </div>
 
                       {/* ── expanded description ─────── */}
@@ -790,6 +818,25 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                             onFocus={(e) => { e.currentTarget.style.borderColor = "var(--brand)"; e.currentTarget.style.borderStyle = "solid"; }}
                             onBlurCapture={(e) => { e.currentTarget.style.borderColor = "var(--border-2)"; e.currentTarget.style.borderStyle = "dashed"; }}
                           />
+                          <div className="flex justify-end mt-2">
+                            <button
+                              onClick={() => deleteTask(task.id)}
+                              className="inline-flex items-center gap-1.5 text-[12px]"
+                              style={{
+                                color: "var(--text-disabled)",
+                                background: "transparent",
+                                border: "none",
+                                cursor: "pointer",
+                                padding: "2px 4px",
+                                borderRadius: 3,
+                              }}
+                              onMouseEnter={(e) => { e.currentTarget.style.color = "#ef4444"; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-disabled)"; }}
+                            >
+                              <Trash2 size={12} />
+                              Delete task
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>
