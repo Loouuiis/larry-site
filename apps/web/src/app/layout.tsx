@@ -25,7 +25,7 @@ export const viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Larry — The AI Project Manager That Actually Runs Execution",
+  title: "Larry",
   description:
     "Larry autonomously manages follow-ups, updates, dependencies, and alignment — so your team can focus on delivering outcomes.",
 };

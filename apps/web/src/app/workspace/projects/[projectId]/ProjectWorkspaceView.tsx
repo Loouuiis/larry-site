@@ -8,7 +8,6 @@ import {
   ArrowRight,
   CalendarDays,
   CheckCircle2,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   CircleAlert,
@@ -30,6 +29,7 @@ import type {
   WorkspaceConversationPreview,
   WorkspaceLarryEvent,
   WorkspaceProjectMemoryEntry,
+  WorkspaceProjectMember,
 } from "@/app/dashboard/types";
 import { useProjectData } from "@/hooks/useProjectData";
 import { useProjectActionCentre } from "@/hooks/useProjectActionCentre";
@@ -41,6 +41,8 @@ import { TaskCenter } from "./TaskCenter";
 import { ProjectDashboard } from "./dashboard/ProjectDashboard";
 import { ProjectTimeline } from "@/components/workspace/timeline/ProjectTimeline";
 import { getActionTypeTag, getAllActionTypes } from "@/lib/action-types";
+import { ActionBellDropdown } from "./overview/ActionBellDropdown";
+import { ProjectOverviewTab } from "./overview/ProjectOverviewTab";
 
 async function readJson<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -890,10 +892,12 @@ function ProjectActionCentreTab({
   dismissing,
   modifying,
   executing,
+  actionError,
   accept,
   dismiss,
   modify,
   letLarryExecute,
+  clearActionError,
 }: {
   suggested: WorkspaceLarryEvent[];
   activity: WorkspaceLarryEvent[];
@@ -901,10 +905,12 @@ function ProjectActionCentreTab({
   dismissing: string | null;
   modifying: string | null;
   executing: string | null;
+  actionError: { eventId: string; message: string } | null;
   accept: (id: string) => Promise<void>;
   dismiss: (id: string) => Promise<void>;
   modify: (id: string) => Promise<string | null>;
   letLarryExecute: (id: string) => Promise<boolean>;
+  clearActionError: () => void;
 }) {
   const [search, setSearch] = useState("");
   const [filterActionType, setFilterActionType] = useState("");
@@ -1092,6 +1098,23 @@ function ProjectActionCentreTab({
                       {accepting === event.id ? "Accepting..." : "Accept"}
                     </button>
                   </div>
+
+                  {actionError?.eventId === event.id && (
+                    <div
+                      className="mt-2 flex items-start justify-between gap-2 rounded-lg px-3 py-2 text-[12px]"
+                      style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b" }}
+                    >
+                      <span>{actionError.message}</span>
+                      <button
+                        type="button"
+                        onClick={clearActionError}
+                        className="shrink-0 font-semibold hover:underline"
+                        style={{ color: "#991b1b" }}
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  )}
                 </div>
                 );
               })}
@@ -1165,7 +1188,6 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
   const [activeTab, setActiveTab] = useState<ProjectTab>("overview");
   const [memorySourceFilter, setMemorySourceFilter] = useState("all");
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
-  const [actionCentreOpen, setActionCentreOpen] = useState(true);
   const [statusBusy, setStatusBusy] = useState<"archive" | "unarchive" | null>(null);
   const [statusNotice, setStatusNotice] = useState<{
     tone: "success" | "error";
@@ -1184,10 +1206,12 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
     dismissing,
     modifying,
     executing,
+    actionError,
     accept,
     dismiss,
     modify,
     letLarryExecute,
+    clearActionError,
     refresh: refreshActionCentre,
   } = useProjectActionCentre(projectId, refresh);
   const {
@@ -1197,8 +1221,19 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
     refresh: refreshMemory,
   } = useProjectMemory(projectId, activeMemorySource);
 
+  const [overviewMembers, setOverviewMembers] = useState<WorkspaceProjectMember[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/workspace/projects/${encodeURIComponent(projectId)}/members`, { cache: "no-store" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (!cancelled && data?.members) setOverviewMembers(data.members);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [projectId]);
+
   const [isFavorited, setIsFavorited] = useState(false);
-  const [summaryOpen, setSummaryOpen] = useState(true);
 
   useEffect(() => {
     try {
@@ -1375,7 +1410,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
                 </span>
               </div>
             </div>
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
                 onClick={startProjectChat}
@@ -1387,12 +1422,22 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
               </button>
               <Link
                 href={`/workspace/larry?projectId=${projectId}`}
-                className="inline-flex h-9 items-center gap-2 rounded-full border px-4 text-[13px] font-semibold"
-                style={{ borderColor: "var(--border)", color: "var(--text-2)" }}
+                className="inline-flex h-9 items-center justify-center"
+                style={{
+                  width: "36px",
+                  height: "36px",
+                  borderRadius: "10px",
+                  background: "rgba(108,68,246,0.15)",
+                  border: "none",
+                }}
+                title="Project chat history"
               >
-                <MessageSquare size={14} />
-                Full chat history
+                <MessageSquare size={16} style={{ color: "#6c44f6" }} />
               </Link>
+              <ActionBellDropdown
+                suggested={suggested}
+                onNavigateToAction={() => setActiveTab("actions")}
+              />
             </div>
           </div>
           {statusNotice && (
@@ -1547,408 +1592,18 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
         )}
 
         {/* ── Tab: Overview ────────────────────────────── */}
-        {activeTab === "overview" && (<>
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {[
-            { label: "Completion", value: formatPercent(completionRate), detail: `${openTasks} still open` },
-            { label: "Blocked", value: String(blockedTasks), detail: "Tasks needing attention" },
-            { label: "Pending Actions", value: String(suggested.length), detail: "Awaiting review" },
-            { label: "Recent Meetings", value: String(meetings.length), detail: "Project context inputs" },
-          ].map((stat) => (
-            <div
-              key={stat.label}
-              style={{
-                borderRadius: "var(--radius-card)",
-                border: "1px solid var(--border)",
-                background: "var(--surface)",
-                padding: "18px 20px",
-              }}
-            >
-              <p className="text-[12px] font-semibold uppercase tracking-[0.14em]" style={{ color: "var(--text-muted)" }}>
-                {stat.label}
-              </p>
-              <p className="mt-3 text-[28px] font-semibold tracking-[-0.04em]" style={{ color: "var(--text-1)" }}>
-                {stat.value}
-              </p>
-              <p className="mt-2 text-[13px]" style={{ color: "var(--text-2)" }}>
-                {stat.detail}
-              </p>
-            </div>
-          ))}
-        </section>
-
-        {/* ── Two-column: progress+AI vs action centre ── */}
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(360px,1fr)]" style={{ alignItems: "stretch" }}>
-          <div className="flex flex-col gap-6">
-            {/* Progress bar */}
-            {(() => {
-              const pct = Math.round(completionRate);
-              return (
-                <div
-                  style={{
-                    borderRadius: "var(--radius-card)",
-                    border: "1px solid var(--border)",
-                    background: "var(--surface)",
-                    padding: "20px",
-                  }}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-[15px] font-semibold" style={{ color: "var(--text-1)" }}>Progress</p>
-                    <span className="text-[13px] font-semibold" style={{ color: "var(--text-2)" }}>{pct}%</span>
-                  </div>
-                  <div
-                    className="mt-3 w-full overflow-hidden"
-                    style={{ height: "6px", borderRadius: "9999px", background: "var(--surface-2)" }}
-                  >
-                    <div
-                      style={{
-                        width: `${Math.max(pct, 2)}%`,
-                        height: "100%",
-                        borderRadius: "9999px",
-                        background: "#6c44f6",
-                        transition: "width 0.4s ease",
-                      }}
-                    />
-                  </div>
-                  <div className="mt-2 flex items-center justify-between text-[12px]" style={{ color: "var(--text-muted)" }}>
-                    <span>{tasks.filter((t) => t.status === "completed").length} of {tasks.length} tasks complete</span>
-                    <span>{openTasks} remaining</span>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Larry Summary — collapsible, always shows unless zero tasks */}
-            {tasks.length > 0 && (
-              <div
-                style={{
-                  borderRadius: "var(--radius-card)",
-                  border: "1px solid var(--border)",
-                  background: "var(--surface)",
-                  padding: "16px 20px",
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => setSummaryOpen((v) => !v)}
-                  className="flex w-full items-center justify-between gap-2"
-                  style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
-                >
-                  <p className="text-[13px] font-semibold" style={{ color: "var(--text-1)" }}>Larry Summary</p>
-                  <ChevronDown
-                    size={14}
-                    style={{
-                      color: "var(--text-muted)",
-                      transform: summaryOpen ? "rotate(0deg)" : "rotate(-90deg)",
-                      transition: "transform 0.15s ease",
-                      flexShrink: 0,
-                    }}
-                  />
-                </button>
-                {summaryOpen && (
-                  <p className="mt-2 text-[13px] leading-relaxed" style={{ color: "var(--text-2)" }}>
-                    {outcomes?.narrative?.trim() || `${tasks.filter((t) => t.status === "completed").length} of ${tasks.length} tasks done. ${blockedTasks > 0 ? `${blockedTasks} need attention.` : "No blockers."} ${openTasks} remaining.`}
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-6">
-            <div
-              style={{
-                borderRadius: "var(--radius-card)",
-                border: "1px solid var(--border)",
-                background: "var(--surface)",
-                padding: "20px",
-              }}
-            >
-              <div className="flex items-center justify-between gap-4">
-                <button
-                  type="button"
-                  onClick={() => setActionCentreOpen((o) => !o)}
-                  className="flex items-center gap-2 text-left"
-                  style={{ background: "none", border: "none", padding: 0, cursor: "pointer" }}
-                >
-                  <ChevronDown
-                    size={16}
-                    style={{
-                      color: "var(--text-2)",
-                      transition: "transform 0.2s ease",
-                      transform: actionCentreOpen ? "rotate(0deg)" : "rotate(-90deg)",
-                    }}
-                  />
-                  <div>
-                    <p className="text-[18px] font-semibold" style={{ color: "var(--text-1)" }}>
-                      Action Centre
-                    </p>
-                    <p className="mt-1 text-[13px]" style={{ color: "var(--text-2)" }}>
-                      Project-scoped Larry actions and conversations now load from one action-centre contract.
-                    </p>
-                  </div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void Promise.all([refresh(), refreshActionCentre(), refreshMemory()]);
-                  }}
-                  className="text-[12px] font-semibold"
-                  style={{ color: "var(--cta)" }}
-                >
-                  Refresh
-                </button>
-              </div>
-
-              {actionCentreOpen && <div className="mt-5 space-y-4">
-                <div>
-                  <p className="text-[12px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--text-muted)" }}>
-                    Pending review
-                  </p>
-                  <div className="mt-3 space-y-3">
-                    {actionCentreLoading && suggested.length === 0 ? (
-                      <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>
-                        Loading suggested actions...
-                      </p>
-                    ) : suggested.length === 0 ? (
-                      <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>
-                        No pending Larry actions for this project.
-                      </p>
-                    ) : (
-                      suggested.map((event) => (
-                        <div
-                          key={event.id}
-                          className="rounded-xl border px-4 py-4"
-                          style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
-                        >
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="min-w-0 flex-1">
-                              <p className="text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
-                                {event.displayText}
-                              </p>
-                              <p className="mt-2 text-[13px] leading-6" style={{ color: "var(--text-2)" }}>
-                                {event.reasoning || "Larry proposed this action from current project context."}
-                              </p>
-                            </div>
-                            <span
-                              className="shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold"
-                              style={{
-                                background: getEventTone(event).background,
-                                color: getEventTone(event).color,
-                                borderColor: getEventTone(event).border,
-                              }}
-                            >
-                              {getEventTone(event).label}
-                            </span>
-                          </div>
-                          <p className="mt-3 text-[12px]" style={{ color: "var(--text-muted)" }}>
-                            {getEventMeta(event)} · {formatRelativeTime(event.createdAt)}
-                          </p>
-                          {(event.responseMessagePreview || event.requestMessagePreview) && (
-                            <p className="mt-2 rounded-[14px] border px-3 py-2 text-[12px] leading-5" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-                              {(event.responseMessagePreview ?? event.requestMessagePreview)?.trim()}
-                            </p>
-                          )}
-                          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                            {event.conversationId ? (
-                              <button
-                                type="button"
-                                onClick={() => openConversation(event.conversationId!)}
-                                className="text-[12px] font-semibold"
-                                style={{ color: "var(--cta)" }}
-                              >
-                                Open linked chat
-                              </button>
-                            ) : (
-                              <span className="text-[12px]" style={{ color: "var(--text-muted)" }}>
-                                Origin: {getEventOriginLabel(event.sourceKind)}
-                              </span>
-                            )}
-                            <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => void dismiss(event.id)}
-                                disabled={dismissing === event.id}
-                                className="rounded-full border px-3 py-1.5 text-[12px] font-semibold"
-                                style={{ borderColor: "var(--border)", color: "var(--text-2)" }}
-                              >
-                                {dismissing === event.id ? "Dismissing..." : "Dismiss"}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => void accept(event.id)}
-                                disabled={accepting === event.id}
-                                className="rounded-full px-3 py-1.5 text-[12px] font-semibold text-white"
-                                style={{ background: "var(--cta)" }}
-                              >
-                                {accepting === event.id ? "Accepting..." : "Accept"}
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-[12px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--text-muted)" }}>
-                    Recent activity
-                  </p>
-                  <div className="mt-3 space-y-3">
-                    {activity.length === 0 ? (
-                      <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>
-                        No recent Larry activity logged yet.
-                      </p>
-                    ) : (
-                      activity.map((event) => (
-                        <div key={event.id} className="rounded-xl border px-4 py-3" style={{ borderColor: "var(--border)" }}>
-                          <div className="flex items-start gap-3">
-                            <CheckCircle2 size={16} className="mt-0.5 shrink-0" style={{ color: "var(--cta)" }} />
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-start justify-between gap-3">
-                                <p className="text-[13px] font-semibold" style={{ color: "var(--text-1)" }}>
-                                  {event.displayText}
-                                </p>
-                                <span
-                                  className="shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold"
-                                  style={{
-                                    background: getEventTone(event).background,
-                                    color: getEventTone(event).color,
-                                    borderColor: getEventTone(event).border,
-                                  }}
-                                >
-                                  {getEventTone(event).label}
-                                </span>
-                              </div>
-                              <p className="mt-1 text-[12px]" style={{ color: "var(--text-muted)" }}>
-                                {getEventMeta(event)} · {formatRelativeTime(event.executedAt ?? event.createdAt)}
-                              </p>
-                              {event.responseMessagePreview && (
-                                <p className="mt-2 line-clamp-2 text-[12px] leading-5" style={{ color: "var(--text-2)" }}>
-                                  {event.responseMessagePreview}
-                                </p>
-                              )}
-                              {event.conversationId && (
-                                <button
-                                  type="button"
-                                  onClick={() => openConversation(event.conversationId!)}
-                                  className="mt-2 text-[12px] font-semibold"
-                                  style={{ color: "var(--cta)" }}
-                                >
-                                  Jump to chat
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>}
-            </div>
-
-          </div>
-        </section>
-
-        {/* ── Task breakdown — full width ───────────────── */}
-        {(() => {
-          const STATUS_BUCKETS: { key: string[]; label: string; pillClass: string }[] = [
-            { key: ["not_started", "backlog"], label: "Not started", pillClass: "pm-pill-not-started" },
-            { key: ["in_progress"],            label: "In progress",  pillClass: "pm-pill-working"     },
-            { key: ["waiting"],                label: "Waiting",      pillClass: "pm-pill-review"      },
-            { key: ["blocked"],                label: "Blocked",      pillClass: "pm-pill-stuck"       },
-            { key: ["completed"],              label: "Completed",    pillClass: "pm-pill-done"        },
-          ];
-          const buckets = STATUS_BUCKETS.map((b) => ({
-            ...b,
-            count: tasks.filter((t) => b.key.includes(t.status)).length,
-          }));
-          return (
-            <div
-              style={{
-                borderRadius: "var(--radius-card)",
-                border: "1px solid var(--border)",
-                background: "var(--surface)",
-                padding: "20px",
-              }}
-            >
-              <p className="text-[15px] font-semibold" style={{ color: "var(--text-1)" }}>Task breakdown</p>
-              <div className="mt-4 grid grid-cols-5 gap-3">
-                {buckets.map((b) => (
-                  <div
-                    key={b.label}
-                    className="flex flex-col items-center gap-2 rounded-xl py-5 px-2"
-                    style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}
-                  >
-                    <span className={`pm-pill ${b.pillClass} text-[11px]`}>{b.label}</span>
-                    <span className="text-[26px] font-bold" style={{ color: "var(--text-1)" }}>{b.count}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* ── Task distribution bar chart — full width ──── */}
-        {(() => {
-          const CHART_ITEMS: { key: string[]; label: string; bg: string }[] = [
-            { key: ["not_started", "backlog"], label: "Not started", bg: "var(--status-todo-bg)"   },
-            { key: ["in_progress"],            label: "In progress",  bg: "var(--status-wip-bg)"    },
-            { key: ["waiting"],                label: "Waiting",      bg: "var(--status-review-bg)" },
-            { key: ["blocked"],                label: "Blocked",      bg: "var(--status-stuck-bg)"  },
-            { key: ["completed"],              label: "Completed",    bg: "var(--status-done-bg)"   },
-          ];
-          const segments = CHART_ITEMS.map((s) => ({
-            ...s,
-            count: tasks.filter((t) => s.key.includes(t.status)).length,
-          }));
-          const maxCount = Math.max(...segments.map((s) => s.count), 1);
-          const BAR_HEIGHT = 160;
-          return (
-            <div
-              style={{
-                borderRadius: "var(--radius-card)",
-                border: "1px solid var(--border)",
-                background: "var(--surface)",
-                padding: "20px",
-              }}
-            >
-              <p className="text-[15px] font-semibold" style={{ color: "var(--text-1)" }}>Task distribution</p>
-              {tasks.length === 0 ? (
-                <p className="mt-3 text-[13px]" style={{ color: "var(--text-muted)" }}>No tasks yet.</p>
-              ) : (
-                <>
-                  <div className="mt-5 flex items-end gap-4" style={{ height: `${BAR_HEIGHT}px` }}>
-                    {segments.map((s) => (
-                      <div key={s.label} className="flex flex-1 flex-col items-center gap-1">
-                        <span className="text-[13px] font-semibold" style={{ color: "var(--text-2)" }}>{s.count}</span>
-                        <div
-                          title={`${s.label}: ${s.count}`}
-                          style={{
-                            width: "100%",
-                            height: `${Math.max((s.count / maxCount) * (BAR_HEIGHT - 28), s.count > 0 ? 4 : 0)}px`,
-                            background: s.bg,
-                            borderRadius: "6px 6px 0 0",
-                            transition: "height 0.4s ease",
-                          }}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-1 flex gap-4">
-                    {segments.map((s) => (
-                      <div key={s.label} className="flex flex-1 justify-center">
-                        <span className="text-[11px] font-medium" style={{ color: "var(--text-muted)" }}>{s.label}</span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          );
-        })()}
-        </>)}
+        {activeTab === "overview" && (
+          <ProjectOverviewTab
+            project={project}
+            tasks={tasks}
+            timeline={timeline}
+            outcomes={outcomes}
+            suggested={suggested}
+            activity={activity}
+            members={overviewMembers}
+            onNavigateToTab={(tab) => setActiveTab(tab as ProjectTab)}
+          />
+        )}
 
         {/* ── Tab: Extra ────────────────────────────────── */}
         {activeTab === "extra" && (
@@ -2199,10 +1854,12 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
           dismissing={dismissing}
           modifying={modifying}
           executing={executing}
+          actionError={actionError}
           accept={accept}
           dismiss={dismiss}
           modify={modify}
           letLarryExecute={letLarryExecute}
+          clearActionError={clearActionError}
         />)}
 
         {/* ── Tab: Team — re-uses existing collaborators panel ──── */}

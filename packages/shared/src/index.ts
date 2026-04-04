@@ -146,7 +146,8 @@ export type LarryActionType =
   | "project_note_send"
   | "calendar_event_create"
   | "calendar_event_update"
-  | "slack_message_draft";
+  | "slack_message_draft"
+  | "other";
 
 export type LarryEventType = "auto_executed" | "suggested" | "accepted" | "dismissed";
 export type LarryTriggeredBy = "schedule" | "login" | "chat" | "signal";
