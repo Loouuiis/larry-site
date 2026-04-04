@@ -31,6 +31,9 @@ function Breadcrumb({ workspaceName }: { workspaceName: string }) {
   } else if (pathname?.startsWith("/workspace/documents")) {
     parts.push({ label: workspaceName || "Home", href: "/workspace" });
     parts.push({ label: "Documents" });
+  } else if (pathname?.startsWith("/workspace/larry")) {
+    parts.push({ label: workspaceName || "Home", href: "/workspace" });
+    parts.push({ label: "Ask Larry" });
   } else if (pathname?.startsWith("/workspace/chats")) {
     parts.push({ label: workspaceName || "Home", href: "/workspace" });
     parts.push({ label: "Chats" });

@@ -7,6 +7,7 @@ import {
   listLarryMessages,
   sendLarryChat,
   type LarryClarification,
+  type LarryConversation,
   type LarryMessage as PersistedLarryMessage,
 } from "@/lib/larry";
 
@@ -74,6 +75,8 @@ export function useLarryChat(projectId?: string) {
   const [busy, setBusy] = useState(false);
   const [proactiveQueue, setProactiveQueue] = useState<ProactiveItem[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<LarryConversation[]>([]);
+  const [conversationsLoading, setConversationsLoading] = useState(false);
 
   const open = useCallback(() => setIsOpen(true), []);
   const close = useCallback(() => setIsOpen(false), []);
@@ -89,19 +92,24 @@ export function useLarryChat(projectId?: string) {
     setProactiveQueue((queue) => queue.filter((item) => item.id !== id));
   }, []);
 
+  // Reset on project change
   useEffect(() => {
     setConversationId(null);
     setMessages([]);
+    setConversations([]);
   }, [projectId]);
 
+  // Load conversations list + latest conversation when widget opens
   useEffect(() => {
     if (!isOpen || !projectId) return;
 
     void (async () => {
+      setConversationsLoading(true);
       try {
-        const conversations = await listLarryConversations(projectId);
-        const existing = conversations[0];
+        const convos = await listLarryConversations(projectId);
+        setConversations(convos);
 
+        const existing = convos[0];
         if (!existing) {
           setConversationId(null);
           setMessages([]);
@@ -114,6 +122,8 @@ export function useLarryChat(projectId?: string) {
       } catch {
         setConversationId(null);
         setMessages([]);
+      } finally {
+        setConversationsLoading(false);
       }
     })();
   }, [isOpen, projectId]);
@@ -130,6 +140,22 @@ export function useLarryChat(projectId?: string) {
       setMessages([]);
     }
   }, []);
+
+  const startNewChat = useCallback(() => {
+    setConversationId(null);
+    setMessages([]);
+    setInput("");
+  }, []);
+
+  const refreshConversations = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      const convos = await listLarryConversations(projectId);
+      setConversations(convos);
+    } catch {
+      // Keep existing list on error
+    }
+  }, [projectId]);
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -204,6 +230,9 @@ export function useLarryChat(projectId?: string) {
             .concat(nextUserMessage, nextAssistantMessage)
         );
 
+        // Refresh conversations list to include the new/updated conversation
+        await refreshConversations();
+
         if (
           (data.actionsExecuted ?? 0) > 0 ||
           (data.suggestionCount ?? 0) > 0 ||
@@ -226,7 +255,7 @@ export function useLarryChat(projectId?: string) {
         setBusy(false);
       }
     },
-    [conversationId, projectId]
+    [conversationId, projectId, refreshConversations]
   );
 
   const handleSubmit = useCallback(
@@ -247,12 +276,15 @@ export function useLarryChat(projectId?: string) {
     busy,
     proactiveQueue,
     conversationId,
+    conversations,
+    conversationsLoading,
     open,
     close,
     toggle,
     pushMessage,
     dismissProactive,
     loadConversation,
+    startNewChat,
     setInput,
     handleSubmit,
   };

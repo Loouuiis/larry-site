@@ -48,6 +48,7 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
     if (pathname?.startsWith("/workspace/meetings")) return "meetings";
     if (pathname?.startsWith("/workspace/calendar")) return "calendar";
     if (pathname?.startsWith("/workspace/documents")) return "documents";
+    if (pathname?.startsWith("/workspace/larry")) return "larry";
     if (pathname?.startsWith("/workspace/chats")) return "chats";
     if (pathname?.startsWith("/workspace/settings")) return "settings";
     return "project";
@@ -162,7 +163,10 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
         onSubmit={onMeetingSubmit}
         busy={meetingBusy}
       />
-      <LarryChat projectId={chatProjectId || undefined} />
+      <LarryChat
+        projectId={chatProjectId || undefined}
+        projectName={projects.find((p) => p.id === chatProjectId)?.name}
+      />
       {/* Global floating Larry Chat button */}
       <button
         type="button"

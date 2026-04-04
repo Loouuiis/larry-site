@@ -1382,7 +1382,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
                 Ask Larry
               </button>
               <Link
-                href={`/workspace/chats?projectId=${projectId}`}
+                href={`/workspace/larry?projectId=${projectId}`}
                 className="inline-flex h-9 items-center gap-2 rounded-full border px-4 text-[13px] font-semibold"
                 style={{ borderColor: "var(--border)", color: "var(--text-2)" }}
               >

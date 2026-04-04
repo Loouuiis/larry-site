@@ -131,7 +131,7 @@ function buildLinkedChatHref(event: WorkspaceLarryEvent): string | null {
     eventType: event.eventType,
   });
 
-  return `/workspace/chats?${params.toString()}`;
+  return `/workspace/larry?${params.toString()}`;
 }
 
 function ProjectBadge({ event }: { event: WorkspaceLarryEvent }) {
@@ -313,7 +313,7 @@ export default function WorkspaceActionsPage() {
                 Refresh
               </button>
               <Link
-                href="/workspace/chats"
+                href="/workspace/larry"
                 className="inline-flex h-10 items-center gap-2 rounded-full px-4 text-[13px] font-semibold text-white"
                 style={{ background: "var(--cta)" }}
               >
