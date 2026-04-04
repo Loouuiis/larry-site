@@ -41,6 +41,8 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
     /^\/workspace\/projects\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i
   )?.[1] ?? "";
 
+  const isLarryPage = pathname?.startsWith("/workspace/larry") ?? false;
+
   const activeNav: WorkspaceSidebarNav = useMemo(() => {
     if (pathname === "/workspace") return "home";
     if (pathname?.startsWith("/workspace/my-work")) return "my-work";
@@ -163,35 +165,38 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
         onSubmit={onMeetingSubmit}
         busy={meetingBusy}
       />
-      <LarryChat
-        projectId={chatProjectId || undefined}
-        projectName={projects.find((p) => p.id === chatProjectId)?.name}
-      />
-      {/* Global floating Larry Chat button */}
-      <button
-        type="button"
-        aria-label="Ask Larry"
-        onClick={() => window.dispatchEvent(new CustomEvent("larry:toggle"))}
-        style={{
-          position: "fixed",
-          bottom: "24px",
-          right: "24px",
-          width: "48px",
-          height: "48px",
-          borderRadius: "14px",
-          background: "#6c44f6",
-          color: "#fff",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          boxShadow: "0 4px 20px rgba(108,68,246,0.3)",
-          zIndex: 60,
-          border: "none",
-          cursor: "pointer",
-        }}
-      >
-        <Layers size={20} />
-      </button>
+      {!isLarryPage && (
+        <>
+          <LarryChat
+            projectId={chatProjectId || undefined}
+            projectName={projects.find((p) => p.id === chatProjectId)?.name}
+          />
+          <button
+            type="button"
+            aria-label="Ask Larry"
+            onClick={() => window.dispatchEvent(new CustomEvent("larry:toggle"))}
+            style={{
+              position: "fixed",
+              bottom: "24px",
+              right: "24px",
+              width: "48px",
+              height: "48px",
+              borderRadius: "14px",
+              background: "#6c44f6",
+              color: "#fff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: "0 4px 20px rgba(108,68,246,0.3)",
+              zIndex: 60,
+              border: "none",
+              cursor: "pointer",
+            }}
+          >
+            <Layers size={20} />
+          </button>
+        </>
+      )}
     </WorkspaceChromeProvider>
   );
 }
