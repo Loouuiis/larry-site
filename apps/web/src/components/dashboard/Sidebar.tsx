@@ -9,7 +9,7 @@ import {
   FileText, MessageSquare, ClipboardList, Calendar,
   X, FolderOpen, Home, ListTodo, Settings,
   Search, LogOut, FolderKanban, CheckSquare,
-  Plus, BarChart2, Sparkles, PanelLeftClose, PanelLeftOpen, Star,
+  Plus, BarChart2, Sparkles, PanelLeftClose, PanelLeftOpen, Star, Mail,
 } from "lucide-react";
 import { WorkspaceProject } from "@/app/dashboard/types";
 
@@ -18,7 +18,7 @@ const DRAWER_EASE = [0.22, 1, 0.36, 1] as const;
 /* ─── Types ────────────────────────────────────────────────────────── */
 
 export type NavSection = "projects" | "documents" | "chats" | "meetings" | "analytics";
-export type WorkspaceSidebarNav = "home" | "my-work" | "actions" | "project" | "meetings" | "calendar" | "documents" | "chats" | "larry" | "settings";
+export type WorkspaceSidebarNav = "home" | "my-work" | "actions" | "project" | "meetings" | "calendar" | "documents" | "email-drafts" | "chats" | "larry" | "settings";
 
 const WORKSPACE_NAV: { id: WorkspaceSidebarNav; label: string; icon: React.ElementType; href: string }[] = [
   { id: "home",      label: "Home",       icon: Home,          href: "/workspace"           },
@@ -26,9 +26,10 @@ const WORKSPACE_NAV: { id: WorkspaceSidebarNav; label: string; icon: React.Eleme
   { id: "actions",   label: "Actions",    icon: CheckSquare,   href: "/workspace/actions"   },
   { id: "meetings",  label: "Meetings",   icon: ClipboardList, href: "/workspace/meetings"  },
   { id: "calendar",  label: "Calendar",   icon: Calendar,      href: "/workspace/calendar"  },
-  { id: "documents", label: "Documents",  icon: FileText,      href: "/workspace/documents" },
-  { id: "chats",     label: "Chats",      icon: MessageSquare, href: "/workspace/chats"     },
-  { id: "larry",     label: "Larry",      icon: Sparkles,      href: "/workspace/larry"     },
+  { id: "documents",    label: "Documents",    icon: FileText,      href: "/workspace/documents"    },
+  { id: "email-drafts", label: "Email Drafts", icon: Mail,         href: "/workspace/email-drafts" },
+  { id: "chats",        label: "Chats",        icon: MessageSquare, href: "/workspace/chats"        },
+  { id: "larry",        label: "Larry",        icon: Sparkles,      href: "/workspace/larry"        },
   { id: "settings",  label: "Settings",   icon: Settings,      href: "/workspace/settings"  },
 ];
 

@@ -136,6 +136,15 @@ body {
   overflow-x: hidden;
 }
 
+button,
+a,
+[role="button"],
+select,
+label,
+summary {
+  cursor: pointer;
+}
+
 input,
 textarea,
 select {
