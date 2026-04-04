@@ -1,11 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { TriangleAlert, Plus, Search, ChevronDown, ChevronRight, ArchiveRestore } from "lucide-react";
 import type { WorkspaceProject, WorkspaceHomeData, WorkspaceTask } from "@/app/dashboard/types";
-import { ProjectCreateSheet } from "./ProjectCreateSheet";
+import { StartProjectFlow } from "@/components/dashboard/StartProjectFlow";
 import { useWorkspaceChrome } from "./WorkspaceChromeContext";
 
 interface LarryBriefingProject {
@@ -448,8 +447,9 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
             >
               Start with a live project so Larry can begin collecting task movement, meeting context, and approval-worthy actions in one place.
             </p>
-            <Link
-              href="/workspace/projects/new"
+            <button
+              type="button"
+              onClick={() => setSheetOpen(true)}
               className="mt-5 inline-flex items-center justify-center gap-2 text-[14px] font-semibold text-white"
               style={{
                 background: "var(--cta)",
@@ -459,7 +459,7 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
               }}
             >
               Create the first project
-            </Link>
+            </button>
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-3">
@@ -643,14 +643,16 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
 
       </div>
 
-      <ProjectCreateSheet
-        open={sheetOpen}
-        onClose={() => setSheetOpen(false)}
-        onCreated={() => {
-          setSheetOpen(false);
-          chrome?.refreshShell?.();
-        }}
-      />
+      {sheetOpen && (
+        <StartProjectFlow
+          onClose={() => setSheetOpen(false)}
+          onCreated={(projectId) => {
+            setSheetOpen(false);
+            chrome?.refreshShell?.();
+            router.push(`/workspace/projects/${projectId}`);
+          }}
+        />
+      )}
     </div>
   );
 }
