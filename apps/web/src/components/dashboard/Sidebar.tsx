@@ -8,8 +8,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   FileText, MessageSquare, ClipboardList, Calendar,
   X, FolderOpen, Home, ListTodo, Settings,
-  Search, LogOut, User, FolderKanban, CheckSquare,
-  Plus, BarChart2, Sparkles, PanelLeftClose, PanelLeftOpen, Star,
+  Search, LogOut, FolderKanban, CheckSquare,
+  Plus, BarChart2, Layers, PanelLeftClose, PanelLeftOpen, Star,
 } from "lucide-react";
 import { WorkspaceProject } from "@/app/dashboard/types";
 
@@ -28,7 +28,7 @@ const WORKSPACE_NAV: { id: WorkspaceSidebarNav; label: string; icon: React.Eleme
   { id: "calendar",  label: "Calendar",   icon: Calendar,      href: "/workspace/calendar"  },
   { id: "documents", label: "Documents",  icon: FileText,      href: "/workspace/documents" },
   { id: "chats",     label: "Chats",      icon: MessageSquare, href: "/workspace/chats"     },
-  { id: "larry",     label: "Ask Larry",  icon: Sparkles,      href: "/workspace/larry"     },
+  { id: "larry",     label: "Ask Larry",  icon: Layers,        href: "/workspace/larry"     },
   { id: "settings",  label: "Settings",   icon: Settings,      href: "/workspace/settings"  },
 ];
 
@@ -163,10 +163,25 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, onTogg
             style={{
               borderRadius: "var(--radius-input)",
               border: "1px solid var(--border)",
-              background: "var(--surface-2)",
+              background: "#fafaff",
               color: "var(--text-2)",
             }}
           />
+          {!isSearching && (
+            <kbd
+              className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 select-none"
+              style={{
+                fontSize: 10,
+                color: "#bdb7d0",
+                background: "#f2f3ff",
+                padding: "1px 5px",
+                borderRadius: 4,
+                fontWeight: 500,
+              }}
+            >
+              /
+            </kbd>
+          )}
           {isSearching && (
             <button
               onClick={dismiss}
@@ -296,7 +311,15 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, onTogg
                   onClick={onClose}
                   className={`pm-board-item${isActive ? " active" : ""}`}
                 >
-                  <FolderOpen size={16} className="shrink-0" style={{ color: isActive ? "var(--brand)" : isStarred ? "var(--brand-muted, var(--brand))" : "var(--text-disabled)" }} />
+                  <span
+                    className="shrink-0"
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      background: isActive ? "#6c44f6" : "#bdb7d0",
+                    }}
+                  />
                   <span className="truncate text-[14px]" style={{ maxWidth: "180px", color: isActive ? "var(--text-1)" : "var(--text-2)" }}>
                     {project.name}
                   </span>
@@ -328,10 +351,10 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, onTogg
       <div className="shrink-0 px-3 py-3" style={{ borderTop: "1px solid var(--border)" }}>
         <div className="flex items-center gap-2 group">
           <div
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
-            style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+            style={{ background: "#6c44f6", color: "#fff", fontSize: 11, fontWeight: 600 }}
           >
-            <User size={16} style={{ color: "var(--text-disabled)" }} />
+            {(userEmail?.split("@")[0] ?? "?").slice(0, 2).toUpperCase()}
           </div>
           <span className="flex-1 truncate text-[12px]" style={{ color: "var(--text-muted)" }}>
             {userEmail ?? "Account"}
@@ -372,7 +395,7 @@ export function WorkspaceSidebar({ projects, activeNav, mobileOpen, onMobileClos
       <motion.aside
         className="hidden md:flex shrink-0 flex-col overflow-hidden"
         initial={false}
-        animate={{ width: collapsed ? 52 : 252 }}
+        animate={{ width: collapsed ? 56 : 240 }}
         transition={{ duration: 0.22, ease: DRAWER_EASE }}
         style={{ borderRight: "1px solid var(--border)", background: "#ffffff" }}
       >
@@ -389,11 +412,11 @@ export function WorkspaceSidebar({ projects, activeNav, mobileOpen, onMobileClos
               <PanelLeftOpen size={16} />
             </button>
             <div
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
-              style={{ background: "var(--surface-2)", border: "1px solid var(--border)" }}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+              style={{ background: "#6c44f6", color: "#fff", fontSize: 11, fontWeight: 600 }}
               title={userEmail ?? "Account"}
             >
-              <User size={16} style={{ color: "var(--text-disabled)" }} />
+              {(userEmail?.split("@")[0] ?? "?").slice(0, 2).toUpperCase()}
             </div>
           </div>
         ) : (
@@ -430,9 +453,9 @@ export function WorkspaceSidebar({ projects, activeNav, mobileOpen, onMobileClos
               className="fixed inset-y-0 left-0 z-50 flex flex-col md:hidden"
               style={{
                 width: "252px",
-                borderRight: "1px solid var(--border)",
+                borderRight: "1px solid #f0edfa",
                 background: "#ffffff",
-                boxShadow: "var(--shadow-3)",
+                boxShadow: "0 0 40px rgba(0,0,0,0.06)",
               }}
             >
               <div className="flex h-12 items-center justify-between px-4" style={{ borderBottom: "1px solid var(--border)" }}>
