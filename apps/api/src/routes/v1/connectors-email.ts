@@ -589,11 +589,13 @@ export const emailConnectorRoutes: FastifyPluginAsync = async (fastify) => {
       const tenantId = request.user.tenantId;
 
       const values: unknown[] = [tenantId];
-      let sql = `SELECT id, project_id as "projectId", action_id as "actionId",
-                        recipient, subject, body, state, sent_at as "sentAt",
-                        metadata, created_at as "createdAt", updated_at as "updatedAt"
-                 FROM email_outbound_drafts
-                 WHERE tenant_id = $1`;
+      let sql = `SELECT eod.id, eod.project_id as "projectId", eod.action_id as "actionId",
+                        eod.recipient, eod.subject, eod.body, eod.state, eod.sent_at as "sentAt",
+                        eod.metadata, eod.created_at as "createdAt", eod.updated_at as "updatedAt",
+                        p.name as "projectName"
+                 FROM email_outbound_drafts eod
+                 LEFT JOIN projects p ON p.tenant_id = eod.tenant_id AND p.id = eod.project_id
+                 WHERE eod.tenant_id = $1`;
 
       if (query.state) {
         values.push(query.state);
@@ -601,7 +603,7 @@ export const emailConnectorRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       values.push(query.limit);
-      sql += ` ORDER BY created_at DESC LIMIT $${values.length}`;
+      sql += ` ORDER BY eod.created_at DESC LIMIT $${values.length}`;
 
       const rows = await fastify.db.queryTenant(tenantId, sql, values);
       return { items: rows };

@@ -28,7 +28,7 @@ const WORKSPACE_NAV: { id: WorkspaceSidebarNav; label: string; icon: React.Eleme
   { id: "meetings",  label: "Meetings",   icon: ClipboardList, href: "/workspace/meetings"  },
   { id: "calendar",  label: "Calendar",   icon: Calendar,      href: "/workspace/calendar"  },
   { id: "documents",    label: "Documents",    icon: FileText,      href: "/workspace/documents"    },
-  { id: "email-drafts", label: "Email Drafts", icon: Mail,         href: "/workspace/email-drafts" },
+  { id: "email-drafts", label: "Mail",          icon: Mail,         href: "/workspace/email-drafts" },
   { id: "chats",        label: "Chats",        icon: MessageSquare, href: "/workspace/chats"        },
   { id: "larry",        label: "Larry",        icon: Sparkles,      href: "/workspace/larry"        },
   { id: "settings",  label: "Settings",   icon: Settings,      href: "/workspace/settings"  },
