@@ -9,7 +9,7 @@ import {
   FileText, MessageSquare, ClipboardList, Calendar,
   X, FolderOpen, Home, ListTodo, Settings,
   Search, LogOut, FolderKanban, CheckSquare,
-  Plus, BarChart2, Layers, PanelLeftClose, PanelLeftOpen, Star,
+  Plus, BarChart2, Sparkles, PanelLeftClose, PanelLeftOpen, Star,
 } from "lucide-react";
 import { WorkspaceProject } from "@/app/dashboard/types";
 
@@ -28,7 +28,7 @@ const WORKSPACE_NAV: { id: WorkspaceSidebarNav; label: string; icon: React.Eleme
   { id: "calendar",  label: "Calendar",   icon: Calendar,      href: "/workspace/calendar"  },
   { id: "documents", label: "Documents",  icon: FileText,      href: "/workspace/documents" },
   { id: "chats",     label: "Chats",      icon: MessageSquare, href: "/workspace/chats"     },
-  { id: "larry",     label: "Larry",      icon: Layers,        href: "/workspace/larry"     },
+  { id: "larry",     label: "Larry",      icon: Sparkles,      href: "/workspace/larry"     },
   { id: "settings",  label: "Settings",   icon: Settings,      href: "/workspace/settings"  },
 ];
 
