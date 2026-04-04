@@ -1290,3 +1290,21 @@ DO $$ BEGIN
   CREATE POLICY larry_documents_tenant_isolation ON larry_documents
     USING (tenant_id = current_setting('app.current_tenant_id')::uuid);
 EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+-- ── Migrations: ensure columns exist on pre-existing tables ─────────────────
+-- These run idempotently on every deploy so that tables created before these
+-- columns were added get updated without manual intervention.
+
+-- 011: autonomy level for tenant policy settings
+ALTER TABLE tenant_policy_settings
+  ADD COLUMN IF NOT EXISTS autonomy_level INTEGER NOT NULL DEFAULT 3;
+
+-- 012: Larry project context
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS larry_context TEXT;
+
+-- 013: Larry as task executor
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS assigned_to_larry BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completed_by_larry BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS larry_document_id UUID REFERENCES larry_documents(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_tasks_larry_assigned ON tasks(project_id) WHERE assigned_to_larry = TRUE;
+CREATE INDEX IF NOT EXISTS idx_tasks_larry_completed ON tasks(project_id) WHERE completed_by_larry = TRUE;
