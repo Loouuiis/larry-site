@@ -124,6 +124,7 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
   const [newPriority, setNewPriority] = useState<"low" | "medium" | "high" | "critical">("medium");
   const [newAssignee, setNewAssignee] = useState("");
   const [newDueDate, setNewDueDate] = useState("");
+  const [newDescription, setNewDescription] = useState("");
   const [saving, setSaving] = useState(false);
   const titleInputRef = useRef<HTMLInputElement>(null);
 
@@ -172,6 +173,7 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
     setNewPriority("medium");
     setNewAssignee("");
     setNewDueDate("");
+    setNewDescription("");
     setCollapsed((prev) => ({ ...prev, [groupId]: false }));
   };
 
@@ -181,6 +183,7 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
     setNewPriority("medium");
     setNewAssignee("");
     setNewDueDate("");
+    setNewDescription("");
   };
 
   const patchTask = async (taskId: string, patch: Record<string, unknown>) => {
@@ -216,6 +219,7 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
       };
       if (newAssignee) body.assigneeUserId = newAssignee;
       if (newDueDate) body.dueDate = newDueDate;
+      if (newDescription.trim()) body.description = newDescription.trim();
 
       const res = await fetch("/api/workspace/tasks", {
         method: "POST",
@@ -916,6 +920,29 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                       padding: "2px 4px",
                       flexShrink: 0,
                     }}
+                  />
+                </div>
+
+                {/* description for new task */}
+                <div style={{ padding: "4px 16px 0" }}>
+                  <textarea
+                    value={newDescription}
+                    onChange={(e) => setNewDescription(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Escape") cancelCreating(); }}
+                    disabled={saving}
+                    placeholder="Add a description (optional)..."
+                    maxLength={4000}
+                    rows={2}
+                    className="w-full text-[12px] outline-none resize-none transition-colors"
+                    style={{
+                      background: "var(--surface)",
+                      border: "1px dashed var(--border-2)",
+                      borderRadius: 6,
+                      color: "var(--text-2)",
+                      padding: "6px 10px",
+                    }}
+                    onFocus={(e) => { e.currentTarget.style.borderColor = "var(--brand)"; e.currentTarget.style.borderStyle = "solid"; }}
+                    onBlur={(e) => { e.currentTarget.style.borderColor = "var(--border-2)"; e.currentTarget.style.borderStyle = "dashed"; }}
                   />
                 </div>
 
