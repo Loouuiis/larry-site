@@ -286,8 +286,9 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, onTogg
 
         {projectsOpen && (
           <div className="space-y-0.5 pb-2">
-            {favoritedProjects.map((project) => {
+            {projects.map((project) => {
               const isActive = isProjectActive(project.id);
+              const isStarred = favorites.has(project.id);
               return (
                 <Link
                   key={project.id}
@@ -295,16 +296,16 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, onTogg
                   onClick={onClose}
                   className={`pm-board-item${isActive ? " active" : ""}`}
                 >
-                  <FolderOpen size={16} className="shrink-0" style={{ color: isActive ? "var(--brand)" : "var(--text-disabled)" }} />
+                  <FolderOpen size={16} className="shrink-0" style={{ color: isActive ? "var(--brand)" : isStarred ? "var(--brand-muted, var(--brand))" : "var(--text-disabled)" }} />
                   <span className="truncate text-[14px]" style={{ maxWidth: "180px", color: isActive ? "var(--text-1)" : "var(--text-2)" }}>
                     {project.name}
                   </span>
                 </Link>
               );
             })}
-            {favoritedProjects.length === 0 && (
+            {projects.length === 0 && (
               <p className="px-3 py-2 text-[12px]" style={{ color: "var(--text-disabled)" }}>
-                Star a project in its Settings tab to pin it here.
+                No projects yet. Create one to get started.
               </p>
             )}
             {/* + New inline */}
