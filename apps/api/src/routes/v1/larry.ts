@@ -1227,7 +1227,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
             tenantId,
             event.projectId,
             event.actionType as LarryActionType,
-            event.payload,
+            { ...event.payload, displayText: event.displayText },
             actorUserId
           );
 
@@ -1280,10 +1280,11 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
             event.actionType === "project_note_send"
               ? {
                   ...event.payload,
+                  displayText: event.displayText,
                   sourceKind: "action",
                   sourceRecordId: id,
                 }
-              : event.payload;
+              : { ...event.payload, displayText: event.displayText };
 
           entity = await executeAction(
             fastify.db,

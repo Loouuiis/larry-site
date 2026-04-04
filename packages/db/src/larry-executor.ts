@@ -791,13 +791,13 @@ async function executeSlackMessageDraft(
   payload: Record<string, unknown>,
   actorUserId: string | null
 ): Promise<Record<string, unknown>> {
-  const channelName = typeof payload.channelName === "string" ? payload.channelName : null;
-  const message = typeof payload.message === "string" ? payload.message : "";
+  const channelName = typeof payload.channelName === "string" ? payload.channelName : "#general";
+  const message = typeof payload.message === "string" && payload.message
+    ? payload.message
+    : typeof payload.displayText === "string" && payload.displayText
+      ? payload.displayText
+      : "Slack message draft (no content provided by Larry)";
   const threadTs = typeof payload.threadTs === "string" ? payload.threadTs : null;
-
-  if (!channelName || !message) {
-    throw new Error("slack_message_draft requires channelName and message in payload");
-  }
 
   // Store the draft — Slack messages are NOT sent immediately.
   // They are stored as pending drafts for the user to review and send.

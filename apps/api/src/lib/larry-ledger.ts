@@ -25,6 +25,7 @@ export interface LarryEventMutationRecord {
   projectId: string;
   eventType: LarryEventType;
   actionType: string;
+  displayText: string;
   payload: Record<string, unknown>;
 }
 
@@ -457,6 +458,7 @@ export async function getLarryEventForMutation(
             project_id AS "projectId",
             event_type AS "eventType",
             action_type AS "actionType",
+            display_text AS "displayText",
             payload
        FROM larry_events
       WHERE tenant_id = $1
