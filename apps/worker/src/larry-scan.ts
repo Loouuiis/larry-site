@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { getProjectSnapshot, runAutoActions, storeSuggestions } from "@larry/db";
+import { getProjectSnapshot, runAutoActions, storeSuggestions, updateProjectLarryContext } from "@larry/db";
 import { runIntelligence } from "@larry/ai";
 import { db } from "./context.js";
 import { buildWorkerIntelligenceConfig } from "./intelligence-config.js";
@@ -38,6 +38,10 @@ export async function runLarryScan(): Promise<void> {
         const snapshot = await getProjectSnapshot(db, tenantId, projectId);
         const result = await runIntelligence(config, snapshot, "scheduled health scan");
         const ledgerContext = { sourceKind: "project_review", sourceRecordId: randomUUID() } as const;
+
+        if (result.contextUpdate) {
+          await updateProjectLarryContext(db, tenantId, projectId, result.contextUpdate);
+        }
 
         const [autoResult, suggestResult] = await Promise.all([
           runAutoActions(db, tenantId, projectId, "schedule", result.autoActions, undefined, ledgerContext),

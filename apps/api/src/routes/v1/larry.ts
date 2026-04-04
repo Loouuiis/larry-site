@@ -14,6 +14,7 @@ import {
   listProjectMemoryEntries,
   runAutoActions,
   storeSuggestions,
+  updateProjectLarryContext,
 } from "@larry/db";
 import { getApiEnv } from "@larry/config";
 import type {
@@ -1620,6 +1621,94 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
   );
 
   fastify.post(
+    "/events/:id/let-larry-execute",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
+    async (request, reply) => {
+      const tenantId = request.user.tenantId;
+      const actorUserId = request.user.userId;
+      const { id } = request.params as { id: string };
+
+      const event = await getLarryEventForMutation(fastify.db, tenantId, id);
+      if (!event) {
+        throw fastify.httpErrors.notFound("Event not found.");
+      }
+      if (event.eventType !== "suggested") {
+        throw fastify.httpErrors.conflict("Only suggested events can be executed by Larry.");
+      }
+
+      // Check that this event has execution output in its payload
+      const execOutput = event.payload?._executionOutput as {
+        docType: string;
+        title: string;
+        content: string;
+        emailRecipient?: string;
+        emailSubject?: string;
+      } | null;
+
+      if (!execOutput) {
+        throw fastify.httpErrors.unprocessableEntity("This event has no execution output for Larry to complete.");
+      }
+
+      // Execute the underlying action first (e.g., create the task)
+      let entity: unknown;
+      try {
+        entity = await executeAction(
+          fastify.db,
+          tenantId,
+          event.projectId,
+          event.actionType as LarryActionType,
+          event.payload,
+          actorUserId,
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw fastify.httpErrors.unprocessableEntity(message);
+      }
+
+      // Create the larry_document
+      const [doc] = await fastify.db.queryTenant<{ id: string }>(
+        tenantId,
+        `INSERT INTO larry_documents (tenant_id, project_id, larry_event_id, title, doc_type, content, email_recipient, email_subject, state)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'draft')
+         RETURNING id`,
+        [
+          tenantId,
+          event.projectId,
+          id,
+          execOutput.title,
+          execOutput.docType,
+          execOutput.content,
+          execOutput.emailRecipient ?? null,
+          execOutput.emailSubject ?? null,
+        ],
+      );
+
+      // If a task was created, link document and mark completed by Larry
+      if (event.actionType === "task_create" && entity && typeof entity === "object" && "id" in entity) {
+        const taskId = (entity as { id: string }).id;
+        await fastify.db.queryTenant(
+          tenantId,
+          `UPDATE tasks
+           SET completed_by_larry = TRUE,
+               larry_document_id = $2,
+               assigned_to_larry = TRUE,
+               status = 'completed',
+               completed_at = NOW(),
+               progress_percent = 100,
+               updated_at = NOW()
+           WHERE tenant_id = $1 AND id = $3`,
+          [tenantId, doc.id, taskId],
+        );
+      }
+
+      // Mark the event as accepted
+      await markLarryEventAccepted(fastify.db, tenantId, id, actorUserId);
+
+      return reply.code(200).send({ accepted: true, executedByLarry: true, documentId: doc.id, entity });
+    }
+  );
+
+  fastify.post(
     "/actions/:id/correct",
     { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
     async (request, reply) => {
@@ -2013,6 +2102,9 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
               snapshot,
               `user said: "${message}"${conversationHistoryHint}${pendingClause}${guidanceHint ? `\n\n${guidanceHint}` : ""}`
             );
+            if (result.contextUpdate) {
+              await updateProjectLarryContext(fastify.db, tenantId, project.id, result.contextUpdate);
+            }
             draftRuns.push({
               projectId: project.id,
               projectName: project.name,
@@ -2359,6 +2451,10 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         const messageText = error instanceof Error ? error.message : String(error);
         request.log.error({ err: error, tenantId, projectId }, "runIntelligence failed");
         throw fastify.httpErrors.serviceUnavailable(`Larry intelligence error: ${messageText}`);
+      }
+
+      if (result.contextUpdate && projectId) {
+        await updateProjectLarryContext(fastify.db, tenantId, projectId, result.contextUpdate);
       }
 
       // LLM-driven clarification — takes priority over action execution

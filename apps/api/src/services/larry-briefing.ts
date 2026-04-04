@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { Db, backfillLarryEventSourceRecord, getProjectSnapshot } from "@larry/db";
+import { Db, backfillLarryEventSourceRecord, getProjectSnapshot, updateProjectLarryContext } from "@larry/db";
 import { runIntelligence } from "@larry/ai";
 import type { IntelligenceConfig } from "@larry/shared";
 import { runAutoActions, storeSuggestions, getPendingSuggestionTexts } from "@larry/db";
@@ -149,6 +149,10 @@ export async function generateBriefing(
         snapshot,
         `user logged in${buildPendingClause(pendingTexts)}${guidanceHint ? `\n\n${guidanceHint}` : ""}`
       );
+
+      if (result.contextUpdate) {
+        await updateProjectLarryContext(db, tenantId, project.id, result.contextUpdate);
+      }
 
       const [autoResult, suggestResult] = await Promise.all([
         runAutoActions(db, tenantId, project.id, "login", result.autoActions, undefined, ledgerContext),
