@@ -22,12 +22,12 @@ interface DashboardData {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  backlog: "#bdb7d0",
-  not_started: "#bdb7d0",
-  in_progress: "#b29cf8",
-  waiting: "#b29cf8",
-  blocked: "#9a7fa7",
-  completed: "#6c44f6",
+  backlog: "#90d4a0",
+  not_started: "#90d4a0",
+  in_progress: "#5b8dee",
+  waiting: "#5b8dee",
+  blocked: "#f07878",
+  completed: "#7ec8e3",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -115,7 +115,7 @@ function AssigneeBar({ byAssignee }: { byAssignee: Record<string, { total: numbe
             </div>
             <div className="flex-1 h-4 rounded-full bg-[var(--pm-gray-light)] overflow-hidden">
               <div
-                className="h-full rounded-full bg-[#6c44f6]"
+                className="h-full rounded-full bg-[#5b8dee]"
                 style={{ width: `${pct}%` }}
               />
             </div>
@@ -209,9 +209,9 @@ export function ProjectDashboard({ projectId }: { projectId: string }) {
         {/* KPI row */}
         <div className="grid grid-cols-3 gap-4">
           {[
-            { label: "Completion", value: `${(health.completionRate ?? 0).toFixed(0)}%`, color: "#6c44f6" },
-            { label: "Risk Score", value: (health.avgRiskScore ?? 0).toFixed(0), color: (health.avgRiskScore ?? 0) >= 70 ? "#9a7fa7" : (health.avgRiskScore ?? 0) >= 35 ? "#b29cf8" : "#6c44f6" },
-            { label: "Blocked Tasks", value: String(health.blockedCount ?? 0), color: "#9a7fa7" },
+            { label: "Completion", value: `${(health.completionRate ?? 0).toFixed(0)}%`, color: "#5b8dee" },
+            { label: "Risk Score", value: (health.avgRiskScore ?? 0).toFixed(0), color: (health.avgRiskScore ?? 0) >= 70 ? "#f07878" : (health.avgRiskScore ?? 0) >= 35 ? "#f5c842" : "#5b8dee" },
+            { label: "Blocked Tasks", value: String(health.blockedCount ?? 0), color: "#f07878" },
           ].map(({ label, value, color }) => (
             <div key={label} className="rounded-xl border border-[var(--pm-border)] bg-white p-5">
               <p className="text-[12px] font-semibold uppercase tracking-wider text-[var(--pm-text-muted)]">{label}</p>
