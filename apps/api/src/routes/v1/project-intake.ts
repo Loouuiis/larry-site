@@ -35,7 +35,7 @@ const DraftChatInputSchema = z.object({
 
 const DraftMeetingInputSchema = z.object({
   meetingTitle: z.string().trim().max(300).optional().nullable(),
-  transcript: z.string().trim().max(30_000).optional().nullable(),
+  transcript: z.string().trim().max(500_000).optional().nullable(),
 });
 
 const UpsertDraftSchema = z.object({
