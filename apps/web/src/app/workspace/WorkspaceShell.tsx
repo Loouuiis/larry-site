@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Layers } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { LarryChat } from "./LarryChat";
 import { WorkspaceSidebar, type WorkspaceSidebarNav } from "@/components/dashboard/Sidebar";
 import type { WorkspaceProject } from "@/app/dashboard/types";
@@ -190,7 +190,7 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
           cursor: "pointer",
         }}
       >
-        <Layers size={20} />
+        <Sparkles size={20} />
       </button>
     </WorkspaceChromeProvider>
   );

@@ -330,15 +330,15 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
         <span style={{ width: 18, flexShrink: 0 }} />
         <span style={{ width: 18, flexShrink: 0 }} />
         {/* Task */}
-        <span className="flex-1 text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+        <span className="flex-1 text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#4b556b" }}>
           Task
         </span>
         {/* Priority */}
-        <span className="w-[72px] text-right text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)", flexShrink: 0 }}>
+        <span className="w-[72px] text-right text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#4b556b", flexShrink: 0 }}>
           Priority
         </span>
         {/* Assignee */}
-        <span className="w-[110px] text-right text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)", flexShrink: 0 }}>
+        <span className="w-[110px] text-right text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#4b556b", flexShrink: 0 }}>
           Assignee
         </span>
       </div>
@@ -818,12 +818,12 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                             onFocus={(e) => { e.currentTarget.style.borderColor = "var(--brand)"; e.currentTarget.style.borderStyle = "solid"; }}
                             onBlurCapture={(e) => { e.currentTarget.style.borderColor = "var(--border-2)"; e.currentTarget.style.borderStyle = "dashed"; }}
                           />
-                          <div className="flex justify-end mt-2">
+                          <div className="flex justify-start mt-2">
                             <button
                               onClick={() => deleteTask(task.id)}
                               className="inline-flex items-center gap-1.5 text-[12px]"
                               style={{
-                                color: "var(--text-disabled)",
+                                color: "#4b556b",
                                 background: "transparent",
                                 border: "none",
                                 cursor: "pointer",
@@ -831,7 +831,7 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                                 borderRadius: 3,
                               }}
                               onMouseEnter={(e) => { e.currentTarget.style.color = "#ef4444"; }}
-                              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-disabled)"; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.color = "#4b556b"; }}
                             >
                               <Trash2 size={12} />
                               Delete task

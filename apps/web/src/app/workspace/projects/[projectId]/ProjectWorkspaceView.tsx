@@ -15,6 +15,7 @@ import {
   FolderKanban,
   MessageSquare,
   Layers,
+  Sparkles,
   LayoutList,
   ListChecks,
   FileText,
@@ -1380,7 +1381,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
                 className="inline-flex h-9 items-center gap-2 rounded-full px-4 text-[13px] font-semibold text-white"
                 style={{ background: "var(--cta)" }}
               >
-                <Layers size={14} />
+                <Sparkles size={14} />
                 Ask Larry
               </button>
               <Link
@@ -1955,6 +1956,23 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
         {/* ── Tab: Extra ────────────────────────────────── */}
         {activeTab === "extra" && (
           <div className="space-y-6">
+            {/* All tenant members info */}
+            <div
+              style={{
+                width: "33%",
+                marginLeft: "auto",
+                borderRadius: "var(--radius-card)",
+                border: "1px solid var(--border)",
+                background: "var(--surface)",
+                padding: "10px 14px",
+              }}
+            >
+              <p className="text-[12px] font-semibold" style={{ color: "var(--text-1)" }}>Team membership</p>
+              <p className="mt-0.5 text-[11px]" style={{ color: "var(--text-muted)" }}>
+                All tenant members are already added to this project.
+              </p>
+            </div>
+
             {/* Project Larry Chat */}
             <div
               style={{
@@ -1990,7 +2008,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
                       className="mt-4 inline-flex h-10 items-center gap-2 rounded-full px-4 text-[13px] font-semibold text-white"
                       style={{ background: "var(--cta)" }}
                     >
-                      <Layers size={14} />
+                      <Sparkles size={14} />
                       Start project chat
                     </button>
                   </div>

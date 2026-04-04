@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Layers, Menu, Plus, X } from "lucide-react";
+import { ChevronDown, Sparkles, Menu, Plus, X } from "lucide-react";
 import type { WorkspaceLarryEvent } from "@/app/dashboard/types";
 import type { LarryConversation } from "@/lib/larry";
 import { ChatInput, type AttachedFile } from "@/components/larry/ChatInput";
@@ -266,7 +266,7 @@ export function LarryChat({ projectId, projectName, onVoiceInput }: LarryChatPro
       {/* ── Header: Breadcrumb ── */}
       <div className="flex items-center justify-between rounded-t-[14px] border-b border-[#f0edfa] bg-gradient-to-r from-[#6c44f6] to-[#b29cf8] px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
-          <Layers size={16} className="shrink-0 text-white" />
+          <Sparkles size={16} className="shrink-0 text-white" />
           <div className="min-w-0">
             <span className="text-[14px] font-semibold text-white">Larry</span>
             <div style={{ fontSize: 10, color: "#bdb7d0" }}>
@@ -332,7 +332,7 @@ export function LarryChat({ projectId, projectName, onVoiceInput }: LarryChatPro
       <div ref={containerRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {chat.messages.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center text-center">
-            <Layers size={28} className="mb-2 text-[#6c44f6] opacity-40" />
+            <Sparkles size={28} className="mb-2 text-[#6c44f6] opacity-40" />
             <p className="text-[13px] text-[var(--pm-text-muted)]">
               {projectId
                 ? "Tell Larry what to do and it will persist the conversation and any linked actions here."

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import { Plus, X } from "lucide-react";
 import type {
   ProjectMembershipRole,
   WorkspaceProjectMembers,
@@ -40,6 +41,8 @@ export function CollaboratorsPanel({ projectId }: { projectId: string }) {
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [addUserId, setAddUserId] = useState("");
   const [addRole, setAddRole] = useState<ProjectMembershipRole>("viewer");
+  const [addEmail, setAddEmail] = useState("");
+  const [showAddForm, setShowAddForm] = useState(false);
   const [viewMode, setViewMode] = useState<"list" | "tree">("list");
 
   const canManage = membersPayload?.canManage ?? false;
@@ -288,53 +291,64 @@ export function CollaboratorsPanel({ projectId }: { projectId: string }) {
           </p>
 
           {canManage && (
-            <form onSubmit={addMember} className="space-y-3 rounded-[16px] border px-4 py-3" style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}>
-              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_140px_auto]">
-                <label className="text-[12px] font-semibold" style={{ color: "var(--text-muted)" }}>
-                  Member
-                  <select
-                    value={addUserId}
-                    onChange={(event) => setAddUserId(event.target.value)}
-                    disabled={busyAction === "add" || availableTenantMembers.length === 0}
-                    className="mt-1 w-full rounded-[12px] border px-3 py-2 text-[13px]"
-                    style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-1)" }}
-                  >
-                    {availableTenantMembers.length === 0 && <option value="">All tenant members already added</option>}
-                    {availableTenantMembers.map((member) => (
-                      <option key={member.id} value={member.id}>
-                        {member.name} ({member.email})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="text-[12px] font-semibold" style={{ color: "var(--text-muted)" }}>
-                  Role
-                  <select
-                    value={addRole}
-                    onChange={(event) => setAddRole(event.target.value as ProjectMembershipRole)}
-                    disabled={busyAction === "add"}
-                    className="mt-1 w-full rounded-[12px] border px-3 py-2 text-[13px]"
-                    style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-1)" }}
-                  >
-                    {ROLE_OPTIONS.map((role) => (
-                      <option key={role} value={role}>
-                        {formatRole(role)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
+            <div>
+              {!showAddForm ? (
                 <button
-                  type="submit"
-                  disabled={busyAction === "add" || !addUserId}
-                  className="h-[40px] self-end rounded-full px-4 text-[12px] font-semibold text-white"
-                  style={{ background: "var(--cta)" }}
+                  type="button"
+                  onClick={() => setShowAddForm(true)}
+                  className="inline-flex items-center gap-1.5 text-[13px] font-semibold"
+                  style={{ color: "var(--cta)", background: "transparent", border: "none", cursor: "pointer", padding: 0 }}
                 >
-                  {busyAction === "add" ? "Adding..." : "Add member"}
+                  <Plus size={14} />
+                  Add member
                 </button>
-              </div>
-            </form>
+              ) : (
+                <div className="flex items-end gap-2 rounded-[16px] border px-4 py-3" style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}>
+                  <label className="flex-1 text-[12px] font-semibold" style={{ color: "var(--text-muted)" }}>
+                    Email
+                    <input
+                      type="email"
+                      value={addEmail}
+                      onChange={(e) => setAddEmail(e.target.value)}
+                      placeholder="name@gmail.com"
+                      className="mt-1 w-full rounded-[12px] border px-3 py-2 text-[13px] outline-none"
+                      style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-1)" }}
+                    />
+                  </label>
+                  <label className="w-[130px] shrink-0 text-[12px] font-semibold" style={{ color: "var(--text-muted)" }}>
+                    Role
+                    <select
+                      value={addRole}
+                      onChange={(event) => setAddRole(event.target.value as ProjectMembershipRole)}
+                      className="mt-1 w-full rounded-[12px] border px-3 py-2 text-[13px]"
+                      style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-1)" }}
+                    >
+                      {ROLE_OPTIONS.map((role) => (
+                        <option key={role} value={role}>
+                          {formatRole(role)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    disabled
+                    className="h-[40px] shrink-0 rounded-full px-4 text-[12px] font-semibold text-white"
+                    style={{ background: "var(--cta)", opacity: 0.45, cursor: "not-allowed" }}
+                  >
+                    Add member
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddForm(false)}
+                    className="h-[40px] shrink-0 flex items-center justify-center"
+                    style={{ color: "var(--text-muted)", background: "transparent", border: "none", cursor: "pointer" }}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
+            </div>
           )}
 
           {inlineError && (

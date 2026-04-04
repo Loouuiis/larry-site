@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import {
   Clock3,
   Plus,
-  Layers,
+  Sparkles,
 } from "lucide-react";
 import type { WorkspaceLarryEvent } from "@/app/dashboard/types";
 import {
@@ -483,7 +483,7 @@ export default function AskLarryPage() {
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px" }}>
               {!loading && conversations.length === 0 && (
                 <div style={{ padding: "40px 16px", textAlign: "center" }}>
-                  <Layers size={24} style={{ margin: "0 auto", color: "#6c44f6", opacity: 0.4 }} />
+                  <Sparkles size={24} style={{ margin: "0 auto", color: "#6c44f6", opacity: 0.4 }} />
                   <p style={{ marginTop: "12px", fontSize: "13px", fontWeight: 600, color: "var(--text-1)" }}>No chats yet</p>
                   <p style={{ marginTop: "6px", fontSize: "12px", lineHeight: "1.5", color: "var(--text-muted)" }}>
                     Start a conversation with Larry.
@@ -542,7 +542,7 @@ export default function AskLarryPage() {
             {/* Thread header */}
             <div style={{ borderBottom: "1px solid var(--border)", background: "var(--surface)", padding: "14px 20px", display: "flex", alignItems: "center", gap: "10px" }}>
               <div style={{ flexShrink: 0, display: "flex", height: "32px", width: "32px", alignItems: "center", justifyContent: "center", borderRadius: "8px", background: "var(--surface-2)", color: "#6c44f6" }}>
-                <Layers size={15} />
+                <Sparkles size={15} />
               </div>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
@@ -567,7 +567,7 @@ export default function AskLarryPage() {
                 {!messageLoading && messages.length === 0 && (
                   <div style={{ display: "flex", height: "100%", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
                     <div style={{ display: "flex", height: "56px", width: "56px", alignItems: "center", justifyContent: "center", borderRadius: "var(--radius-card)", background: "var(--surface-2)", color: "#6c44f6" }}>
-                      <Layers size={24} />
+                      <Sparkles size={24} />
                     </div>
                     <p style={{ marginTop: "16px", fontSize: "16px", fontWeight: 600, color: "var(--text-1)" }}>Start a new Larry thread</p>
                     <p style={{ marginTop: "8px", maxWidth: "400px", fontSize: "13px", lineHeight: "1.5", color: "var(--text-2)" }}>
