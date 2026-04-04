@@ -37,7 +37,9 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
 
-  const projectIdFromPath = pathname?.match(/^\/workspace\/projects\/([^/]+)/)?.[1] ?? "";
+  const projectIdFromPath = pathname?.match(
+    /^\/workspace\/projects\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i
+  )?.[1] ?? "";
 
   const activeNav: WorkspaceSidebarNav = useMemo(() => {
     if (pathname === "/workspace") return "home";
