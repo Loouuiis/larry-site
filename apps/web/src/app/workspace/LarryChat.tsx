@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Menu, Plus, Sparkles, X } from "lucide-react";
+import { ChevronDown, Layers, Menu, Plus, X } from "lucide-react";
 import type { WorkspaceLarryEvent } from "@/app/dashboard/types";
 import type { LarryConversation } from "@/lib/larry";
 import { ChatInput, type AttachedFile } from "@/components/larry/ChatInput";
@@ -94,7 +94,7 @@ function MessageBubble({ msg }: { msg: LarryMessage }) {
     <div className={`mb-2 flex ${isLarry ? "justify-start" : "justify-end"}`}>
       <div
         className={`max-w-[85%] rounded-xl px-3 py-2 text-[13px] leading-relaxed ${
-          isLarry ? "bg-[#f5f3ff] text-[var(--pm-text)]" : "bg-[#6c44f6] text-white"
+          isLarry ? "bg-[#fafaff] text-[var(--pm-text)]" : "bg-[#6c44f6] text-white"
         }`}
       >
         {isProcessing ? (
@@ -246,12 +246,13 @@ export function LarryChat({ projectId, projectName, onVoiceInput }: LarryChatPro
 
   return (
     <div
-      className="fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-[var(--pm-border)] bg-white shadow-2xl"
+      className="fixed z-50 flex flex-col overflow-hidden rounded-[14px] border border-[#f0edfa] bg-white"
       style={{
         width: 420,
         height: 560,
         bottom: "84px",
         right: "24px",
+        boxShadow: "0 20px 60px rgba(0,0,0,0.1), 0 4px 14px rgba(0,0,0,0.04)",
         animation: "larry-widget-enter 0.25s cubic-bezier(0.16,1,0.3,1)",
       }}
     >
@@ -263,16 +264,15 @@ export function LarryChat({ projectId, projectName, onVoiceInput }: LarryChatPro
       `}</style>
 
       {/* ── Header: Breadcrumb ── */}
-      <div className="flex items-center justify-between rounded-t-2xl border-b border-[var(--pm-border)] bg-gradient-to-r from-[#6c44f6] to-[#b29cf8] px-4 py-3">
+      <div className="flex items-center justify-between rounded-t-[14px] border-b border-[#f0edfa] bg-gradient-to-r from-[#6c44f6] to-[#b29cf8] px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
-          <Sparkles size={16} className="shrink-0 text-white" />
-          <span className="text-[14px] font-semibold text-white">Larry</span>
-          {projectName && (
-            <>
-              <span className="text-[13px] text-white/40">·</span>
-              <span className="truncate text-[12px] text-white/85">{projectName}</span>
-            </>
-          )}
+          <Layers size={16} className="shrink-0 text-white" />
+          <div className="min-w-0">
+            <span className="text-[14px] font-semibold text-white">Larry</span>
+            <div style={{ fontSize: 10, color: "#bdb7d0" }}>
+              Project assistant{projectName ? ` · ${projectName}` : ""}
+            </div>
+          </div>
         </div>
         <div className="flex items-center gap-1">
           <button
@@ -316,7 +316,7 @@ export function LarryChat({ projectId, projectName, onVoiceInput }: LarryChatPro
 
       {/* ── Proactive Queue ── */}
       {chat.proactiveQueue.length > 0 && (
-        <div className="space-y-1 border-b border-[var(--pm-border)] px-4 py-2">
+        <div className="space-y-1 border-b border-[#f0edfa] px-4 py-2">
           {chat.proactiveQueue.map((item) => (
             <div key={item.id} className="flex items-center justify-between gap-2 rounded-lg bg-[#f5f3ff] px-3 py-1.5">
               <p className="text-[12px] text-[#5b21b6]">{item.message}</p>
@@ -332,7 +332,7 @@ export function LarryChat({ projectId, projectName, onVoiceInput }: LarryChatPro
       <div ref={containerRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {chat.messages.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center text-center">
-            <Sparkles size={28} className="mb-2 text-[#6c44f6] opacity-40" />
+            <Layers size={28} className="mb-2 text-[#6c44f6] opacity-40" />
             <p className="text-[13px] text-[var(--pm-text-muted)]">
               {projectId
                 ? "Tell Larry what to do and it will persist the conversation and any linked actions here."
@@ -348,7 +348,7 @@ export function LarryChat({ projectId, projectName, onVoiceInput }: LarryChatPro
 
       {/* ── New messages indicator ── */}
       {hasNewMessages && (
-        <div className="flex justify-center border-t border-[var(--pm-border)] bg-[#f5f3ff]">
+        <div className="flex justify-center border-t border-[#f0edfa] bg-[#fafaff]">
           <button
             type="button"
             onClick={scrollToBottom}

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Send, Sparkles, Mic, MicOff, ChevronDown } from "lucide-react";
+import { X, Send, Layers, Mic, MicOff, ChevronDown } from "lucide-react";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -17,10 +17,10 @@ interface Message {
 
 // ─── Prompt cards ─────────────────────────────────────────────────────────────
 
-const EXAMPLE_PROMPTS: { emoji: string; label: string; sub: string }[] = [
-  { emoji: "🚀", label: "Create a project from this idea", sub: "Turn a description into a full project" },
-  { emoji: "📋", label: "Summarize my tasks",             sub: "Get a quick overview of what's on your plate" },
-  { emoji: "🔄", label: "Update project status",         sub: "Mark progress across one or more projects" },
+const EXAMPLE_PROMPTS: { label: string; sub: string }[] = [
+  { label: "What's at risk this week?", sub: "Check project health and deadlines" },
+  { label: "Who's blocked right now?", sub: "Find team members waiting on dependencies" },
+  { label: "Summarise today's progress", sub: "Get a quick status across all projects" },
 ];
 
 // ─── Quick chips (shown after first message) ──────────────────────────────────
@@ -82,7 +82,7 @@ function TypingIndicator() {
       <LarryAvatar size={26} />
       <div className="flex flex-col gap-0.5">
         <span className="text-[9px] text-[var(--text-disabled)] pl-1">Larry is thinking…</span>
-        <div className="flex gap-1 rounded-2xl rounded-bl-sm bg-[var(--color-surface)] px-3.5 py-2.5">
+        <div className="flex gap-1 rounded-2xl rounded-bl-sm bg-[#fafaff] px-3.5 py-2.5">
           {[0, 0.14, 0.28].map((delay, i) => (
             <motion.span
               key={i}
@@ -115,7 +115,7 @@ function MessageBubble({ msg }: { msg: Message }) {
           className={[
             "px-3.5 py-2.5 text-xs leading-relaxed whitespace-pre-line",
             isLarry
-              ? "bg-[var(--color-surface)] text-[var(--text-2)] rounded-2xl rounded-bl-sm"
+              ? "bg-[#fafaff] text-[var(--text-2)] rounded-2xl rounded-bl-sm"
               : "bg-[var(--color-brand)] text-white rounded-2xl rounded-br-sm",
           ].join(" ")}
         >
@@ -194,20 +194,17 @@ export function LarryChat() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 16, scale: 0.95 }}
             transition={{ duration: 0.28, ease: EASE }}
-            className="flex flex-col w-[340px] sm:w-[390px] overflow-hidden rounded-2xl border border-[var(--color-border)] bg-white shadow-[0_24px_64px_rgba(0,0,0,0.13),0_4px_16px_rgba(0,0,0,0.06)]"
-            style={{ maxHeight: minimised ? 0 : "min(580px, calc(100vh - 120px))" }}
+            className="flex flex-col w-[340px] sm:w-[390px] overflow-hidden rounded-[14px] border border-[#f0edfa] bg-white"
+            style={{ maxHeight: minimised ? 0 : "min(580px, calc(100vh - 120px))", boxShadow: "0 20px 60px rgba(0,0,0,0.1), 0 4px 14px rgba(0,0,0,0.04)" }}
           >
             {/* Header */}
-            <div className="flex items-center gap-3 border-b border-[var(--color-border)] bg-white px-4 py-3">
+            <div className="flex items-center gap-3 border-b border-[#f0edfa] bg-white px-4 py-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--color-brand)]">
-                <Sparkles size={15} className="text-white" />
+                <Layers size={15} className="text-white" />
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-[var(--text-1)] tracking-[-0.02em]">Larry</p>
-                <div className="flex items-center gap-1.5">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" aria-hidden="true" />
-                  <p className="text-[10px] text-[var(--text-disabled)]">AI Project Manager · always on</p>
-                </div>
+                <p className="text-[10px] text-[var(--text-disabled)]">Project assistant</p>
               </div>
               {hasMessages && (
                 <motion.button
@@ -257,7 +254,7 @@ export function LarryChat() {
                         className="flex flex-col items-center gap-5 py-4 text-center"
                       >
                         <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--color-brand)]">
-                          <Sparkles size={24} className="text-white" />
+                          <Layers size={24} className="text-white" />
                         </div>
                         <div>
                           <p className="text-sm font-semibold text-[var(--text-1)] tracking-[-0.02em]">
@@ -277,9 +274,8 @@ export function LarryChat() {
                               whileHover={{ scale: 1.015, x: 2 }}
                               whileTap={{ scale: 0.985 }}
                               transition={{ duration: 0.15, ease: EASE }}
-                              className="flex items-center gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-3 text-left transition-shadow hover:border-[var(--color-brand)]/25 hover:shadow-[0_2px_12px_rgba(139,92,246,0.08)]"
+                              className="flex items-center gap-3 rounded-xl border border-[#f0edfa] bg-[#fafaff] px-3.5 py-3 text-left transition-shadow hover:border-[var(--color-brand)]/25 hover:shadow-[0_2px_12px_rgba(139,92,246,0.08)]"
                             >
-                              <span className="text-lg shrink-0">{p.emoji}</span>
                               <div className="min-w-0">
                                 <p className="text-xs font-semibold text-[var(--text-1)] truncate">{p.label}</p>
                                 <p className="text-[10px] text-[var(--text-disabled)] leading-snug truncate">{p.sub}</p>
@@ -330,7 +326,7 @@ export function LarryChat() {
                   {/* Input bar */}
                   <form
                     onSubmit={(e) => { e.preventDefault(); sendMessage(input); }}
-                    className="flex items-center gap-2 border-t border-[var(--color-border)] px-3 py-3"
+                    className="flex items-center gap-2 border-t border-[#f0edfa] px-3 py-3"
                   >
                     {/* Voice button */}
                     <motion.button
@@ -343,7 +339,7 @@ export function LarryChat() {
                         "relative flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-all duration-200",
                         listening
                           ? "bg-red-500 text-white shadow-[0_0_0_4px_rgba(239,68,68,0.2)]"
-                          : "bg-[var(--color-surface)] text-[var(--text-muted)] hover:text-[var(--color-brand)]",
+                          : "bg-[#fafaff] text-[var(--text-muted)] hover:text-[var(--color-brand)]",
                       ].join(" ")}
                     >
                       {listening ? (
@@ -367,7 +363,7 @@ export function LarryChat() {
                       onChange={(e) => setInput(e.target.value)}
                       placeholder={listening ? "Listening…" : "Ask Larry anything…"}
                       disabled={listening}
-                      className="flex-1 rounded-xl bg-[var(--color-surface)] px-3.5 py-2 text-xs text-[var(--text-2)] placeholder:text-[var(--text-disabled)] outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 transition-shadow disabled:opacity-50"
+                      className="flex-1 rounded-xl bg-[#fafaff] px-3.5 py-2 text-xs text-[var(--text-2)] placeholder:text-[var(--text-disabled)] outline-none focus:ring-2 focus:ring-[var(--color-brand)]/20 transition-shadow disabled:opacity-50"
                     />
 
                     <motion.button
@@ -417,18 +413,10 @@ export function LarryChat() {
               exit={{ opacity: 0, rotate: -80, scale: 0.8 }}
               transition={{ duration: 0.2 }}
             >
-              <Sparkles size={20} />
+              <Layers size={20} />
             </motion.span>
           )}
         </AnimatePresence>
-        {/* Online dot */}
-        {!open && (
-          <motion.span
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            className="absolute -right-0.5 -top-0.5 h-3.5 w-3.5 rounded-full border-2 border-white bg-emerald-400"
-          />
-        )}
       </motion.button>
     </div>
   );
