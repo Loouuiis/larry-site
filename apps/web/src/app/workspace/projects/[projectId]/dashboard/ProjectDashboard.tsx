@@ -243,6 +243,7 @@ export function ProjectDashboard({ projectId }: { projectId: string }) {
             <p className="text-[14px] text-[var(--pm-text-secondary)] leading-relaxed">{outcomes.narrative}</p>
           </div>
         )}
+      </div>
     </div>
   );
 }
