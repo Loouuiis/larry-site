@@ -37,6 +37,7 @@ import { useCalendarEvents, type CalendarEvent } from "@/hooks/useCalendarEvents
 import { CollaboratorsPanel } from "./CollaboratorsPanel";
 import { ProjectNotesPanel } from "./ProjectNotesPanel";
 import { TaskCenter } from "./TaskCenter";
+import { ProjectDashboard } from "./dashboard/ProjectDashboard";
 import { getActionTypeTag, getAllActionTypes } from "@/lib/action-types";
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -1422,13 +1423,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
               <button
                 key={id}
                 type="button"
-                onClick={() => {
-                  if (id === "dashboard") {
-                    router.push(`/workspace/projects/${projectId}/dashboard`);
-                  } else {
-                    setActiveTab(id);
-                  }
-                }}
+                onClick={() => setActiveTab(id)}
                 className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-150"
                 style={{
                   background: isActive ? "var(--surface-2)" : "transparent",
@@ -1441,6 +1436,11 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
             );
           })}
         </nav>
+
+        {/* ── Tab: Dashboard ────────────────────────────── */}
+        {activeTab === "dashboard" && (
+          <ProjectDashboard projectId={projectId} />
+        )}
 
         {/* ── Tab: Timeline (placeholder) ──────────────── */}
         {activeTab === "timeline" && (
