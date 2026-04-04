@@ -12,9 +12,11 @@
   --page-bg:            #f2f3ff;
   --surface:            #FFFFFF;
   --surface-2:          #f6f2fc;
+  --bg-soft:            #fafaff;
+  --border-subtle:      #faf8ff;
 
   /* Borders */
-  --border:             #e2d6fc;
+  --border:             #f0edfa;
   --border-2:           #bdb7d0;
 
   /* Text */
@@ -50,7 +52,7 @@
   --radius-input:       8px;
   --radius-badge:       20px;
   --radius-dropdown:    10px;
-  --radius-nav-item:    8px;
+  --radius-nav-item:    7px;
 
   /* Elevation shadows */
   --shadow-0:           none;
@@ -89,7 +91,7 @@
 @theme inline {
   --color-background:       var(--page-bg);
   --color-foreground:       var(--text-1);
-  --font-sans:              var(--font-inter);
+  --font-sans:              var(--font-plus-jakarta);
   --font-mono:              var(--font-geist-mono);
   --color-brand:            var(--brand);
   --color-brand-dark:       var(--brand-hover);
@@ -115,7 +117,7 @@ html {
 body {
   background: var(--page-bg);
   color: var(--text-1);
-  font-family: var(--font-inter), system-ui, sans-serif;
+  font-family: var(--font-plus-jakarta), var(--font-inter), system-ui, sans-serif;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -311,7 +313,7 @@ h3, h4 {
   --pm-text-secondary:   var(--text-muted);
   --pm-text-muted:       var(--text-disabled);
 
-  font-family: var(--font-inter), system-ui, sans-serif;
+  font-family: var(--font-plus-jakarta), var(--font-inter), system-ui, sans-serif;
   font-size: 14px;
   line-height: 1.4;
   color: var(--text-1);
@@ -346,11 +348,11 @@ h3, h4 {
   display: flex;
   width: 100%;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   border-radius: var(--radius-nav-item);
-  padding: 0 8px;
-  height: 36px;
-  font-size: 14px;
+  padding: 0 10px;
+  height: 34px;
+  font-size: 13px;
   font-weight: 400;
   color: var(--text-2);
   transition: background 0.15s ease, color 0.15s ease;
@@ -366,18 +368,6 @@ h3, h4 {
   background: var(--surface-2);
   color: var(--text-1);
   font-weight: 500;
-}
-
-/* 3px left accent bar on active nav items */
-.pm-nav-item.active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 6px;
-  bottom: 6px;
-  width: 3px;
-  border-radius: 0 2px 2px 0;
-  background: var(--brand);
 }
 
 .pm-board-item {
@@ -405,17 +395,6 @@ h3, h4 {
   font-weight: 500;
 }
 
-.pm-board-item.active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 5px;
-  bottom: 5px;
-  width: 3px;
-  border-radius: 0 2px 2px 0;
-  background: var(--brand);
-}
-
 /* ─── Table ───────────────────────────────────────────────────────── */
 .pm-table-header {
   display: grid;
@@ -435,8 +414,8 @@ h3, h4 {
   display: grid;
   align-items: center;
   padding: 0 16px;
-  min-height: 40px;
-  border-bottom: 1px solid var(--border);
+  min-height: 42px;
+  border-bottom: 1px solid var(--border-subtle);
   font-size: 14px;
   color: var(--text-2);
   transition: background 0.1s ease, border-color 0.1s ease;
@@ -461,6 +440,7 @@ h3, h4 {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   white-space: nowrap;
+  gap: 5px;
   cursor: pointer;
   transition: opacity 0.15s ease;
 }
@@ -653,7 +633,7 @@ h3, h4 {
 
 .dashboard-root ::-webkit-scrollbar-thumb,
 .workspace-root ::-webkit-scrollbar-thumb {
-  background: var(--border-2);
+  background: #e2d6fc;
   border-radius: 3px;
 }
 
