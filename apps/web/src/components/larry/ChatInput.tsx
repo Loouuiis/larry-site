@@ -1,13 +1,102 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { Mic, Paperclip, Send, Sparkles, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Mic, MicOff, Paperclip, Send, Sparkles, X } from "lucide-react";
 
 export interface AttachedFile {
   id: string;
   name: string;
   file: File;
 }
+
+/* ── Web Speech API type shim (not in all TS libs) ────────────── */
+
+interface SpeechRecognitionEvent extends Event {
+  results: SpeechRecognitionResultList;
+  resultIndex: number;
+}
+
+type SpeechRecognitionCtor = new () => SpeechRecognition;
+interface SpeechRecognition extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start(): void;
+  stop(): void;
+  abort(): void;
+  onresult: ((e: SpeechRecognitionEvent) => void) | null;
+  onend: (() => void) | null;
+  onerror: ((e: Event & { error: string }) => void) | null;
+}
+
+function getSpeechRecognition(): SpeechRecognitionCtor | null {
+  if (typeof window === "undefined") return null;
+  return (
+    (window as unknown as Record<string, SpeechRecognitionCtor>).SpeechRecognition ??
+    (window as unknown as Record<string, SpeechRecognitionCtor>).webkitSpeechRecognition ??
+    null
+  );
+}
+
+/* ── Hook: useVoiceInput ──────────────────────────────────────── */
+
+function useVoiceInput(onTranscript: (text: string) => void) {
+  const [listening, setListening] = useState(false);
+  const recRef = useRef<SpeechRecognition | null>(null);
+  const supported = typeof window !== "undefined" && getSpeechRecognition() !== null;
+
+  const stop = useCallback(() => {
+    recRef.current?.stop();
+  }, []);
+
+  const toggle = useCallback(() => {
+    if (listening) {
+      stop();
+      return;
+    }
+
+    const Ctor = getSpeechRecognition();
+    if (!Ctor) return;
+
+    const rec = new Ctor();
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.lang = "en-US";
+
+    rec.onresult = (e: SpeechRecognitionEvent) => {
+      const transcript = Array.from(e.results)
+        .map((r) => r[0].transcript)
+        .join(" ")
+        .trim();
+      if (transcript) onTranscript(transcript);
+    };
+
+    rec.onend = () => {
+      setListening(false);
+      recRef.current = null;
+    };
+
+    rec.onerror = () => {
+      setListening(false);
+      recRef.current = null;
+    };
+
+    recRef.current = rec;
+    rec.start();
+    setListening(true);
+  }, [listening, onTranscript, stop]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      recRef.current?.abort();
+    };
+  }, []);
+
+  return { listening, toggle, supported };
+}
+
+/* ── Component ────────────────────────────────────────────────── */
 
 interface ChatInputProps {
   value: string;
@@ -38,6 +127,14 @@ export function ChatInput({
 }: ChatInputProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
+
+  const handleTranscript = useCallback(
+    (text: string) => {
+      onChange(value ? `${value} ${text}` : text);
+    },
+    [onChange, value],
+  );
+  const voice = useVoiceInput(handleTranscript);
 
   function handleFileSelect(fileList: FileList | null) {
     if (!fileList || !onFilesChange) return;
@@ -112,12 +209,16 @@ export function ChatInput({
         <div className="mx-1 h-3.5 w-px bg-[#eee]" />
         <button
           type="button"
-          onClick={onVoiceInput}
-          disabled={disabled || !onVoiceInput}
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-[#888] transition-colors hover:bg-[#f3f0ff] hover:text-[#6c44f6] disabled:opacity-40"
+          onClick={onVoiceInput ?? voice.toggle}
+          disabled={disabled || (!onVoiceInput && !voice.supported)}
+          className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] transition-colors ${
+            voice.listening
+              ? "bg-red-50 text-red-500 hover:bg-red-100"
+              : "text-[#888] hover:bg-[#f3f0ff] hover:text-[#6c44f6]"
+          } disabled:opacity-40`}
         >
-          <Mic size={13} />
-          Voice
+          {voice.listening ? <MicOff size={13} /> : <Mic size={13} />}
+          {voice.listening ? "Stop" : "Voice"}
         </button>
         <input
           ref={fileInputRef}
