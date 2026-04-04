@@ -10,6 +10,7 @@ import {
   X, FolderOpen, Home, ListTodo, Settings,
   Search, LogOut, FolderKanban, CheckSquare,
   Plus, BarChart2, Sparkles, PanelLeftClose, PanelLeftOpen, Star, Mail,
+  ChevronDown,
 } from "lucide-react";
 import { WorkspaceProject } from "@/app/dashboard/types";
 
@@ -80,6 +81,19 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, onTogg
   }, []);
 
   const favoritedProjects = projects.filter((p) => favorites.has(p.id));
+
+  const toggleFavorite = useCallback((projectId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setFavorites((prev) => {
+      const next = new Set(prev);
+      if (next.has(projectId)) next.delete(projectId);
+      else next.add(projectId);
+      localStorage.setItem("larry:favorite-projects", JSON.stringify([...next]));
+      window.dispatchEvent(new Event("larry:favorites-changed"));
+      return next;
+    });
+  }, []);
 
   const loadTasks = useCallback(async () => {
     if (tasksLoaded) return;
@@ -276,15 +290,60 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, onTogg
         <div className="flex items-center justify-between px-2 mb-1">
           <button
             type="button"
-            className="text-caption hover:opacity-80 transition-opacity"
+            className="flex items-center gap-1 text-caption hover:opacity-80 transition-opacity"
             onClick={() => setProjectsOpen((v) => !v)}
           >
+            <ChevronDown
+              size={12}
+              className="transition-transform"
+              style={{ transform: projectsOpen ? "rotate(0deg)" : "rotate(-90deg)" }}
+            />
             PROJECTS
           </button>
         </div>
 
         {projectsOpen && (
           <div className="space-y-0.5 pb-2">
+            {/* Favourites group */}
+            {favoritedProjects.length > 0 && (
+              <>
+                <p className="px-2 pt-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color: "var(--text-disabled)" }}>
+                  Favourites
+                </p>
+                {favoritedProjects.map((project) => {
+                  const isActive = isProjectActive(project.id);
+                  return (
+                    <Link
+                      key={`fav-${project.id}`}
+                      href={`/workspace/projects/${project.id}`}
+                      onClick={onClose}
+                      className={`pm-board-item group${isActive ? " active" : ""}`}
+                    >
+                      <Star
+                        size={12}
+                        className="shrink-0"
+                        style={{ color: "#6c44f6", fill: "#6c44f6" }}
+                      />
+                      <span className="flex-1 truncate text-[14px]" style={{ maxWidth: "150px", color: isActive ? "var(--text-1)" : "var(--text-2)" }}>
+                        {project.name}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => toggleFavorite(project.id, e)}
+                        className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Remove from favourites"
+                        style={{ color: "#6c44f6" }}
+                      >
+                        <Star size={12} style={{ fill: "#6c44f6" }} />
+                      </button>
+                    </Link>
+                  );
+                })}
+                <div className="mx-2 my-1.5" style={{ borderTop: "1px solid var(--border)" }} />
+              </>
+            )}
+
+            {/* All projects */}
             {projects.map((project) => {
               const isActive = isProjectActive(project.id);
               const isStarred = favorites.has(project.id);
@@ -293,7 +352,7 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, onTogg
                   key={project.id}
                   href={`/workspace/projects/${project.id}`}
                   onClick={onClose}
-                  className={`pm-board-item${isActive ? " active" : ""}`}
+                  className={`pm-board-item group${isActive ? " active" : ""}`}
                 >
                   <span
                     className="shrink-0"
@@ -304,9 +363,18 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, onTogg
                       background: isActive ? "#6c44f6" : "#bdb7d0",
                     }}
                   />
-                  <span className="truncate text-[14px]" style={{ maxWidth: "180px", color: isActive ? "var(--text-1)" : "var(--text-2)" }}>
+                  <span className="flex-1 truncate text-[14px]" style={{ maxWidth: "150px", color: isActive ? "var(--text-1)" : "var(--text-2)" }}>
                     {project.name}
                   </span>
+                  <button
+                    type="button"
+                    onClick={(e) => toggleFavorite(project.id, e)}
+                    className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                    title={isStarred ? "Remove from favourites" : "Add to favourites"}
+                    style={{ color: isStarred ? "#6c44f6" : "var(--text-disabled)" }}
+                  >
+                    <Star size={12} style={isStarred ? { fill: "#6c44f6" } : undefined} />
+                  </button>
                 </Link>
               );
             })}
