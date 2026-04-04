@@ -350,10 +350,11 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
       initial="hidden"
       animate="visible"
       exit="exit"
-      className="flex h-full w-[360px] shrink-0 flex-col border-l border-[var(--border)] bg-white"
+      className="flex h-full w-[360px] shrink-0 flex-col border-l border-[#f0edfa] bg-white"
+      style={{ boxShadow: "0 0 40px rgba(0,0,0,0.06)" }}
     >
       {/* ── Header ── */}
-      <div className="flex items-start gap-3 border-b border-[var(--border)] px-5 py-4">
+      <div className="flex items-start gap-3 border-b border-[#f0edfa] px-5 py-4">
         <div className="flex-1 min-w-0">
           {/* Project breadcrumb */}
           <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--color-muted)]">
@@ -405,7 +406,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
             <SectionLabel>Details</SectionLabel>
 
             {/* Assignee */}
-            <button className="flex w-full items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5 text-xs hover:border-[var(--border)] hover:bg-[var(--surface-2)] transition-colors group">
+            <button className="flex w-full items-center gap-3 rounded-xl border border-[#f0edfa] bg-[var(--surface-2)] px-3 py-2.5 text-xs hover:border-[#f0edfa] hover:bg-[var(--surface-2)] transition-colors group" style={{ borderBottom: "1px solid #faf8ff" }}>
               <User size={13} className="shrink-0 text-[var(--text-disabled)] group-hover:text-[var(--text-disabled)] transition-colors" />
               <span className="text-[var(--text-disabled)] w-16 shrink-0 text-left">Assignee</span>
               <div className="flex items-center gap-2">
@@ -418,7 +419,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
             </button>
 
             {/* Deadline */}
-            <button className="flex w-full items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5 text-xs hover:border-[var(--border)] hover:bg-[var(--surface-2)] transition-colors group">
+            <button className="flex w-full items-center gap-3 rounded-xl border border-[#f0edfa] bg-[var(--surface-2)] px-3 py-2.5 text-xs hover:border-[#f0edfa] hover:bg-[var(--surface-2)] transition-colors group" style={{ borderBottom: "1px solid #faf8ff" }}>
               <Calendar size={13} className="shrink-0 text-[var(--text-disabled)] group-hover:text-[var(--text-disabled)] transition-colors" />
               <span className="text-[var(--text-disabled)] w-16 shrink-0 text-left">Deadline</span>
               <span className="font-medium text-[var(--text-2)]">{task.deadline}</span>
@@ -427,7 +428,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
 
             {/* Source */}
             {task.source && (
-              <div className="flex w-full items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5 text-xs">
+              <div className="flex w-full items-center gap-3 rounded-xl border border-[#f0edfa] bg-[var(--surface-2)] px-3 py-2.5 text-xs" style={{ borderBottom: "1px solid #faf8ff" }}>
                 <Layers size={13} className="shrink-0 text-[var(--text-disabled)]" />
                 <span className="text-[var(--text-disabled)] w-16 shrink-0 text-left">Source</span>
                 <SourceBadge source={task.source} />
@@ -436,7 +437,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
           </motion.div>
 
           {/* Divider */}
-          <motion.div variants={sectionItem} className="border-t border-[var(--border)]" />
+          <motion.div variants={sectionItem} className="border-t border-[#f0edfa]" />
 
           {/* Status */}
           <motion.div variants={sectionItem}>
@@ -451,7 +452,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
           </motion.div>
 
           {/* Divider */}
-          <motion.div variants={sectionItem} className="border-t border-[var(--border)]" />
+          <motion.div variants={sectionItem} className="border-t border-[#f0edfa]" />
 
           {/* Progress */}
           <motion.div variants={sectionItem}>
@@ -484,7 +485,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
           ) : null}
 
           {/* Divider */}
-          <motion.div variants={sectionItem} className="border-t border-[var(--border)]" />
+          <motion.div variants={sectionItem} className="border-t border-[#f0edfa]" />
 
           {/* Comments */}
           <motion.div variants={sectionItem}>
@@ -505,7 +506,7 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
       </div>
 
       {/* ── Comment input (pinned to bottom) ── */}
-      <div className="border-t border-[var(--border)] px-4 py-3">
+      <div className="border-t border-[#f0edfa] px-4 py-3">
         <div className="flex items-end gap-2">
           <span className="mb-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[9px] font-bold text-[var(--color-muted)]">
             ME

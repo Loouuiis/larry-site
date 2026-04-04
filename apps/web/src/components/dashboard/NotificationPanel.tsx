@@ -164,14 +164,12 @@ function NotificationCard({
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, x: 40, scale: 0.96 }}
       transition={{ duration: 0.22, ease: EASE }}
-      className={[
-        "group relative flex gap-3 rounded-xl border p-3.5 transition-shadow hover:shadow-sm",
-        notif.read ? "bg-white border-[var(--color-border)]" : `${sev.bg} ${sev.border}`,
-      ].join(" ")}
+      className="group relative flex gap-3 rounded-xl border border-[#f0edfa] p-3.5 transition-shadow hover:shadow-sm"
+      style={{ background: notif.read ? "#fff" : "#fafaff" }}
     >
       {/* Unread dot */}
       {!notif.read && (
-        <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${sev.dot}`} />
+        <span className="mt-1 h-2 w-2 shrink-0 rounded-full" style={{ background: "#6c44f6" }} />
       )}
 
       {/* Icon */}
@@ -263,10 +261,11 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: -8, scale: 0.98 }}
       transition={{ duration: 0.22, ease: EASE }}
-      className="fixed right-4 top-[72px] z-40 w-[380px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-[var(--color-border)] bg-white shadow-[0_8px_40px_rgba(0,0,0,0.12)] sm:right-6"
+      className="fixed right-4 top-[72px] z-40 w-[380px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-[#f0edfa] bg-white sm:right-6"
+      style={{ boxShadow: "0 0 40px rgba(0,0,0,0.06)" }}
     >
       {/* Header */}
-      <div className="flex items-center gap-2 border-b border-[var(--color-border)] px-4 py-3.5">
+      <div className="flex items-center gap-2 border-b border-[#f0edfa] px-4 py-3.5">
         <Bell size={15} className="text-[var(--color-brand)]" />
         <h2 className="flex-1 text-sm font-semibold text-[var(--text-1)] tracking-[-0.02em]">
           Notifications
@@ -297,7 +296,7 @@ export function NotificationPanel({ onClose }: NotificationPanelProps) {
       </div>
 
       {/* Filter tabs */}
-      <div className="flex gap-1 overflow-x-auto border-b border-[var(--color-border)] px-3 py-2 scrollbar-none">
+      <div className="flex gap-1 overflow-x-auto border-b border-[#f0edfa] px-3 py-2 scrollbar-none">
         {TABS.map((tab) => {
           const count = tab.key === "all"
             ? notifications.length
