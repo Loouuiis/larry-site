@@ -1617,42 +1617,19 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
               );
             })()}
 
-            {/* AI Summary — flex-1 fills remaining height to match action centre */}
+            {/* Larry Summary */}
             <div
               style={{
-                flex: 1,
                 borderRadius: "var(--radius-card)",
                 border: "1px solid var(--border)",
                 background: "var(--surface)",
-                padding: "20px",
-                display: "flex",
-                flexDirection: "column",
+                padding: "16px 20px",
               }}
             >
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-[15px] font-semibold" style={{ color: "var(--text-1)" }}>AI Summary</p>
-                <span
-                  className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
-                  style={{ background: "var(--surface-2)", color: "var(--text-muted)" }}
-                >
-                  Coming soon
-                </span>
-              </div>
-              <div
-                style={{
-                  flex: 1,
-                  marginTop: "12px",
-                  borderRadius: "var(--radius-btn)",
-                  background: "var(--surface-2)",
-                  padding: "14px",
-                  display: "flex",
-                  alignItems: "center",
-                }}
-              >
-                <p className="text-[14px] leading-7 italic" style={{ color: "var(--text-muted)" }}>
-                  Larry will summarise the health, risks, and recent momentum of this project here once AI analysis is connected.
-                </p>
-              </div>
+              <p className="text-[13px] font-semibold" style={{ color: "var(--text-1)" }}>Larry Summary</p>
+              <p className="mt-2 text-[13px] leading-relaxed" style={{ color: "var(--text-2)" }}>
+                {outcomes?.narrative?.trim() || `${tasks.filter((t) => t.status === "completed").length} of ${tasks.length} tasks done. ${blockedTasks > 0 ? `${blockedTasks} need attention.` : "No blockers."} ${openTasks} remaining.`}
+              </p>
             </div>
           </div>
 
