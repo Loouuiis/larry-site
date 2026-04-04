@@ -624,8 +624,8 @@ export default function ChatsPage() {
 
   return (
     <div
-      className="min-h-0 flex-1 overflow-hidden"
-      style={{ background: "var(--page-bg)", padding: "24px" }}
+      className="min-h-0 overflow-hidden"
+      style={{ background: "var(--page-bg)", padding: "24px", height: "100%" }}
     >
       <div style={{ display: "flex", height: "100%", width: "100%", maxWidth: "1440px", margin: "0 auto", flexDirection: "column", gap: "20px" }}>
         {error && (
