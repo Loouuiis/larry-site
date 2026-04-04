@@ -8,6 +8,7 @@ import {
   ArrowRight,
   CalendarDays,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   CircleAlert,
@@ -1162,6 +1163,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
   const [activeTab, setActiveTab] = useState<ProjectTab>("overview");
   const [memorySourceFilter, setMemorySourceFilter] = useState("all");
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [actionCentreOpen, setActionCentreOpen] = useState(true);
   const [statusBusy, setStatusBusy] = useState<"archive" | "unarchive" | null>(null);
   const [statusNotice, setStatusNotice] = useState<{
     tone: "success" | "error";
@@ -1194,6 +1196,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
   } = useProjectMemory(projectId, activeMemorySource);
 
   const [isFavorited, setIsFavorited] = useState(false);
+  const [summaryOpen, setSummaryOpen] = useState(true);
 
   useEffect(() => {
     try {
@@ -1617,20 +1620,40 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
               );
             })()}
 
-            {/* Larry Summary */}
-            <div
-              style={{
-                borderRadius: "var(--radius-card)",
-                border: "1px solid var(--border)",
-                background: "var(--surface)",
-                padding: "16px 20px",
-              }}
-            >
-              <p className="text-[13px] font-semibold" style={{ color: "var(--text-1)" }}>Larry Summary</p>
-              <p className="mt-2 text-[13px] leading-relaxed" style={{ color: "var(--text-2)" }}>
-                {outcomes?.narrative?.trim() || `${tasks.filter((t) => t.status === "completed").length} of ${tasks.length} tasks done. ${blockedTasks > 0 ? `${blockedTasks} need attention.` : "No blockers."} ${openTasks} remaining.`}
-              </p>
-            </div>
+            {/* Larry Summary — collapsible, always shows unless zero tasks */}
+            {tasks.length > 0 && (
+              <div
+                style={{
+                  borderRadius: "var(--radius-card)",
+                  border: "1px solid var(--border)",
+                  background: "var(--surface)",
+                  padding: "16px 20px",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setSummaryOpen((v) => !v)}
+                  className="flex w-full items-center justify-between gap-2"
+                  style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                >
+                  <p className="text-[13px] font-semibold" style={{ color: "var(--text-1)" }}>Larry Summary</p>
+                  <ChevronDown
+                    size={14}
+                    style={{
+                      color: "var(--text-muted)",
+                      transform: summaryOpen ? "rotate(0deg)" : "rotate(-90deg)",
+                      transition: "transform 0.15s ease",
+                      flexShrink: 0,
+                    }}
+                  />
+                </button>
+                {summaryOpen && (
+                  <p className="mt-2 text-[13px] leading-relaxed" style={{ color: "var(--text-2)" }}>
+                    {outcomes?.narrative?.trim() || `${tasks.filter((t) => t.status === "completed").length} of ${tasks.length} tasks done. ${blockedTasks > 0 ? `${blockedTasks} need attention.` : "No blockers."} ${openTasks} remaining.`}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="space-y-6">
@@ -1643,14 +1666,29 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
               }}
             >
               <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-[18px] font-semibold" style={{ color: "var(--text-1)" }}>
-                    Action Centre
-                  </p>
-                  <p className="mt-1 text-[13px]" style={{ color: "var(--text-2)" }}>
-                    Project-scoped Larry actions and conversations now load from one action-centre contract.
-                  </p>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setActionCentreOpen((o) => !o)}
+                  className="flex items-center gap-2 text-left"
+                  style={{ background: "none", border: "none", padding: 0, cursor: "pointer" }}
+                >
+                  <ChevronDown
+                    size={16}
+                    style={{
+                      color: "var(--text-2)",
+                      transition: "transform 0.2s ease",
+                      transform: actionCentreOpen ? "rotate(0deg)" : "rotate(-90deg)",
+                    }}
+                  />
+                  <div>
+                    <p className="text-[18px] font-semibold" style={{ color: "var(--text-1)" }}>
+                      Action Centre
+                    </p>
+                    <p className="mt-1 text-[13px]" style={{ color: "var(--text-2)" }}>
+                      Project-scoped Larry actions and conversations now load from one action-centre contract.
+                    </p>
+                  </div>
+                </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -1663,7 +1701,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
                 </button>
               </div>
 
-              <div className="mt-5 space-y-4">
+              {actionCentreOpen && <div className="mt-5 space-y-4">
                 <div>
                   <p className="text-[12px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--text-muted)" }}>
                     Pending review
@@ -1809,7 +1847,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
                     )}
                   </div>
                 </div>
-              </div>
+              </div>}
             </div>
 
           </div>
