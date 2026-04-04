@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
-import { sendLarryChat } from "@/lib/larry";
+import { persistSession, proxyApiRequest } from "@/lib/workspace-proxy";
 
 export interface ColleagueMessage {
   id: string;
@@ -103,14 +103,25 @@ export async function POST(
   const larryQuery = extractLarryQuery(body.content);
   if (larryQuery) {
     try {
-      const { data } = await sendLarryChat({ message: larryQuery });
+      const larryResult = await proxyApiRequest(
+        session,
+        "/v1/larry/chat",
+        {
+          method: "POST",
+          body: JSON.stringify({ message: larryQuery }),
+        },
+        { timeoutMs: 60_000 },
+      );
+      if (larryResult.session) await persistSession(larryResult.session);
+      const data = larryResult.body as Record<string, unknown>;
+      const assistantMessage = data.assistantMessage as Record<string, string> | undefined;
       const larryMsg: ColleagueMessage = {
         id: `msg_${crypto.randomUUID().slice(0, 8)}`,
         conversationId: id,
         senderId: "larry",
         senderName: "Larry",
         role: "larry",
-        content: data.message || data.assistantMessage?.content || "I couldn't process that right now.",
+        content: (data.message as string) || assistantMessage?.content || "I couldn't process that right now.",
         createdAt: new Date().toISOString(),
       };
       messages.push(larryMsg);
