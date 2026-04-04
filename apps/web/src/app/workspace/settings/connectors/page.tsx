@@ -1,5 +1,10 @@
+import { Suspense } from "react";
 import { ConnectorsPage } from "./ConnectorsPage";
 
 export default function ConnectorsRoute() {
-  return <ConnectorsPage />;
+  return (
+    <Suspense>
+      <ConnectorsPage />
+    </Suspense>
+  );
 }
