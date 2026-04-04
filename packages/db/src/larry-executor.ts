@@ -447,6 +447,89 @@ async function resolveUserByName(
   return fuzzy[0]?.id ?? null;
 }
 
+/**
+ * Resolve a task by its title within a project when taskId is missing or invalid.
+ * Returns the first matching task ID, or null if no match is found.
+ */
+async function resolveTaskByTitle(
+  db: Db,
+  tenantId: string,
+  projectId: string,
+  taskTitle: string
+): Promise<string | null> {
+  if (!taskTitle || typeof taskTitle !== "string") return null;
+  const trimmed = taskTitle.trim();
+  if (!trimmed) return null;
+
+  const exact = await db.queryTenant<{ id: string }>(
+    tenantId,
+    `SELECT id
+     FROM tasks
+     WHERE tenant_id = $1
+       AND project_id = $2
+       AND LOWER(title) = LOWER($3)
+     ORDER BY updated_at DESC
+     LIMIT 1`,
+    [tenantId, projectId, trimmed]
+  );
+  if (exact[0]) return exact[0].id;
+
+  const fuzzy = await db.queryTenant<{ id: string }>(
+    tenantId,
+    `SELECT id
+     FROM tasks
+     WHERE tenant_id = $1
+       AND project_id = $2
+       AND title ILIKE '%' || $3 || '%'
+     ORDER BY updated_at DESC
+     LIMIT 1`,
+    [tenantId, projectId, trimmed]
+  );
+  return fuzzy[0]?.id ?? null;
+}
+
+/**
+ * Ensure payload has a valid taskId. If missing, attempt to resolve from taskTitle.
+ * Mutates the payload in place and returns the resolved taskId or null.
+ */
+async function ensureTaskId(
+  db: Db,
+  tenantId: string,
+  projectId: string,
+  payload: Record<string, unknown>
+): Promise<string | null> {
+  if (typeof payload.taskId === "string" && payload.taskId.trim()) {
+    return payload.taskId as string;
+  }
+  const taskTitle = typeof payload.taskTitle === "string" ? payload.taskTitle : null;
+  if (!taskTitle) return null;
+  const resolved = await resolveTaskByTitle(db, tenantId, projectId, taskTitle);
+  if (resolved) {
+    payload.taskId = resolved;
+  }
+  return resolved;
+}
+
+/**
+ * Ensure payload has a valid userId for collaborator actions.
+ * If missing, attempt to resolve from displayName.
+ */
+async function ensureCollaboratorUserId(
+  db: Db,
+  tenantId: string,
+  payload: Record<string, unknown>
+): Promise<string | null> {
+  const existing = normalizeContextValue(payload.userId as string | null | undefined);
+  if (existing) return existing;
+  const displayName = typeof payload.displayName === "string" ? payload.displayName.trim() : null;
+  if (!displayName) return null;
+  const resolved = await resolveUserByName(db, tenantId, displayName);
+  if (resolved) {
+    payload.userId = resolved;
+  }
+  return resolved;
+}
+
 async function logActivity(
   db: Db,
   tenantId: string,
@@ -906,7 +989,8 @@ async function executeCollaboratorAdd(
   const role = normalizeProjectMembershipRole(payload.role);
   const userId = normalizeContextValue(payload.userId);
   if (!userId) {
-    throw new Error("Collaborator add requires userId.");
+    const name = typeof payload.displayName === "string" ? payload.displayName : "unknown";
+    throw new Error(`Collaborator add failed — could not resolve user "${name}". Check the name and try again.`);
   }
 
   const existingRole = await getProjectMembershipRoleForUser(db, tenantId, projectId, userId);
@@ -948,7 +1032,8 @@ async function executeCollaboratorRoleUpdate(
   const role = normalizeProjectMembershipRole(payload.role);
   const userId = normalizeContextValue(payload.userId);
   if (!userId) {
-    throw new Error("Collaborator role update requires userId.");
+    const name = typeof payload.displayName === "string" ? payload.displayName : "unknown";
+    throw new Error(`Collaborator role update failed — could not resolve user "${name}". Check the name and try again.`);
   }
 
   const existingRole = await getProjectMembershipRoleForUser(db, tenantId, projectId, userId);
@@ -992,7 +1077,8 @@ async function executeCollaboratorRemove(
 ): Promise<Record<string, unknown>> {
   const userId = normalizeContextValue(payload.userId);
   if (!userId) {
-    throw new Error("Collaborator remove requires userId.");
+    const name = typeof payload.displayName === "string" ? payload.displayName : "unknown";
+    throw new Error(`Collaborator remove failed — could not resolve user "${name}". Check the name and try again.`);
   }
 
   const existingRole = await getProjectMembershipRoleForUser(db, tenantId, projectId, userId);
@@ -1124,23 +1210,42 @@ export async function executeAction(
       return executeTaskCreate(db, tenantId, projectId, payload as unknown as TaskCreatePayload);
 
     case "status_update": {
-      if (payload.taskId === null || payload.taskId === undefined) {
-        throw new Error("Cannot execute status_update — taskId is ambiguous. Edit the event to specify a taskId before accepting.");
+      // Fallback: resolve taskId from taskTitle if missing
+      const statusTaskId = await ensureTaskId(db, tenantId, projectId, payload);
+      if (!statusTaskId) {
+        throw new Error("Cannot execute status_update — taskId could not be resolved. Edit the event to specify a task before accepting.");
       }
       return executeStatusUpdate(db, tenantId, payload as unknown as StatusUpdatePayload);
     }
 
-    case "risk_flag":
+    case "risk_flag": {
+      const riskTaskId = await ensureTaskId(db, tenantId, projectId, payload);
+      if (!riskTaskId) {
+        throw new Error("Cannot execute risk_flag — taskId could not be resolved. Edit the event to specify a task before accepting.");
+      }
       return executeRiskFlag(db, tenantId, payload as unknown as RiskFlagPayload);
+    }
 
-    case "reminder_send":
+    case "reminder_send": {
+      await ensureTaskId(db, tenantId, projectId, payload);
       return executeReminderSend(db, tenantId, payload as unknown as ReminderSendPayload);
+    }
 
-    case "deadline_change":
+    case "deadline_change": {
+      const dlTaskId = await ensureTaskId(db, tenantId, projectId, payload);
+      if (!dlTaskId) {
+        throw new Error("Cannot execute deadline_change — taskId could not be resolved. Edit the event to specify a task before accepting.");
+      }
       return executeDeadlineChange(db, tenantId, payload as unknown as DeadlineChangePayload);
+    }
 
-    case "owner_change":
+    case "owner_change": {
+      const ownerTaskId = await ensureTaskId(db, tenantId, projectId, payload);
+      if (!ownerTaskId) {
+        throw new Error("Cannot execute owner_change — taskId could not be resolved. Edit the event to specify a task before accepting.");
+      }
       return executeOwnerChange(db, tenantId, payload as unknown as OwnerChangePayload);
+    }
 
     case "scope_change":
       return executeScopeChange(db, tenantId, payload as unknown as ScopeChangePayload);
@@ -1156,29 +1261,35 @@ export async function executeAction(
         actorUserId ?? null
       );
 
-    case "collaborator_add":
+    case "collaborator_add": {
+      await ensureCollaboratorUserId(db, tenantId, payload);
       return executeCollaboratorAdd(
         db,
         tenantId,
         projectId,
         payload as unknown as CollaboratorAddPayload
       );
+    }
 
-    case "collaborator_role_update":
+    case "collaborator_role_update": {
+      await ensureCollaboratorUserId(db, tenantId, payload);
       return executeCollaboratorRoleUpdate(
         db,
         tenantId,
         projectId,
         payload as unknown as CollaboratorRoleUpdatePayload
       );
+    }
 
-    case "collaborator_remove":
+    case "collaborator_remove": {
+      await ensureCollaboratorUserId(db, tenantId, payload);
       return executeCollaboratorRemove(
         db,
         tenantId,
         projectId,
         payload as unknown as CollaboratorRemovePayload
       );
+    }
 
     case "project_note_send":
       return executeProjectNoteSend(
@@ -1202,8 +1313,57 @@ export async function executeAction(
     case "slack_message_draft":
       return executeSlackMessageDraft(db, tenantId, projectId, payload, actorUserId ?? null);
 
+    case "other": {
+      // "Other" actions are general-purpose — store as activity log + project note
+      const displayText = typeof payload.displayText === "string"
+        ? payload.displayText
+        : "Larry performed a custom action.";
+      const reasoning = typeof payload.reasoning === "string"
+        ? payload.reasoning
+        : null;
+      const content = reasoning
+        ? `${displayText}\n\nReasoning: ${reasoning}`
+        : displayText;
+
+      await logActivity(db, tenantId, projectId, null, {
+        action: "other",
+        displayText,
+        reasoning,
+        triggeredBy: "larry",
+      });
+
+      // Also store as a shared project note so it's visible in the project
+      if (actorUserId) {
+        try {
+          await executeProjectNoteSend(
+            db,
+            tenantId,
+            projectId,
+            {
+              visibility: "shared",
+              content,
+              recipientUserId: null,
+              sourceKind: "action",
+              sourceRecordId: null,
+            },
+            actorUserId
+          );
+        } catch {
+          // Note creation is best-effort for "other" actions
+        }
+      }
+
+      return { action: "other", displayText, stored: true };
+    }
+
     default:
-      throw new Error(`executeAction: unknown action type "${actionType as string}"`);
+      // Unknown action types: log and succeed rather than failing
+      await logActivity(db, tenantId, projectId, null, {
+        action: actionType as string,
+        displayText: typeof payload.displayText === "string" ? payload.displayText : "Unknown action",
+        triggeredBy: "larry",
+      });
+      return { action: actionType as string, stored: true };
   }
 }
 

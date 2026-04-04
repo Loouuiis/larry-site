@@ -221,10 +221,12 @@ export default function WorkspaceActionsPage() {
     dismissing,
     modifying,
     executing,
+    actionError,
     accept,
     dismiss,
     modify,
     letLarryExecute,
+    clearActionError,
     refresh,
   } = useLarryActionCentre();
 
@@ -694,6 +696,23 @@ export default function WorkspaceActionsPage() {
                         </button>
                       </div>
                     </div>
+
+                    {actionError?.eventId === event.id && (
+                      <div
+                        className="mt-2 flex items-start justify-between gap-2 rounded-lg px-3 py-2 text-[12px]"
+                        style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b" }}
+                      >
+                        <span>{actionError.message}</span>
+                        <button
+                          type="button"
+                          onClick={clearActionError}
+                          className="shrink-0 font-semibold hover:underline"
+                          style={{ color: "#991b1b" }}
+                        >
+                          Dismiss
+                        </button>
+                      </div>
+                    )}
                   </div>
                   );
                 })

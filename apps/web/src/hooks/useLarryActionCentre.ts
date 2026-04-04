@@ -27,6 +27,11 @@ async function readJson<T>(response: Response): Promise<T> {
   }
 }
 
+export interface ActionError {
+  eventId: string;
+  message: string;
+}
+
 export function useLarryActionCentre({
   projectId,
   onMutate = noopMutate,
@@ -41,7 +46,10 @@ export function useLarryActionCentre({
   const [dismissing, setDismissing] = useState<string | null>(null);
   const [modifying, setModifying] = useState<string | null>(null);
   const [executing, setExecuting] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<ActionError | null>(null);
   const loadInFlightRef = useRef<Promise<void> | null>(null);
+
+  const clearActionError = useCallback(() => setActionError(null), []);
 
   const load = useCallback(
     async ({ silent = false }: { silent?: boolean } = {}) => {
@@ -121,11 +129,18 @@ export function useLarryActionCentre({
   const accept = useCallback(
     async (id: string) => {
       setAccepting(id);
+      setActionError(null);
       try {
         const response = await fetch(`/api/workspace/larry/events/${id}/accept`, { method: "POST" });
         if (response.ok) {
           window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
           await Promise.all([load(), onMutate()]);
+        } else {
+          const body = await readJson<{ message?: string; error?: string }>(response);
+          setActionError({
+            eventId: id,
+            message: body.message || body.error || `Action failed (${response.status}).`,
+          });
         }
       } finally {
         setAccepting(null);
@@ -137,6 +152,7 @@ export function useLarryActionCentre({
   const dismiss = useCallback(
     async (id: string) => {
       setDismissing(id);
+      setActionError(null);
       try {
         const response = await fetch(`/api/workspace/larry/events/${id}/dismiss`, {
           method: "POST",
@@ -146,6 +162,12 @@ export function useLarryActionCentre({
         if (response.ok) {
           window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
           await Promise.all([load(), onMutate()]);
+        } else {
+          const body = await readJson<{ message?: string; error?: string }>(response);
+          setActionError({
+            eventId: id,
+            message: body.message || body.error || `Dismiss failed (${response.status}).`,
+          });
         }
       } finally {
         setDismissing(null);
@@ -157,9 +179,17 @@ export function useLarryActionCentre({
   const modify = useCallback(
     async (id: string): Promise<string | null> => {
       setModifying(id);
+      setActionError(null);
       try {
         const response = await fetch(`/api/workspace/larry/events/${id}/modify`, { method: "POST" });
-        if (!response.ok) return null;
+        if (!response.ok) {
+          const body = await readJson<{ message?: string; error?: string }>(response);
+          setActionError({
+            eventId: id,
+            message: body.message || body.error || `Modify failed (${response.status}).`,
+          });
+          return null;
+        }
         const data = await response.json();
         return data.conversationId ?? null;
       } catch {
@@ -174,6 +204,7 @@ export function useLarryActionCentre({
   const letLarryExecute = useCallback(
     async (id: string): Promise<boolean> => {
       setExecuting(id);
+      setActionError(null);
       try {
         const response = await fetch(`/api/workspace/larry/events/${id}/let-larry-execute`, { method: "POST" });
         if (response.ok) {
@@ -181,6 +212,11 @@ export function useLarryActionCentre({
           await Promise.all([load(), onMutate()]);
           return true;
         }
+        const body = await readJson<{ message?: string; error?: string }>(response);
+        setActionError({
+          eventId: id,
+          message: body.message || body.error || `Execution failed (${response.status}).`,
+        });
         return false;
       } catch {
         return false;
@@ -201,10 +237,12 @@ export function useLarryActionCentre({
     dismissing,
     modifying,
     executing,
+    actionError,
     accept,
     dismiss,
     modify,
     letLarryExecute,
+    clearActionError,
     refresh: load,
   };
 }
