@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { TriangleAlert, Plus, Search, ChevronDown, ChevronRight, ArchiveRestore } from "lucide-react";
 import type { WorkspaceProject, WorkspaceHomeData, WorkspaceTask } from "@/app/dashboard/types";
