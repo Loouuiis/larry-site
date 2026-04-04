@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Calendar, CheckCircle2, Circle, ExternalLink, Mail, MessageSquare, Zap } from "lucide-react";
 import { SettingsSubnav } from "../SettingsSubnav";
 
@@ -94,6 +95,17 @@ export function ConnectorsPage() {
   const [calendarLinkMessage, setCalendarLinkMessage] = useState<string | null>(null);
   const [calendarLinkError, setCalendarLinkError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const searchParams = useSearchParams();
+
+  // If this page loaded inside an OAuth popup, notify parent and close.
+  useEffect(() => {
+    const connected = searchParams.get("connected");
+    if (!connected) return;
+    if (typeof window !== "undefined" && window.opener) {
+      window.opener.postMessage({ type: "oauth_connected", connector: connected }, window.location.origin);
+      window.close();
+    }
+  }, [searchParams]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -123,14 +135,33 @@ export function ConnectorsPage() {
 
   useEffect(() => { void load(); }, [load]);
 
+  // Listen for OAuth popup completion.
+  useEffect(() => {
+    function onMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type === "oauth_connected") {
+        void load();
+      }
+    }
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [load]);
+
+  const openOAuthPopup = (url: string) => {
+    const w = 520, h = 640;
+    const left = window.screenX + (window.outerWidth - w) / 2;
+    const top = window.screenY + (window.outerHeight - h) / 2;
+    window.open(url, "larry_oauth", `width=${w},height=${h},left=${left},top=${top},toolbar=no,menubar=no,scrollbars=yes`);
+  };
+
   const handleConnect = (connector: keyof typeof CONNECTOR_INFO) => {
     const info = data[connector];
     if (info?.installUrl) {
-      window.location.href = info.installUrl;
+      openOAuthPopup(info.installUrl);
     } else {
       void fetch(`/api/workspace/connectors/${connector}/install`).then(async (res) => {
         const d = await readJson<{ installUrl?: string }>(res);
-        if (d.installUrl) window.location.href = d.installUrl;
+        if (d.installUrl) openOAuthPopup(d.installUrl);
       });
     }
   };

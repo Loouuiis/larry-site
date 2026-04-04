@@ -156,7 +156,7 @@ function DraftRow({
         onClick={() => setExpanded((v) => !v)}
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(0,1.5fr) minmax(0,1fr) 80px 110px 90px",
+          gridTemplateColumns: "minmax(0,1.4fr) minmax(0,0.9fr) minmax(0,1fr) 72px 100px 36px",
           gap: "12px",
           alignItems: "center",
           padding: "12px 16px",
@@ -186,6 +186,62 @@ function DraftRow({
           }}
         >
           {draft.recipient}
+        </span>
+        {/* Project + action links */}
+        <span style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+          {draft.projectId ? (
+            <Link
+              href={`/workspace/projects/${draft.projectId}`}
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+                fontSize: "11px",
+                fontWeight: 600,
+                color: "var(--text-2)",
+                background: "var(--surface-2)",
+                borderRadius: "var(--radius-badge)",
+                padding: "2px 7px",
+                whiteSpace: "nowrap",
+                textDecoration: "none",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                maxWidth: "120px",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = "var(--cta)"; e.currentTarget.style.background = "rgba(0,115,234,0.08)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-2)"; e.currentTarget.style.background = "var(--surface-2)"; }}
+            >
+              <FolderKanban size={9} />
+              {draft.projectName ?? "Project"}
+            </Link>
+          ) : (
+            <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>—</span>
+          )}
+          {draft.actionId && (
+            <Link
+              href="/workspace/actions"
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+                fontSize: "11px",
+                fontWeight: 600,
+                color: "var(--text-2)",
+                background: "var(--surface-2)",
+                borderRadius: "var(--radius-badge)",
+                padding: "2px 7px",
+                whiteSpace: "nowrap",
+                textDecoration: "none",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = "var(--cta)"; e.currentTarget.style.background = "rgba(0,115,234,0.08)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-2)"; e.currentTarget.style.background = "var(--surface-2)"; }}
+            >
+              <Zap size={9} />
+              Action
+            </Link>
+          )}
         </span>
         <span>
           <StateBadge state={sent ? "sent" : "draft"} />
@@ -597,7 +653,7 @@ export function EmailDraftsClient() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "minmax(0,1.5fr) minmax(0,1fr) 80px 110px 90px",
+            gridTemplateColumns: "minmax(0,1.4fr) minmax(0,0.9fr) minmax(0,1fr) 72px 100px 36px",
             gap: "12px",
             padding: "10px 16px",
             borderBottom: "1px solid var(--border)",
@@ -611,6 +667,7 @@ export function EmailDraftsClient() {
         >
           <span>Subject</span>
           <span>Recipient</span>
+          <span>Project / Action</span>
           <span>Status</span>
           <span>Date</span>
           <span />
