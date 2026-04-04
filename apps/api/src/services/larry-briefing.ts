@@ -144,10 +144,20 @@ export async function generateBriefing(
         getProjectSnapshot(db, tenantId, project.id),
         getPendingSuggestionTexts(db, tenantId, project.id).catch(() => [] as string[]),
       ]);
+      const pendingClause = buildPendingClause(pendingTexts);
+      const hint = [
+        "user logged in",
+        "Generate a LOGIN BRIEFING. Lead with what matters most RIGHT NOW — not a generic summary.",
+        "Prioritise: (1) things that need the user's attention today, (2) risks forming, (3) notable progress.",
+        "Be specific — name tasks, people, deadlines. Don't just count tasks.",
+        "If Larry can complete any pending work (drafts, reports, agendas), do it now and include in the response.",
+        pendingClause,
+        guidanceHint,
+      ].filter(Boolean).join("\n");
       const result = await runIntelligence(
         config,
         snapshot,
-        `user logged in${buildPendingClause(pendingTexts)}${guidanceHint ? `\n\n${guidanceHint}` : ""}`
+        hint
       );
 
       if (result.contextUpdate) {
