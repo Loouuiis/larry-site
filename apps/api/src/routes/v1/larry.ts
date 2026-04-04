@@ -258,164 +258,21 @@ function hasMutationIntent(message: string): boolean {
   return DIRECT_UPDATE_PATTERN.test(trimmed);
 }
 
-function isCollaboratorMutationIntent(message: string): boolean {
-  return (
-    /\b(collaborator|member|members|teammate|team member)\b/i.test(message) ||
-    (/\b(owner|editor|viewer)\b/i.test(message) &&
-      /\b(role|access|permission|collaborator|member|teammate)\b/i.test(message))
-  );
-}
-
-function isNoteMutationIntent(message: string): boolean {
-  return /\b(note|notes)\b/i.test(message);
-}
-
-function requiresTaskTargetClarification(message: string): boolean {
-  if (isCollaboratorMutationIntent(message) || isNoteMutationIntent(message)) {
-    return false;
-  }
-
-  return /\b(task|tasks|deadline|due date|due|assignee|owner|ownership|risk|status|complete|blocked|backlog)\b/i.test(
-    message
-  );
-}
-
-function findMentionedTaskIds(message: string, tasks: Array<{ id: string; title: string }>): string[] {
-  const lowerMessage = message.toLowerCase();
-  const matched = new Set<string>();
-
-  for (const task of tasks) {
-    const taskId = task.id.toLowerCase();
-    const taskTitle = task.title.toLowerCase();
-
-    if (lowerMessage.includes(taskId) || lowerMessage.includes(taskTitle)) {
-      matched.add(task.id);
-      continue;
-    }
-
-    const titleTokens = taskTitle.split(/[^a-z0-9]+/).filter((token) => token.length > 3);
-    const matchedTokenCount = titleTokens.filter((token) => lowerMessage.includes(token)).length;
-    if (matchedTokenCount >= 2) {
-      matched.add(task.id);
-    }
-  }
-
-  return Array.from(matched);
-}
-
 /**
- * Detect whether a user message needs clarification BEFORE running intelligence.
- *
- * Intent classification order matters:
- *   1. Creation intents (create/add task, draft email, create project) — never fall
- *      through to task-target checks because they don't operate on existing tasks.
- *   2. Mutation intents on existing entities (change deadline, assign, update status)
- *      — require a task target if ambiguous.
+ * Thin pre-filter — only catches truly bare/empty requests.
+ * All real intent classification is now handled by Larry's reasoning
+ * framework in the system prompt (thinking field).
  */
 function detectClarificationNeed(input: {
   message: string;
   tasks: Array<{ id: string; title: string }>;
 }): { question: string; reason: string } | null {
-  if (!hasMutationIntent(input.message)) return null;
+  const trimmed = input.message.trim();
 
-  const message = input.message.trim();
-  const lower = message.toLowerCase();
-
-  // ── CREATION INTENTS ─────────────────────────────────────────────────────
-  // If the user wants to CREATE something, handle it here and RETURN.
-  // Creation intents must NEVER fall through to the task-target checks below,
-  // because those assume the user is trying to modify an existing task.
-
-  const isCreationIntent =
-    /\b(create|add|make|draft|write|compose|new)\b/i.test(lower) &&
-    /\b(task|tasks|email|letter|memo|report|project|note|meeting|event)\b/i.test(lower) &&
-    // Exclude "add [person] to task" which is an assignment, not creation
-    !/\badd\s+[a-z]+\s+to\s+(task|the)\b/i.test(lower);
-
-  if (isCreationIntent) {
-    // Task creation — pass to LLM with enough context for it to ask follow-ups
-    // if details are missing. Only block here if truly bare ("create a task").
-    if (/\btasks?\b/i.test(lower) && /\b(create|add|make|new)\b/i.test(lower)) {
-      const detailMatch = lower.match(
-        /(?:create|add|make|new)\s+(?:a\s+|some\s+|the\s+)?tasks?\s*(?:for|to|about|on|called|named|titled)?\s*(.*)/
-      );
-      const detailText = detailMatch?.[1]?.trim() ?? "";
-      if (detailText.length < 4) {
-        return {
-          question:
-            "I can do that. What task should I create? Reply with a task title and, if you have them, an owner or due date.",
-          reason: "task_create_missing_details",
-        };
-      }
-    }
-
-    // Email / letter / writing creation — pass to LLM for detail extraction
-    if (/\b(email|letter|memo|report)\b/i.test(lower)) {
-      const hasRecipient = /\bto\s+[a-z][a-z .'-]{1,80}\b/i.test(message);
-      const hasSubject = /\b(about|regarding|re:|subject)\b/i.test(lower);
-      if (!hasRecipient && !hasSubject) {
-        return {
-          question:
-            "I can draft that for you. Who is it for, and what should it be about?",
-          reason: "writing_missing_details",
-        };
-      }
-    }
-
-    // Project creation
-    if (/\bprojects?\b/i.test(lower) && /\b(create|add|make|new|start)\b/i.test(lower)) {
-      const projDetail = lower.match(/(?:create|add|make|new|start)\s+(?:a\s+)?projects?\s*(.*)/);
-      if ((projDetail?.[1]?.trim() ?? "").length < 4) {
-        return {
-          question:
-            "I can create a new project. What should it be called, and what's it about?",
-          reason: "project_create_missing_details",
-        };
-      }
-    }
-
-    // For all other creation intents (calendar event, note, etc.) — let the
-    // LLM handle detail extraction via followUpQuestions.
-    return null;
-  }
-
-  // ── MUTATION INTENTS ON EXISTING ENTITIES ─────────────────────────────────
-  // Everything below assumes the user is trying to MODIFY an existing entity.
-
-  const mentionedTaskIds = findMentionedTaskIds(message, input.tasks);
-  const taskTargetIntent = requiresTaskTargetClarification(message);
-
-  if (taskTargetIntent && /\b(deadline|due date|due)\b/i.test(message) && !DATE_HINT_PATTERN.test(message)) {
+  if (trimmed.length < 3) {
     return {
-      question: "I can prepare that deadline change. What new date should I use?",
-      reason: "deadline_change_missing_date",
-    };
-  }
-
-  if (
-    taskTargetIntent &&
-    /\b(assign|reassign|owner|ownership)\b/i.test(message) &&
-    !/\bto\s+[a-z][a-z .'-]{1,80}\b/i.test(message)
-  ) {
-    return {
-      question: "I can make that ownership update. Who should this be assigned to?",
-      reason: "owner_change_missing_assignee",
-    };
-  }
-
-  if (taskTargetIntent && input.tasks.length > 1 && mentionedTaskIds.length === 0) {
-    return {
-      question:
-        "I can apply that update, but I need the target task first. Reply with the task name or task ID you want me to change.",
-      reason: "missing_task_target",
-    };
-  }
-
-  if (taskTargetIntent && mentionedTaskIds.length > 1) {
-    return {
-      question:
-        "I found multiple matching tasks for that request. Which exact task should I use? Please reply with one task name or ID.",
-      reason: "ambiguous_task_target",
+      question: "I'm here. What would you like me to help with?",
+      reason: "message_too_short",
     };
   }
 
