@@ -135,8 +135,6 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
   const [editTitleValue, setEditTitleValue] = useState("");
   const [openDropdown, setOpenDropdown] = useState<{ taskId: string; field: "status" | "priority" | "assignee" } | null>(null);
   const [descriptions, setDescriptions] = useState<Record<string, string>>({});
-  const [savingField, setSavingField] = useState<string | null>(null);
-
   const [members, setMembers] = useState<Array<{ userId: string; name: string }>>([]);
 
   /* ── fetch project members ─────────────────────────────── */
@@ -165,6 +163,17 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
     if (creatingInGroup) titleInputRef.current?.focus();
   }, [creatingInGroup]);
 
+  /* ── close dropdown on Escape key ────────────────────── */
+
+  useEffect(() => {
+    if (!openDropdown) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpenDropdown(null);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [openDropdown]);
+
   /* ── creation helpers ──────────────────────────────────── */
 
   const startCreating = (groupId: string) => {
@@ -187,8 +196,6 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
   };
 
   const patchTask = async (taskId: string, patch: Record<string, unknown>) => {
-    const fieldKey = `${taskId}-${Object.keys(patch)[0]}`;
-    setSavingField(fieldKey);
     try {
       const res = await fetch(`/api/workspace/tasks/${encodeURIComponent(taskId)}`, {
         method: "PATCH",
@@ -199,8 +206,6 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
       await refresh();
     } catch (err) {
       console.error("Error updating task:", err);
-    } finally {
-      setSavingField(null);
     }
   };
 
@@ -538,6 +543,7 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                                 (e.target as HTMLInputElement).blur();
                               }
                               if (e.key === "Escape") {
+                                setEditTitleValue(task.title);
                                 setEditingTitle(null);
                               }
                             }}
