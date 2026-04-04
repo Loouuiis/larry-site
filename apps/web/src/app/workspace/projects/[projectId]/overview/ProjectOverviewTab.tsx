@@ -49,7 +49,7 @@ export function ProjectOverviewTab({
       />
 
       {/* Progress box + Action box side by side */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "12px" }}>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
         <ProgressBox
           tasks={tasks}
           timeline={timeline}

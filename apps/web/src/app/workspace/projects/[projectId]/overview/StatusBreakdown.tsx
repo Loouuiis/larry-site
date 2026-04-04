@@ -32,8 +32,8 @@ export function StatusBreakdown({ tasks }: { tasks: WorkspaceTask[] }) {
   const total = tasks.length;
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "16px", alignItems: "start" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "10px" }}>
+    <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-[1fr_auto]">
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-5">
         {STATUS_CONFIG.map((cfg) => (
           <div
             key={cfg.key}
