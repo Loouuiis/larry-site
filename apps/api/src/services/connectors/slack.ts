@@ -171,20 +171,89 @@ export function verifySignedStateToken(token: string, secret: string): Record<st
 
 /**
  * Post a message to a Slack channel using the bot token.
+ * Optionally reply to a thread by passing threadTs.
  */
 export async function postSlackMessage(
   botToken: string,
   channel: string,
-  text: string
-): Promise<{ ok: boolean; error?: string }> {
+  text: string,
+  threadTs?: string
+): Promise<{ ok: boolean; ts?: string; error?: string }> {
+  const body: Record<string, unknown> = { channel, text };
+  if (threadTs) body.thread_ts = threadTs;
+
   const res = await fetch("https://slack.com/api/chat.postMessage", {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${botToken}`,
       "Content-Type": "application/json; charset=utf-8",
     },
-    body: JSON.stringify({ channel, text }),
+    body: JSON.stringify(body),
   });
-  const data = await res.json() as { ok: boolean; error?: string };
+  const data = await res.json() as { ok: boolean; ts?: string; error?: string };
   return data;
+}
+
+/**
+ * Open a DM channel with a Slack user and return the channel ID.
+ */
+export async function openSlackDmChannel(
+  botToken: string,
+  slackUserId: string
+): Promise<string | null> {
+  const res = await fetch("https://slack.com/api/conversations.open", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${botToken}`,
+      "Content-Type": "application/json; charset=utf-8",
+    },
+    body: JSON.stringify({ users: slackUserId }),
+  });
+  const data = await res.json() as { ok: boolean; channel?: { id: string }; error?: string };
+  return data.ok ? (data.channel?.id ?? null) : null;
+}
+
+/**
+ * Fetch a list of public channels the bot has access to.
+ */
+export async function listSlackChannels(
+  botToken: string
+): Promise<Array<{ id: string; name: string }>> {
+  const res = await fetch(
+    "https://slack.com/api/conversations.list?types=public_channel,private_channel&limit=200&exclude_archived=true",
+    {
+      headers: { "Authorization": `Bearer ${botToken}` },
+    }
+  );
+  const data = await res.json() as {
+    ok: boolean;
+    channels?: Array<{ id: string; name: string; is_archived?: boolean }>;
+    error?: string;
+  };
+  if (!data.ok) return [];
+  return (data.channels ?? [])
+    .filter((c) => !c.is_archived)
+    .map((c) => ({ id: c.id, name: c.name }));
+}
+
+/**
+ * Look up a Slack user's display name and email.
+ */
+export async function lookupSlackUser(
+  botToken: string,
+  slackUserId: string
+): Promise<{ name: string; email: string | null } | null> {
+  const res = await fetch(`https://slack.com/api/users.info?user=${encodeURIComponent(slackUserId)}`, {
+    headers: { "Authorization": `Bearer ${botToken}` },
+  });
+  const data = await res.json() as {
+    ok: boolean;
+    user?: { real_name?: string; name?: string; profile?: { email?: string } };
+    error?: string;
+  };
+  if (!data.ok || !data.user) return null;
+  return {
+    name: data.user.real_name ?? data.user.name ?? slackUserId,
+    email: data.user.profile?.email ?? null,
+  };
 }

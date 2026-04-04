@@ -5,6 +5,7 @@ import {
   buildSlackInstallUrl,
   createSignedStateToken,
   exchangeSlackOauthCode,
+  listSlackChannels,
   parseSlackEventTimestampToIso,
   verifySignedStateToken,
   verifySlackSignature,
@@ -278,13 +279,40 @@ export const slackConnectorRoutes: FastifyPluginAsync = async (fastify) => {
         : undefined);
 
     const actor = typeof event.user === "string" ? event.user : undefined;
+    const slackChannel = typeof event.channel === "string" ? event.channel : null;
+    const slackText = typeof event.text === "string" ? event.text : "";
+    const threadTs = typeof event.thread_ts === "string" ? event.thread_ts : null;
+    const channelType = typeof event.channel_type === "string" ? event.channel_type : null;
+
+    // Resolve channel → project mapping
+    let projectIdHint: string | null = null;
+    if (slackChannel && envelope.team_id) {
+      const mapping = await fastify.db.queryTenant<{ project_id: string }>(
+        installation.tenantId,
+        `SELECT project_id FROM slack_channel_project_mappings
+         WHERE tenant_id = $1 AND slack_channel_id = $2
+         LIMIT 1`,
+        [installation.tenantId, slackChannel]
+      );
+      projectIdHint = mapping[0]?.project_id ?? null;
+    }
 
     const result = await ingestCanonicalEvent(fastify, installation.tenantId, {
       source: "slack",
       sourceEventId,
       actor,
       occurredAt,
-      payload: envelope as unknown as Record<string, unknown>,
+      payload: {
+        text: slackText,
+        channel: slackChannel,
+        channelType,
+        threadTs,
+        parentUserId: typeof event.parent_user_id === "string" ? event.parent_user_id : null,
+        slackUserId: actor ?? null,
+        teamId: envelope.team_id ?? null,
+        projectId: projectIdHint,
+        rawEvent: event,
+      },
     });
 
     await writeAuditLog(fastify.db, {
@@ -294,10 +322,95 @@ export const slackConnectorRoutes: FastifyPluginAsync = async (fastify) => {
       objectId: result.canonicalEventId,
       details: {
         slackTeamId: envelope.team_id,
+        slackChannel,
+        projectIdHint,
         sourceEventId,
       },
     });
 
     return reply.code(202).send({ ok: true, ...result });
   });
+
+  // List Slack channels accessible to the bot
+  fastify.get(
+    "/channels",
+    { preHandler: [fastify.authenticate] },
+    async (request) => {
+      const tenantId = request.user.tenantId;
+      const rows = await fastify.db.queryTenant<{ bot_access_token: string }>(
+        tenantId,
+        `SELECT bot_access_token FROM slack_installations WHERE tenant_id = $1 ORDER BY updated_at DESC LIMIT 1`,
+        [tenantId]
+      );
+      if (!rows[0]?.bot_access_token) {
+        throw fastify.httpErrors.failedDependency("Slack is not connected.");
+      }
+      const channels = await listSlackChannels(rows[0].bot_access_token);
+      return { channels };
+    }
+  );
+
+  // Get all channel→project mappings for this tenant
+  fastify.get(
+    "/channel-mapping",
+    { preHandler: [fastify.authenticate] },
+    async (request) => {
+      const tenantId = request.user.tenantId;
+      const rows = await fastify.db.queryTenant<{
+        slack_channel_id: string;
+        slack_channel_name: string | null;
+        project_id: string;
+      }>(
+        tenantId,
+        `SELECT slack_channel_id, slack_channel_name, project_id
+         FROM slack_channel_project_mappings
+         WHERE tenant_id = $1
+         ORDER BY created_at DESC`,
+        [tenantId]
+      );
+      return {
+        mappings: rows.map((r) => ({
+          slackChannelId: r.slack_channel_id,
+          slackChannelName: r.slack_channel_name,
+          projectId: r.project_id,
+        })),
+      };
+    }
+  );
+
+  // Upsert or delete a channel→project mapping
+  fastify.put(
+    "/channel-mapping",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
+    async (request) => {
+      const body = z.object({
+        slackChannelId: z.string().min(1),
+        slackChannelName: z.string().optional().nullable(),
+        projectId: z.string().uuid().nullable(),
+      }).parse(request.body);
+
+      const tenantId = request.user.tenantId;
+
+      if (body.projectId === null) {
+        await fastify.db.queryTenant(
+          tenantId,
+          `DELETE FROM slack_channel_project_mappings WHERE tenant_id = $1 AND slack_channel_id = $2`,
+          [tenantId, body.slackChannelId]
+        );
+        return { ok: true, deleted: true };
+      }
+
+      await fastify.db.queryTenant(
+        tenantId,
+        `INSERT INTO slack_channel_project_mappings (tenant_id, slack_team_id, slack_channel_id, slack_channel_name, project_id)
+         SELECT $1, si.slack_team_id, $3, $4, $5
+         FROM slack_installations si WHERE si.tenant_id = $1 ORDER BY si.updated_at DESC LIMIT 1
+         ON CONFLICT (tenant_id, slack_channel_id)
+         DO UPDATE SET project_id = EXCLUDED.project_id, slack_channel_name = EXCLUDED.slack_channel_name, updated_at = NOW()`,
+        [tenantId, null, body.slackChannelId, body.slackChannelName ?? null, body.projectId]
+      );
+
+      return { ok: true, slackChannelId: body.slackChannelId, projectId: body.projectId };
+    }
+  );
 };

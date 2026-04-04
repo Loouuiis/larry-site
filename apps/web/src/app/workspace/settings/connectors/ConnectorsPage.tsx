@@ -45,7 +45,7 @@ const CONNECTOR_INFO = {
     label: "Slack",
     icon: "slack",
     description:
-      "Larry monitors project-related channels, sends DM reminders to task owners, posts daily standup summaries, and escalates blocked tasks to manager channels.",
+      "Larry reads messages from linked channels to detect project signals, suggests Slack messages when risks or blockers are found, and can DM task owners directly.",
     color: "#6c44f6",
   },
   calendar: {
@@ -87,6 +87,9 @@ async function readJson<T>(res: Response): Promise<T> {
   try { return JSON.parse(text) as T; } catch { return {} as T; }
 }
 
+interface SlackChannel { id: string; name: string; }
+interface SlackMapping { slackChannelId: string; slackChannelName: string | null; projectId: string; }
+
 export function ConnectorsPage() {
   const [data, setData] = useState<ConnectorsData>({});
   const [projects, setProjects] = useState<WorkspaceProject[]>([]);
@@ -95,6 +98,16 @@ export function ConnectorsPage() {
   const [calendarLinkMessage, setCalendarLinkMessage] = useState<string | null>(null);
   const [calendarLinkError, setCalendarLinkError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Slack channel mapping state
+  const [slackChannels, setSlackChannels] = useState<SlackChannel[]>([]);
+  const [slackMappings, setSlackMappings] = useState<SlackMapping[]>([]);
+  const [slackMappingChannelId, setSlackMappingChannelId] = useState("");
+  const [slackMappingProjectId, setSlackMappingProjectId] = useState("");
+  const [slackMappingSaving, setSlackMappingSaving] = useState(false);
+  const [slackMappingMessage, setSlackMappingMessage] = useState<string | null>(null);
+  const [slackMappingError, setSlackMappingError] = useState<string | null>(null);
+
   const searchParams = useSearchParams();
 
   // If this page loaded inside an OAuth popup, notify parent and close.
@@ -121,12 +134,29 @@ export function ConnectorsPage() {
       const projectsData = await readJson<{ items?: WorkspaceProject[] }>(projectsRes);
       const projectLinkData = await readJson<CalendarProjectLinkResponse>(projectLinkRes);
 
-      setData(summaryData.connectors ?? {});
+      const connectors = summaryData.connectors ?? {};
+      setData(connectors);
       setProjects(projectsRes.ok ? projectsData.items ?? [] : []);
       if (projectLinkRes.ok) {
         setCalendarLinkedProjectId(projectLinkData.projectId ?? "");
       } else {
-        setCalendarLinkedProjectId(summaryData.connectors?.calendar?.projectId ?? "");
+        setCalendarLinkedProjectId(connectors.calendar?.projectId ?? "");
+      }
+
+      // Load Slack channel data if Slack is connected
+      if (connectors.slack?.connected) {
+        const [channelsRes, mappingsRes] = await Promise.all([
+          fetch("/api/workspace/connectors/slack/channels"),
+          fetch("/api/workspace/connectors/slack/channel-mapping"),
+        ]);
+        if (channelsRes.ok) {
+          const channelsData = await readJson<{ channels?: SlackChannel[] }>(channelsRes);
+          setSlackChannels(channelsData.channels ?? []);
+        }
+        if (mappingsRes.ok) {
+          const mappingsData = await readJson<{ mappings?: SlackMapping[] }>(mappingsRes);
+          setSlackMappings(mappingsData.mappings ?? []);
+        }
       }
     } finally {
       setLoading(false);
@@ -196,6 +226,56 @@ export function ConnectorsPage() {
       );
     } finally {
       setCalendarLinkSaving(false);
+    }
+  };
+
+  const handleSaveSlackChannelMapping = async () => {
+    if (!slackMappingChannelId || !slackMappingProjectId) return;
+    setSlackMappingSaving(true);
+    setSlackMappingMessage(null);
+    setSlackMappingError(null);
+    try {
+      const channel = slackChannels.find((c) => c.id === slackMappingChannelId);
+      const response = await fetch("/api/workspace/connectors/slack/channel-mapping", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slackChannelId: slackMappingChannelId,
+          slackChannelName: channel?.name ?? null,
+          projectId: slackMappingProjectId || null,
+        }),
+      });
+      if (!response.ok) {
+        const err = await readJson<{ error?: string }>(response);
+        setSlackMappingError(err.error ?? "Failed to save mapping.");
+        return;
+      }
+      // Refresh mappings
+      const mappingsRes = await fetch("/api/workspace/connectors/slack/channel-mapping");
+      if (mappingsRes.ok) {
+        const mappingsData = await readJson<{ mappings?: SlackMapping[] }>(mappingsRes);
+        setSlackMappings(mappingsData.mappings ?? []);
+      }
+      setSlackMappingChannelId("");
+      setSlackMappingProjectId("");
+      setSlackMappingMessage("Channel linked to project.");
+    } catch (error) {
+      setSlackMappingError(error instanceof Error ? error.message : "Failed to save mapping.");
+    } finally {
+      setSlackMappingSaving(false);
+    }
+  };
+
+  const handleRemoveSlackMapping = async (slackChannelId: string) => {
+    try {
+      await fetch("/api/workspace/connectors/slack/channel-mapping", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slackChannelId, projectId: null }),
+      });
+      setSlackMappings((prev) => prev.filter((m) => m.slackChannelId !== slackChannelId));
+    } catch {
+      // ignore
     }
   };
 
@@ -369,6 +449,114 @@ export function ConnectorsPage() {
                       )}
                     </button>
                   </div>
+
+                  {key === "slack" && connected && (
+                    <div
+                      style={{
+                        marginTop: "14px",
+                        borderTop: "1px solid var(--border)",
+                        paddingTop: "14px",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "10px",
+                      }}
+                    >
+                      <label
+                        style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-1)" }}
+                      >
+                        Link a Slack channel to a project
+                      </label>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                        <select
+                          value={slackMappingChannelId}
+                          onChange={(e) => { setSlackMappingChannelId(e.target.value); setSlackMappingMessage(null); setSlackMappingError(null); }}
+                          disabled={loading || slackMappingSaving || slackChannels.length === 0}
+                          style={{
+                            minWidth: "160px",
+                            maxWidth: "220px",
+                            borderRadius: "8px",
+                            border: "1px solid var(--border)",
+                            background: "var(--surface)",
+                            padding: "8px 10px",
+                            fontSize: "12px",
+                            color: "var(--text-1)",
+                          }}
+                        >
+                          <option value="">Select channel…</option>
+                          {slackChannels.map((c) => (
+                            <option key={c.id} value={c.id}>#{c.name}</option>
+                          ))}
+                        </select>
+                        <select
+                          value={slackMappingProjectId}
+                          onChange={(e) => { setSlackMappingProjectId(e.target.value); setSlackMappingMessage(null); setSlackMappingError(null); }}
+                          disabled={loading || slackMappingSaving || projects.length === 0}
+                          style={{
+                            minWidth: "160px",
+                            maxWidth: "220px",
+                            borderRadius: "8px",
+                            border: "1px solid var(--border)",
+                            background: "var(--surface)",
+                            padding: "8px 10px",
+                            fontSize: "12px",
+                            color: "var(--text-1)",
+                          }}
+                        >
+                          <option value="">Select project…</option>
+                          {projects.map((p) => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          className="pm-btn pm-btn-secondary pm-btn-sm"
+                          disabled={!slackMappingChannelId || !slackMappingProjectId || slackMappingSaving}
+                          onClick={() => void handleSaveSlackChannelMapping()}
+                        >
+                          {slackMappingSaving ? "Saving…" : "Save link"}
+                        </button>
+                      </div>
+                      {slackChannels.length === 0 && (
+                        <p className="text-body-sm">No channels found. Make sure the bot has been added to at least one channel.</p>
+                      )}
+                      {slackMappingMessage && (
+                        <p className="text-body-sm" style={{ color: "#166534" }}>{slackMappingMessage}</p>
+                      )}
+                      {slackMappingError && (
+                        <p className="text-body-sm" style={{ color: "#b91c1c" }}>{slackMappingError}</p>
+                      )}
+                      {slackMappings.length > 0 && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "4px" }}>
+                          <p style={{ fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--text-muted)" }}>
+                            Linked channels
+                          </p>
+                          {slackMappings.map((m) => {
+                            const proj = projects.find((p) => p.id === m.projectId);
+                            return (
+                              <div
+                                key={m.slackChannelId}
+                                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "12px", color: "var(--text-1)" }}
+                              >
+                                <span>
+                                  <span style={{ fontWeight: 500 }}>#{m.slackChannelName ?? m.slackChannelId}</span>
+                                  {" → "}
+                                  <span>{proj?.name ?? m.projectId}</span>
+                                </span>
+                                <button
+                                  type="button"
+                                  className="pm-btn pm-btn-secondary pm-btn-sm"
+                                  style={{ fontSize: "11px", padding: "2px 8px" }}
+                                  onClick={() => void handleRemoveSlackMapping(m.slackChannelId)}
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {key === "calendar" && (
                     <div
