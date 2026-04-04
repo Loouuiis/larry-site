@@ -15,7 +15,7 @@ export async function POST(
   const result = await proxyApiRequest(
     session,
     `/v1/projects/${encodeURIComponent(id)}/unarchive`,
-    { method: "POST" },
+    { method: "POST", body: JSON.stringify({}) },
   );
 
   if (result.session) {

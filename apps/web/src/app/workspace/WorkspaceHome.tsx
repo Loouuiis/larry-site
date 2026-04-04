@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { TriangleAlert, Plus } from "lucide-react";
+import { TriangleAlert, Plus, Search, ChevronDown, ChevronRight, ArchiveRestore } from "lucide-react";
 import type { WorkspaceProject, WorkspaceHomeData, WorkspaceTask } from "@/app/dashboard/types";
 import { ProjectCreateSheet } from "./ProjectCreateSheet";
 import { useWorkspaceChrome } from "./WorkspaceChromeContext";
@@ -153,6 +153,9 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
   const [nudgeDismissed, setNudgeDismissed] = useState(false);
   const [briefing, setBriefing] = useState<LarryBriefingContent | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
 
   const loadWorkspace = useCallback(async () => {
     try {
@@ -207,6 +210,47 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
     return projects.map((project) => buildProjectCard(project, tasks));
   }, [snapshot]);
 
+  const archivedCards = useMemo(() => {
+    const archived = snapshot?.archivedProjects ?? [];
+    const tasks = snapshot?.tasks ?? [];
+    return archived.map((project) => buildProjectCard(project, tasks));
+  }, [snapshot]);
+
+  const filteredCards = useMemo(() => {
+    if (!searchQuery.trim()) return projectCards;
+    const q = searchQuery.toLowerCase();
+    return projectCards.filter(
+      (p) => p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q),
+    );
+  }, [projectCards, searchQuery]);
+
+  const filteredArchived = useMemo(() => {
+    if (!searchQuery.trim()) return archivedCards;
+    const q = searchQuery.toLowerCase();
+    return archivedCards.filter(
+      (p) => p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q),
+    );
+  }, [archivedCards, searchQuery]);
+
+  const handleRestore = async (projectId: string) => {
+    setRestoringId(projectId);
+    try {
+      const res = await fetch(`/api/workspace/projects/${encodeURIComponent(projectId)}/unarchive`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const payload = await readJson<{ error?: string }>(res);
+        throw new Error(payload.error ?? "Failed to restore project.");
+      }
+      await loadWorkspace();
+      chrome?.refreshShell?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to restore project.");
+    } finally {
+      setRestoringId(null);
+    }
+  };
+
   const greetingName = deriveGreetingName(viewer);
   const connectedCount = [
     snapshot?.connectors?.slack?.connected,
@@ -247,6 +291,39 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
             </button>
           </div>
         </header>
+
+        {/* Search */}
+        {!loading && projectCards.length > 0 && (
+          <div className="relative">
+            <Search
+              size={15}
+              style={{
+                position: "absolute",
+                left: 12,
+                top: "50%",
+                transform: "translateY(-50%)",
+                color: "var(--text-muted)",
+                pointerEvents: "none",
+              }}
+            />
+            <input
+              type="text"
+              placeholder="Search projects..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full text-[13px] outline-none"
+              style={{
+                height: 38,
+                paddingLeft: 36,
+                paddingRight: 12,
+                borderRadius: 4,
+                border: "1px solid var(--border)",
+                background: "var(--surface)",
+                color: "var(--text-1)",
+              }}
+            />
+          </div>
+        )}
 
         {/* Larry briefing — per-project summaries */}
         {briefing && briefing.projects.length > 0 && (
@@ -353,7 +430,7 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
               />
             ))}
           </div>
-        ) : projectCards.length === 0 ? (
+        ) : filteredCards.length === 0 && !searchQuery.trim() ? (
           <div
             className="border border-dashed px-6 py-10 text-center"
             style={{
@@ -386,7 +463,7 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-3">
-            {projectCards.map((project) => (
+            {filteredCards.map((project) => (
               <button
                 key={project.id}
                 type="button"
@@ -448,6 +525,86 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
                 </div>
               </button>
             ))}
+          </div>
+        )}
+
+        {/* No search results */}
+        {searchQuery.trim() && filteredCards.length === 0 && filteredArchived.length === 0 && (
+          <div
+            className="px-6 py-8 text-center text-[13px]"
+            style={{ color: "var(--text-muted)" }}
+          >
+            No projects matching &ldquo;{searchQuery}&rdquo;
+          </div>
+        )}
+
+        {/* Archived projects section */}
+        {!loading && archivedCards.length > 0 && (
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowArchived((v) => !v)}
+              className="flex items-center gap-1.5 text-[13px] font-semibold"
+              style={{ color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", padding: "4px 0" }}
+            >
+              {showArchived ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              Archived ({filteredArchived.length})
+            </button>
+
+            {showArchived && filteredArchived.length > 0 && (
+              <div className="mt-3 grid gap-4 md:grid-cols-3">
+                {filteredArchived.map((project) => (
+                  <div
+                    key={project.id}
+                    className="relative text-left"
+                    style={{
+                      borderRadius: "var(--radius-card)",
+                      border: "1px solid var(--border)",
+                      background: "var(--surface)",
+                      padding: "20px",
+                      opacity: 0.7,
+                    }}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p
+                        className="text-[16px] font-semibold leading-snug truncate"
+                        style={{ color: "var(--text-1)" }}
+                      >
+                        {project.name}
+                      </p>
+                      <span
+                        className="shrink-0 text-[11px] font-medium px-2 py-0.5"
+                        style={{ color: "var(--text-muted)", background: "var(--surface-2)", borderRadius: 3 }}
+                      >
+                        Archived
+                      </span>
+                    </div>
+                    <p className="text-body-sm mt-1 truncate">{project.description}</p>
+                    <div className="mt-3 flex items-center justify-between">
+                      <span className="text-body-sm">
+                        Updated {formatRelativeTime(project.updatedAt)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void handleRestore(project.id)}
+                        disabled={restoringId === project.id}
+                        className="inline-flex items-center gap-1 text-[12px] font-medium"
+                        style={{
+                          color: "var(--cta)",
+                          background: "none",
+                          border: "none",
+                          cursor: restoringId === project.id ? "not-allowed" : "pointer",
+                          opacity: restoringId === project.id ? 0.5 : 1,
+                        }}
+                      >
+                        <ArchiveRestore size={13} />
+                        {restoringId === project.id ? "Restoring..." : "Restore"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
