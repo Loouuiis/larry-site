@@ -886,18 +886,22 @@ function ProjectActionCentreTab({
   accepting,
   dismissing,
   modifying,
+  executing,
   accept,
   dismiss,
   modify,
+  letLarryExecute,
 }: {
   suggested: WorkspaceLarryEvent[];
   activity: WorkspaceLarryEvent[];
   accepting: string | null;
   dismissing: string | null;
   modifying: string | null;
+  executing: string | null;
   accept: (id: string) => Promise<void>;
   dismiss: (id: string) => Promise<void>;
   modify: (id: string) => Promise<string | null>;
+  letLarryExecute: (id: string) => Promise<boolean>;
 }) {
   const [search, setSearch] = useState("");
   const [filterActionType, setFilterActionType] = useState("");
@@ -1022,7 +1026,9 @@ function ProjectActionCentreTab({
             </p>
           ) : (
             <div className="space-y-3">
-              {filteredSuggested.map((event) => (
+              {filteredSuggested.map((event) => {
+                const canLetLarryDoIt = event.payload?._offerExecution === true;
+                return (
                 <div
                   key={event.id}
                   className="rounded-xl border px-4 py-3"
@@ -1038,6 +1044,17 @@ function ProjectActionCentreTab({
                     {getEventMeta(event)}
                   </p>
                   <div className="mt-3 flex items-center gap-2">
+                    {canLetLarryDoIt && (
+                      <button
+                        type="button"
+                        onClick={() => void letLarryExecute(event.id)}
+                        disabled={executing === event.id}
+                        className="rounded-full px-3 py-1.5 text-[12px] font-semibold text-white"
+                        style={{ background: "var(--cta)" }}
+                      >
+                        {executing === event.id ? "Working..." : "Let Larry do it"}
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => void dismiss(event.id)}
@@ -1073,7 +1090,8 @@ function ProjectActionCentreTab({
                     </button>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -1093,7 +1111,9 @@ function ProjectActionCentreTab({
             Recent activity
           </p>
           <div className="mt-4 space-y-3">
-            {filteredActivity.map((event) => (
+            {filteredActivity.map((event) => {
+              const completedByLarry = event.executedByKind === "larry" && event.payload?._selfExecutable === true;
+              return (
               <div
                 key={event.id}
                 className="rounded-xl border px-4 py-3"
@@ -1111,6 +1131,14 @@ function ProjectActionCentreTab({
                   >
                     {event.eventType === "accepted" ? "Accepted" : "Auto executed"}
                   </span>
+                  {completedByLarry && (
+                    <span
+                      className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold"
+                      style={{ background: "#ecfdf3", color: "#15803d", borderColor: "#bbf7d0" }}
+                    >
+                      Completed by Larry
+                    </span>
+                  )}
                 </div>
                 <p className="mt-2 text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
                   {event.displayText}
@@ -1119,7 +1147,8 @@ function ProjectActionCentreTab({
                   {getEventMeta(event)}
                 </p>
               </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}
@@ -1150,9 +1179,11 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
     accepting,
     dismissing,
     modifying,
+    executing,
     accept,
     dismiss,
     modify,
+    letLarryExecute,
     refresh: refreshActionCentre,
   } = useProjectActionCentre(projectId, refresh);
   const {
@@ -2138,9 +2169,11 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
           accepting={accepting}
           dismissing={dismissing}
           modifying={modifying}
+          executing={executing}
           accept={accept}
           dismiss={dismiss}
           modify={modify}
+          letLarryExecute={letLarryExecute}
         />)}
 
         {/* ── Tab: Team — re-uses existing collaborators panel ──── */}

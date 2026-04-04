@@ -220,9 +220,11 @@ export default function WorkspaceActionsPage() {
     accepting,
     dismissing,
     modifying,
+    executing,
     accept,
     dismiss,
     modify,
+    letLarryExecute,
     refresh,
   } = useLarryActionCentre();
 
@@ -561,7 +563,9 @@ export default function WorkspaceActionsPage() {
                   )}
                 </div>
               ) : (
-                filteredSuggested.map((event) => (
+                filteredSuggested.map((event) => {
+                  const canLetLarryDoIt = event.payload?._offerExecution === true;
+                  return (
                   <div
                     key={event.id}
                     className="rounded-xl border px-4 py-4"
@@ -640,6 +644,17 @@ export default function WorkspaceActionsPage() {
                       </div>
 
                       <div className="flex items-center gap-2">
+                        {canLetLarryDoIt && (
+                          <button
+                            type="button"
+                            onClick={() => void letLarryExecute(event.id)}
+                            disabled={executing === event.id}
+                            className="rounded-full px-3 py-1.5 text-[12px] font-semibold text-white"
+                            style={{ background: "var(--cta)" }}
+                          >
+                            {executing === event.id ? "Working..." : "Let Larry do it"}
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => {
@@ -680,7 +695,8 @@ export default function WorkspaceActionsPage() {
                       </div>
                     </div>
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -715,7 +731,9 @@ export default function WorkspaceActionsPage() {
                   {hasFilters ? "No activity matches your filters." : "No recent Larry activity logged yet."}
                 </p>
               ) : (
-                filteredActivity.map((event) => (
+                filteredActivity.map((event) => {
+                  const completedByLarry = event.executedByKind === "larry" && event.payload?._selfExecutable === true;
+                  return (
                   <div
                     key={event.id}
                     className="rounded-xl border px-4 py-4"
@@ -737,6 +755,14 @@ export default function WorkspaceActionsPage() {
                             {getEventTone(event).label}
                           </span>
                           <ActionTypeBadge actionType={event.actionType} />
+                          {completedByLarry && (
+                            <span
+                              className="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold"
+                              style={{ background: "#ecfdf3", color: "#15803d", borderColor: "#bbf7d0" }}
+                            >
+                              Completed by Larry
+                            </span>
+                          )}
                         </div>
                         <p className="mt-3 text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
                           {event.displayText}
@@ -784,7 +810,8 @@ export default function WorkspaceActionsPage() {
                       </div>
                     </div>
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>

@@ -40,6 +40,7 @@ export function useLarryActionCentre({
   const [accepting, setAccepting] = useState<string | null>(null);
   const [dismissing, setDismissing] = useState<string | null>(null);
   const [modifying, setModifying] = useState<string | null>(null);
+  const [executing, setExecuting] = useState<string | null>(null);
   const loadInFlightRef = useRef<Promise<void> | null>(null);
 
   const load = useCallback(
@@ -170,6 +171,26 @@ export function useLarryActionCentre({
     []
   );
 
+  const letLarryExecute = useCallback(
+    async (id: string): Promise<boolean> => {
+      setExecuting(id);
+      try {
+        const response = await fetch(`/api/workspace/larry/events/${id}/let-larry-execute`, { method: "POST" });
+        if (response.ok) {
+          window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
+          await Promise.all([load(), onMutate()]);
+          return true;
+        }
+        return false;
+      } catch {
+        return false;
+      } finally {
+        setExecuting(null);
+      }
+    },
+    [load, onMutate],
+  );
+
   return {
     suggested: data.suggested,
     activity: data.activity,
@@ -179,9 +200,11 @@ export function useLarryActionCentre({
     accepting,
     dismissing,
     modifying,
+    executing,
     accept,
     dismiss,
     modify,
+    letLarryExecute,
     refresh: load,
   };
 }
