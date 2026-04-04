@@ -28,7 +28,7 @@ const WORKSPACE_NAV: { id: WorkspaceSidebarNav; label: string; icon: React.Eleme
   { id: "calendar",  label: "Calendar",   icon: Calendar,      href: "/workspace/calendar"  },
   { id: "documents", label: "Documents",  icon: FileText,      href: "/workspace/documents" },
   { id: "chats",     label: "Chats",      icon: MessageSquare, href: "/workspace/chats"     },
-  { id: "larry",     label: "Ask Larry",  icon: Layers,        href: "/workspace/larry"     },
+  { id: "larry",     label: "Larry",      icon: Layers,        href: "/workspace/larry"     },
   { id: "settings",  label: "Settings",   icon: Settings,      href: "/workspace/settings"  },
 ];
 
@@ -253,23 +253,6 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, onTogg
       <nav className="shrink-0 px-2 space-y-0.5" aria-label="Main navigation">
         {WORKSPACE_NAV.map(({ id, label, icon: Icon, href }) => {
           const isActive = activeNav === id;
-          // "Ask Larry" opens the chat panel instead of navigating
-          if (id === "larry") {
-            return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => {
-                  onClose?.();
-                  window.dispatchEvent(new CustomEvent("larry:open"));
-                }}
-                className={`pm-nav-item w-full text-left${isActive ? " active" : ""}`}
-              >
-                <Icon size={18} className="shrink-0 icon-md" style={{ color: "var(--brand)" }} />
-                <span style={{ color: "var(--text-1)", fontWeight: 500 }}>{label}</span>
-              </button>
-            );
-          }
           return (
             <Link
               key={id}
