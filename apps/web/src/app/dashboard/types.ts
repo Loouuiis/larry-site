@@ -80,15 +80,26 @@ export interface WorkspaceTask {
 }
 
 
+export interface TimelineMilestone {
+  id: string;
+  title: string;
+  date: string; // ISO date
+}
+
 export interface WorkspaceTimelineTask {
   id: string;
   title: string;
   status: TaskStatus;
   priority: TaskPriority;
   progressPercent: number;
+  startDate: string | null;
+  endDate: string | null;
   dueDate: string | null;
-  riskLevel: string;
+  category: string | null;
   assigneeUserId?: string | null;
+  assigneeName?: string | null;
+  riskLevel: string;
+  milestones?: TimelineMilestone[];
 }
 
 export interface WorkspaceTimeline {
