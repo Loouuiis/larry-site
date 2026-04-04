@@ -5,14 +5,23 @@ export interface ActionTypeTag {
 }
 
 const ACTION_TYPE_MAP: Record<string, ActionTypeTag> = {
-  create_task:       { key: "create_task",       label: "Creates Task",         color: "#6c44f6" },
-  update_task:       { key: "update_task",       label: "Updates Task",         color: "#8b6cf6" },
-  draft_email:       { key: "draft_email",       label: "Drafts Email",         color: "#4f46e5" },
-  draft_document:    { key: "draft_document",    label: "Drafts Document",      color: "#7c3aed" },
-  schedule_meeting:  { key: "schedule_meeting",  label: "Schedules Meeting",    color: "#2563eb" },
-  update_status:     { key: "update_status",     label: "Updates Status",       color: "#0891b2" },
-  send_notification: { key: "send_notification", label: "Sends Notification",   color: "#0d9488" },
-  other:             { key: "other",             label: "Other",                color: "#64748b" },
+  task_create:              { key: "task_create",              label: "Create Task",          color: "#6c44f6" },
+  status_update:            { key: "status_update",            label: "Status Update",        color: "#0891b2" },
+  risk_flag:                { key: "risk_flag",                label: "Risk Flag",            color: "#dc2626" },
+  reminder_send:            { key: "reminder_send",            label: "Reminder",             color: "#f59e0b" },
+  deadline_change:          { key: "deadline_change",          label: "Deadline Change",      color: "#ea580c" },
+  owner_change:             { key: "owner_change",             label: "Owner Change",         color: "#8b5cf6" },
+  scope_change:             { key: "scope_change",             label: "Scope Change",         color: "#7c3aed" },
+  email_draft:              { key: "email_draft",              label: "Email Draft",          color: "#4f46e5" },
+  project_create:           { key: "project_create",           label: "Create Project",       color: "#6c44f6" },
+  collaborator_add:         { key: "collaborator_add",         label: "Add Collaborator",     color: "#2563eb" },
+  collaborator_role_update: { key: "collaborator_role_update", label: "Update Role",          color: "#2563eb" },
+  collaborator_remove:      { key: "collaborator_remove",      label: "Remove Collaborator",  color: "#64748b" },
+  project_note_send:        { key: "project_note_send",        label: "Project Note",         color: "#0d9488" },
+  calendar_event_create:    { key: "calendar_event_create",    label: "Create Event",         color: "#2563eb" },
+  calendar_event_update:    { key: "calendar_event_update",    label: "Update Event",         color: "#2563eb" },
+  slack_message_draft:      { key: "slack_message_draft",      label: "Slack Draft",          color: "#e11d8f" },
+  other:                    { key: "other",                    label: "Other",                color: "#64748b" },
 };
 
 export function getActionTypeTag(actionType: string): ActionTypeTag {

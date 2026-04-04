@@ -804,16 +804,15 @@ async function executeSlackMessageDraft(
   // We reuse the notification system to store the draft as a "slack_draft" notification.
   const rows = await db.queryTenant<{ id: string }>(
     tenantId,
-    `INSERT INTO notifications (tenant_id, user_id, type, title, body, link, project_id)
-     VALUES ($1, $2, 'slack_draft', $3, $4, $5, $6)
+    `INSERT INTO notifications (tenant_id, user_id, channel, subject, body, metadata)
+     VALUES ($1, $2, 'slack_draft', $3, $4, $5::jsonb)
      RETURNING id`,
     [
       tenantId,
       actorUserId,
       `Slack draft: ${channelName}`,
       message.slice(0, 4000),
-      threadTs ? `thread:${threadTs}` : null,
-      projectId,
+      JSON.stringify({ channelName, threadTs, projectId }),
     ]
   );
 
