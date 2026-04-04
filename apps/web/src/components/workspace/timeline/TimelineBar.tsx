@@ -137,7 +137,7 @@ export function TimelineBar({
               className="text-[10px] font-semibold truncate drop-shadow-sm"
               style={{ color: STATUS_COLOURS[task.status].text }}
             >
-              {task.title}
+              {task.title.length > 30 ? task.title.slice(0, 29) + "…" : task.title}
             </span>
           </div>
         )}
@@ -176,7 +176,7 @@ export function TimelineBar({
             opacity: isDimmed ? 0.3 : 1,
           }}
         >
-          {task.title}
+          {task.title.length > 30 ? task.title.slice(0, 29) + "…" : task.title}
         </span>
       )}
     </div>

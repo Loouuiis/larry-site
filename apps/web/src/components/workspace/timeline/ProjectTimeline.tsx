@@ -56,7 +56,14 @@ interface ProjectTimelineProps {
 export function ProjectTimeline({
   projectId, tasks: allTasks, timeline, refresh,
 }: ProjectTimelineProps) {
-  const [zoom, setZoom] = useState<ZoomLevel>("month");
+  // Smart default zoom: pick based on task date span
+  const defaultZoom = useMemo<ZoomLevel>(() => {
+    const { totalDays } = computeTimelineRange(allTasks as WorkspaceTimelineTask[], "month");
+    if (totalDays < 21) return "week";
+    if (totalDays < 120) return "month";
+    return "quarter";
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const [zoom, setZoom] = useState<ZoomLevel>(defaultZoom);
   const [groupBy, setGroupBy] = useState<GroupBy>("phase");
   const [colourBy, setColourBy] = useState<ColourBy>("status");
   const [searchQuery, setSearchQuery] = useState("");
