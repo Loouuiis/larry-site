@@ -25,6 +25,7 @@ import { useProjectActionCentre } from "@/hooks/useProjectActionCentre";
 import { useProjectMemory } from "@/hooks/useProjectMemory";
 import { CollaboratorsPanel } from "./CollaboratorsPanel";
 import { ProjectNotesPanel } from "./ProjectNotesPanel";
+import { ProjectDocumentsPanel } from "./ProjectDocumentsPanel";
 
 async function readJson<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -522,6 +523,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
           <div className="space-y-6">
             <CollaboratorsPanel projectId={projectId} />
             <ProjectNotesPanel projectId={projectId} />
+            <ProjectDocumentsPanel projectId={projectId} />
 
             <div
               style={{

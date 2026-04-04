@@ -406,6 +406,19 @@ These are not optional cleanups; they are part of the implementation strategy:
   - `collaborator_add`, `collaborator_role_update`, `collaborator_remove`, and `project_note_send` were already in `LarryActionTypeEnum`, the NEVER-autoActions list, and the system prompt ACTION TYPES section, so Larry can propose all of these from chat.
   - Re-applied Phase 6 `task_update` changes (lost when Fergus's `818f9f0` pull overwrote uncommitted source files): re-added `"task_update"` to `LarryActionType` union, `TaskUpdatePayload` interface, `executeTaskUpdate()` function with dynamic SET clause and assignee resolution, `APPROVAL_ONLY_ACTION_TYPES` entry, `missingPayloadFields` guard, `executeAction()` dispatcher case, `LarryActionTypeEnum` Zod entry, NEVER-autoActions list entry, and ACTION TYPES documentation.
   - Re-applied Phase 6 governance audit wiring (also lost): re-added `governance_decision` and `governance_rule` columns to `schema.sql`, updated `insertLarryEvent()` with optional 10th `governanceDecision` param writing to those columns, and updated `runAutoActions()` to pair each action with its `AutoExecutionDecision` and pass it to `insertLarryEvent` at the auto-execute insert site.
+- **Phase 8 - Communications, Documents, Templates, And Task Attachments starter slice (completed)**:
+  - Added `"document_create"` and `"document_generate"` to `LarryActionType` union in `packages/shared/src/index.ts`.
+  - Added `DocumentCreatePayload` and `DocumentGeneratePayload` interfaces plus `executeDocumentCreate()` executor in `packages/db/src/larry-executor.ts`. `executeDocumentCreate` inserts into `documents`, optionally attaches to a task via `task_document_attachments`, and enforces project-scope validation. `document_generate` throws in `executeAction` with accept-flow guidance (mirrors `calendar_event_create` pattern).
+  - Added both types to `APPROVAL_ONLY_ACTION_TYPES` and `missingPayloadFields` guards.
+  - Added `"document_create"` and `"document_generate"` to `LarryActionTypeEnum` in `packages/ai/src/intelligence.ts`, added to NEVER-autoActions list, ACTION CENTRE trigger conditions, and ACTION TYPES payload documentation.
+  - Wired `document_generate` in the `/events/:id/accept` handler in `apps/api/src/routes/v1/larry.ts`: loads project/task/meeting data, calls the appropriate generator function (`generateProjectStatusDocx`, `generateTaskExportXlsx`, `generateProjectBriefPptx`), stores the result as a `documents` record, optionally attaches to a task. Generator is imported dynamically to avoid pulling `docx`/`exceljs` into the test module graph.
+  - Added `emailDraftRoutes` (`GET /v1/email-drafts`) to `apps/api/src/routes/v1/documents.ts` with project-scope auth, membership join for non-admin reads, and state/projectId/limit filtering. Registered at `/email-drafts` prefix in `apps/api/src/routes/v1/index.ts`.
+  - Added workspace proxy `GET /api/workspace/email-drafts` in `apps/web/src/app/api/workspace/email-drafts/route.ts`.
+  - Created `ProjectDocumentsPanel.tsx` in `apps/web/src/app/workspace/projects/[projectId]/` showing project documents with download links for generated files and expandable email draft previews. Wired into `ProjectWorkspaceView.tsx`.
+  - Replaced the meeting-focused `DocumentsPageClient.tsx` in `apps/web/src/app/workspace/documents/` with a tabbed real-documents view (Documents tab from `documents` table, Email Drafts tab from `email_outbound_drafts`), with search, project filter, and download support.
+  - Added `apps/api/tests/__mocks__/docx.ts` and `exceljs.ts` stubs plus vitest alias config so document-generator tests don't fail due to missing binary packages.
+  - Added `apps/api/tests/phase-8-documents-actions.test.ts` with 10 tests covering: action type recognition, `executeDocumentCreate` behavior (insert, task cross-project guard, missing-field error), `document_generate` accept-flow enforcement, `emailDraftRoutes` (list, projectId filter, 404 on missing project), approval-only policy, and intelligence prompt regression.
+  - All 36 test files / 202 tests passing.
 - **Phase 1 - Legacy Dashboard Retirement And Snapshot Fence (completed)**:
   - Replaced legacy `GET /api/workspace/snapshot` behavior with an explicit `410 Gone` retired-contract payload that points callers to canonical scoped workspace routes.
   - Added a `/dashboard/* -> /workspace` catch-all redirect route so legacy dashboard entry paths no longer expose runtime behavior.
@@ -475,15 +488,16 @@ None. Phase 6 starter slice is fully closed as of 2026-04-02.
 
 None. Phase 7 starter slice is fully closed as of 2026-04-02.
 
+### Still To Do For Phase 8
+
+None. Phase 8 starter slice is fully closed as of 2026-04-04.
+
 ### Recommended Next Slice
 
 - Closed in this update:
-  - **Phase 1 - Legacy Dashboard Retirement And Snapshot Fence** (completed).
-  - **Phase 5 - Unified Project Intake** starter slice (completed).
-  - **Phase 6 - Clarification-First Chat, Task Management, And Governed Auto-Execution** starter slice (completed).
-  - **Phase 7 - Project Collaboration, Shared Larry, And Notes** starter slice (completed).
+  - **Phase 8 - Communications, Documents, Templates, And Task Attachments** starter slice (completed).
 - Candidate milestone for the next update (not opened in this change):
-  - **Phase 8 - Communications, Documents, Templates, And Task Attachments** starter slice.
+  - **Phase 9 - Calendar Context And Global Larry** starter slice.
 
 ---
 

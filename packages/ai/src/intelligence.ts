@@ -48,6 +48,8 @@ const LarryActionTypeEnum = z.enum([
   "calendar_event_create",
   "calendar_event_update",
   "slack_message_draft",
+  "document_create",
+  "document_generate",
 ]);
 
 const LarryActionSchema = z.object({
@@ -114,6 +116,8 @@ NEVER put these in autoActions — they must always go in suggestedActions:
 - calendar_event_create
 - calendar_event_update
 - slack_message_draft
+- document_create
+- document_generate
 - Any action that deletes data
 - Any action involving external integrations (email, Slack, calendar) unless the user explicitly triggered it
 
@@ -131,6 +135,8 @@ Include in suggestedActions when:
 - A shared or personal project note should be drafted/sent to a collaborator
 - A calendar event should be created or updated
 - A Slack message needs to be drafted for a channel or thread
+- A letter, report, or other document should be drafted as a project asset
+- A .docx or .xlsx template skeleton should be generated for a project or task
 
 Keep the Action Centre clean — only suggest when there is a specific, concrete signal.
 Do not suggest the same thing that is already pending approval (see ALREADY PENDING list).
@@ -210,6 +216,14 @@ Each action in autoActions and suggestedActions must have exactly these fields:
 
 "slack_message_draft" [ACTION CENTRE ONLY]
   payload: { "channelName": string (Slack channel name, e.g. "#engineering"), "message": string (the draft message content), "threadTs": string|null (thread timestamp to reply to, or null for new message) }
+
+"document_create" [ACTION CENTRE ONLY]
+  Use when the user asks Larry to draft a letter, report, memo, or any text document as a project asset.
+  payload: { "title": string, "content": string (the full document body, plain text or markdown), "docType": "letter"|"report"|"memo"|"brief"|"other", "taskId": string|null (attach to task if relevant) }
+
+"document_generate" [ACTION CENTRE ONLY]
+  Use when the user asks Larry to generate a .docx project status report, .xlsx task export, or .pptx project brief from current project data.
+  payload: { "title": string, "templateType": "project_status"|"task_export"|"project_brief", "taskId": string|null (attach to task if relevant) }
 
 ---
 

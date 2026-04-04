@@ -167,6 +167,19 @@ interface SlackMessageDraftPayload {
   threadTs: string | null;
 }
 
+interface DocumentCreatePayload {
+  title: string;
+  content: string;
+  docType: string;
+  taskId?: string | null;
+}
+
+interface DocumentGeneratePayload {
+  title: string;
+  templateType: "project_status" | "task_export" | "project_brief";
+  taskId?: string | null;
+}
+
 interface TenantPolicySettings {
   autoExecuteLowImpact: boolean;
 }
@@ -192,6 +205,8 @@ const APPROVAL_ONLY_ACTION_TYPES = new Set<LarryActionType>([
   "calendar_event_create",
   "calendar_event_update",
   "slack_message_draft",
+  "document_create",
+  "document_generate",
 ]);
 
 const DESTRUCTIVE_KEYWORD_PATTERN = /\b(delete|remove|drop|destroy|terminate|cancel)\b/i;
@@ -280,6 +295,10 @@ function missingPayloadFields(action: LarryAction): string[] {
     }
     case "slack_message_draft":
       return ["channelName", "message"].filter((field) => !hasPayloadValue(action.payload, field));
+    case "document_create":
+      return ["title", "content", "docType"].filter((field) => !hasPayloadValue(action.payload, field));
+    case "document_generate":
+      return ["title", "templateType"].filter((field) => !hasPayloadValue(action.payload, field));
     default:
       return [];
   }
@@ -914,6 +933,71 @@ async function executeSlackMessageDraft(
   };
 }
 
+export async function executeDocumentCreate(
+  db: Db,
+  tenantId: string,
+  projectId: string,
+  payload: DocumentCreatePayload,
+  actorUserId?: string | null
+): Promise<Record<string, unknown>> {
+  const title = normalizeContextValue(payload.title);
+  const content = normalizeContextValue(payload.content);
+  const docType = normalizeContextValue(payload.docType);
+
+  if (!title || !content || !docType) {
+    throw new Error("document_create requires title, content, and docType.");
+  }
+
+  const taskId = normalizeContextValue(payload.taskId);
+
+  if (taskId) {
+    const taskRows = await db.queryTenant<{ id: string; project_id: string }>(
+      tenantId,
+      `SELECT id, project_id FROM tasks WHERE tenant_id = $1 AND id = $2 LIMIT 1`,
+      [tenantId, taskId]
+    );
+    if (!taskRows[0]) {
+      throw new Error(`document_create: task ${taskId} not found.`);
+    }
+    if (taskRows[0].project_id !== projectId) {
+      throw new Error("document_create: task belongs to a different project.");
+    }
+  }
+
+  const docRows = await db.queryTenant<Record<string, unknown>>(
+    tenantId,
+    `INSERT INTO documents
+       (tenant_id, project_id, title, content, doc_type, source_kind, version, created_by_user_id)
+     VALUES ($1, $2, $3, $4, $5, 'direct_chat', 1, $6)
+     RETURNING id, project_id as "projectId", title, doc_type as "docType",
+               source_kind as "sourceKind", version, created_by_user_id as "createdByUserId",
+               created_at as "createdAt", updated_at as "updatedAt"`,
+    [tenantId, projectId, title, content, docType, actorUserId ?? null]
+  );
+  const document = docRows[0];
+
+  if (taskId) {
+    await db.queryTenant(
+      tenantId,
+      `INSERT INTO task_document_attachments
+         (tenant_id, task_id, document_id, attached_by_user_id)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (tenant_id, task_id, document_id) DO NOTHING`,
+      [tenantId, taskId, document.id, actorUserId ?? null]
+    );
+  }
+
+  await logActivity(db, tenantId, projectId, null, {
+    action: "document_create",
+    documentId: document.id,
+    docType,
+    taskId,
+    triggeredBy: "larry",
+  });
+
+  return document;
+}
+
 // ── Dispatch ──────────────────────────────────────────────────────────────────
 
 /**
@@ -1293,6 +1377,20 @@ export async function executeAction(
 
     case "slack_message_draft":
       return executeSlackMessageDraft(db, tenantId, projectId, payload, actorUserId ?? null);
+
+    case "document_create":
+      return executeDocumentCreate(
+        db,
+        tenantId,
+        projectId,
+        payload as unknown as DocumentCreatePayload,
+        actorUserId ?? null
+      );
+
+    case "document_generate":
+      throw new Error(
+        "document_generate is approval-governed and must execute via the API accept flow."
+      );
 
     default:
       throw new Error(`executeAction: unknown action type "${actionType as string}"`);

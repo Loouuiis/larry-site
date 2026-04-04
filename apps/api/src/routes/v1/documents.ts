@@ -580,3 +580,91 @@ export const documentRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 };
+
+// ── Email Drafts ──────────────────────────────────────────────────────────────
+
+const ListEmailDraftsQuerySchema = z.object({
+  projectId: z.string().uuid().optional(),
+  state: z.enum(["draft", "sent", "archived"]).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(30),
+});
+
+type EmailDraftRow = {
+  id: string;
+  projectId: string | null;
+  recipient: string;
+  subject: string;
+  body: string;
+  state: string;
+  metadata: Record<string, unknown>;
+  createdByUserId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const emailDraftRoutes: FastifyPluginAsync = async (fastify) => {
+  fastify.get(
+    "/",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
+    async (request) => {
+      const query = ListEmailDraftsQuerySchema.parse(request.query ?? {});
+      const tenantId = request.user.tenantId;
+      const actorUserId = request.user.userId;
+
+      if (query.projectId) {
+        const access = await getProjectMembershipAccess({
+          db: fastify.db,
+          tenantId,
+          projectId: query.projectId,
+          userId: actorUserId,
+          tenantRole: request.user.role,
+        });
+        if (!access.projectExists) {
+          throw fastify.httpErrors.notFound("Project not found.");
+        }
+        if (!access.canRead) {
+          throw fastify.httpErrors.forbidden("Project access denied.");
+        }
+      }
+
+      const values: unknown[] = [tenantId];
+      let sql = `SELECT eod.id,
+                        eod.project_id as "projectId",
+                        eod.recipient,
+                        eod.subject,
+                        eod.body,
+                        eod.state,
+                        COALESCE(eod.metadata, '{}'::jsonb) as metadata,
+                        eod.created_by_user_id as "createdByUserId",
+                        eod.created_at as "createdAt",
+                        eod.updated_at as "updatedAt"
+                   FROM email_outbound_drafts eod`;
+
+      if (request.user.role !== "admin" && query.projectId) {
+        values.push(actorUserId);
+        sql += ` JOIN project_memberships pm
+                   ON pm.tenant_id = eod.tenant_id
+                  AND pm.project_id = eod.project_id
+                  AND pm.user_id = $2`;
+      }
+
+      sql += ` WHERE eod.tenant_id = $1`;
+
+      if (query.projectId) {
+        values.push(query.projectId);
+        sql += ` AND eod.project_id = $${values.length}`;
+      }
+
+      if (query.state) {
+        values.push(query.state);
+        sql += ` AND eod.state = $${values.length}`;
+      }
+
+      values.push(query.limit);
+      sql += ` ORDER BY eod.created_at DESC LIMIT $${values.length}`;
+
+      const rows = await fastify.db.queryTenant<EmailDraftRow>(tenantId, sql, values);
+      return { items: rows };
+    }
+  );
+};

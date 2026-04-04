@@ -14,6 +14,7 @@ import {
   listProjectMemoryEntries,
   runAutoActions,
   storeSuggestions,
+  type Db,
 } from "@larry/db";
 import { getApiEnv } from "@larry/config";
 import type {
@@ -455,6 +456,141 @@ function isCalendarActionType(
   actionType: string
 ): actionType is "calendar_event_create" | "calendar_event_update" {
   return actionType === "calendar_event_create" || actionType === "calendar_event_update";
+}
+
+const TEMPLATE_FORMAT: Record<string, string> = {
+  project_status: "docx",
+  task_export: "xlsx",
+  project_brief: "pptx",
+};
+
+const MIME_TYPE_BY_FORMAT: Record<string, string> = {
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+};
+
+function safeFilePart(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
+}
+
+async function executeDocumentGenerate(input: {
+  db: Db;
+  tenantId: string;
+  projectId: string;
+  payload: Record<string, unknown>;
+  actorUserId: string;
+  logger: { warn: (obj: unknown, msg: string) => void };
+}): Promise<Record<string, unknown>> {
+  const { db, tenantId, projectId, payload, actorUserId } = input;
+
+  const rawTemplateType = typeof payload.templateType === "string" ? payload.templateType : null;
+  const templateType = rawTemplateType as "project_status" | "task_export" | "project_brief" | null;
+  const title = typeof payload.title === "string" ? payload.title.trim() : null;
+  const taskId = typeof payload.taskId === "string" ? payload.taskId.trim() : null;
+
+  if (!templateType || !TEMPLATE_FORMAT[templateType]) {
+    throw new Error(`document_generate: invalid templateType "${rawTemplateType ?? ""}".`);
+  }
+  if (!title) {
+    throw new Error("document_generate: title is required.");
+  }
+
+  const format = TEMPLATE_FORMAT[templateType];
+
+  const [projectRows, taskRows, meetingRows] = await Promise.all([
+    db.queryTenant<{ id: string; name: string; description: string | null; status: string; riskLevel: string }>(
+      tenantId,
+      `SELECT id, name, description, status, risk_level as "riskLevel"
+         FROM projects WHERE tenant_id = $1 AND id = $2 LIMIT 1`,
+      [tenantId, projectId]
+    ),
+    db.queryTenant<{ title: string; status: string; priority: string; assignee: string | null; dueDate: string | null; progressPercent: number; riskLevel: string }>(
+      tenantId,
+      `SELECT t.title, t.status::text, t.priority::text, u.display_name as assignee,
+              t.due_date::text as "dueDate", t.progress_percent as "progressPercent",
+              t.risk_level::text as "riskLevel"
+         FROM tasks t
+    LEFT JOIN users u ON u.id = t.assignee_user_id
+        WHERE t.tenant_id = $1 AND t.project_id = $2
+     ORDER BY t.updated_at DESC LIMIT 250`,
+      [tenantId, projectId]
+    ),
+    db.queryTenant<{ title: string | null; summary: string | null; createdAt: string }>(
+      tenantId,
+      `SELECT title, summary, created_at as "createdAt"
+         FROM meeting_notes WHERE tenant_id = $1 AND project_id = $2
+      ORDER BY created_at DESC LIMIT 12`,
+      [tenantId, projectId]
+    ),
+  ]);
+
+  const project = projectRows[0];
+  if (!project) {
+    throw new Error(`document_generate: project ${projectId} not found.`);
+  }
+
+  const {
+    generateProjectStatusDocx,
+    generateTaskExportXlsx,
+    generateProjectBriefPptx,
+  } = await import("../../services/document-generator.js");
+
+  let fileBuffer: Buffer;
+  if (templateType === "project_status") {
+    fileBuffer = await generateProjectStatusDocx({ project, tasks: taskRows, meetings: meetingRows });
+  } else if (templateType === "task_export") {
+    fileBuffer = await generateTaskExportXlsx({ tasks: taskRows });
+  } else {
+    const kpis = {
+      totalTasks: taskRows.length,
+      completedTasks: taskRows.filter((t) => t.status === "completed").length,
+      blockedTasks: taskRows.filter((t) => t.status === "blocked").length,
+      inProgressTasks: taskRows.filter((t) => t.status === "in_progress").length,
+    };
+    fileBuffer = await generateProjectBriefPptx({ project, tasks: taskRows, kpis });
+  }
+
+  const generatedAt = new Date().toISOString();
+  const fileName = `${safeFilePart(title)}.${format}`;
+  const metadata = {
+    generated: true,
+    binaryEncoding: "base64",
+    templateType,
+    format,
+    generatedAt,
+    mimeType: MIME_TYPE_BY_FORMAT[format],
+    fileName,
+    byteLength: fileBuffer.byteLength,
+  };
+
+  const docRows = await db.queryTenant<Record<string, unknown>>(
+    tenantId,
+    `INSERT INTO documents
+       (tenant_id, project_id, title, content, doc_type, source_kind, version, metadata, created_by_user_id)
+     VALUES ($1, $2, $3, $4, $5, 'template_generation', 1, $6::jsonb, $7)
+     RETURNING id, project_id as "projectId", title, doc_type as "docType",
+               source_kind as "sourceKind", version, metadata,
+               created_by_user_id as "createdByUserId",
+               created_at as "createdAt", updated_at as "updatedAt"`,
+    [tenantId, projectId, title, fileBuffer.toString("base64"), format, JSON.stringify(metadata), actorUserId]
+  );
+  const document = docRows[0];
+
+  if (taskId) {
+    await db.queryTenant(
+      tenantId,
+      `INSERT INTO task_document_attachments
+         (tenant_id, task_id, document_id, attached_by_user_id)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (tenant_id, task_id, document_id) DO NOTHING`,
+      [tenantId, taskId, document.id, actorUserId]
+    ).catch((err: unknown) => {
+      input.logger.warn({ err, taskId, documentId: document.id }, "document_generate: task attachment failed, continuing");
+    });
+  }
+
+  return document;
 }
 
 export const larryRoutes: FastifyPluginAsync = async (fastify) => {
@@ -1293,7 +1429,16 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
 
       let entity: unknown;
       try {
-        if (isCalendarActionType(event.actionType)) {
+        if (event.actionType === "document_generate") {
+          entity = await executeDocumentGenerate({
+            db: fastify.db,
+            tenantId,
+            projectId: event.projectId,
+            payload: event.payload,
+            actorUserId,
+            logger: request.log,
+          });
+        } else if (isCalendarActionType(event.actionType)) {
           entity = await executeCalendarAction({
             tenantId,
             projectId: event.projectId,
