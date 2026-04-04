@@ -570,17 +570,83 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                           </span>
                         )}
 
-                        {/* priority badge */}
-                        <span
-                          className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
-                          style={{
-                            color: pri.fg,
-                            background: pri.bg,
-                            flexShrink: 0,
-                          }}
-                        >
-                          {capitalize(task.priority)}
-                        </span>
+                        {/* priority badge — click for dropdown */}
+                        <div className="relative" style={{ flexShrink: 0 }}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenDropdown(
+                                openDropdown?.taskId === task.id && openDropdown?.field === "priority"
+                                  ? null
+                                  : { taskId: task.id, field: "priority" }
+                              );
+                            }}
+                            className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
+                            style={{
+                              color: pri.fg,
+                              background: pri.bg,
+                              cursor: "pointer",
+                              border: "none",
+                              transition: "opacity 120ms ease",
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.8"; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.opacity = "1"; }}
+                          >
+                            {capitalize(task.priority)}
+                          </button>
+
+                          {openDropdown?.taskId === task.id && openDropdown?.field === "priority" && (
+                            <>
+                              <div
+                                className="fixed inset-0 z-40"
+                                onClick={() => setOpenDropdown(null)}
+                              />
+                              <div
+                                className="absolute right-0 top-full z-50 mt-1 overflow-hidden"
+                                style={{
+                                  minWidth: 130,
+                                  borderRadius: "var(--radius-dropdown, 8px)",
+                                  border: "1px solid var(--border)",
+                                  background: "var(--surface)",
+                                  boxShadow: "var(--shadow-2)",
+                                }}
+                              >
+                                {(["low", "medium", "high", "critical"] as const).map((p) => {
+                                  const pc = PRIORITY_COLOURS[p];
+                                  return (
+                                    <button
+                                      key={p}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setOpenDropdown(null);
+                                        if (p !== task.priority) {
+                                          void patchTask(task.id, { priority: p });
+                                        }
+                                      }}
+                                      className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12px] transition-colors"
+                                      style={{
+                                        color: "var(--text-1)",
+                                        background: p === task.priority ? "var(--surface-2)" : "transparent",
+                                        cursor: "pointer",
+                                        border: "none",
+                                        borderBlockEnd: "1px solid var(--border)",
+                                      }}
+                                      onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-2)"; }}
+                                      onMouseLeave={(e) => { e.currentTarget.style.background = p === task.priority ? "var(--surface-2)" : ""; }}
+                                    >
+                                      <span
+                                        className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
+                                        style={{ color: pc.fg, background: pc.bg }}
+                                      >
+                                        {capitalize(p)}
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </>
+                          )}
+                        </div>
 
                         {/* assignee */}
                         <span
