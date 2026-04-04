@@ -437,13 +437,59 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                           }}
                         />
 
-                        {/* title */}
-                        <span
-                          className="flex-1 truncate text-[13px]"
-                          style={{ color: "var(--text-1)" }}
-                        >
-                          {task.title}
-                        </span>
+                        {/* title — click to edit */}
+                        {editingTitle === task.id ? (
+                          <input
+                            type="text"
+                            value={editTitleValue}
+                            onChange={(e) => setEditTitleValue(e.target.value)}
+                            onBlur={() => {
+                              if (editTitleValue.trim() && editTitleValue.trim() !== task.title) {
+                                void patchTask(task.id, { title: editTitleValue.trim() });
+                              }
+                              setEditingTitle(null);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                (e.target as HTMLInputElement).blur();
+                              }
+                              if (e.key === "Escape") {
+                                setEditingTitle(null);
+                              }
+                            }}
+                            autoFocus
+                            className="flex-1 text-[13px] outline-none"
+                            style={{
+                              color: "var(--text-1)",
+                              background: "var(--surface)",
+                              border: "1px solid var(--brand)",
+                              borderRadius: 4,
+                              padding: "2px 6px",
+                              minWidth: 0,
+                            }}
+                          />
+                        ) : (
+                          <span
+                            className="flex-1 truncate text-[13px]"
+                            style={{
+                              color: "var(--text-1)",
+                              cursor: "pointer",
+                              borderRadius: 4,
+                              padding: "2px 6px",
+                              transition: "background 120ms ease",
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingTitle(task.id);
+                              setEditTitleValue(task.title);
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-2)"; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = ""; }}
+                          >
+                            {task.title}
+                          </span>
+                        )}
 
                         {/* priority badge */}
                         <span
