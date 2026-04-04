@@ -193,21 +193,19 @@ export function ProjectDashboard({ projectId }: { projectId: string }) {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="border-b border-[var(--pm-border)] bg-[var(--pm-surface)] px-8 py-6 flex items-center justify-between print:hidden">
-        <h1 className="text-[22px] font-semibold text-[var(--pm-text)]">Project Dashboard</h1>
-        <button
-          type="button"
-          onClick={handleExport}
-          disabled={exporting || loading}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[13px] font-medium transition-colors disabled:opacity-50"
-          style={{ borderColor: "var(--border, var(--pm-border))", color: "var(--text-2, var(--pm-text-secondary))" }}
-        >
-          <Download size={14} />
-          {exporting ? "Exporting..." : "Export PDF"}
-        </button>
-      </div>
-
-      <div ref={dashboardRef} className="mx-auto max-w-5xl px-8 py-6 space-y-6">
+      <div ref={dashboardRef} className="px-8 py-6 space-y-6">
+        <div className="flex justify-end print:hidden">
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={exporting || loading}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-[13px] font-medium transition-colors disabled:opacity-50"
+            style={{ borderColor: "var(--border, var(--pm-border))", color: "var(--text-2, var(--pm-text-secondary))" }}
+          >
+            <Download size={14} />
+            {exporting ? "Exporting..." : "Export PDF"}
+          </button>
+        </div>
         {/* KPI row */}
         <div className="grid grid-cols-3 gap-4">
           {[
@@ -245,7 +243,6 @@ export function ProjectDashboard({ projectId }: { projectId: string }) {
             <p className="text-[14px] text-[var(--pm-text-secondary)] leading-relaxed">{outcomes.narrative}</p>
           </div>
         )}
-      </div>
     </div>
   );
 }
