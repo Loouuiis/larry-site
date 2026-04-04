@@ -1295,7 +1295,7 @@ export async function runAutoActions(
     }
 
     try {
-      await executeAction(
+      const entity = await executeAction(
         db,
         tenantId,
         projectId,
@@ -1311,6 +1311,43 @@ export async function runAutoActions(
          WHERE tenant_id = $1 AND id = $2`,
         [tenantId, eventId]
       );
+
+      if (action.selfExecutable && action.executionOutput) {
+        const [doc] = await db.queryTenant<{ id: string }>(
+          tenantId,
+          `INSERT INTO larry_documents (tenant_id, project_id, larry_event_id, title, doc_type, content, email_recipient, email_subject, state)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'draft')
+           RETURNING id`,
+          [
+            tenantId,
+            projectId,
+            eventId,
+            action.executionOutput.title,
+            action.executionOutput.docType,
+            action.executionOutput.content,
+            action.executionOutput.emailRecipient ?? null,
+            action.executionOutput.emailSubject ?? null,
+          ],
+        );
+
+        if (action.type === "task_create" && entity && typeof entity === "object" && "id" in entity) {
+          const taskId = (entity as { id: string }).id;
+          await db.queryTenant(
+            tenantId,
+            `UPDATE tasks
+             SET completed_by_larry = TRUE,
+                 larry_document_id = $2,
+                 assigned_to_larry = TRUE,
+                 status = 'completed',
+                 completed_at = NOW(),
+                 progress_percent = 100,
+                 updated_at = NOW()
+             WHERE tenant_id = $1 AND id = $3`,
+            [tenantId, doc.id, taskId],
+          );
+        }
+      }
+
       eventIds.push(eventId);
       executedCount++;
     } catch (err) {
@@ -1630,11 +1667,20 @@ export async function storeSuggestions(
   for (const action of actions) {
     const key = `${action.type}||${action.displayText.toLowerCase()}`;
     if (existingKeys.has(key)) continue; // already pending — skip
+
+    const eventPayload = {
+      ...action.payload,
+      _selfExecutable: action.selfExecutable ?? false,
+      _offerExecution: action.offerExecution ?? false,
+      _executionOutput: action.executionOutput ?? null,
+    };
+    const actionWithMergedPayload: LarryAction = { ...action, payload: eventPayload };
+
     const eventId = await insertLarryEvent(
       db,
       tenantId,
       projectId,
-      action,
+      actionWithMergedPayload,
       "suggested",
       triggeredBy,
       chatMessage,
