@@ -7,7 +7,7 @@ import {
   Clock3,
   MessageSquare,
   Plus,
-  Sparkles,
+  Layers,
 } from "lucide-react";
 import type { WorkspaceLarryEvent } from "@/app/dashboard/types";
 import {
@@ -742,7 +742,7 @@ export default function ChatsPage() {
                       color: "var(--cta)",
                     }}
                   >
-                    <Sparkles size={18} />
+                    <Layers size={18} />
                   </div>
                   <p
                     style={{
@@ -905,7 +905,7 @@ export default function ChatsPage() {
                   color: "var(--brand)",
                 }}
               >
-                <Sparkles size={15} />
+                <Layers size={15} />
               </div>
               <div style={{ minWidth: 0, flex: 1 }}>
                 {/* Project name chip */}
@@ -971,7 +971,7 @@ export default function ChatsPage() {
                         color: "var(--brand)",
                       }}
                     >
-                      <Sparkles size={24} />
+                      <Layers size={24} />
                     </div>
                     <p
                       style={{
@@ -1087,7 +1087,7 @@ export default function ChatsPage() {
                           height: "34px",
                         }}
                       >
-                        <Sparkles size={13} />
+                        <Layers size={13} />
                         {busy ? "Sending..." : "Send to Larry"}
                       </button>
                     </div>

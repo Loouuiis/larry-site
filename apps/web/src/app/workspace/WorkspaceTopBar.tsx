@@ -57,7 +57,7 @@ function Breadcrumb({ workspaceName }: { workspaceName: string }) {
       {parts.map((part, i) => (
         <span key={i} className="flex items-center gap-1 min-w-0">
           {i > 0 && (
-            <span className="text-[13px] select-none" style={{ color: "#e2d6fc" }}>
+            <span className="text-[13px] select-none" style={{ color: "#f0edfa" }}>
               /
             </span>
           )}

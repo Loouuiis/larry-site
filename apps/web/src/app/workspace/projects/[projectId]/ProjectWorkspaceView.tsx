@@ -13,13 +13,12 @@ import {
   CircleAlert,
   FolderKanban,
   MessageSquare,
-  Sparkles,
+  Layers,
   LayoutList,
   ListChecks,
   FileText,
   Users,
   Settings,
-  Layers,
   Search,
   Star,
 } from "lucide-react";
@@ -1378,7 +1377,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
                 className="inline-flex h-9 items-center gap-2 rounded-full px-4 text-[13px] font-semibold text-white"
                 style={{ background: "var(--cta)" }}
               >
-                <Sparkles size={14} />
+                <Layers size={14} />
                 Ask Larry
               </button>
               <Link
@@ -1976,7 +1975,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
                       className="mt-4 inline-flex h-10 items-center gap-2 rounded-full px-4 text-[13px] font-semibold text-white"
                       style={{ background: "var(--cta)" }}
                     >
-                      <Sparkles size={14} />
+                      <Layers size={14} />
                       Start project chat
                     </button>
                   </div>

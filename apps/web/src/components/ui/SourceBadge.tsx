@@ -45,10 +45,14 @@ export function SourceBadge({ source }: { source: TaskSource }) {
   const cfg = SOURCE_CFG[source];
   return (
     <span
-      className={[
-        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium",
-        cfg.pill,
-      ].join(" ")}
+      className="inline-flex items-center gap-1 font-medium"
+      style={{
+        fontSize: 11,
+        color: "#8b8fa8",
+        background: "#fafaff",
+        padding: "2px 7px",
+        borderRadius: 4,
+      }}
     >
       {cfg.icon}
       {cfg.label}

@@ -282,7 +282,7 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
                 height: "36px",
                 padding: "0 16px",
                 borderRadius: "var(--radius-btn)",
-                background: "#e2d6fc",
+                background: "#f0edfa",
                 color: "#6c44f6",
               }}
             >

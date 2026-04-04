@@ -80,7 +80,7 @@ export function NotificationBell({ count, onCountChange }: NotificationBellProps
       >
         <Bell size={20} />
         {count > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-0.5 text-[10px] font-bold text-white">
+          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#6c44f6] px-0.5 text-[10px] font-bold text-white">
             {count > 99 ? "99+" : count}
           </span>
         )}

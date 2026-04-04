@@ -19,7 +19,7 @@ function StepDots({ current, total }: { current: number; total: number }) {
           className="h-2 rounded-full transition-all duration-300"
           style={{
             width: i === current ? 24 : 8,
-            background: i === current ? "var(--brand)" : i < current ? "var(--brand-soft, #e2d6fc)" : "var(--border)",
+            background: i === current ? "var(--brand)" : i < current ? "var(--brand-soft, #f0edfa)" : "var(--border)",
           }}
         />
       ))}
@@ -59,7 +59,7 @@ function TileSelector({
             className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-[13px] font-medium transition-all duration-150"
             style={{
               borderColor: isSelected ? "var(--brand)" : "var(--border)",
-              background: isSelected ? "var(--brand-soft, #e2d6fc)" : "var(--surface)",
+              background: isSelected ? "var(--brand-soft, #f0edfa)" : "var(--surface)",
               color: isSelected ? "var(--brand)" : "var(--text-2)",
               opacity: isDisabled ? 0.5 : 1,
               cursor: isDisabled ? "not-allowed" : "pointer",
@@ -588,7 +588,7 @@ export function SignupWizard() {
           <div className="space-y-5 text-center">
             <div
               className="mx-auto flex h-16 w-16 items-center justify-center rounded-full"
-              style={{ background: "var(--brand-soft, #e2d6fc)" }}
+              style={{ background: "var(--brand-soft, #f0edfa)" }}
             >
               <Check size={28} style={{ color: "var(--brand)" }} />
             </div>

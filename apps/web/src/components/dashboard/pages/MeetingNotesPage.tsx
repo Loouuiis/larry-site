@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Calendar, Clock, Users, Upload, ChevronRight,
   Mail, CalendarPlus, CheckSquare, AlertTriangle,
-  Check, RefreshCw, Mic, X, FileText, Sparkles,
+  Check, RefreshCw, Mic, X, FileText, Layers,
 } from "lucide-react";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
@@ -323,7 +323,7 @@ function MeetingDetail({ meeting, onClose }: { meeting: Meeting; onClose: () => 
         {/* AI badge */}
         <div className="flex shrink-0 items-center gap-2">
           <span className="hidden sm:flex items-center gap-1.5 rounded-lg bg-[var(--color-brand)]/5 border border-[var(--color-brand)]/12 px-2.5 py-1.5 text-[10px] font-medium text-[var(--color-brand)]">
-            <Sparkles size={10} />
+            <Layers size={10} />
             AI Processed
           </span>
           <button onClick={onClose} className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-disabled)] hover:bg-[var(--surface-2)] hover:text-[var(--text-2)] transition-colors">
@@ -394,7 +394,7 @@ function MeetingDetail({ meeting, onClose }: { meeting: Meeting; onClose: () => 
             {/* AI Summary */}
             <motion.div variants={item}>
               <div className="mb-2 flex items-center gap-1.5">
-                <Sparkles size={11} className="text-[var(--color-brand)]" />
+                <Layers size={11} className="text-[var(--color-brand)]" />
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-disabled)]">AI Summary</p>
               </div>
               <p className="text-xs leading-relaxed text-[var(--text-2)] bg-[var(--color-brand)]/4 rounded-xl border border-[var(--color-brand)]/10 px-4 py-3">
@@ -467,7 +467,7 @@ function MeetingDetail({ meeting, onClose }: { meeting: Meeting; onClose: () => 
             {/* Suggested actions */}
             <motion.div variants={item}>
               <div className="mb-3 flex items-center gap-1.5">
-                <Sparkles size={11} className="text-[var(--color-brand)]" />
+                <Layers size={11} className="text-[var(--color-brand)]" />
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-[var(--text-disabled)]">Suggested Actions</p>
               </div>
               <div className="space-y-2">

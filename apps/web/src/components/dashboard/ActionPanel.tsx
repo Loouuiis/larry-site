@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Mail, Calendar, Zap, Bell, Check, ChevronRight, Sparkles } from "lucide-react";
+import { X, Mail, Calendar, Zap, Bell, Check, ChevronRight, Layers } from "lucide-react";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -281,7 +281,7 @@ export function ActionPanel({ onClose }: ActionPanelProps) {
               Action Tab
             </p>
             <p className="text-[10px] text-[var(--text-disabled)] flex items-center gap-1">
-              <Sparkles size={9} className="text-[var(--color-brand)]/60" />
+              <Layers size={9} className="text-[var(--color-brand)]/60" />
               {items.length > 0
                 ? `Larry flagged ${items.length} item${items.length !== 1 ? "s" : ""} for your review`
                 : "All actions resolved"}

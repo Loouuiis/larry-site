@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, CalendarRange, Check, FileText, Loader2, MessageSquare, Sparkles, Upload } from "lucide-react";
+import { ArrowRight, CalendarRange, Check, FileText, Loader2, MessageSquare, Layers, Upload } from "lucide-react";
 import { triggerBoundedWorkspaceRefresh } from "@/app/workspace/refresh";
 
 type IntakeMode = "manual" | "chat" | "meeting" | "import";
@@ -153,7 +153,7 @@ async function finalizeIntakeDraft(draftId: string): Promise<IntakeDraft> {
   return data.draft;
 }
 
-const MODE_META: Record<IntakeMode, { label: string; title: string; description: string; icon: typeof Sparkles }> = {
+const MODE_META: Record<IntakeMode, { label: string; title: string; description: string; icon: typeof Layers }> = {
   manual: {
     label: "Manual",
     title: "Create a project directly",
@@ -739,7 +739,7 @@ export function WorkspaceProjectIntake() {
                       className="inline-flex h-11 items-center gap-2 rounded-full px-5 text-[14px] font-semibold text-white"
                       style={{ background: "var(--cta)", opacity: chatBusy || chatInput.trim().length < 2 ? 0.7 : 1 }}
                     >
-                      {chatBusy ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                      {chatBusy ? <Loader2 size={16} className="animate-spin" /> : <Layers size={16} />}
                       {chatQuestionIndex === CHAT_QUESTIONS.length - 1 ? "Generate bootstrap preview" : "Next answer"}
                     </button>
                   </div>
@@ -1019,7 +1019,7 @@ export function WorkspaceProjectIntake() {
                           : 1,
                     }}
                   >
-                    {meetingBusy ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                    {meetingBusy ? <Loader2 size={16} className="animate-spin" /> : <Layers size={16} />}
                     {meetingBusy ? "Generating preview..." : "Preview action items"}
                   </button>
                 </div>

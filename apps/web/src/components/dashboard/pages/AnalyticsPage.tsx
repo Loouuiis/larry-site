@@ -11,7 +11,7 @@ import {
 import {
   TrendingUp, CheckCircle2, AlertTriangle, Circle,
   FileText, Presentation, Download, ChevronDown,
-  Sparkles, RefreshCw,
+  Layers, RefreshCw,
 } from "lucide-react";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
@@ -311,7 +311,7 @@ function GenerateReportCard() {
             Export a formatted summary of this project&apos;s current status, tasks, risks, and progress — ready to share with stakeholders.
           </p>
           <div className="mt-2 flex items-center gap-1.5 text-[11px] text-[var(--text-disabled)]">
-            <Sparkles size={11} className="text-[var(--color-brand)]/60" />
+            <Layers size={11} className="text-[var(--color-brand)]/60" />
             Last generated: <span className="font-medium text-[var(--text-muted)]">Mar 20, 2026 at 09:14am</span>
           </div>
         </div>

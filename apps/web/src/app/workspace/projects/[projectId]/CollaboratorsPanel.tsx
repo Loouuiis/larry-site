@@ -448,7 +448,7 @@ export function CollaboratorsPanel({ projectId }: { projectId: string }) {
                       >
                         <div
                           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold"
-                          style={{ background: "var(--brand-soft, #e2d6fc)", color: "var(--brand)" }}
+                          style={{ background: "var(--brand-soft, #f0edfa)", color: "var(--brand)" }}
                         >
                           {member.name?.charAt(0)?.toUpperCase() ?? "?"}
                         </div>

@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import { Activity, CheckCircle2, FolderKanban, Mail, RefreshCw, Search, Sparkles } from "lucide-react";
+import { Activity, CheckCircle2, FolderKanban, Mail, RefreshCw, Search, Layers } from "lucide-react";
 import type { WorkspaceLarryEvent } from "@/app/dashboard/types";
 import { useLarryActionCentre } from "@/hooks/useLarryActionCentre";
 import { useEmailDrafts } from "@/hooks/useEmailDrafts";
@@ -289,7 +289,7 @@ export default function WorkspaceActionsPage() {
                 className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[12px] font-semibold"
                 style={{ borderColor: "var(--border)", color: "var(--text-2)", background: "var(--surface-2)" }}
               >
-                <Sparkles size={14} />
+                <Layers size={14} />
                 Tenant-wide Larry ledger
               </div>
               <h1 className="mt-4 text-[28px] font-semibold tracking-[-0.04em]" style={{ color: "var(--text-1)" }}>
@@ -317,7 +317,7 @@ export default function WorkspaceActionsPage() {
                 className="inline-flex h-10 items-center gap-2 rounded-full px-4 text-[13px] font-semibold text-white"
                 style={{ background: "var(--cta)" }}
               >
-                <Sparkles size={14} />
+                <Layers size={14} />
                 Open Larry chats
               </Link>
             </div>
