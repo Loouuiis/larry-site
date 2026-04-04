@@ -54,6 +54,26 @@ const PRIORITY_COLOURS: Record<string, { fg: string; bg: string }> = {
   critical: { fg: "#ef4444", bg: "rgba(239,68,68,0.1)" },
 };
 
+const STATUS_DOT_COLOURS: Record<string, string> = {
+  backlog: "#6c44f6",
+  not_started: "#6c44f6",
+  in_progress: "#f59e0b",
+  waiting: "#f59e0b",
+  blocked: "#ef4444",
+  completed: "#22c55e",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  backlog: "Backlog",
+  not_started: "Not Started",
+  in_progress: "In Progress",
+  waiting: "Waiting",
+  blocked: "Blocked",
+  completed: "Completed",
+};
+
+const ALL_STATUSES = ["backlog", "not_started", "in_progress", "waiting", "blocked", "completed"];
+
 /* ── helpers ────────────────────────────────────────────── */
 
 function formatDueDate(value: string | null): string {
@@ -106,6 +126,16 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
   const [newDueDate, setNewDueDate] = useState("");
   const [saving, setSaving] = useState(false);
   const titleInputRef = useRef<HTMLInputElement>(null);
+
+  /* ── inline editing state ─────────────────────────────── */
+
+  const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({});
+  const [editingTitle, setEditingTitle] = useState<string | null>(null);
+  const [editTitleValue, setEditTitleValue] = useState("");
+  const [openDropdown, setOpenDropdown] = useState<{ taskId: string; field: "status" | "priority" | "assignee" } | null>(null);
+  const [descriptions, setDescriptions] = useState<Record<string, string>>({});
+  const [savingField, setSavingField] = useState<string | null>(null);
+
   const [members, setMembers] = useState<Array<{ userId: string; name: string }>>([]);
 
   /* ── fetch project members ─────────────────────────────── */
@@ -151,6 +181,28 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
     setNewPriority("medium");
     setNewAssignee("");
     setNewDueDate("");
+  };
+
+  const patchTask = async (taskId: string, patch: Record<string, unknown>) => {
+    const fieldKey = `${taskId}-${Object.keys(patch)[0]}`;
+    setSavingField(fieldKey);
+    try {
+      const res = await fetch(`/api/workspace/tasks/${encodeURIComponent(taskId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) console.error("Failed to update task:", res.status);
+      await refresh();
+    } catch (err) {
+      console.error("Error updating task:", err);
+    } finally {
+      setSavingField(null);
+    }
+  };
+
+  const toggleExpand = (taskId: string) => {
+    setExpandedTasks((prev) => ({ ...prev, [taskId]: !prev[taskId] }));
   };
 
   const saveTask = async () => {
