@@ -107,7 +107,7 @@ export function TimelineToolbar({
   onSearchChange, onToggleCollapseAll, onJumpToToday,
 }: TimelineToolbarProps) {
   return (
-    <div className="flex items-center gap-2 flex-wrap mb-3">
+    <div className="flex items-center gap-2 flex-wrap mb-2">
       {/* Zoom buttons */}
       <div className="flex items-center rounded-lg border border-[var(--border)] overflow-hidden">
         {(["week", "month", "quarter"] as ZoomLevel[]).map((z) => (
