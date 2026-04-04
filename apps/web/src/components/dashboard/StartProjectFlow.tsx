@@ -78,13 +78,6 @@ function buildIntakeSeedMessage(answers: string[]) {
   ].join("\n\n");
 }
 
-function buildTranscriptToast(actionCount: number, pendingApprovals: number) {
-  const label = `${actionCount} action${actionCount === 1 ? "" : "s"} extracted`;
-  return pendingApprovals > 0
-    ? `${label}. ${pendingApprovals} awaiting approval in the Action Center.`
-    : `${label}. Larry finished processing the transcript.`;
-}
-
 function StepIndicator({ step }: { step: FlowStep }) {
   return (
     <div className="flex items-center gap-2">
@@ -533,17 +526,18 @@ function ChatPane({
 }
 
 function TranscriptPane({
-  onReviewActions,
+  onSuccess,
   showToast,
 }: {
-  onReviewActions: () => void;
+  onSuccess: (projectId: string) => void;
   showToast: (toast: ToastState) => void;
 }) {
   const [transcript, setTranscript] = useState("");
+  const [projectName, setProjectName] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<{ actionCount: number; pendingApprovals: number } | null>(null);
+  const [done, setDone] = useState(false);
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -571,25 +565,57 @@ function TranscriptPane({
       setError("Paste a fuller transcript or upload a .txt file with at least 20 characters.");
       return;
     }
+    if (!projectName.trim()) {
+      setError("Give the project a name.");
+      return;
+    }
 
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("/api/workspace/meetings/transcript", {
+      // Step 1 — create intake draft
+      const draftRes = await fetch("/api/workspace/projects/intake/drafts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript: transcript.trim() }),
+        body: JSON.stringify({
+          mode: "meeting",
+          project: { name: projectName.trim(), description: null, startDate: null, targetDate: null, attachToProjectId: null },
+          meeting: { meetingTitle: null, transcript: transcript.trim() },
+        }),
       });
-      const data = (await response.json()) as { actionCount?: number; pendingApprovals?: number; error?: string };
-      if (!response.ok) {
-        setError(data.error ?? "Failed to process the transcript.");
+      const draftData = (await draftRes.json()) as { draft?: { id: string }; error?: string };
+      if (!draftRes.ok || !draftData.draft?.id) {
+        setError(draftData.error ?? "Failed to create intake draft.");
         return;
       }
-      const actionCount = data.actionCount ?? 0;
-      const pendingApprovals = data.pendingApprovals ?? 0;
-      setResult({ actionCount, pendingApprovals });
-      showToast({ tone: "success", message: buildTranscriptToast(actionCount, pendingApprovals) });
+
+      // Step 2 — bootstrap (AI extraction)
+      const bootstrapRes = await fetch(`/api/workspace/projects/intake/drafts/${encodeURIComponent(draftData.draft.id)}/bootstrap`, {
+        method: "POST",
+      });
+      const bootstrapData = (await bootstrapRes.json()) as { draft?: { id: string }; error?: string };
+      if (!bootstrapRes.ok || !bootstrapData.draft) {
+        setError(bootstrapData.error ?? "Failed to extract actions from transcript.");
+        return;
+      }
+
+      // Step 3 — finalize (create project)
+      const finalizeRes = await fetch(`/api/workspace/projects/intake/drafts/${encodeURIComponent(draftData.draft.id)}/finalize`, {
+        method: "POST",
+      });
+      const finalizeData = (await finalizeRes.json()) as { draft?: { id: string; projectId?: string }; error?: string };
+      if (!finalizeRes.ok || !finalizeData.draft) {
+        setError(finalizeData.error ?? "Failed to finalize the project.");
+        return;
+      }
+
+      setDone(true);
+      showToast({ tone: "success", message: `"${projectName.trim()}" created from transcript.` });
       window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
+
+      if (finalizeData.draft.projectId) {
+        onSuccess(finalizeData.draft.projectId);
+      }
     } catch {
       setError("Network error while processing the transcript.");
     } finally {
@@ -607,6 +633,13 @@ function TranscriptPane({
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4 rounded-[24px] border border-[#dbe3ef] bg-white p-5">
+        <input
+          value={projectName}
+          onChange={(event) => setProjectName(event.target.value)}
+          placeholder="Project name"
+          aria-label="Project name"
+          className="h-12 w-full rounded-2xl border border-[#dbe3ef] px-4 text-sm outline-none focus:border-[#6c44f6]"
+        />
         <textarea
           value={transcript}
           onChange={(event) => setTranscript(event.target.value)}
@@ -624,34 +657,23 @@ function TranscriptPane({
           </label>
         </div>
         {error && <div className="rounded-2xl bg-rose-50 px-4 py-3 text-[13px] text-rose-700">{error}</div>}
-        {result && (
+        {done && (
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4">
-            <p className="text-[14px] font-semibold text-neutral-900">Transcript processed</p>
-            <p className="mt-1 text-[13px] text-neutral-600">{buildTranscriptToast(result.actionCount, result.pendingApprovals)}</p>
-            <button
-              type="button"
-              onClick={onReviewActions}
-              className="mt-4 inline-flex h-10 items-center gap-2 rounded-2xl px-4 text-[13px] font-semibold text-white transition"
-              style={{ background: "#6c44f6" }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "#5a35e0")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "#6c44f6")}
-            >
-              Review extracted actions
-              <ArrowRight size={14} />
-            </button>
+            <p className="text-[14px] font-semibold text-neutral-900">Project created from transcript</p>
+            <p className="mt-1 text-[13px] text-neutral-600">Larry extracted actions and bootstrapped your project.</p>
           </div>
         )}
         <div className="flex justify-end">
           <button
             type="submit"
-            disabled={loading || transcript.trim().length < 20}
+            disabled={loading || transcript.trim().length < 20 || !projectName.trim() || done}
             className="inline-flex h-11 items-center gap-2 rounded-2xl px-5 text-sm font-semibold text-white transition disabled:opacity-50"
             style={{ background: "#6c44f6" }}
             onMouseEnter={(e) => (e.currentTarget.style.background = "#5a35e0")}
             onMouseLeave={(e) => (e.currentTarget.style.background = "#6c44f6")}
           >
             {loading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-            {loading ? "Processing..." : "Extract actions"}
+            {loading ? "Processing..." : "Extract & create project"}
           </button>
         </div>
       </form>
@@ -688,7 +710,7 @@ export function StartProjectFlow({ onClose, onCreated }: StartProjectFlowProps) 
       return <ChatPane onReviewActions={() => { onClose(); router.push("/workspace"); }} showToast={setToast} />;
     }
     if (selectedMode === "transcript") {
-      return <TranscriptPane onReviewActions={() => { onClose(); router.push("/workspace"); }} showToast={setToast} />;
+      return <TranscriptPane onSuccess={handleProjectCreated} showToast={setToast} />;
     }
     return null;
   }

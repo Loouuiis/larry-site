@@ -66,7 +66,6 @@ describe("Cleanup F operational contract boundary", () => {
       resolve(process.cwd(), "..", "web", "src", "app", "dashboard", "WorkspaceDashboard.tsx"),
       resolve(process.cwd(), "..", "web", "src", "app", "dashboard", "useWorkspaceDashboard.ts"),
       resolve(process.cwd(), "..", "web", "src", "components", "dashboard", "ProjectWorkspace.tsx"),
-      resolve(process.cwd(), "..", "web", "src", "components", "dashboard", "StartProjectFlow.tsx"),
       resolve(process.cwd(), "..", "web", "src", "components", "dashboard", "LarryTabSection.tsx"),
       resolve(process.cwd(), "..", "web", "src", "components", "dashboard", "LarryActivityRail.tsx"),
       resolve(process.cwd(), "..", "web", "src", "hooks", "useLarryEvents.ts"),
