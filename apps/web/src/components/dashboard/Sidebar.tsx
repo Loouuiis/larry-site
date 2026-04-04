@@ -13,6 +13,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { WorkspaceProject } from "@/app/dashboard/types";
+import { StartProjectFlow } from "./StartProjectFlow";
 
 const DRAWER_EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -54,6 +55,7 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, onTogg
   const [tasks, setTasks] = useState<SearchTask[]>([]);
   const [tasksLoaded, setTasksLoaded] = useState(false);
   const [projectsOpen, setProjectsOpen] = useState(true);
+  const [showNewProject, setShowNewProject] = useState(false);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const searchContainerRef = useRef<HTMLDivElement>(null);
 
@@ -300,6 +302,17 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, onTogg
             />
             PROJECTS
           </button>
+          <button
+            type="button"
+            onClick={() => setShowNewProject(true)}
+            title="New project"
+            className="flex h-5 w-5 items-center justify-center rounded-md transition-colors"
+            style={{ color: "var(--text-disabled)" }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = "#6c44f6"; e.currentTarget.style.background = "var(--surface-2)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-disabled)"; e.currentTarget.style.background = ""; }}
+          >
+            <Plus size={13} />
+          </button>
         </div>
 
         {projectsOpen && (
@@ -384,15 +397,15 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, onTogg
               </p>
             )}
             {/* + New inline */}
-            <Link
-              href="/workspace/projects/new"
-              onClick={onClose}
+            <button
+              type="button"
+              onClick={() => setShowNewProject(true)}
               className="flex w-full items-center gap-1.5 px-6 py-1.5 text-[13px] font-medium transition-opacity hover:opacity-80"
               style={{ color: "var(--cta)" }}
             >
               <Plus size={13} />
               New
-            </Link>
+            </button>
           </div>
         )}
       </div>
@@ -423,6 +436,20 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, onTogg
           </button>
         </div>
       </div>
+
+      {/* New project modal */}
+      <AnimatePresence>
+        {showNewProject && (
+          <StartProjectFlow
+            onClose={() => setShowNewProject(false)}
+            onCreated={(projectId) => {
+              setShowNewProject(false);
+              onClose?.();
+              router.push(`/workspace/projects/${projectId}`);
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
