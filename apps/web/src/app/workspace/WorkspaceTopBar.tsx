@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NotificationBell } from "./NotificationBell";
@@ -57,7 +57,7 @@ function Breadcrumb({ workspaceName }: { workspaceName: string }) {
       {parts.map((part, i) => (
         <span key={i} className="flex items-center gap-1 min-w-0">
           {i > 0 && (
-            <span className="text-[13px] select-none" style={{ color: "var(--text-disabled)" }}>
+            <span className="text-[13px] select-none" style={{ color: "#e2d6fc" }}>
               /
             </span>
           )}
@@ -80,58 +80,11 @@ function Breadcrumb({ workspaceName }: { workspaceName: string }) {
   );
 }
 
-const IDLE_MS = 2500;
-const REVEAL_ZONE_PX = 60;
-
 export function WorkspaceTopBar({ userEmail: _userEmail, workspaceName = "Larry Workspace", onMobileMenuOpen }: WorkspaceTopBarProps) {
   const chrome = useWorkspaceChrome();
-  const [visible, setVisible] = useState(true);
-  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const barRef = useRef<HTMLElement>(null);
-
-  const resetIdle = useCallback(() => {
-    setVisible(true);
-    if (idleTimer.current) clearTimeout(idleTimer.current);
-    idleTimer.current = setTimeout(() => setVisible(false), IDLE_MS);
-  }, []);
-
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      if (e.clientY <= REVEAL_ZONE_PX) {
-        setVisible(true);
-        if (idleTimer.current) clearTimeout(idleTimer.current);
-        return;
-      }
-      // If mouse moves away from top zone while bar is visible, start idle timer
-      resetIdle();
-    };
-
-    const onScroll = () => resetIdle();
-
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("scroll", onScroll, true);
-
-    // Start the initial idle timer
-    idleTimer.current = setTimeout(() => setVisible(false), IDLE_MS);
-
-    return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("scroll", onScroll, true);
-      if (idleTimer.current) clearTimeout(idleTimer.current);
-    };
-  }, [resetIdle]);
 
   return (
-    <header
-      ref={barRef}
-      className="flex h-12 shrink-0 items-center justify-between px-4 gap-4 transition-all duration-200"
-      style={{
-        height: "48px",
-        transform: visible ? "translateY(0)" : "translateY(-100%)",
-        opacity: visible ? 1 : 0,
-        pointerEvents: visible ? "auto" : "none",
-      }}
-    >
+    <header className="flex h-12 shrink-0 items-center justify-between px-6 gap-4" style={{ height: 48 }}>
       {/* Mobile: hamburger */}
       <button
         className="flex h-8 w-8 items-center justify-center rounded-lg md:hidden"
