@@ -317,7 +317,7 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
                 paddingLeft: 36,
                 paddingRight: 12,
                 borderRadius: 4,
-                border: "1px solid var(--border)",
+                border: "1px solid #f0edfa",
                 background: "var(--surface)",
                 color: "var(--text-1)",
               }}
@@ -329,7 +329,7 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
         {briefing && briefing.projects.length > 0 && (
           <div
             style={{
-              border: "1px solid var(--border)",
+              border: "1px solid #f0edfa",
               borderRadius: "var(--radius-card)",
               background: "var(--surface)",
               overflow: "hidden",
@@ -340,7 +340,7 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
                 key={bp.projectId}
                 style={{
                   padding: "14px 20px",
-                  borderTop: i > 0 ? "1px solid var(--border)" : undefined,
+                  borderTop: i > 0 ? "1px solid #f0edfa" : undefined,
                   display: "flex",
                   alignItems: "flex-start",
                   gap: "12px",
@@ -471,7 +471,7 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
                 className="group text-left transition-shadow hover:shadow-[var(--shadow-1)]"
                 style={{
                   borderRadius: "var(--radius-card)",
-                  border: "1px solid var(--border)",
+                  border: "1px solid #f0edfa",
                   background: "var(--surface)",
                   padding: "20px",
                 }}
@@ -500,7 +500,7 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
                 <div
                   className="mt-4 w-full overflow-hidden"
                   style={{
-                    height: "4px",
+                    height: "3px",
                     borderRadius: "9999px",
                     background: "var(--surface-2)",
                   }}
@@ -510,7 +510,7 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
                       width: `${Math.max(project.progress, 2)}%`,
                       height: "100%",
                       borderRadius: "9999px",
-                      background: "#b29cf8",
+                      background: "linear-gradient(90deg, #6c44f6, #b29cf8)",
                     }}
                   />
                 </div>
@@ -559,7 +559,7 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
                     className="relative text-left"
                     style={{
                       borderRadius: "var(--radius-card)",
-                      border: "1px solid var(--border)",
+                      border: "1px solid #f0edfa",
                       background: "var(--surface)",
                       padding: "20px",
                       opacity: 0.7,
@@ -613,7 +613,7 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
           <div
             className="flex items-center justify-between gap-4"
             style={{
-              border: "1px solid var(--border)",
+              border: "1px solid #f0edfa",
               borderRadius: "var(--radius-card)",
               padding: "16px 20px",
               background: "var(--surface)",
