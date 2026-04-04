@@ -1344,7 +1344,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto" style={{ background: "var(--page-bg)" }}>
-      <div className="mx-auto max-w-[1200px] space-y-3 px-6 py-4">
+      <div className="mx-auto max-w-[1200px] space-y-3 px-6 pt-1 pb-4">
         <section
           style={{
             borderRadius: "var(--radius-card)",
