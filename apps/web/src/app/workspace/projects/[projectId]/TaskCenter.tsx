@@ -391,63 +391,135 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                   const pri = PRIORITY_COLOURS[task.priority] ?? PRIORITY_COLOURS.medium;
 
                   return (
-                    <div
-                      key={task.id}
-                      className="flex items-center gap-3 px-4 py-2.5"
-                      style={{
-                        borderBottom: "1px solid var(--border)",
-                        cursor: "default",
-                        transition: "background 120ms ease",
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-2)"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = ""; }}
-                    >
-                      {/* status dot */}
-                      <span
+                    <div key={task.id}>
+                      {/* ── main row ─────────────────── */}
+                      <div
+                        className="flex items-center gap-3 px-4 py-2.5"
                         style={{
-                          width: 7,
-                          height: 7,
-                          borderRadius: "50%",
-                          background: group.dotColour,
-                          flexShrink: 0,
+                          borderBottom: expandedTasks[task.id] ? "none" : "1px solid var(--border)",
+                          cursor: "default",
+                          transition: "background 120ms ease",
                         }}
-                      />
-
-                      {/* title */}
-                      <span
-                        className="flex-1 truncate text-[13px]"
-                        style={{ color: "var(--text-1)" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-2)"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = ""; }}
                       >
-                        {task.title}
-                      </span>
+                        {/* expand chevron */}
+                        <button
+                          onClick={() => toggleExpand(task.id)}
+                          className="flex items-center justify-center"
+                          style={{
+                            width: 20,
+                            height: 20,
+                            flexShrink: 0,
+                            background: "transparent",
+                            border: "none",
+                            cursor: "pointer",
+                            color: "var(--text-muted)",
+                            borderRadius: 4,
+                            transition: "background 120ms ease",
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-2)"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = ""; }}
+                        >
+                          {expandedTasks[task.id]
+                            ? <ChevronDown size={14} />
+                            : <ChevronRight size={14} />}
+                        </button>
 
-                      {/* priority badge */}
-                      <span
-                        className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
-                        style={{
-                          color: pri.fg,
-                          background: pri.bg,
-                          flexShrink: 0,
-                        }}
-                      >
-                        {capitalize(task.priority)}
-                      </span>
+                        {/* status dot */}
+                        <span
+                          style={{
+                            width: 7,
+                            height: 7,
+                            borderRadius: "50%",
+                            background: group.dotColour,
+                            flexShrink: 0,
+                          }}
+                        />
 
-                      {/* assignee */}
-                      <span
-                        className="w-[100px] truncate text-right text-[12px]"
-                        style={{ color: task.assigneeName ? "var(--text-2)" : "var(--text-disabled)", flexShrink: 0 }}
-                      >
-                        {task.assigneeName ?? "—"}
-                      </span>
+                        {/* title */}
+                        <span
+                          className="flex-1 truncate text-[13px]"
+                          style={{ color: "var(--text-1)" }}
+                        >
+                          {task.title}
+                        </span>
 
-                      {/* due date */}
-                      <span
-                        className="w-[60px] text-right text-[12px]"
-                        style={{ color: task.dueDate ? "var(--text-2)" : "var(--text-disabled)", flexShrink: 0 }}
-                      >
-                        {formatDueDate(task.dueDate)}
-                      </span>
+                        {/* priority badge */}
+                        <span
+                          className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
+                          style={{
+                            color: pri.fg,
+                            background: pri.bg,
+                            flexShrink: 0,
+                          }}
+                        >
+                          {capitalize(task.priority)}
+                        </span>
+
+                        {/* assignee */}
+                        <span
+                          className="w-[100px] truncate text-right text-[12px]"
+                          style={{ color: task.assigneeName ? "var(--text-2)" : "var(--text-disabled)", flexShrink: 0 }}
+                        >
+                          {task.assigneeName ?? "\u2014"}
+                        </span>
+
+                        {/* due date */}
+                        <span
+                          className="w-[60px] text-right text-[12px]"
+                          style={{ color: task.dueDate ? "var(--text-2)" : "var(--text-disabled)", flexShrink: 0 }}
+                        >
+                          {formatDueDate(task.dueDate)}
+                        </span>
+                      </div>
+
+                      {/* ── expanded description ─────── */}
+                      {expandedTasks[task.id] && (
+                        <div
+                          style={{
+                            padding: "8px 16px 12px 52px",
+                            borderBottom: "1px solid var(--border)",
+                            background: "rgba(108,68,246,0.02)",
+                          }}
+                        >
+                          <textarea
+                            value={descriptions[task.id] ?? task.description ?? ""}
+                            onChange={(e) =>
+                              setDescriptions((prev) => ({ ...prev, [task.id]: e.target.value }))
+                            }
+                            onBlur={() => {
+                              const val = descriptions[task.id];
+                              if (val !== undefined && val !== (task.description ?? "")) {
+                                void patchTask(task.id, { description: val });
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Escape") {
+                                setDescriptions((prev) => {
+                                  const next = { ...prev };
+                                  delete next[task.id];
+                                  return next;
+                                });
+                                (e.target as HTMLTextAreaElement).blur();
+                              }
+                            }}
+                            placeholder="Add a description..."
+                            maxLength={4000}
+                            rows={3}
+                            className="w-full text-[13px] outline-none resize-none transition-colors"
+                            style={{
+                              background: "var(--surface)",
+                              border: "1px dashed var(--border-2)",
+                              borderRadius: 6,
+                              color: "var(--text-2)",
+                              padding: "8px 12px",
+                            }}
+                            onFocus={(e) => { e.currentTarget.style.borderColor = "var(--brand)"; e.currentTarget.style.borderStyle = "solid"; }}
+                            onBlurCapture={(e) => { e.currentTarget.style.borderColor = "var(--border-2)"; e.currentTarget.style.borderStyle = "dashed"; }}
+                          />
+                        </div>
+                      )}
                     </div>
                   );
                 })}
