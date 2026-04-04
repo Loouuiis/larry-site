@@ -7,6 +7,8 @@ import type {
   ProjectSnapshot,
   ProjectTaskSnapshot,
 } from "@larry/shared";
+import { generateObject } from "ai";
+import { createModel } from "./provider.js";
 
 // ── Injection guard (inline — no circular import with index.ts) ───────────────
 
@@ -529,144 +531,6 @@ function daysBetween(from: string, to: string): number {
   return Math.floor((new Date(to).getTime() - new Date(from).getTime()) / msPerDay);
 }
 
-// ── LLM callers ───────────────────────────────────────────────────────────────
-
-async function callOpenAI(
-  apiKey: string,
-  model: string,
-  systemPrompt: string,
-  userPrompt: string
-): Promise<string> {
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.2,
-    }),
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`OpenAI intelligence call failed: ${response.status} — ${err}`);
-  }
-
-  const data = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-
-  const text = data.choices?.[0]?.message?.content;
-  if (!text) throw new Error("OpenAI returned empty content");
-  return text;
-}
-
-async function callAnthropic(
-  apiKey: string,
-  model: string,
-  systemPrompt: string,
-  userPrompt: string
-): Promise<string> {
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 4096,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userPrompt }],
-    }),
-  });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Anthropic intelligence call failed: ${response.status} — ${err}`);
-  }
-
-  const data = (await response.json()) as {
-    content?: Array<{ type: string; text?: string }>;
-  };
-
-  const text = data.content?.find((c) => c.type === "text")?.text;
-  if (!text) throw new Error("Anthropic returned empty content");
-  return text;
-}
-
-async function callGemini(
-  apiKey: string,
-  model: string,
-  systemPrompt: string,
-  userPrompt: string
-): Promise<string> {
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-        generationConfig: {
-          temperature: 0.2,
-          responseMimeType: "application/json",
-        },
-      }),
-    }
-  );
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Gemini intelligence call failed: ${response.status} — ${err}`);
-  }
-
-  const data = (await response.json()) as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-  };
-
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error("Gemini returned empty content");
-  return text;
-}
-
-// ── JSON extraction and validation ────────────────────────────────────────────
-
-function parseIntelligenceResponse(raw: string): IntelligenceResult {
-  let parsed: unknown;
-
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    // Try to extract the JSON object from the response if the LLM added prose
-    const match = raw.match(/\{[\s\S]*\}/);
-    if (!match) {
-      throw new Error(`Intelligence response is not valid JSON: ${raw.slice(0, 200)}`);
-    }
-    try {
-      parsed = JSON.parse(match[0]);
-    } catch {
-      throw new Error(`Could not parse extracted JSON from intelligence response`);
-    }
-  }
-
-  const result = IntelligenceResultSchema.safeParse(parsed);
-  if (!result.success) {
-    throw new Error(`Intelligence response failed schema validation: ${result.error.message}`);
-  }
-
-  return result.data as IntelligenceResult;
-}
-
 // ── Mock intelligence (dev fallback — no API key required) ────────────────────
 
 function mockIntelligence(snapshot: ProjectSnapshot, hint: string | null): IntelligenceResult {
@@ -925,19 +789,15 @@ export async function runIntelligence(
   const systemPrompt = buildSystemPrompt();
   const userPrompt = buildUserPrompt(snapshot, hint);
 
-  let raw: string;
+  const { object } = await generateObject({
+    model: createModel(config),
+    schema: IntelligenceResultSchema,
+    system: systemPrompt,
+    prompt: userPrompt,
+    temperature: 0.2,
+  });
 
-  if (config.provider === "openai") {
-    raw = await callOpenAI(config.apiKey, config.model, systemPrompt, userPrompt);
-  } else if (config.provider === "anthropic") {
-    raw = await callAnthropic(config.apiKey, config.model, systemPrompt, userPrompt);
-  } else if (config.provider === "gemini") {
-    raw = await callGemini(config.apiKey, config.model, systemPrompt, userPrompt);
-  } else {
-    throw new Error(`Unsupported intelligence provider: ${config.provider}`);
-  }
-
-  return parseIntelligenceResponse(raw);
+  return object as IntelligenceResult;
 }
 
 // Re-export types for consumers that import from @larry/ai
