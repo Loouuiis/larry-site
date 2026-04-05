@@ -138,12 +138,15 @@ describe("POST /connectors/slack/events", () => {
     );
     const canonicalPayload = JSON.parse(String(rawInsertCall?.[1]?.[3] ?? "{}"));
     expect(canonicalPayload).toMatchObject({
-      team_id: "T12345",
-      event_id: "Ev12345",
-      event: {
+      teamId: "T12345",
+      slackUserId: "U12345",
+      channel: "C67890",
+      text: "We are blocked on legal review",
+      rawEvent: {
         channel: "C67890",
         user: "U12345",
         text: "We are blocked on legal review",
+        type: "message",
         projectId: PROJECT_ID,
       },
     });
