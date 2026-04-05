@@ -740,18 +740,6 @@ export function StartProjectFlow({ onClose, onCreated }: StartProjectFlowProps) 
         className="relative w-full max-w-4xl overflow-y-auto bg-white p-8"
         style={{ maxHeight: "90vh", borderRadius: "var(--radius-card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-3)" }}
       >
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close new project flow"
-          className="absolute right-5 top-5 flex h-10 w-10 items-center justify-center rounded-lg transition"
-          style={{ color: "var(--text-muted)" }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-2)"; e.currentTarget.style.color = "var(--text-1)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = ""; e.currentTarget.style.color = "var(--text-muted)"; }}
-        >
-          <X size={18} />
-        </button>
-
         <div className="mb-8 flex items-center justify-between">
           <div>
             {step > 1 && (
@@ -765,7 +753,20 @@ export function StartProjectFlow({ onClose, onCreated }: StartProjectFlowProps) 
               </button>
             )}
           </div>
-          <StepIndicator step={step} />
+          <div className="flex items-center gap-3">
+            <StepIndicator step={step} />
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close new project flow"
+              className="flex h-8 w-8 items-center justify-center rounded-lg transition"
+              style={{ color: "var(--text-muted)" }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-2)"; e.currentTarget.style.color = "var(--text-1)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = ""; e.currentTarget.style.color = "var(--text-muted)"; }}
+            >
+              <X size={16} />
+            </button>
+          </div>
         </div>
 
         <AnimatePresence mode="wait">
