@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Download, Plus } from "lucide-react";
+import type {
+  WorkspaceTask,
+  WorkspaceTimeline,
+  WorkspaceProjectMember,
+} from "@/app/dashboard/types";
 
 interface DashboardData {
   health?: {
@@ -69,6 +74,13 @@ function mapToFiveStatuses(byStatus: Record<string, number>): Record<string, num
     at_risk:     byStatus.blocked     ?? 0,
     overdue:     byStatus.overdue     ?? 0,
   };
+}
+
+function bucketTaskStatus(status: string): string {
+  if (status === "backlog") return "not_started";
+  if (status === "in_progress" || status === "waiting") return "on_track";
+  if (status === "blocked") return "at_risk";
+  return status;
 }
 
 /* ── Progress bar ───────────────────────────────────────────────────── */
@@ -366,12 +378,108 @@ function OverviewDonutWidget({ byStatus }: { byStatus: Record<string, number> })
 
 /* ── Main component ─────────────────────────────────────────────────── */
 
-export function ProjectDashboard({ projectId }: { projectId: string }) {
+export function ProjectDashboard({
+  projectId,
+  tasks = [],
+  timeline,
+  members = [],
+}: {
+  projectId: string;
+  tasks?: WorkspaceTask[];
+  timeline?: WorkspaceTimeline | null;
+  members?: WorkspaceProjectMember[];
+}) {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const dashboardRef = useRef<HTMLDivElement>(null);
 
+  /* ── Filter state ─────────────────────────────────────────────────── */
+  const [selectedAreas, setSelectedAreas] = useState<string[]>([]);
+  const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
+  const [areaDropdownOpen, setAreaDropdownOpen] = useState(false);
+  const [employeeDropdownOpen, setEmployeeDropdownOpen] = useState(false);
+  const filterRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!areaDropdownOpen && !employeeDropdownOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
+        setAreaDropdownOpen(false);
+        setEmployeeDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [areaDropdownOpen, employeeDropdownOpen]);
+
+  /* ── Derived filter data ──────────────────────────────────────────── */
+  const areas = useMemo(() => {
+    const cats = new Set<string>();
+    for (const t of timeline?.gantt ?? []) {
+      if (t.category) cats.add(t.category);
+    }
+    return Array.from(cats).sort();
+  }, [timeline]);
+
+  const taskIdsByCategory = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const t of timeline?.gantt ?? []) {
+      if (t.category) {
+        if (!map.has(t.category)) map.set(t.category, new Set());
+        map.get(t.category)!.add(t.id);
+      }
+    }
+    return map;
+  }, [timeline]);
+
+  const filteredTasks = useMemo(() => {
+    let result = tasks;
+    if (selectedAreas.length > 0) {
+      const allowedIds = new Set<string>();
+      for (const area of selectedAreas) {
+        const ids = taskIdsByCategory.get(area);
+        if (ids) ids.forEach((id) => allowedIds.add(id));
+      }
+      result = result.filter((t) => allowedIds.has(t.id));
+    }
+    if (selectedEmployees.length > 0) {
+      result = result.filter(
+        (t) => t.assigneeUserId && selectedEmployees.includes(t.assigneeUserId),
+      );
+    }
+    return result;
+  }, [tasks, selectedAreas, selectedEmployees, taskIdsByCategory]);
+
+  const filteredByStatus = useMemo(() => {
+    if (!selectedAreas.length && !selectedEmployees.length) return null;
+    const counts: Record<string, number> = {};
+    for (const cfg of STATUS_5_CONFIG) counts[cfg.key] = 0;
+    for (const t of filteredTasks) {
+      const bucket = bucketTaskStatus(t.status);
+      if (bucket in counts) counts[bucket]++;
+    }
+    return counts;
+  }, [filteredTasks, selectedAreas, selectedEmployees]);
+
+  const filteredCompletionRate = useMemo(() => {
+    if (!filteredByStatus) return null;
+    const total = filteredTasks.length;
+    if (total === 0) return 0;
+    return ((filteredByStatus.completed ?? 0) / total) * 100;
+  }, [filteredByStatus, filteredTasks]);
+
+  const toggleArea = (area: string) =>
+    setSelectedAreas((prev) =>
+      prev.includes(area) ? prev.filter((a) => a !== area) : [...prev, area],
+    );
+
+  const toggleEmployee = (userId: string) =>
+    setSelectedEmployees((prev) =>
+      prev.includes(userId) ? prev.filter((e) => e !== userId) : [...prev, userId],
+    );
+
+  /* ── API load ─────────────────────────────────────────────────────── */
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -426,13 +534,18 @@ export function ProjectDashboard({ projectId }: { projectId: string }) {
     );
   }
 
-  const byStatus = data?.breakdown?.byStatus ?? {};
+  const apiByStatus = data?.breakdown?.byStatus ?? {};
   const health = data?.health ?? {};
+
+  /* ── Active (possibly filtered) values ───────────────────────────── */
+  const activeByStatus = filteredByStatus ?? apiByStatus;
+  const activeCompletionRate = filteredCompletionRate ?? health.completionRate ?? 0;
+  const activeTaskCount = filteredByStatus ? filteredTasks.length : (health.taskCount ?? 0);
 
   return (
     <div ref={dashboardRef} className="space-y-3">
-      {/* Top bar: + Add widget (left) | Export PDF (right) */}
-      <div className="flex items-center justify-between print:hidden">
+      {/* Top bar: + Add widget (left) | Filters (center) | Export PDF (right) */}
+      <div className="flex items-center justify-between gap-2 print:hidden">
         <button
           type="button"
           className="inline-flex h-7 items-center gap-1.5 rounded-lg border px-2.5 text-[12px] font-medium transition-colors"
@@ -445,6 +558,172 @@ export function ProjectDashboard({ projectId }: { projectId: string }) {
           <Plus size={13} />
           Add widget
         </button>
+
+        {/* Filter dropdowns — shown only when data is available */}
+        {(areas.length > 0 || members.length > 0) && (
+          <div ref={filterRef} className="flex items-center gap-1.5">
+            {areas.length > 0 && (
+              <div style={{ position: "relative" }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAreaDropdownOpen((v) => !v);
+                    setEmployeeDropdownOpen(false);
+                  }}
+                  className="text-[11px]"
+                  style={{
+                    color: selectedAreas.length > 0 ? "#6c44f6" : "var(--text-muted)",
+                    padding: "3px 8px",
+                    background: "var(--surface-2)",
+                    borderRadius: "4px",
+                    border: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  Area{selectedAreas.length > 0 ? ` (${selectedAreas.length})` : ""} ▾
+                </button>
+                {areaDropdownOpen && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "100%",
+                      left: 0,
+                      marginTop: "4px",
+                      background: "var(--surface)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "8px",
+                      padding: "4px",
+                      zIndex: 20,
+                      minWidth: "160px",
+                      boxShadow: "var(--shadow-1)",
+                    }}
+                  >
+                    {areas.map((area) => (
+                      <button
+                        key={area}
+                        type="button"
+                        onClick={() => toggleArea(area)}
+                        className="flex w-full items-center gap-2 rounded px-3 py-1.5 text-[11px]"
+                        style={{
+                          background: selectedAreas.includes(area)
+                            ? "rgba(108,68,246,0.1)"
+                            : "transparent",
+                          color: "var(--text-1)",
+                          border: "none",
+                          cursor: "pointer",
+                          textAlign: "left",
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: "14px",
+                            height: "14px",
+                            borderRadius: "3px",
+                            border: selectedAreas.includes(area)
+                              ? "2px solid #6c44f6"
+                              : "2px solid var(--border)",
+                            background: selectedAreas.includes(area) ? "#6c44f6" : "transparent",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: "9px",
+                            color: "#fff",
+                            flexShrink: 0,
+                          }}
+                        >
+                          {selectedAreas.includes(area) ? "✓" : ""}
+                        </span>
+                        {area}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {members.length > 0 && (
+              <div style={{ position: "relative" }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmployeeDropdownOpen((v) => !v);
+                    setAreaDropdownOpen(false);
+                  }}
+                  className="text-[11px]"
+                  style={{
+                    color: selectedEmployees.length > 0 ? "#6c44f6" : "var(--text-muted)",
+                    padding: "3px 8px",
+                    background: "var(--surface-2)",
+                    borderRadius: "4px",
+                    border: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  Employee{selectedEmployees.length > 0 ? ` (${selectedEmployees.length})` : ""} ▾
+                </button>
+                {employeeDropdownOpen && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "100%",
+                      left: 0,
+                      marginTop: "4px",
+                      background: "var(--surface)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "8px",
+                      padding: "4px",
+                      zIndex: 20,
+                      minWidth: "180px",
+                      boxShadow: "var(--shadow-1)",
+                    }}
+                  >
+                    {members.map((m) => (
+                      <button
+                        key={m.userId}
+                        type="button"
+                        onClick={() => toggleEmployee(m.userId)}
+                        className="flex w-full items-center gap-2 rounded px-3 py-1.5 text-[11px]"
+                        style={{
+                          background: selectedEmployees.includes(m.userId)
+                            ? "rgba(108,68,246,0.1)"
+                            : "transparent",
+                          color: "var(--text-1)",
+                          border: "none",
+                          cursor: "pointer",
+                          textAlign: "left",
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: "14px",
+                            height: "14px",
+                            borderRadius: "3px",
+                            border: selectedEmployees.includes(m.userId)
+                              ? "2px solid #6c44f6"
+                              : "2px solid var(--border)",
+                            background: selectedEmployees.includes(m.userId)
+                              ? "#6c44f6"
+                              : "transparent",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: "9px",
+                            color: "#fff",
+                            flexShrink: 0,
+                          }}
+                        >
+                          {selectedEmployees.includes(m.userId) ? "✓" : ""}
+                        </span>
+                        {m.name || m.email}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         <button
           type="button"
           onClick={handleExport}
@@ -463,8 +742,8 @@ export function ProjectDashboard({ projectId }: { projectId: string }) {
       {/* Progress bar + Risk Score side by side */}
       <div className="grid gap-3" style={{ gridTemplateColumns: "1fr auto", alignItems: "start" }}>
         <DashboardProgress
-          completionRate={health.completionRate ?? 0}
-          taskCount={health.taskCount ?? 0}
+          completionRate={activeCompletionRate}
+          taskCount={activeTaskCount}
         />
         <RiskScoreWidget
           avgRiskScore={health.avgRiskScore ?? 0}
@@ -473,12 +752,12 @@ export function ProjectDashboard({ projectId }: { projectId: string }) {
       </div>
 
       {/* 5 status boxes in white card */}
-      <StatusFiveBoxes byStatus={byStatus} />
+      <StatusFiveBoxes byStatus={activeByStatus} />
 
       {/* Bar chart + Overview donut — full row */}
       <div className="flex gap-3">
-        <StatusBarChart byStatus={byStatus} />
-        <OverviewDonutWidget byStatus={byStatus} />
+        <StatusBarChart byStatus={activeByStatus} />
+        <OverviewDonutWidget byStatus={activeByStatus} />
       </div>
     </div>
   );

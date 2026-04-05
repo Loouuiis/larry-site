@@ -1490,7 +1490,12 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
 
         {/* ── Tab: Dashboard ────────────────────────────── */}
         {activeTab === "dashboard" && (
-          <ProjectDashboard projectId={projectId} />
+          <ProjectDashboard
+            projectId={projectId}
+            tasks={tasks}
+            timeline={timeline}
+            members={overviewMembers}
+          />
         )}
 
         {/* ── Tab: Timeline ──────────────────────────────── */}
