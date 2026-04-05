@@ -22,6 +22,7 @@ import {
   Settings,
   Search,
   Star,
+  Trash2,
 } from "lucide-react";
 import { useWorkspaceChrome } from "@/app/workspace/WorkspaceChromeContext";
 import { triggerBoundedWorkspaceRefresh } from "@/app/workspace/refresh";
@@ -1275,7 +1276,9 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
   const [activeTab, setActiveTab] = useState<ProjectTab>("overview");
   const [memorySourceFilter, setMemorySourceFilter] = useState("all");
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
-  const [statusBusy, setStatusBusy] = useState<"archive" | "unarchive" | null>(null);
+  const [statusBusy, setStatusBusy] = useState<"archive" | "unarchive" | "delete" | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteConfirmName, setDeleteConfirmName] = useState("");
   const [statusNotice, setStatusNotice] = useState<{
     tone: "success" | "error";
     message: string;
@@ -1424,6 +1427,42 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
             : `Failed to ${action} project.`,
       });
     } finally {
+      setStatusBusy(null);
+    }
+  }
+
+  async function deleteProject() {
+    if (!project || deleteConfirmName !== project.name) return;
+    setStatusBusy("delete");
+
+    try {
+      const response = await fetch(
+        `/api/workspace/projects/${encodeURIComponent(projectId)}/delete`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ confirmProjectName: deleteConfirmName }),
+        },
+      );
+      const payload = await readJson<{ error?: string }>(response);
+
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Failed to delete project.");
+      }
+
+      chrome?.refreshShell();
+      triggerBoundedWorkspaceRefresh();
+      router.push("/workspace");
+    } catch (deleteError) {
+      setStatusNotice({
+        tone: "error",
+        message:
+          deleteError instanceof Error
+            ? deleteError.message
+            : "Failed to delete project.",
+      });
+      setDeleteDialogOpen(false);
+      setDeleteConfirmName("");
       setStatusBusy(null);
     }
   }
@@ -1646,22 +1685,39 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
                   ? "This project is archived. It stays readable by direct link but no longer appears in active workspace lists."
                   : "Archiving removes this project from active workspace lists. It can be restored at any time."}
               </p>
-              <div className="mt-4">
+              <div className="mt-4 flex flex-wrap gap-3">
                 {isArchived ? (
-                  <button
-                    type="button"
-                    onClick={() => void updateProjectArchiveState("active")}
-                    disabled={statusBusy !== null}
-                    className="inline-flex h-9 items-center gap-2 rounded-full border px-4 text-[13px] font-semibold"
-                    style={{
-                      borderColor: "var(--border)",
-                      color: "var(--text-2)",
-                      background: "var(--surface)",
-                      opacity: statusBusy !== null ? 0.7 : 1,
-                    }}
-                  >
-                    {statusBusy === "unarchive" ? "Restoring..." : "Restore to active"}
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => void updateProjectArchiveState("active")}
+                      disabled={statusBusy !== null}
+                      className="inline-flex h-9 items-center gap-2 rounded-full border px-4 text-[13px] font-semibold"
+                      style={{
+                        borderColor: "var(--border)",
+                        color: "var(--text-2)",
+                        background: "var(--surface)",
+                        opacity: statusBusy !== null ? 0.7 : 1,
+                      }}
+                    >
+                      {statusBusy === "unarchive" ? "Restoring..." : "Restore to active"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setDeleteConfirmName(""); setDeleteDialogOpen(true); }}
+                      disabled={statusBusy !== null}
+                      className="inline-flex h-9 items-center gap-2 rounded-full border px-4 text-[13px] font-semibold"
+                      style={{
+                        borderColor: "#fecdd3",
+                        color: "#be123c",
+                        background: "#fff1f2",
+                        opacity: statusBusy !== null ? 0.7 : 1,
+                      }}
+                    >
+                      <Trash2 size={14} />
+                      Delete permanently
+                    </button>
+                  </>
                 ) : (
                   <button
                     type="button"
@@ -2016,6 +2072,81 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
                 }}
               >
                 {statusBusy === "archive" ? "Archiving..." : "Archive project"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {deleteDialogOpen && project && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-4"
+          style={{ background: "rgba(15, 23, 42, 0.45)" }}
+          onKeyDown={(e) => { if (e.key === "Escape" && statusBusy !== "delete") { setDeleteDialogOpen(false); setDeleteConfirmName(""); } }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-project-title"
+            aria-describedby="delete-project-description"
+            className="w-full max-w-[480px]"
+            style={{
+              borderRadius: "var(--radius-card)",
+              border: "1px solid var(--border)",
+              background: "var(--surface)",
+              padding: "24px",
+              boxShadow: "var(--shadow-1)",
+            }}
+          >
+            <p id="delete-project-title" className="text-[20px] font-semibold" style={{ color: "var(--text-1)" }}>
+              Delete this project permanently?
+            </p>
+            <p id="delete-project-description" className="mt-3 text-[14px] leading-7" style={{ color: "var(--text-2)" }}>
+              This will permanently delete <strong>{project.name}</strong> and all its tasks, meetings, notes, documents, and conversations. This cannot be undone.
+            </p>
+            <label className="mt-4 block text-[13px] font-medium" style={{ color: "var(--text-2)" }}>
+              Type <strong>{project.name}</strong> to confirm
+            </label>
+            <input
+              type="text"
+              value={deleteConfirmName}
+              onChange={(e) => setDeleteConfirmName(e.target.value)}
+              disabled={statusBusy === "delete"}
+              placeholder={project.name}
+              autoFocus
+              className="mt-2 w-full rounded-lg border px-3 py-2 text-[14px] outline-none"
+              style={{
+                borderColor: "var(--border)",
+                background: "var(--surface)",
+                color: "var(--text-1)",
+              }}
+            />
+            <div className="mt-6 flex flex-wrap justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => { setDeleteDialogOpen(false); setDeleteConfirmName(""); }}
+                disabled={statusBusy === "delete"}
+                className="inline-flex h-10 items-center rounded-full border px-4 text-[13px] font-semibold"
+                style={{
+                  borderColor: "var(--border)",
+                  color: "var(--text-2)",
+                  background: "var(--surface)",
+                  opacity: statusBusy === "delete" ? 0.7 : 1,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void deleteProject()}
+                disabled={deleteConfirmName !== project.name || statusBusy === "delete"}
+                className="inline-flex h-10 items-center rounded-full px-4 text-[13px] font-semibold text-white"
+                style={{
+                  background: deleteConfirmName === project.name ? "#b91c1c" : "#d4d4d8",
+                  opacity: statusBusy === "delete" ? 0.7 : 1,
+                  cursor: deleteConfirmName !== project.name ? "not-allowed" : "pointer",
+                }}
+              >
+                {statusBusy === "delete" ? "Deleting..." : "Delete permanently"}
               </button>
             </div>
           </div>

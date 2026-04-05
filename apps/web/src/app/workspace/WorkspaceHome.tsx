@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { TriangleAlert, Plus, Search, ChevronDown, ChevronRight, ArchiveRestore } from "lucide-react";
+import { TriangleAlert, Plus, Search, ChevronDown, ChevronRight, ArchiveRestore, Trash2 } from "lucide-react";
 import type { WorkspaceProject, WorkspaceHomeData, WorkspaceTask } from "@/app/dashboard/types";
 import { StartProjectFlow } from "@/components/dashboard/StartProjectFlow";
 import { useWorkspaceChrome } from "./WorkspaceChromeContext";
@@ -156,6 +156,9 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
   const [searchQuery, setSearchQuery] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [restoringId, setRestoringId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleteConfirmName, setDeleteConfirmName] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const loadWorkspace = useCallback(async () => {
     try {
@@ -248,6 +251,32 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
       setError(err instanceof Error ? err.message : "Failed to restore project.");
     } finally {
       setRestoringId(null);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget || deleteConfirmName !== deleteTarget.name) return;
+    setDeletingId(deleteTarget.id);
+    try {
+      const res = await fetch(`/api/workspace/projects/${encodeURIComponent(deleteTarget.id)}/delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmProjectName: deleteConfirmName }),
+      });
+      if (!res.ok) {
+        const payload = await readJson<{ error?: string }>(res);
+        throw new Error(payload.error ?? "Failed to delete project.");
+      }
+      setDeleteTarget(null);
+      setDeleteConfirmName("");
+      await loadWorkspace();
+      chrome?.refreshShell?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete project.");
+      setDeleteTarget(null);
+      setDeleteConfirmName("");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -585,22 +614,38 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
                       <span className="text-body-sm">
                         Updated {formatRelativeTime(project.updatedAt)}
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => void handleRestore(project.id)}
-                        disabled={restoringId === project.id}
-                        className="inline-flex items-center gap-1 text-[12px] font-medium"
-                        style={{
-                          color: "var(--cta)",
-                          background: "none",
-                          border: "none",
-                          cursor: restoringId === project.id ? "not-allowed" : "pointer",
-                          opacity: restoringId === project.id ? 0.5 : 1,
-                        }}
-                      >
-                        <ArchiveRestore size={13} />
-                        {restoringId === project.id ? "Restoring..." : "Restore"}
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => void handleRestore(project.id)}
+                          disabled={restoringId === project.id}
+                          className="inline-flex items-center gap-1 text-[12px] font-medium"
+                          style={{
+                            color: "var(--cta)",
+                            background: "none",
+                            border: "none",
+                            cursor: restoringId === project.id ? "not-allowed" : "pointer",
+                            opacity: restoringId === project.id ? 0.5 : 1,
+                          }}
+                        >
+                          <ArchiveRestore size={13} />
+                          {restoringId === project.id ? "Restoring..." : "Restore"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setDeleteConfirmName(""); setDeleteTarget({ id: project.id, name: project.name }); }}
+                          className="inline-flex items-center gap-1 text-[12px] font-medium"
+                          style={{
+                            color: "#be123c",
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <Trash2 size={13} />
+                          Delete
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -653,6 +698,81 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
             router.push(`/workspace/projects/${projectId}`);
           }}
         />
+      )}
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center px-4"
+          style={{ background: "rgba(15, 23, 42, 0.45)" }}
+          onKeyDown={(e) => { if (e.key === "Escape" && !deletingId) { setDeleteTarget(null); setDeleteConfirmName(""); } }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-project-title"
+            aria-describedby="delete-project-description"
+            className="w-full max-w-[480px]"
+            style={{
+              borderRadius: "var(--radius-card)",
+              border: "1px solid var(--border)",
+              background: "var(--surface)",
+              padding: "24px",
+              boxShadow: "var(--shadow-1)",
+            }}
+          >
+            <p id="delete-project-title" className="text-[20px] font-semibold" style={{ color: "var(--text-1)" }}>
+              Delete this project permanently?
+            </p>
+            <p id="delete-project-description" className="mt-3 text-[14px] leading-7" style={{ color: "var(--text-2)" }}>
+              This will permanently delete <strong>{deleteTarget.name}</strong> and all its tasks, meetings, notes, documents, and conversations. This cannot be undone.
+            </p>
+            <label className="mt-4 block text-[13px] font-medium" style={{ color: "var(--text-2)" }}>
+              Type <strong>{deleteTarget.name}</strong> to confirm
+            </label>
+            <input
+              type="text"
+              value={deleteConfirmName}
+              onChange={(e) => setDeleteConfirmName(e.target.value)}
+              disabled={deletingId !== null}
+              placeholder={deleteTarget.name}
+              autoFocus
+              className="mt-2 w-full rounded-lg border px-3 py-2 text-[14px] outline-none"
+              style={{
+                borderColor: "var(--border)",
+                background: "var(--surface)",
+                color: "var(--text-1)",
+              }}
+            />
+            <div className="mt-6 flex flex-wrap justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => { setDeleteTarget(null); setDeleteConfirmName(""); }}
+                disabled={deletingId !== null}
+                className="inline-flex h-10 items-center rounded-full border px-4 text-[13px] font-semibold"
+                style={{
+                  borderColor: "var(--border)",
+                  color: "var(--text-2)",
+                  background: "var(--surface)",
+                  opacity: deletingId !== null ? 0.7 : 1,
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleDelete()}
+                disabled={deleteConfirmName !== deleteTarget.name || deletingId !== null}
+                className="inline-flex h-10 items-center rounded-full px-4 text-[13px] font-semibold text-white"
+                style={{
+                  background: deleteConfirmName === deleteTarget.name ? "#b91c1c" : "#d4d4d8",
+                  opacity: deletingId !== null ? 0.7 : 1,
+                  cursor: deleteConfirmName !== deleteTarget.name ? "not-allowed" : "pointer",
+                }}
+              >
+                {deletingId !== null ? "Deleting..." : "Delete permanently"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
