@@ -39,6 +39,7 @@ import { CollaboratorsPanel } from "./CollaboratorsPanel";
 import { ProjectNotesPanel } from "./ProjectNotesPanel";
 import { TaskCenter } from "./TaskCenter";
 import { ProjectDashboard } from "./dashboard/ProjectDashboard";
+import { ProjectDashboardExtra } from "./dashboard/ProjectDashboardExtra";
 import { ProjectTimeline } from "@/components/workspace/timeline/ProjectTimeline";
 import { getActionTypeTag, getAllActionTypes } from "@/lib/action-types";
 import { ActionBellDropdown } from "./overview/ActionBellDropdown";
@@ -1608,6 +1609,9 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
         {/* ── Tab: Extra ────────────────────────────────── */}
         {activeTab === "extra" && (
           <div className="space-y-6">
+            {/* Analytics widgets moved from Dashboard */}
+            <ProjectDashboardExtra projectId={projectId} />
+
             {/* All tenant members info */}
             <div
               style={{

@@ -229,7 +229,7 @@ export function CollaboratorsPanel({ projectId }: { projectId: string }) {
             Team
           </p>
           <p className="mt-1 text-[13px]" style={{ color: "var(--text-2)" }}>
-            Team members and collaborators with shared access to the project
+            Team members and collaborators with shared access to the project.
           </p>
         </div>
         <div className="flex items-center gap-1 rounded-lg border p-0.5 self-start" style={{ borderColor: "var(--border)" }}>
@@ -277,11 +277,11 @@ export function CollaboratorsPanel({ projectId }: { projectId: string }) {
         <div className="mt-5 space-y-4">
           <p className="text-[12px]" style={{ color: "var(--text-muted)" }}>
             {membersPayload.currentUserRole === "owner"
-              ? "Owner: Full control and manages access"
+              ? "Your role: Owner (Full control and manages access)"
               : membersPayload.currentUserRole === "editor"
-              ? "Editor: Can edit the project"
+              ? "Your role: Editor (Can edit the project)"
               : membersPayload.currentUserRole === "viewer"
-              ? "Viewer: Can view the project"
+              ? "Your role: Viewer (Can view the project)"
               : "No role assigned"}
           </p>
 
