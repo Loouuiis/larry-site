@@ -572,9 +572,7 @@ export default function WorkspaceActionsPage() {
                   )}
                 </div>
               ) : (
-                filteredSuggested.map((event) => {
-                  const canLetLarryDoIt = event.payload?._offerExecution === true;
-                  return (
+                filteredSuggested.map((event) => (
                   <div
                     key={event.id}
                     className="rounded-xl border px-4 py-4"
@@ -653,17 +651,6 @@ export default function WorkspaceActionsPage() {
                       </div>
 
                       <div className="flex items-center gap-2">
-                        {canLetLarryDoIt && (
-                          <button
-                            type="button"
-                            onClick={() => void letLarryExecute(event.id)}
-                            disabled={executing === event.id}
-                            className="rounded-full px-3 py-1.5 text-[12px] font-semibold text-white"
-                            style={{ background: "var(--cta)" }}
-                          >
-                            {executing === event.id ? "Working..." : "Let Larry do it"}
-                          </button>
-                        )}
                         <button
                           type="button"
                           onClick={() => {
@@ -721,8 +708,7 @@ export default function WorkspaceActionsPage() {
                       </div>
                     )}
                   </div>
-                  );
-                })
+                ))
               )}
             </div>
           </div>

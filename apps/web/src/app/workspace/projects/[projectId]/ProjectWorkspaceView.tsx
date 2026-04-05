@@ -894,26 +894,24 @@ function ProjectActionCentreTab({
   accepting,
   dismissing,
   modifying,
-  executing,
   actionError,
   accept,
   dismiss,
   modify,
-  letLarryExecute,
   clearActionError,
+  onOpenConversation,
 }: {
   suggested: WorkspaceLarryEvent[];
   activity: WorkspaceLarryEvent[];
   accepting: string | null;
   dismissing: string | null;
   modifying: string | null;
-  executing: string | null;
   actionError: { eventId: string; message: string } | null;
   accept: (id: string) => Promise<void>;
   dismiss: (id: string) => Promise<void>;
   modify: (id: string) => Promise<string | null>;
-  letLarryExecute: (id: string) => Promise<boolean>;
   clearActionError: () => void;
+  onOpenConversation: (conversationId: string) => void;
 }) {
   const [search, setSearch] = useState("");
   const [filterActionType, setFilterActionType] = useState("");
@@ -1051,71 +1049,102 @@ function ProjectActionCentreTab({
                 </p>
               </div>
             ) : (
-              filteredSuggested.map((event) => {
-                const canLetLarryDoIt = event.payload?._offerExecution === true;
-                return (
+              filteredSuggested.map((event) => (
                 <div
                   key={event.id}
                   className="rounded-xl border px-4 py-4"
                   style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
                 >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <ActionTypeBadge actionType={event.actionType} />
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold"
+                          style={{
+                            background: getEventTone(event).background,
+                            color: getEventTone(event).color,
+                            borderColor: getEventTone(event).border,
+                          }}
+                        >
+                          {getEventTone(event).label}
+                        </span>
+                        <ActionTypeBadge actionType={event.actionType} />
+                      </div>
+                      <p className="mt-3 text-[15px] font-semibold" style={{ color: "var(--text-1)" }}>
+                        {event.displayText}
+                      </p>
+                      <p className="mt-2 text-[13px] leading-6" style={{ color: "var(--text-2)" }}>
+                        {event.reasoning || "Larry proposed this action from current project context."}
+                      </p>
+                    </div>
                   </div>
-                  <p className="mt-3 text-[15px] font-semibold" style={{ color: "var(--text-1)" }}>
-                    {event.displayText}
-                  </p>
-                  <p className="mt-2 text-[13px] leading-6" style={{ color: "var(--text-2)" }}>
-                    {event.reasoning || "Larry proposed this action from current project context."}
-                  </p>
+
                   <p className="mt-3 text-[12px]" style={{ color: "var(--text-muted)" }}>
-                    {getEventMeta(event)}
+                    {getEventMeta(event)} | {formatRelativeTime(event.createdAt)}
                   </p>
-                  <div className="mt-4 flex flex-wrap items-center gap-2">
-                    {canLetLarryDoIt && (
+
+                  {(event.responseMessagePreview || event.requestMessagePreview) && (
+                    <p
+                      className="mt-3 rounded-[14px] border px-3 py-2 text-[12px] leading-5"
+                      style={{ borderColor: "var(--border)", background: "var(--surface)" }}
+                    >
+                      {(event.responseMessagePreview ?? event.requestMessagePreview)?.trim()}
+                    </p>
+                  )}
+
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {event.conversationId ? (
+                        <button
+                          type="button"
+                          onClick={() => onOpenConversation(event.conversationId!)}
+                          className="text-[12px] font-semibold"
+                          style={{ color: "var(--cta)" }}
+                        >
+                          Open linked chat
+                        </button>
+                      ) : (
+                        <span className="text-[12px]" style={{ color: "var(--text-muted)" }}>
+                          Origin: {getEventOriginLabel(event.sourceKind)}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => void letLarryExecute(event.id)}
-                        disabled={executing === event.id}
+                        onClick={() => void dismiss(event.id)}
+                        disabled={dismissing === event.id}
+                        className="rounded-full border px-3 py-1.5 text-[12px] font-semibold"
+                        style={{ borderColor: "var(--border)", color: "var(--text-2)" }}
+                      >
+                        {dismissing === event.id ? "Dismissing..." : "Dismiss"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const conversationId = await modify(event.id);
+                          if (conversationId) {
+                            window.dispatchEvent(new CustomEvent("larry:open"));
+                            window.dispatchEvent(new CustomEvent("larry:load-conversation", { detail: conversationId }));
+                          }
+                        }}
+                        disabled={modifying === event.id}
+                        className="rounded-full border px-3 py-1.5 text-[12px] font-semibold"
+                        style={{ borderColor: "var(--cta)", color: "var(--cta)" }}
+                      >
+                        {modifying === event.id ? "Opening..." : "Modify"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void accept(event.id)}
+                        disabled={accepting === event.id}
                         className="rounded-full px-3 py-1.5 text-[12px] font-semibold text-white"
                         style={{ background: "var(--cta)" }}
                       >
-                        {executing === event.id ? "Working..." : "Let Larry do it"}
+                        {accepting === event.id ? "Accepting..." : "Accept"}
                       </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => void dismiss(event.id)}
-                      disabled={dismissing === event.id}
-                      className="rounded-full border px-3 py-1.5 text-[12px] font-semibold"
-                      style={{ borderColor: "var(--border)", color: "var(--text-2)" }}
-                    >
-                      {dismissing === event.id ? "Dismissing..." : "Dismiss"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const conversationId = await modify(event.id);
-                        if (conversationId) {
-                          window.dispatchEvent(new CustomEvent("larry:open"));
-                          window.dispatchEvent(new CustomEvent("larry:load-conversation", { detail: conversationId }));
-                        }
-                      }}
-                      disabled={modifying === event.id}
-                      className="rounded-full border px-3 py-1.5 text-[12px] font-semibold"
-                      style={{ borderColor: "var(--cta)", color: "var(--cta)" }}
-                    >
-                      {modifying === event.id ? "Opening..." : "Modify"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void accept(event.id)}
-                      disabled={accepting === event.id}
-                      className="rounded-full px-3 py-1.5 text-[12px] font-semibold text-white"
-                      style={{ background: "var(--cta)" }}
-                    >
-                      {accepting === event.id ? "Accepting..." : "Accept"}
-                    </button>
+                    </div>
                   </div>
 
                   {actionError?.eventId === event.id && (
@@ -1135,8 +1164,7 @@ function ProjectActionCentreTab({
                     </div>
                   )}
                 </div>
-                );
-              })
+              ))
             )}
           </div>
         </div>
@@ -1180,17 +1208,17 @@ function ProjectActionCentreTab({
                     <CheckCircle2 size={16} className="mt-0.5 shrink-0" style={{ color: "var(--cta)" }} />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <ActionTypeBadge actionType={event.actionType} />
                         <span
                           className="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold"
                           style={{
-                            background: event.eventType === "accepted" ? "#ecfdf3" : "#eff6ff",
-                            color: event.eventType === "accepted" ? "#15803d" : "#1d4ed8",
-                            borderColor: event.eventType === "accepted" ? "#bbf7d0" : "#bfdbfe",
+                            background: getEventTone(event).background,
+                            color: getEventTone(event).color,
+                            borderColor: getEventTone(event).border,
                           }}
                         >
-                          {event.eventType === "accepted" ? "Accepted" : "Auto executed"}
+                          {getEventTone(event).label}
                         </span>
+                        <ActionTypeBadge actionType={event.actionType} />
                         {completedByLarry && (
                           <span
                             className="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold"
@@ -1204,8 +1232,29 @@ function ProjectActionCentreTab({
                         {event.displayText}
                       </p>
                       <p className="mt-1 text-[12px]" style={{ color: "var(--text-muted)" }}>
-                        {getEventMeta(event)}
+                        {getEventMeta(event)} | {formatRelativeTime(event.executedAt ?? event.createdAt)}
                       </p>
+                      {event.responseMessagePreview && (
+                        <p className="mt-2 line-clamp-2 text-[12px] leading-5" style={{ color: "var(--text-2)" }}>
+                          {event.responseMessagePreview}
+                        </p>
+                      )}
+                      <div className="mt-3 flex flex-wrap items-center gap-3">
+                        {event.conversationId ? (
+                          <button
+                            type="button"
+                            onClick={() => onOpenConversation(event.conversationId!)}
+                            className="text-[12px] font-semibold"
+                            style={{ color: "var(--cta)" }}
+                          >
+                            Open linked chat
+                          </button>
+                        ) : (
+                          <span className="text-[12px]" style={{ color: "var(--text-muted)" }}>
+                            Origin: {getEventOriginLabel(event.sourceKind)}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1902,13 +1951,12 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
           accepting={accepting}
           dismissing={dismissing}
           modifying={modifying}
-          executing={executing}
           actionError={actionError}
           accept={accept}
           dismiss={dismiss}
           modify={modify}
-          letLarryExecute={letLarryExecute}
           clearActionError={clearActionError}
+          onOpenConversation={openConversation}
         />)}
 
         {/* ── Tab: Team — re-uses existing collaborators panel ──── */}
