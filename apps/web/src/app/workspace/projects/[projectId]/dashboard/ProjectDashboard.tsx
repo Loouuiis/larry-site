@@ -2,11 +2,23 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Download, Plus } from "lucide-react";
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer,
+} from "recharts";
 import type {
   WorkspaceTask,
   WorkspaceTimeline,
   WorkspaceProjectMember,
 } from "@/app/dashboard/types";
+
+interface HistoryPoint {
+  period: string;
+  label: string;
+  completed: number;
+  created: number;
+  active: number;
+}
 
 interface DashboardData {
   health?: {
@@ -23,6 +35,9 @@ interface DashboardData {
   breakdown?: {
     byStatus?: Record<string, number>;
     byAssignee?: Record<string, { total: number; completed: number }>;
+  };
+  history?: {
+    history: HistoryPoint[];
   };
 }
 
@@ -376,6 +391,144 @@ function OverviewDonutWidget({ byStatus }: { byStatus: Record<string, number> })
   );
 }
 
+/* ── Status history line chart ──────────────────────────────────────── */
+
+const HISTORY_SERIES = [
+  { key: "completed", label: "Completed", color: "#6ab86a" },
+  { key: "active",    label: "In Progress", color: "#7ab0d8" },
+  { key: "created",   label: "New Tasks",  color: "#9b7aff" },
+] as const;
+
+function HistoryTooltip({ active, payload, label }: {
+  active?: boolean;
+  payload?: { name: string; value: number; color: string }[];
+  label?: string;
+}) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div
+      className="rounded-xl border px-3 py-2.5 text-[11px] shadow-lg"
+      style={{ background: "var(--surface)", borderColor: "var(--border)", minWidth: "120px" }}
+    >
+      <p className="mb-1.5 font-semibold" style={{ color: "var(--text-2)" }}>{label}</p>
+      {payload.map((p) => (
+        <div key={p.name} className="flex items-center justify-between gap-3 py-0.5">
+          <span className="flex items-center gap-1.5" style={{ color: "var(--text-muted)" }}>
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: p.color }} />
+            {p.name}
+          </span>
+          <span className="font-semibold tabular-nums" style={{ color: "var(--text-1)" }}>{p.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function StatusHistoryChart({ history }: { history: HistoryPoint[] | null | undefined }) {
+  const [period, setPeriod] = useState<3 | 6 | 12>(6);
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
+
+  const sliced = useMemo(() => {
+    if (!history?.length) return [];
+    return history.slice(-period);
+  }, [history, period]);
+
+  const toggleSeries = (key: string) =>
+    setHidden((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+
+  return (
+    <div
+      style={{
+        borderRadius: "var(--radius-card)",
+        border: "1px solid var(--border)",
+        background: "var(--surface)",
+        padding: "20px",
+      }}
+    >
+      {/* Header row */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
+          Status Over Time
+        </h2>
+        <div className="flex items-center gap-2">
+          {/* Series toggles */}
+          <div className="flex items-center gap-1">
+            {HISTORY_SERIES.map((s) => (
+              <button
+                key={s.key}
+                type="button"
+                onClick={() => toggleSeries(s.key)}
+                className="flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium transition-opacity"
+                style={{
+                  background: hidden.has(s.key) ? "var(--surface-2)" : `${s.color}20`,
+                  color: hidden.has(s.key) ? "var(--text-muted)" : s.color,
+                  border: `1px solid ${hidden.has(s.key) ? "var(--border)" : s.color}40`,
+                  opacity: hidden.has(s.key) ? 0.5 : 1,
+                }}
+              >
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: s.color }} />
+                {s.label}
+              </button>
+            ))}
+          </div>
+          {/* Period buttons */}
+          <div className="flex items-center gap-0.5 rounded-md p-0.5" style={{ background: "var(--surface-2)" }}>
+            {([3, 6, 12] as const).map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setPeriod(p)}
+                className="rounded px-2 py-0.5 text-[10px] font-semibold transition-colors"
+                style={{
+                  background: period === p ? "var(--surface)" : "transparent",
+                  color: period === p ? "var(--text-1)" : "var(--text-muted)",
+                  boxShadow: period === p ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+                }}
+              >
+                {p}M
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {!history?.length ? (
+        <div className="flex h-40 items-center justify-center">
+          <p className="text-[12px]" style={{ color: "var(--text-muted)" }}>
+            Not enough historical data yet — check back after more tasks are completed.
+          </p>
+        </div>
+      ) : (
+        <ResponsiveContainer width="100%" height={180}>
+          <LineChart data={sliced} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
+            <XAxis dataKey="label" tick={{ fontSize: 11, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 10, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} allowDecimals={false} />
+            <Tooltip content={<HistoryTooltip />} cursor={{ stroke: "var(--border)", strokeWidth: 1 }} />
+            {HISTORY_SERIES.map((s) =>
+              hidden.has(s.key) ? null : (
+                <Line
+                  key={s.key}
+                  dataKey={s.key}
+                  name={s.label}
+                  stroke={s.color}
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: 3, fill: s.color }}
+                />
+              )
+            )}
+          </LineChart>
+        </ResponsiveContainer>
+      )}
+    </div>
+  );
+}
+
 /* ── Main component ─────────────────────────────────────────────────── */
 
 export function ProjectDashboard({
@@ -536,6 +689,7 @@ export function ProjectDashboard({
 
   const apiByStatus = data?.breakdown?.byStatus ?? {};
   const health = data?.health ?? {};
+  const history = data?.history?.history ?? null;
 
   /* ── Active (possibly filtered) values ───────────────────────────── */
   const activeByStatus = filteredByStatus ?? apiByStatus;
@@ -548,14 +702,14 @@ export function ProjectDashboard({
       <div className="flex items-center justify-between gap-2 print:hidden">
         <button
           type="button"
-          className="inline-flex h-7 items-center gap-1.5 rounded-lg border px-2.5 text-[12px] font-medium transition-colors"
+          className="inline-flex h-6 items-center gap-1 rounded-lg border px-2 text-[11px] font-medium transition-colors"
           style={{
             borderColor: "var(--border)",
             color: "var(--text-muted)",
             borderStyle: "dashed",
           }}
         >
-          <Plus size={13} />
+          <Plus size={12} />
           Add widget
         </button>
 
@@ -728,13 +882,13 @@ export function ProjectDashboard({
           type="button"
           onClick={handleExport}
           disabled={exporting || loading}
-          className="inline-flex h-7 items-center gap-1.5 rounded-lg border px-2.5 text-[12px] font-medium transition-colors disabled:opacity-50"
+          className="inline-flex h-6 items-center gap-1 rounded-lg border px-2 text-[11px] font-medium transition-colors disabled:opacity-50"
           style={{
             borderColor: "var(--border)",
             color: "var(--text-2)",
           }}
         >
-          <Download size={13} />
+          <Download size={12} />
           {exporting ? "Exporting..." : "Export PDF"}
         </button>
       </div>
@@ -759,6 +913,9 @@ export function ProjectDashboard({
         <StatusBarChart byStatus={activeByStatus} />
         <OverviewDonutWidget byStatus={activeByStatus} />
       </div>
+
+      {/* Status over time — line chart */}
+      <StatusHistoryChart history={history} />
     </div>
   );
 }

@@ -266,4 +266,85 @@ export const reportingRoutes: FastifyPluginAsync = async (fastify) => {
       return { byStatus, byAssignee };
     }
   );
+
+  fastify.get(
+    "/projects/:id/status-history",
+    { preHandler: [fastify.authenticate] },
+    async (request) => {
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const query = z.object({ months: z.coerce.number().int().min(1).max(24).default(6) }).parse(request.query);
+      const tenantId = request.user.tenantId;
+      const months = query.months;
+
+      const [completedRows, createdRows, activeRows] = await Promise.all([
+        // Tasks completed per calendar month
+        fastify.db.queryTenant<{ month: string; completed: number }>(
+          tenantId,
+          `SELECT DATE_TRUNC('month', completed_at)::date AS month,
+                  COUNT(*)::int AS completed
+           FROM tasks
+           WHERE tenant_id = $1 AND project_id = $2
+             AND completed_at IS NOT NULL
+             AND completed_at >= DATE_TRUNC('month', NOW()) - ($3 - 1) * INTERVAL '1 month'
+           GROUP BY 1 ORDER BY 1`,
+          [tenantId, params.id, months]
+        ),
+        // Tasks created per calendar month
+        fastify.db.queryTenant<{ month: string; created: number }>(
+          tenantId,
+          `SELECT DATE_TRUNC('month', created_at)::date AS month,
+                  COUNT(*)::int AS created
+           FROM tasks
+           WHERE tenant_id = $1 AND project_id = $2
+             AND created_at >= DATE_TRUNC('month', NOW()) - ($3 - 1) * INTERVAL '1 month'
+           GROUP BY 1 ORDER BY 1`,
+          [tenantId, params.id, months]
+        ),
+        // Active tasks (started, not yet completed) at end of each month
+        fastify.db.queryTenant<{ month: string; active: number }>(
+          tenantId,
+          `SELECT month_series.month::date AS month,
+                  COUNT(t.id)::int AS active
+           FROM (
+             SELECT generate_series(
+               DATE_TRUNC('month', NOW()) - ($3 - 1) * INTERVAL '1 month',
+               DATE_TRUNC('month', NOW()),
+               '1 month'
+             ) AS month
+           ) month_series
+           LEFT JOIN tasks t
+             ON t.tenant_id = $1 AND t.project_id = $2
+             AND t.started_at IS NOT NULL
+             AND t.started_at < month_series.month + INTERVAL '1 month'
+             AND (t.completed_at IS NULL OR t.completed_at >= month_series.month + INTERVAL '1 month')
+           GROUP BY 1 ORDER BY 1`,
+          [tenantId, params.id, months]
+        ),
+      ]);
+
+      // Build ordered month buckets for the last N months
+      const completedMap = new Map(completedRows.map((r) => [r.month.substring(0, 7), Number(r.completed)]));
+      const createdMap = new Map(createdRows.map((r) => [r.month.substring(0, 7), Number(r.created)]));
+      const activeMap = new Map(activeRows.map((r) => [r.month.substring(0, 7), Number(r.active)]));
+
+      const MONTH_LABELS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+      const history: { period: string; label: string; completed: number; created: number; active: number }[] = [];
+
+      for (let i = months - 1; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(1);
+        d.setMonth(d.getMonth() - i);
+        const period = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        history.push({
+          period,
+          label: MONTH_LABELS[d.getMonth()],
+          completed: completedMap.get(period) ?? 0,
+          created: createdMap.get(period) ?? 0,
+          active: activeMap.get(period) ?? 0,
+        });
+      }
+
+      return { history };
+    }
+  );
 };

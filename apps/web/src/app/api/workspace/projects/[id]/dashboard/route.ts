@@ -12,10 +12,11 @@ export async function GET(
   }
 
   const { id } = await context.params;
-  const [healthResult, outcomesResult, breakdownResult] = await Promise.all([
+  const [healthResult, outcomesResult, breakdownResult, historyResult] = await Promise.all([
     proxyApiRequest(session, `/v1/projects/${id}/health`),
     proxyApiRequest(session, `/v1/projects/${id}/outcomes`),
     proxyApiRequest(session, `/v1/projects/${id}/task-breakdown`),
+    proxyApiRequest(session, `/v1/projects/${id}/status-history?months=12`),
   ]);
 
   if (healthResult.session) {
@@ -26,5 +27,6 @@ export async function GET(
     health: healthResult.body,
     outcomes: outcomesResult.body,
     breakdown: breakdownResult.status < 400 ? breakdownResult.body : null,
+    history: historyResult.status < 400 ? historyResult.body : null,
   });
 }
