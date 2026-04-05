@@ -225,6 +225,21 @@ export const folderRoutes: FastifyPluginAsync = async (fastify) => {
           throw fastify.httpErrors.badRequest("Cannot move a folder into itself.");
         }
 
+        // Prevent moving into a descendant (would create a cycle)
+        const descendantCheck = await fastify.db.queryTenant<{ id: string }>(
+          tenantId,
+          `WITH RECURSIVE tree AS (
+             SELECT id FROM folders WHERE tenant_id = $1 AND id = $2
+             UNION ALL
+             SELECT f.id FROM folders f JOIN tree t ON f.parent_id = t.id WHERE f.tenant_id = $1
+           )
+           SELECT id FROM tree WHERE id = $3 LIMIT 1`,
+          [tenantId, id, body.newParentId]
+        );
+        if (descendantCheck[0]) {
+          throw fastify.httpErrors.badRequest("Cannot move a folder into one of its descendants.");
+        }
+
         const parentRows = await fastify.db.queryTenant<{ depth: number; id: string }>(
           tenantId,
           `SELECT depth, id FROM folders WHERE tenant_id = $1 AND id = $2 LIMIT 1`,
