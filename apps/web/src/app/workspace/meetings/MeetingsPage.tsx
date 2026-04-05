@@ -324,6 +324,8 @@ export function MeetingsPage() {
                   disabled={processing}
                   style={{
                     flex: 1,
+                    minWidth: 0,
+                    maxWidth: "300px",
                     borderRadius: "var(--radius-btn)",
                     border: "1px solid var(--border)",
                     background: "var(--surface-2)",
@@ -332,6 +334,9 @@ export function MeetingsPage() {
                     fontSize: "14px",
                     color: "var(--text-1)",
                     outline: "none",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
                     opacity: processing ? 0.5 : 1,
                   }}
                 >
