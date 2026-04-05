@@ -82,6 +82,21 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, onTogg
     };
   }, []);
 
+  const [projectFolderIds, setProjectFolderIds] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    fetch("/api/workspace/folders", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data: { folders?: { id: string; projectId: string | null; folderType: string }[] }) => {
+        const map: Record<string, string> = {};
+        for (const f of data.folders ?? []) {
+          if (f.projectId && f.folderType === "project") map[f.projectId] = f.id;
+        }
+        setProjectFolderIds(map);
+      })
+      .catch(() => {});
+  }, []);
+
   const favoritedProjects = projects.filter((p) => favorites.has(p.id));
 
   const toggleFavorite = useCallback((projectId: string, e: React.MouseEvent) => {
@@ -340,6 +355,21 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, onTogg
                       <span className="flex-1 truncate text-[14px]" style={{ maxWidth: "150px", color: isActive ? "var(--text-1)" : "var(--text-2)" }}>
                         {project.name}
                       </span>
+                      {projectFolderIds[project.id] && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            router.push(`/workspace/documents?folderId=${projectFolderIds[project.id]}`);
+                          }}
+                          className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Open project files"
+                          style={{ color: "var(--text-disabled)" }}
+                        >
+                          <FileText size={12} />
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={(e) => toggleFavorite(project.id, e)}
@@ -379,6 +409,21 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, onTogg
                   <span className="flex-1 truncate text-[14px]" style={{ maxWidth: "150px", color: isActive ? "var(--text-1)" : "var(--text-2)" }}>
                     {project.name}
                   </span>
+                  {projectFolderIds[project.id] && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        router.push(`/workspace/documents?folderId=${projectFolderIds[project.id]}`);
+                      }}
+                      className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="Open project files"
+                      style={{ color: "var(--text-disabled)" }}
+                    >
+                      <FileText size={12} />
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={(e) => toggleFavorite(project.id, e)}
