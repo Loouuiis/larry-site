@@ -1309,9 +1309,76 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
             actorUserId
           );
         }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        throw fastify.httpErrors.unprocessableEntity(message);
+      } catch (firstError) {
+        // ── Retry with resolution ──────────────────────────────────────
+        // When the first attempt fails (e.g. hallucinated taskId, unresolvable
+        // title, unresolvable user), try to repair the payload and execute
+        // again before giving up with a 422.
+        const firstMsg = firstError instanceof Error ? firstError.message : String(firstError);
+        const isTaskResolution =
+          firstMsg.includes("taskId could not be resolved") ||
+          firstMsg.includes("not found for tenant");
+        const isUserResolution =
+          firstMsg.includes("user") && firstMsg.includes("not found in tenant");
+
+        if (isTaskResolution || isUserResolution) {
+          try {
+            // Build a clean payload — strip the bad taskId so ensureTaskId
+            // forces a fresh title-based resolution on the retry
+            const retryPayload: Record<string, unknown> = {
+              ...event.payload,
+              displayText: event.displayText,
+            };
+            if (isTaskResolution) {
+              delete retryPayload.taskId;
+            }
+            if (event.actionType === "project_note_send") {
+              retryPayload.sourceKind = "action";
+              retryPayload.sourceRecordId = id;
+            }
+
+            entity = await executeAction(
+              fastify.db,
+              tenantId,
+              event.projectId,
+              event.actionType as LarryActionType,
+              retryPayload,
+              actorUserId
+            );
+            request.log.info(
+              { tenantId, eventId: id, originalError: firstMsg },
+              "Accept succeeded on retry after payload repair"
+            );
+          } catch (retryError) {
+            // Both attempts failed — return a structured error with candidate tasks
+            const retryMsg = retryError instanceof Error ? retryError.message : String(retryError);
+            let candidates: Array<{ id: string; title: string }> = [];
+            try {
+              candidates = await fastify.db.queryTenant<{ id: string; title: string }>(
+                tenantId,
+                `SELECT id, title
+                 FROM tasks
+                 WHERE tenant_id = $1 AND project_id = $2
+                 ORDER BY updated_at DESC
+                 LIMIT 10`,
+                [tenantId, event.projectId]
+              );
+            } catch { /* best-effort */ }
+
+            return reply.code(422).send({
+              statusCode: 422,
+              error: "Unprocessable Entity",
+              message: candidates.length > 0
+                ? "Could not match the task. Edit the action to pick the correct task."
+                : "No tasks found in this project. The referenced task may have been deleted.",
+              originalError: retryMsg,
+              resolvable: candidates.length > 0,
+              candidates,
+            });
+          }
+        } else {
+          throw fastify.httpErrors.unprocessableEntity(firstMsg);
+        }
       }
 
       await markLarryEventAccepted(fastify.db, tenantId, id, actorUserId);
@@ -1532,9 +1599,29 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           event.payload,
           actorUserId,
         );
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        throw fastify.httpErrors.unprocessableEntity(message);
+      } catch (firstError) {
+        const firstMsg = firstError instanceof Error ? firstError.message : String(firstError);
+        const isResolvable =
+          firstMsg.includes("taskId could not be resolved") ||
+          firstMsg.includes("not found for tenant") ||
+          (firstMsg.includes("user") && firstMsg.includes("not found in tenant"));
+
+        if (isResolvable) {
+          try {
+            const retryPayload: Record<string, unknown> = { ...event.payload };
+            if (firstMsg.includes("taskId")) delete retryPayload.taskId;
+            entity = await executeAction(
+              fastify.db, tenantId, event.projectId,
+              event.actionType as LarryActionType, retryPayload, actorUserId,
+            );
+            request.log.info({ tenantId, eventId: id, originalError: firstMsg }, "Execute succeeded on retry");
+          } catch (retryError) {
+            const retryMsg = retryError instanceof Error ? retryError.message : String(retryError);
+            throw fastify.httpErrors.unprocessableEntity(retryMsg);
+          }
+        } else {
+          throw fastify.httpErrors.unprocessableEntity(firstMsg);
+        }
       }
 
       // Create the larry_document

@@ -448,7 +448,20 @@ async function resolveUserByName(
 }
 
 /**
+ * Strip parenthetical suffixes like "(not started)", "(completed)", "(blocked)" etc.
+ * and normalize whitespace/quotes for better matching.
+ */
+function normalizeTaskTitle(title: string): string {
+  return title
+    .replace(/\s*\([^)]*\)\s*$/g, "") // strip trailing "(not started)" etc.
+    .replace(/[""'']/g, "'")           // normalize smart quotes
+    .replace(/\s+/g, " ")             // collapse whitespace
+    .trim();
+}
+
+/**
  * Resolve a task by its title within a project when taskId is missing or invalid.
+ * Tries multiple matching strategies: exact → normalized exact → substring → normalized substring.
  * Returns the first matching task ID, or null if no match is found.
  */
 async function resolveTaskByTitle(
@@ -461,6 +474,7 @@ async function resolveTaskByTitle(
   const trimmed = taskTitle.trim();
   if (!trimmed) return null;
 
+  // Strategy 1: Exact case-insensitive match
   const exact = await db.queryTenant<{ id: string }>(
     tenantId,
     `SELECT id
@@ -474,6 +488,24 @@ async function resolveTaskByTitle(
   );
   if (exact[0]) return exact[0].id;
 
+  // Strategy 2: Normalized title exact match (strips parenthetical suffixes, normalizes quotes)
+  const normalized = normalizeTaskTitle(trimmed);
+  if (normalized !== trimmed && normalized.length > 0) {
+    const normalizedExact = await db.queryTenant<{ id: string }>(
+      tenantId,
+      `SELECT id
+       FROM tasks
+       WHERE tenant_id = $1
+         AND project_id = $2
+         AND LOWER(title) = LOWER($3)
+       ORDER BY updated_at DESC
+       LIMIT 1`,
+      [tenantId, projectId, normalized]
+    );
+    if (normalizedExact[0]) return normalizedExact[0].id;
+  }
+
+  // Strategy 3: Substring match (original title)
   const fuzzy = await db.queryTenant<{ id: string }>(
     tenantId,
     `SELECT id
@@ -485,11 +517,45 @@ async function resolveTaskByTitle(
      LIMIT 1`,
     [tenantId, projectId, trimmed]
   );
-  return fuzzy[0]?.id ?? null;
+  if (fuzzy[0]) return fuzzy[0].id;
+
+  // Strategy 4: Substring match with normalized title
+  if (normalized !== trimmed && normalized.length > 0) {
+    const normalizedFuzzy = await db.queryTenant<{ id: string }>(
+      tenantId,
+      `SELECT id
+       FROM tasks
+       WHERE tenant_id = $1
+         AND project_id = $2
+         AND title ILIKE '%' || $3 || '%'
+       ORDER BY updated_at DESC
+       LIMIT 1`,
+      [tenantId, projectId, normalized]
+    );
+    if (normalizedFuzzy[0]) return normalizedFuzzy[0].id;
+  }
+
+  // Strategy 5: Reverse substring — task title contains in the search term
+  // Handles cases where DB title is shorter (e.g., "Hire CTO" matches search "Hire a CTO for the company")
+  const reverseSubstring = await db.queryTenant<{ id: string }>(
+    tenantId,
+    `SELECT id
+     FROM tasks
+     WHERE tenant_id = $1
+       AND project_id = $2
+       AND $3 ILIKE '%' || title || '%'
+     ORDER BY updated_at DESC
+     LIMIT 1`,
+    [tenantId, projectId, normalized]
+  );
+  if (reverseSubstring[0]) return reverseSubstring[0].id;
+
+  return null;
 }
 
 /**
- * Ensure payload has a valid taskId. If missing, attempt to resolve from taskTitle.
+ * Ensure payload has a valid taskId that exists in the database.
+ * If the provided taskId doesn't exist, falls back to title-based resolution.
  * Mutates the payload in place and returns the resolved taskId or null.
  */
 async function ensureTaskId(
@@ -498,11 +564,35 @@ async function ensureTaskId(
   projectId: string,
   payload: Record<string, unknown>
 ): Promise<string | null> {
+  // If taskId is present, verify it actually exists in the database
   if (typeof payload.taskId === "string" && payload.taskId.trim()) {
-    return payload.taskId as string;
+    const exists = await db.queryTenant<{ id: string }>(
+      tenantId,
+      `SELECT id FROM tasks WHERE tenant_id = $1 AND id = $2 LIMIT 1`,
+      [tenantId, payload.taskId.trim()]
+    );
+    if (exists[0]) return payload.taskId as string;
+    // taskId was provided but doesn't exist (hallucinated by AI) — fall through to title resolution
   }
+
+  // Try to resolve from taskTitle
   const taskTitle = typeof payload.taskTitle === "string" ? payload.taskTitle : null;
-  if (!taskTitle) return null;
+  if (!taskTitle) {
+    // Last resort: try to extract a task name from displayText
+    const displayText = typeof payload.displayText === "string" ? payload.displayText : null;
+    if (!displayText) return null;
+    // Try to extract quoted task name from display text like "Move deadline for 'Generate leads' to ..."
+    const quoted = displayText.match(/[''"]([^''"]+)[''""]/);
+    if (quoted?.[1]) {
+      const resolved = await resolveTaskByTitle(db, tenantId, projectId, quoted[1]);
+      if (resolved) {
+        payload.taskId = resolved;
+      }
+      return resolved;
+    }
+    return null;
+  }
+
   const resolved = await resolveTaskByTitle(db, tenantId, projectId, taskTitle);
   if (resolved) {
     payload.taskId = resolved;
