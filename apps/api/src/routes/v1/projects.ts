@@ -384,6 +384,12 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
         throw fastify.httpErrors.notFound("Project not found.");
       }
 
+      if (project.ownerUserId !== actorUserId) {
+        throw fastify.httpErrors.forbidden(
+          "Only the project owner can permanently delete a project."
+        );
+      }
+
       if (body.confirmProjectName !== project.name) {
         throw fastify.httpErrors.conflict(
           "confirmProjectName must exactly match the current project name."

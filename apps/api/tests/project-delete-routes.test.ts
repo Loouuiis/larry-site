@@ -72,12 +72,40 @@ describe("Project hard-delete route", () => {
     expect(writeAuditLog).not.toHaveBeenCalled();
   });
 
+  it("returns 403 when the actor is not the project owner", async () => {
+    const queryTenant = vi.fn().mockResolvedValue([
+      {
+        id: PROJECT_ID,
+        name: "Alpha Launch",
+        status: "active",
+        owner_user_id: "99999999-9999-4999-8999-999999999999",
+      },
+    ]);
+    const tx = vi.fn();
+    const app = await createTestApp({ queryTenant, tx } as unknown as Db);
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/projects/${PROJECT_ID}/delete`,
+      payload: { confirmProjectName: "Alpha Launch" },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({
+      message: "Only the project owner can permanently delete a project.",
+    });
+    expect(tx).not.toHaveBeenCalled();
+    expect(writeAuditLog).not.toHaveBeenCalled();
+  });
+
   it("deletes an active project when confirmProjectName matches", async () => {
     const queryTenant = vi.fn().mockResolvedValue([
       {
         id: PROJECT_ID,
         name: "Alpha Launch",
         status: "active",
+        owner_user_id: USER_ID,
       },
     ]);
     const clientQuery = vi.fn(async (sql: string) => {
@@ -130,6 +158,7 @@ describe("Project hard-delete route", () => {
         id: PROJECT_ID,
         name: "Alpha Launch",
         status: "archived",
+        owner_user_id: USER_ID,
       },
     ]);
     const tx = vi.fn();
@@ -156,6 +185,7 @@ describe("Project hard-delete route", () => {
         id: PROJECT_ID,
         name: "Alpha Launch",
         status: "archived",
+        owner_user_id: USER_ID,
       },
     ]);
     const clientQuery = vi.fn(async (sql: string) => {

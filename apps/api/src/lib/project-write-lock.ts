@@ -13,6 +13,7 @@ export interface ProjectWriteState {
   projectId: string;
   name: string;
   status: ProjectStatus;
+  ownerUserId: string | null;
 }
 
 export interface TaskProjectWriteState {
@@ -30,10 +31,11 @@ export async function loadProjectWriteState(
   tenantId: string,
   projectId: string
 ): Promise<ProjectWriteState | null> {
-  const rows = await db.queryTenant<{ id: string; name: string; status: string }>(
+  const rows = await db.queryTenant<{ id: string; name: string; status: string; owner_user_id: string | null }>(
     tenantId,
     `SELECT id,
             name,
+            owner_user_id,
             ${projectStatusSql("status")} as status
        FROM projects
       WHERE tenant_id = $1
@@ -49,6 +51,7 @@ export async function loadProjectWriteState(
     projectId: row.id,
     name: row.name,
     status: normalizeProjectStatus(row.status),
+    ownerUserId: row.owner_user_id,
   };
 }
 
