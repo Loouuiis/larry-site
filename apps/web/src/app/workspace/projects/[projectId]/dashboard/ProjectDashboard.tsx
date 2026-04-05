@@ -461,7 +461,7 @@ export function ProjectDashboard({ projectId }: { projectId: string }) {
       </div>
 
       {/* Progress bar + Risk Score side by side */}
-      <div className="grid gap-3" style={{ gridTemplateColumns: "1fr auto" }}>
+      <div className="grid gap-3" style={{ gridTemplateColumns: "1fr auto", alignItems: "start" }}>
         <DashboardProgress
           completionRate={health.completionRate ?? 0}
           taskCount={health.taskCount ?? 0}
