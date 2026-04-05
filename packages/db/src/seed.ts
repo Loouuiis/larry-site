@@ -83,6 +83,11 @@ const DOC_TEMPLATE_DOCX_ID = "f4000002-0000-4000-8000-000000000002"; // Document
 const DOC_TEMPLATE_XLSX_ID = "f4000003-0000-4000-8000-000000000003"; // Document asset: xlsx template
 const TASK_DOC_ATTACHMENT_ID = "f4000004-0000-4000-8000-000000000004"; // Task-document attachment fixture
 
+const GENERAL_FOLDER_ID = "ff000001-0001-4001-8001-000000000001"; // General folder
+const PROJECT_FOLDER_ID = "ff000001-0001-4001-8001-000000000002"; // Q2 Product Launch folder
+const PROJECT2_FOLDER_ID = "ff000001-0001-4001-8001-000000000003"; // Onboarding Redesign folder
+const ARCHIVED_PROJECT_FOLDER_ID = "ff000001-0001-4001-8001-000000000004"; // Archived project folder
+
 // ─── bcrypt hash for "DevPass123!" at 12 rounds ───────────────────────────────
 // Pre-computed so the seed doesn't require bcryptjs as a dep.
 // To regenerate: node -e "require('bcryptjs').hash('DevPass123!',12).then(console.log)"
@@ -296,8 +301,8 @@ async function seed() {
         $9,
         $10,
         1675,
-        'OpenAI upstream timeout after max retries.',
-        'Error: OpenAI upstream timeout after max retries.',
+        'Gemini upstream timeout after max retries.',
+        'Error: Gemini upstream timeout after max retries.',
         $11::jsonb,
         $10
       )
@@ -776,6 +781,23 @@ We will send a further update once QA sign-off is confirmed.
     );
   }
   console.log("✓  Project 2 comments added");
+
+  // ── Folders ──────────────────────────────────────────────────────────────────
+  await q(`
+    INSERT INTO folders (id, tenant_id, name, folder_type, depth, created_by_user_id)
+    VALUES ($1, $2, 'General', 'general', 0, $3)
+    ON CONFLICT (id) DO NOTHING
+  `, [GENERAL_FOLDER_ID, TENANT_ID, U_ADMIN]);
+
+  await q(`
+    INSERT INTO folders (id, tenant_id, project_id, name, folder_type, depth, created_by_user_id)
+    VALUES
+      ($1, $4, $5, 'Q2 Product Launch', 'project', 0, $7),
+      ($2, $4, $6, 'Onboarding Redesign', 'project', 0, $7),
+      ($3, $4, $8, 'Legacy Migration', 'project', 0, $7)
+    ON CONFLICT (id) DO NOTHING
+  `, [PROJECT_FOLDER_ID, PROJECT2_FOLDER_ID, ARCHIVED_PROJECT_FOLDER_ID, TENANT_ID, PROJECT_ID, PROJECT2_ID, U_ADMIN, PROJECT_ARCHIVED_ID]);
+  console.log("✓  Folders: General + 3 project root folders");
 
   // ── Done ─────────────────────────────────────────────────────────────────────
   console.log(`
