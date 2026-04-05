@@ -235,7 +235,7 @@ export async function proxyApiRequest(
       headers: {
         ...(init.headers ?? {}),
         Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
+        ...(init.body ? { "Content-Type": "application/json" } : {}),
       },
       signal: init.signal ?? AbortSignal.timeout(timeoutMs),
     });

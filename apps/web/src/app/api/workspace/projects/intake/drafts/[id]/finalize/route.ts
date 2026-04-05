@@ -15,7 +15,7 @@ export async function POST(
   const result = await proxyApiRequest(
     session,
     `/v1/projects/intake/drafts/${id}/finalize`,
-    { method: "POST" },
+    { method: "POST", body: JSON.stringify({}) },
     { timeoutMs: 60_000 }
   );
 

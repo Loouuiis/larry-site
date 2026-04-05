@@ -2,11 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarCheck2, Clock, FileText, Upload, CheckCircle2, XCircle, Plus } from "lucide-react";
-import { AnimatePresence } from "framer-motion";
+import { CalendarCheck2, Clock, FileText, Upload, CheckCircle2, XCircle, Plus, X, Loader2, Sparkles } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import type { WorkspaceMeetingsOverview, WorkspaceMeeting, WorkspaceProject } from "@/app/dashboard/types";
 import { triggerBoundedWorkspaceRefresh } from "@/app/workspace/refresh";
-import { StartProjectFlow } from "@/components/dashboard/StartProjectFlow";
 
 type AgentRunState =
   | "INGESTED"
@@ -105,6 +104,168 @@ function getMeetingStatus(meeting: WorkspaceMeeting) {
     label: "Queued",
     style: { background: "#eff6ff", color: "#1d4ed8" },
   };
+}
+
+function QuickProjectFromTranscript({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: (projectId: string) => void;
+}) {
+  const [projectName, setProjectName] = useState("");
+  const [transcriptText, setTranscriptText] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!projectName.trim()) {
+      setFormError("Give the project a name.");
+      return;
+    }
+    if (transcriptText.trim().length < 20) {
+      setFormError("Paste a transcript with at least 20 characters.");
+      return;
+    }
+
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      const draftRes = await fetch("/api/workspace/projects/intake/drafts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "meeting",
+          project: { name: projectName.trim(), description: null, startDate: null, targetDate: null, attachToProjectId: null },
+          meeting: { meetingTitle: null, transcript: transcriptText.trim() },
+        }),
+      });
+      const draftData = (await readJson<{ draft?: { id: string }; error?: string; message?: string }>(draftRes));
+      if (!draftRes.ok || !draftData.draft?.id) {
+        setFormError(draftData.message ?? draftData.error ?? "Failed to create project draft.");
+        return;
+      }
+
+      const bootstrapRes = await fetch(`/api/workspace/projects/intake/drafts/${encodeURIComponent(draftData.draft.id)}/bootstrap`, {
+        method: "POST",
+      });
+      const bootstrapData = await readJson<{ draft?: { id: string }; error?: string; message?: string }>(bootstrapRes);
+      if (!bootstrapRes.ok || !bootstrapData.draft) {
+        setFormError(bootstrapData.message ?? bootstrapData.error ?? "Failed to extract actions from transcript.");
+        return;
+      }
+
+      const finalizeRes = await fetch(`/api/workspace/projects/intake/drafts/${encodeURIComponent(draftData.draft.id)}/finalize`, {
+        method: "POST",
+      });
+      const finalizeData = await readJson<{ draft?: { id: string; projectId?: string }; error?: string; message?: string }>(finalizeRes);
+      if (!finalizeRes.ok || !finalizeData.draft) {
+        setFormError(finalizeData.message ?? finalizeData.error ?? "Failed to create the project.");
+        return;
+      }
+
+      window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
+      triggerBoundedWorkspaceRefresh();
+      if (finalizeData.draft.projectId) {
+        onCreated(finalizeData.draft.projectId);
+      }
+    } catch {
+      setFormError("Network error while creating the project.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6 backdrop-blur-sm"
+      style={{ background: "rgba(15,23,42,0.55)" }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <motion.div
+        initial={{ scale: 0.96, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.96, opacity: 0, y: 12 }}
+        transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+        className="relative w-full max-w-xl bg-white"
+        style={{ borderRadius: "var(--radius-card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-3)" }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "20px 24px 0" }}>
+          <h2 className="text-h2">New project from transcript</h2>
+          <button type="button" onClick={onClose} style={{ color: "var(--text-muted)", cursor: "pointer", background: "none", border: "none" }}>
+            <X size={18} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} style={{ padding: "16px 24px 24px", display: "flex", flexDirection: "column", gap: "12px" }}>
+          <input
+            value={projectName}
+            onChange={(e) => setProjectName(e.target.value)}
+            placeholder="Project name"
+            autoFocus
+            style={{
+              width: "100%",
+              height: "42px",
+              borderRadius: "var(--radius-btn)",
+              border: "1px solid var(--border)",
+              background: "var(--surface-2)",
+              padding: "0 14px",
+              fontSize: "14px",
+              color: "var(--text-1)",
+              outline: "none",
+              boxSizing: "border-box",
+            }}
+            onFocus={(e) => (e.currentTarget.style.borderColor = "#6c44f6")}
+            onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
+          />
+          <textarea
+            value={transcriptText}
+            onChange={(e) => setTranscriptText(e.target.value)}
+            rows={8}
+            placeholder="Paste meeting notes or transcript here..."
+            style={{
+              width: "100%",
+              borderRadius: "var(--radius-btn)",
+              border: "1px solid var(--border)",
+              background: "var(--surface-2)",
+              padding: "12px 14px",
+              fontSize: "14px",
+              color: "var(--text-1)",
+              outline: "none",
+              resize: "vertical",
+              boxSizing: "border-box",
+            }}
+            onFocus={(e) => (e.currentTarget.style.borderColor = "#6c44f6")}
+            onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
+          />
+          {formError && (
+            <div style={{ borderRadius: "var(--radius-btn)", background: "#fef2f2", border: "1px solid #fecaca", padding: "10px 14px", fontSize: "13px", color: "#b91c1c" }}>
+              {formError}
+            </div>
+          )}
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "4px" }}>
+            <button type="button" onClick={onClose} className="pm-btn pm-btn-secondary" disabled={submitting}>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting || !projectName.trim() || transcriptText.trim().length < 20}
+              className="pm-btn pm-btn-primary"
+              style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+            >
+              {submitting ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+              {submitting ? "Creating..." : "Create project"}
+            </button>
+          </div>
+        </form>
+      </motion.div>
+    </motion.div>
+  );
 }
 
 export function MeetingsPage() {
@@ -651,7 +812,7 @@ export function MeetingsPage() {
 
       <AnimatePresence>
         {showNewProject && (
-          <StartProjectFlow
+          <QuickProjectFromTranscript
             onClose={() => setShowNewProject(false)}
             onCreated={(projectId) => {
               setShowNewProject(false);

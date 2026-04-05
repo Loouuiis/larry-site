@@ -12,7 +12,7 @@ export async function POST(
   }
 
   const { id } = await context.params;
-  const result = await proxyApiRequest(session, `/v1/notifications/${id}/read`, { method: "POST" });
+  const result = await proxyApiRequest(session, `/v1/notifications/${id}/read`, { method: "POST", body: JSON.stringify({}) });
   if (result.session) {
     await persistSession(result.session);
   }
