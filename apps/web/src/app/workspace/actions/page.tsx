@@ -281,7 +281,7 @@ export default function WorkspaceActionsPage() {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto" style={{ background: "var(--page-bg)" }}>
-      <div className="mx-auto max-w-[1200px] space-y-6 px-6 py-8">
+      <div className="mx-auto max-w-[1440px] space-y-6 px-6 py-8">
         <section
           style={{
             borderRadius: "var(--radius-card)",
@@ -522,13 +522,15 @@ export default function WorkspaceActionsPage() {
           </div>
         )}
 
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,1fr)]">
+        <section className="grid gap-6 md:grid-cols-2">
           <div
             style={{
               borderRadius: "var(--radius-card)",
               border: "1px solid var(--border)",
               background: "var(--surface)",
               padding: "20px",
+              maxHeight: "calc(100vh - 120px)",
+              overflowY: "auto",
             }}
           >
             <div>
@@ -731,13 +733,15 @@ export default function WorkspaceActionsPage() {
               border: "1px solid var(--border)",
               background: "var(--surface)",
               padding: "20px",
+              maxHeight: "calc(100vh - 120px)",
+              overflowY: "auto",
             }}
           >
             <div className="flex items-center gap-3">
               <Activity size={18} style={{ color: "var(--cta)" }} />
               <div>
                 <p className="text-[18px] font-semibold" style={{ color: "var(--text-1)" }}>
-                  Recent activity
+                  Actions completed
                 </p>
                 <p className="mt-1 text-[13px]" style={{ color: "var(--text-2)" }}>
                   Accepted and auto-executed changes from the same canonical ledger.
