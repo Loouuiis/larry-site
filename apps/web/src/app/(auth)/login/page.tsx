@@ -5,15 +5,12 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
 
-const SHOW_DEV_LOGIN = process.env.NEXT_PUBLIC_SHOW_DEV_LOGIN === "true";
-
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [devLoading, setDevLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -40,24 +37,6 @@ export default function LoginPage() {
       setError("Network error. Please check your connection.");
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function handleDevBypass() {
-    setError("");
-    setDevLoading(true);
-    try {
-      const res = await fetch("/api/auth/dev-login", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? "Dev bypass failed.");
-        return;
-      }
-      router.push("/workspace");
-    } catch {
-      setError("Dev bypass failed. Please try again.");
-    } finally {
-      setDevLoading(false);
     }
   }
 
@@ -135,16 +114,6 @@ export default function LoginPage() {
             {loading ? "Logging in…" : "Log in"}
           </button>
 
-          {SHOW_DEV_LOGIN && (
-            <button
-              type="button"
-              onClick={handleDevBypass}
-              disabled={devLoading}
-              className="inline-flex h-[2.5rem] w-full items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface)] px-6 text-sm font-medium text-[var(--text-2)] transition-colors duration-200 hover:border-[var(--border-2)] hover:text-[var(--text-1)] disabled:pointer-events-none disabled:opacity-50"
-            >
-              {devLoading ? "Opening dashboard…" : "Enter Dashboard (Dev)"}
-            </button>
-          )}
         </form>
 
         <p className="mt-6 text-center text-sm text-[var(--text-muted)]">

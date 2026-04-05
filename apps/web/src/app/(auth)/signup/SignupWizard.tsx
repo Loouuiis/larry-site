@@ -6,8 +6,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { Eye, EyeOff, Check, Upload, ArrowRight } from "lucide-react";
 
-const SHOW_DEV_LOGIN = process.env.NEXT_PUBLIC_SHOW_DEV_LOGIN === "true";
-
 /* ─── Step dots ───────────────────────────────────────────────────── */
 
 function StepDots({ current, total }: { current: number; total: number }) {
@@ -206,23 +204,6 @@ export function SignupWizard() {
     router.push("/workspace");
   };
 
-  const handleDevBypass = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/auth/dev-login", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? "Dev bypass failed.");
-        return;
-      }
-      router.push("/workspace");
-    } catch {
-      setError("Dev bypass failed.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="w-full max-w-md">
       <div
@@ -253,16 +234,6 @@ export function SignupWizard() {
             >
               Get started
             </button>
-            {SHOW_DEV_LOGIN && (
-              <button
-                type="button"
-                onClick={handleDevBypass}
-                disabled={loading}
-                className="inline-flex h-[2.5rem] w-full items-center justify-center rounded-lg border border-[var(--border)] text-sm font-medium text-[var(--text-2)] transition-colors hover:border-[var(--border-2)] hover:text-[var(--text-1)] disabled:opacity-50"
-              >
-                {loading ? "Opening dashboard…" : "Enter Dashboard (Dev)"}
-              </button>
-            )}
             <p className="text-sm text-[var(--text-muted)]">
               Already have an account?{" "}
               <Link href="/login" className="font-medium text-[var(--brand)] underline underline-offset-2 hover:text-[var(--brand-hover)]">
