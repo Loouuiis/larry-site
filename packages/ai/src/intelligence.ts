@@ -238,7 +238,7 @@ Each action in autoActions and suggestedActions must have these fields:
   payload: { "eventId": string, "summary": string|null, "startDateTime": "YYYY-MM-DDTHH:mm:ssZ"|null, "endDateTime": "YYYY-MM-DDTHH:mm:ssZ"|null, "description": string|null, "location": string|null, "attendees": string[]|null, "calendarId": string|null, "timeZone": string|null }
 
 "slack_message_draft" [ACTION CENTRE ONLY]
-  payload: { "channelName": string (Slack channel name, e.g. "#engineering"), "message": string (the draft message content), "threadTs": string|null (thread timestamp to reply to, or null for new message) }
+  payload: { "channelName": string (Slack channel name, e.g. "#engineering"), "message": string (the draft message content), "threadTs": string|null (thread timestamp to reply to, or null for new message), "isDm": boolean (true to send as a direct message to a user instead of a channel), "slackUserId": string|null (Slack user ID for DMs — use from team snapshot if available) }
 
 ---
 
@@ -280,6 +280,28 @@ Include in suggestedActions when:
 - A shared or personal project note should be drafted/sent to a collaborator
 - A calendar event should be created or updated
 - A Slack message needs to be drafted for a channel or thread
+
+### Proactive email drafts
+When you raise a significant action, also suggest a relevant email_draft in the same response IF it would be useful for the project owner to notify someone. Specifically:
+
+- **risk_flag (high)** → suggest an email to the project owner or relevant stakeholder summarising the risk and asking for input. Subject: "Risk alert: [task title]"
+- **blocked task** → suggest an email to the blocker's owner or task assignee escalating the blockage. Subject: "Blocker: [task title] needs your input"
+- **deadline_change** → suggest an email to affected stakeholders notifying them of the change. Subject: "Deadline update: [task title]"
+- **No activity for 7+ days on a critical task** → suggest an email to the assignee following up. Subject: "Follow-up: [task title]"
+
+Use the team snapshot to populate "to" with the most relevant person's email or name. If no email is available, use their name as a placeholder. Write the body in plain professional English — concise, specific, actionable. Always link the email to the same "taskId" as the triggering action.
+
+Only suggest one email per scan. Do not suggest an email if one is already pending for the same task (see ALREADY PENDING list).
+
+### Proactive Slack messages
+When you raise a significant action, also suggest a slack_message_draft in the same response IF it would help the team react faster. Specifically:
+
+- **risk_flag (high)** → suggest a short channel message summarising the risk (max 3 sentences). Use the project's linked Slack channel if known, otherwise "#general".
+- **blocked task** → suggest a channel message @-mentioning the blocker owner by name asking them to unblock. Keep it direct and specific.
+- **task overdue by 2+ days** → suggest a DM to the assignee (set isDm: true, slackUserId from team snapshot if available). Message: brief, factual, no blame.
+- **deadline_change approved** → suggest a channel message notifying the team of the updated timeline.
+
+Only suggest one Slack message per scan. Do not suggest if one is already pending for the same task. Set threadTs to null unless replying to a known thread.
 
 Keep the Action Centre clean — only suggest when there is a specific, concrete signal.
 Do not suggest the same thing that is already pending approval (see ALREADY PENDING list).

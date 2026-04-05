@@ -23,7 +23,7 @@ const UpsertDraftSchema = z.object({
   meeting: z
     .object({
       meetingTitle: z.string().max(300).optional().nullable(),
-      transcript: z.string().max(30000).optional().nullable(),
+      transcript: z.string().max(500_000).optional().nullable(),
     })
     .optional(),
 });
@@ -36,9 +36,14 @@ export async function POST(request: NextRequest) {
 
   let payload: z.infer<typeof UpsertDraftSchema>;
   try {
-    payload = UpsertDraftSchema.parse(await request.json());
-  } catch {
-    return NextResponse.json({ error: "Invalid intake draft payload." }, { status: 400 });
+    const body = await request.json();
+    payload = UpsertDraftSchema.parse(body);
+  } catch (err) {
+    const message =
+      err instanceof z.ZodError
+        ? err.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")
+        : "Could not parse request body.";
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 
   const result = await proxyApiRequest(

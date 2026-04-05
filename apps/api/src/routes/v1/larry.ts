@@ -67,7 +67,7 @@ import {
   refreshOutlookAccessToken,
   updateOutlookCalendarEvent,
 } from "../../services/connectors/outlook-calendar.js";
-import { postSlackMessage } from "../../services/connectors/slack.js";
+import { openSlackDmChannel, postSlackMessage } from "../../services/connectors/slack.js";
 
 function buildIntelligenceConfig(config: ReturnType<typeof getApiEnv>): IntelligenceConfig {
   if (config.MODEL_PROVIDER === "openai") {
@@ -1233,8 +1233,11 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
 
           const channelName = typeof event.payload.channelName === "string" ? event.payload.channelName : null;
           const messageText = typeof event.payload.message === "string" ? event.payload.message : null;
+          const threadTs = typeof event.payload.threadTs === "string" ? event.payload.threadTs : undefined;
+          const isDm = event.payload.isDm === true;
+          const slackUserId = typeof event.payload.slackUserId === "string" ? event.payload.slackUserId : null;
 
-          if (channelName && messageText) {
+          if (messageText && (channelName || (isDm && slackUserId))) {
             try {
               const slackInstallation = await fastify.db.queryTenant<{ bot_access_token: string }>(
                 tenantId,
@@ -1247,11 +1250,22 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
               );
 
               if (slackInstallation[0]?.bot_access_token) {
-                const slackResult = await postSlackMessage(
-                  slackInstallation[0].bot_access_token,
-                  channelName,
-                  messageText
-                );
+                const botToken = slackInstallation[0].bot_access_token;
+
+                // Resolve DM channel if needed
+                let targetChannel = channelName ?? "";
+                if (isDm && slackUserId) {
+                  const dmChannel = await openSlackDmChannel(botToken, slackUserId);
+                  if (dmChannel) {
+                    targetChannel = dmChannel;
+                  } else {
+                    (entity as Record<string, unknown>).slackSent = false;
+                    (entity as Record<string, unknown>).slackError = "Could not open DM channel with user.";
+                    return;
+                  }
+                }
+
+                const slackResult = await postSlackMessage(botToken, targetChannel, messageText, threadTs);
 
                 if (slackResult.ok) {
                   (entity as Record<string, unknown>).slackSent = true;
