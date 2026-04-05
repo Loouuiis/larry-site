@@ -64,6 +64,12 @@ function createMockDb(options: {
       insertCounter += 1;
       return [{ id: `event-${insertCounter}` }];
     }
+    if (sql.includes("SELECT id FROM tasks") && sql.includes("AND id =")) {
+      // ensureTaskId validation — return the task if the ID matches
+      const idParam = values?.[1];
+      if (idParam === "task-qa") return [{ id: "task-qa" }];
+      return [];
+    }
     if (sql.includes("UPDATE tasks")) {
       return [
         {
