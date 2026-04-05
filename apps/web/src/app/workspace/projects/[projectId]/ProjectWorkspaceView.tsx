@@ -42,6 +42,7 @@ import { ProjectDashboard } from "./dashboard/ProjectDashboard";
 import { ProjectDashboardExtra } from "./dashboard/ProjectDashboardExtra";
 import { ProjectTimeline } from "@/components/workspace/timeline/ProjectTimeline";
 import { getActionTypeTag, getAllActionTypes } from "@/lib/action-types";
+import { useToast } from "@/components/toast/ToastContext";
 import { ActionBellDropdown } from "./overview/ActionBellDropdown";
 import { ProjectOverviewTab } from "./overview/ProjectOverviewTab";
 import { ProjectDescriptionCard } from "./overview/ProjectDescriptionCard";
@@ -1016,45 +1017,61 @@ function ProjectActionCentreTab({
         )}
       </section>
 
-      {/* Pending review */}
-      <section
-        style={{
-          borderRadius: "var(--radius-card)",
-          border: "1px solid var(--border)",
-          background: "var(--surface)",
-          padding: "20px",
-        }}
-      >
-        <p className="text-[15px] font-semibold" style={{ color: "var(--text-1)" }}>
-          Pending review
-        </p>
-        <div className="mt-4">
-          {filteredSuggested.length === 0 ? (
-            <p className="text-[13px] py-4" style={{ color: "var(--text-muted)" }}>
-              {hasFilters
-                ? "No actions match your filters."
-                : "No pending actions. New suggestions will appear as Larry processes signals."}
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {filteredSuggested.map((event) => {
+      {/* Side-by-side: Pending review + Actions completed */}
+      <section className="grid gap-6 md:grid-cols-2">
+        <div
+          style={{
+            borderRadius: "var(--radius-card)",
+            border: "1px solid var(--border)",
+            background: "var(--surface)",
+            padding: "20px",
+            maxHeight: "calc(100vh - 120px)",
+            overflowY: "auto",
+          }}
+        >
+          <p className="text-[18px] font-semibold" style={{ color: "var(--text-1)" }}>
+            Pending review
+          </p>
+          <p className="mt-1 text-[13px]" style={{ color: "var(--text-2)" }}>
+            Approval-required Larry actions for this project.
+          </p>
+          <div className="mt-5 space-y-3">
+            {filteredSuggested.length === 0 ? (
+              <div
+                className="rounded-xl border border-dashed px-4 py-6 text-center"
+                style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
+              >
+                <p className="text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
+                  {hasFilters ? "No suggestions match your filters" : "Nothing waiting for review"}
+                </p>
+                <p className="mt-2 text-[13px] leading-6" style={{ color: "var(--text-2)" }}>
+                  {hasFilters
+                    ? "Try adjusting your search or filter criteria."
+                    : "New Larry suggestions will appear here as signals flow into the ledger."}
+                </p>
+              </div>
+            ) : (
+              filteredSuggested.map((event) => {
                 const canLetLarryDoIt = event.payload?._offerExecution === true;
                 return (
                 <div
                   key={event.id}
-                  className="rounded-xl border px-4 py-3"
+                  className="rounded-xl border px-4 py-4"
                   style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
                 >
                   <div className="flex flex-wrap items-center gap-2">
                     <ActionTypeBadge actionType={event.actionType} />
                   </div>
-                  <p className="mt-2 text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
+                  <p className="mt-3 text-[15px] font-semibold" style={{ color: "var(--text-1)" }}>
                     {event.displayText}
                   </p>
-                  <p className="mt-1 text-[12px]" style={{ color: "var(--text-muted)" }}>
+                  <p className="mt-2 text-[13px] leading-6" style={{ color: "var(--text-2)" }}>
+                    {event.reasoning || "Larry proposed this action from current project context."}
+                  </p>
+                  <p className="mt-3 text-[12px]" style={{ color: "var(--text-muted)" }}>
                     {getEventMeta(event)}
                   </p>
-                  <div className="mt-3 flex items-center gap-2">
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
                     {canLetLarryDoIt && (
                       <button
                         type="button"
@@ -1070,7 +1087,7 @@ function ProjectActionCentreTab({
                       type="button"
                       onClick={() => void dismiss(event.id)}
                       disabled={dismissing === event.id}
-                      className="rounded-lg border px-3 py-1.5 text-[12px] font-semibold"
+                      className="rounded-full border px-3 py-1.5 text-[12px] font-semibold"
                       style={{ borderColor: "var(--border)", color: "var(--text-2)" }}
                     >
                       {dismissing === event.id ? "Dismissing..." : "Dismiss"}
@@ -1085,7 +1102,7 @@ function ProjectActionCentreTab({
                         }
                       }}
                       disabled={modifying === event.id}
-                      className="rounded-lg border px-3 py-1.5 text-[12px] font-semibold"
+                      className="rounded-full border px-3 py-1.5 text-[12px] font-semibold"
                       style={{ borderColor: "var(--cta)", color: "var(--cta)" }}
                     >
                       {modifying === event.id ? "Opening..." : "Modify"}
@@ -1094,7 +1111,7 @@ function ProjectActionCentreTab({
                       type="button"
                       onClick={() => void accept(event.id)}
                       disabled={accepting === event.id}
-                      className="rounded-lg px-3 py-1.5 text-[12px] font-semibold text-white"
+                      className="rounded-full px-3 py-1.5 text-[12px] font-semibold text-white"
                       style={{ background: "var(--cta)" }}
                     >
                       {accepting === event.id ? "Accepting..." : "Accept"}
@@ -1119,73 +1136,92 @@ function ProjectActionCentreTab({
                   )}
                 </div>
                 );
-              })}
-            </div>
-          )}
+              })
+            )}
+          </div>
         </div>
-      </section>
 
-      {/* Recent activity */}
-      {filteredActivity.length > 0 && (
-        <section
+        <div
           style={{
             borderRadius: "var(--radius-card)",
             border: "1px solid var(--border)",
             background: "var(--surface)",
             padding: "20px",
+            maxHeight: "calc(100vh - 120px)",
+            overflowY: "auto",
           }}
         >
-          <p className="text-[15px] font-semibold" style={{ color: "var(--text-1)" }}>
-            Recent activity
-          </p>
-          <div className="mt-4 space-y-3">
-            {filteredActivity.map((event) => {
-              const completedByLarry = event.executedByKind === "larry" && event.payload?._selfExecutable === true;
-              return (
-              <div
-                key={event.id}
-                className="rounded-xl border px-4 py-3"
-                style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  <ActionTypeBadge actionType={event.actionType} />
-                  <span
-                    className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold"
-                    style={{
-                      background: event.eventType === "accepted" ? "#ecfdf3" : "#eff6ff",
-                      color: event.eventType === "accepted" ? "#15803d" : "#1d4ed8",
-                      borderColor: event.eventType === "accepted" ? "#bbf7d0" : "#bfdbfe",
-                    }}
-                  >
-                    {event.eventType === "accepted" ? "Accepted" : "Auto executed"}
-                  </span>
-                  {completedByLarry && (
-                    <span
-                      className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold"
-                      style={{ background: "#ecfdf3", color: "#15803d", borderColor: "#bbf7d0" }}
-                    >
-                      Completed by Larry
-                    </span>
-                  )}
-                </div>
-                <p className="mt-2 text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
-                  {event.displayText}
-                </p>
-                <p className="mt-1 text-[12px]" style={{ color: "var(--text-muted)" }}>
-                  {getEventMeta(event)}
-                </p>
-              </div>
-              );
-            })}
+          <div className="flex items-center gap-3">
+            <CheckCircle2 size={18} style={{ color: "var(--cta)" }} />
+            <div>
+              <p className="text-[18px] font-semibold" style={{ color: "var(--text-1)" }}>
+                Actions completed
+              </p>
+              <p className="mt-1 text-[13px]" style={{ color: "var(--text-2)" }}>
+                Accepted and auto-executed changes for this project.
+              </p>
+            </div>
           </div>
-        </section>
-      )}
+          <div className="mt-5 space-y-3">
+            {filteredActivity.length === 0 ? (
+              <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>
+                {hasFilters ? "No activity matches your filters." : "No completed actions yet."}
+              </p>
+            ) : (
+              filteredActivity.map((event) => {
+                const completedByLarry = event.executedByKind === "larry" && event.payload?._selfExecutable === true;
+                return (
+                <div
+                  key={event.id}
+                  className="rounded-xl border px-4 py-4"
+                  style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
+                >
+                  <div className="flex items-start gap-3">
+                    <CheckCircle2 size={16} className="mt-0.5 shrink-0" style={{ color: "var(--cta)" }} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <ActionTypeBadge actionType={event.actionType} />
+                        <span
+                          className="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold"
+                          style={{
+                            background: event.eventType === "accepted" ? "#ecfdf3" : "#eff6ff",
+                            color: event.eventType === "accepted" ? "#15803d" : "#1d4ed8",
+                            borderColor: event.eventType === "accepted" ? "#bbf7d0" : "#bfdbfe",
+                          }}
+                        >
+                          {event.eventType === "accepted" ? "Accepted" : "Auto executed"}
+                        </span>
+                        {completedByLarry && (
+                          <span
+                            className="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold"
+                            style={{ background: "#ecfdf3", color: "#15803d", borderColor: "#bbf7d0" }}
+                          >
+                            Completed by Larry
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-3 text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
+                        {event.displayText}
+                      </p>
+                      <p className="mt-1 text-[12px]" style={{ color: "var(--text-muted)" }}>
+                        {getEventMeta(event)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
 
 export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
   const chrome = useWorkspaceChrome();
+  const { pushToast } = useToast();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<ProjectTab>("overview");
   const [memorySourceFilter, setMemorySourceFilter] = useState("all");
@@ -1215,7 +1251,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
     letLarryExecute,
     clearActionError,
     refresh: refreshActionCentre,
-  } = useProjectActionCentre(projectId, refresh);
+  } = useProjectActionCentre(projectId, refresh, (toast: { actionType: string; actionLabel: string; actionColor: string; displayText: string; projectName: string | null; projectId: string }) => pushToast(toast));
   const {
     entries: memoryEntries,
     loading: memoryLoading,
