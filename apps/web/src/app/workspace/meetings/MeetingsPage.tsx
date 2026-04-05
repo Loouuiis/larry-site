@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarCheck2, Clock, FileText, Upload, CheckCircle2, XCircle } from "lucide-react";
+import { CalendarCheck2, Clock, FileText, Upload, CheckCircle2, XCircle, Plus } from "lucide-react";
+import { AnimatePresence } from "framer-motion";
 import type { WorkspaceMeetingsOverview, WorkspaceMeeting, WorkspaceProject } from "@/app/dashboard/types";
 import { triggerBoundedWorkspaceRefresh } from "@/app/workspace/refresh";
+import { StartProjectFlow } from "@/components/dashboard/StartProjectFlow";
 
 type AgentRunState =
   | "INGESTED"
@@ -119,6 +121,7 @@ export function MeetingsPage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
+  const [showNewProject, setShowNewProject] = useState(false);
   const simTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const loadOverview = useCallback(async () => {
@@ -318,32 +321,79 @@ export function MeetingsPage() {
 
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
               {projects.length > 0 && (
-                <select
-                  value={selectedProjectId}
-                  onChange={(e) => setSelectedProjectId(e.target.value)}
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", flex: 1, minWidth: 0, maxWidth: "340px" }}>
+                  <select
+                    value={selectedProjectId}
+                    onChange={(e) => setSelectedProjectId(e.target.value)}
+                    disabled={processing}
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      borderRadius: "var(--radius-btn)",
+                      border: "1px solid var(--border)",
+                      background: "var(--surface-2)",
+                      padding: "0 12px",
+                      height: "36px",
+                      fontSize: "14px",
+                      color: "var(--text-1)",
+                      outline: "none",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      opacity: processing ? 0.5 : 1,
+                    }}
+                  >
+                    {projects.map((project) => (
+                      <option key={project.id} value={project.id}>{project.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => setShowNewProject(true)}
+                    disabled={processing}
+                    title="New project"
+                    style={{
+                      flexShrink: 0,
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "var(--radius-btn)",
+                      border: "1px solid var(--border)",
+                      background: "var(--surface-2)",
+                      color: "#6c44f6",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                      opacity: processing ? 0.5 : 1,
+                    }}
+                  >
+                    <Plus size={16} />
+                  </button>
+                </div>
+              )}
+              {projects.length === 0 && !loading && (
+                <button
+                  type="button"
+                  onClick={() => setShowNewProject(true)}
                   disabled={processing}
                   style={{
-                    flex: 1,
-                    minWidth: 0,
-                    maxWidth: "300px",
+                    height: "36px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "6px",
                     borderRadius: "var(--radius-btn)",
                     border: "1px solid var(--border)",
                     background: "var(--surface-2)",
-                    padding: "0 12px",
-                    height: "36px",
+                    padding: "0 14px",
                     fontSize: "14px",
-                    color: "var(--text-1)",
-                    outline: "none",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    opacity: processing ? 0.5 : 1,
+                    color: "#6c44f6",
+                    fontWeight: 500,
+                    cursor: "pointer",
                   }}
                 >
-                  {projects.map((project) => (
-                    <option key={project.id} value={project.id}>{project.name}</option>
-                  ))}
-                </select>
+                  <Plus size={14} />
+                  New project
+                </button>
               )}
               <button
                 type="submit"
@@ -598,6 +648,19 @@ export function MeetingsPage() {
           )}
         </section>
       </div>
+
+      <AnimatePresence>
+        {showNewProject && (
+          <StartProjectFlow
+            onClose={() => setShowNewProject(false)}
+            onCreated={(projectId) => {
+              setShowNewProject(false);
+              void loadOverview();
+              setSelectedProjectId(projectId);
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

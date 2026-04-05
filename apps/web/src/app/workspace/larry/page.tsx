@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { AnimatePresence } from "framer-motion";
 import {
   Clock3,
   Plus,
   Sparkles,
 } from "lucide-react";
+import { StartProjectFlow } from "@/components/dashboard/StartProjectFlow";
 import type { WorkspaceLarryEvent } from "@/app/dashboard/types";
 import {
   type LarryConversation,
@@ -180,15 +182,18 @@ function MessageBubble({
         }}
       >
         {isProcessing ? (
-          <span className="flex items-center gap-1 py-1">
-            <span className="h-1.5 w-1.5 animate-bounce rounded-full" style={{ background: "var(--cta)", animationDelay: "0ms" }} />
-            <span className="h-1.5 w-1.5 animate-bounce rounded-full" style={{ background: "var(--cta)", animationDelay: "120ms" }} />
-            <span className="h-1.5 w-1.5 animate-bounce rounded-full" style={{ background: "var(--cta)", animationDelay: "240ms" }} />
+          <span className="flex items-center gap-2 py-1">
+            <span className="flex items-center gap-1">
+              <span className="h-1.5 w-1.5 animate-bounce rounded-full" style={{ background: "var(--cta)", animationDelay: "0ms" }} />
+              <span className="h-1.5 w-1.5 animate-bounce rounded-full" style={{ background: "var(--cta)", animationDelay: "120ms" }} />
+              <span className="h-1.5 w-1.5 animate-bounce rounded-full" style={{ background: "var(--cta)", animationDelay: "240ms" }} />
+            </span>
+            <span style={{ fontSize: "12px", color: "#8b7fc7" }}>Larry is thinking…</span>
           </span>
         ) : (
           <>
             <p style={{ marginBottom: "6px", fontSize: "11px", fontWeight: 600, color: isLarry ? "var(--text-muted)" : "rgba(255,255,255,0.85)" }}>{actorLabel}</p>
-            <p>{message.content}</p>
+            <p style={{ whiteSpace: "pre-line" }}>{message.content}</p>
           </>
         )}
         {isLarry && !isProcessing && (executedCount > 0 || suggestionCount > 0) && (
@@ -227,6 +232,7 @@ export default function AskLarryPage() {
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [files, setFiles] = useState<AttachedFile[]>([]);
+  const [showNewProject, setShowNewProject] = useState(false);
   const initializedRef = useRef(false);
 
   const { containerRef, endRef, hasNewMessages, scrollToBottom } = useSmartScroll(messages);
@@ -550,9 +556,43 @@ export default function AskLarryPage() {
                     {activeConversation ? getConversationTitle(activeConversation) : "Fresh conversation"}
                   </h2>
                   <span style={{ color: "var(--text-disabled)", fontSize: "13px" }}>·</span>
-                  <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>
-                    {activeProjectId ? activeProjectLabel : "Global workspace"}
-                  </span>
+                  {!activeConversation ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                      <select
+                        value={draftProjectId ?? ""}
+                        onChange={(e) => {
+                          if (e.target.value === "__new__") {
+                            setShowNewProject(true);
+                            e.target.value = draftProjectId ?? "";
+                            return;
+                          }
+                          setDraftProjectId(e.target.value || null);
+                        }}
+                        style={{
+                          fontSize: "12px",
+                          color: "var(--text-muted)",
+                          background: "none",
+                          border: "1px solid var(--border)",
+                          borderRadius: "6px",
+                          padding: "2px 8px",
+                          height: "24px",
+                          outline: "none",
+                          cursor: "pointer",
+                          maxWidth: "200px",
+                        }}
+                      >
+                        <option value="">Global workspace</option>
+                        {projects.map((project) => (
+                          <option key={project.id} value={project.id}>{project.name}</option>
+                        ))}
+                        <option value="__new__">＋ New project</option>
+                      </select>
+                    </div>
+                  ) : (
+                    <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>
+                      {activeProjectId ? activeProjectLabel : "Global workspace"}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -624,6 +664,23 @@ export default function AskLarryPage() {
           </section>
         </div>
       </div>
+
+      <AnimatePresence>
+        {showNewProject && (
+          <StartProjectFlow
+            onClose={() => setShowNewProject(false)}
+            onCreated={async (projectId) => {
+              setShowNewProject(false);
+              setDraftProjectId(projectId);
+              try {
+                const res = await fetch("/api/workspace/projects", { cache: "no-store" });
+                const data = await readJson<{ items?: WorkspaceProject[]; error?: string }>(res);
+                if (res.ok && data.items) setProjects(data.items);
+              } catch { /* keep existing projects list */ }
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
