@@ -384,12 +384,6 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
         throw fastify.httpErrors.notFound("Project not found.");
       }
 
-      if (!isProjectWriteLocked(project.status)) {
-        throw fastify.httpErrors.conflict(
-          "Project must be archived before it can be permanently deleted."
-        );
-      }
-
       if (body.confirmProjectName !== project.name) {
         throw fastify.httpErrors.conflict(
           "confirmProjectName must exactly match the current project name."

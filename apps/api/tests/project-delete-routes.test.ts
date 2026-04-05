@@ -72,7 +72,7 @@ describe("Project hard-delete route", () => {
     expect(writeAuditLog).not.toHaveBeenCalled();
   });
 
-  it("returns 409 when deleting an active project", async () => {
+  it("deletes an active project when confirmProjectName matches", async () => {
     const queryTenant = vi.fn().mockResolvedValue([
       {
         id: PROJECT_ID,
@@ -80,7 +80,27 @@ describe("Project hard-delete route", () => {
         status: "active",
       },
     ]);
-    const tx = vi.fn();
+    const clientQuery = vi.fn(async (sql: string) => {
+      if (sql.includes("DELETE FROM meeting_notes")) {
+        return { rows: [{ row_count: 0 }] };
+      }
+      if (sql.includes("DELETE FROM documents")) {
+        return { rows: [{ row_count: 0 }] };
+      }
+      if (sql.includes("DELETE FROM email_outbound_drafts")) {
+        return { rows: [{ row_count: 0 }] };
+      }
+      if (sql.includes("DELETE FROM larry_conversations")) {
+        return { rows: [{ row_count: 0 }] };
+      }
+      if (sql.includes("DELETE FROM projects")) {
+        return { rows: [{ id: PROJECT_ID }] };
+      }
+      return { rows: [] };
+    });
+    const tx = vi.fn(async (fn: (client: { query: typeof clientQuery }) => Promise<unknown>) =>
+      fn({ query: clientQuery })
+    );
     const app = await createTestApp({ queryTenant, tx } as unknown as Db);
     appsToClose.push(app);
 
@@ -90,12 +110,18 @@ describe("Project hard-delete route", () => {
       payload: { confirmProjectName: "Alpha Launch" },
     });
 
-    expect(response.statusCode).toBe(409);
-    expect(response.json()).toMatchObject({
-      message: "Project must be archived before it can be permanently deleted.",
-    });
-    expect(tx).not.toHaveBeenCalled();
-    expect(writeAuditLog).not.toHaveBeenCalled();
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ id: PROJECT_ID, deleted: true });
+    expect(tx).toHaveBeenCalledTimes(1);
+    expect(writeAuditLog).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        actionType: "project.delete",
+        details: expect.objectContaining({
+          previousStatus: "active",
+        }),
+      })
+    );
   });
 
   it("returns 409 when confirmProjectName does not exactly match", async () => {

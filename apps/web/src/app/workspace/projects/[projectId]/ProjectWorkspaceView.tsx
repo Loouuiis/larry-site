@@ -1687,37 +1687,20 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
               </p>
               <div className="mt-4 flex flex-wrap gap-3">
                 {isArchived ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => void updateProjectArchiveState("active")}
-                      disabled={statusBusy !== null}
-                      className="inline-flex h-9 items-center gap-2 rounded-full border px-4 text-[13px] font-semibold"
-                      style={{
-                        borderColor: "var(--border)",
-                        color: "var(--text-2)",
-                        background: "var(--surface)",
-                        opacity: statusBusy !== null ? 0.7 : 1,
-                      }}
-                    >
-                      {statusBusy === "unarchive" ? "Restoring..." : "Restore to active"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setDeleteConfirmName(""); setDeleteDialogOpen(true); }}
-                      disabled={statusBusy !== null}
-                      className="inline-flex h-9 items-center gap-2 rounded-full border px-4 text-[13px] font-semibold"
-                      style={{
-                        borderColor: "#fecdd3",
-                        color: "#be123c",
-                        background: "#fff1f2",
-                        opacity: statusBusy !== null ? 0.7 : 1,
-                      }}
-                    >
-                      <Trash2 size={14} />
-                      Delete permanently
-                    </button>
-                  </>
+                  <button
+                    type="button"
+                    onClick={() => void updateProjectArchiveState("active")}
+                    disabled={statusBusy !== null}
+                    className="inline-flex h-9 items-center gap-2 rounded-full border px-4 text-[13px] font-semibold"
+                    style={{
+                      borderColor: "var(--border)",
+                      color: "var(--text-2)",
+                      background: "var(--surface)",
+                      opacity: statusBusy !== null ? 0.7 : 1,
+                    }}
+                  >
+                    {statusBusy === "unarchive" ? "Restoring..." : "Restore to active"}
+                  </button>
                 ) : (
                   <button
                     type="button"
@@ -1734,6 +1717,21 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
                     Archive project
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={() => { setDeleteConfirmName(""); setDeleteDialogOpen(true); }}
+                  disabled={statusBusy !== null}
+                  className="inline-flex h-9 items-center gap-2 rounded-full border px-4 text-[13px] font-semibold"
+                  style={{
+                    borderColor: "#fecdd3",
+                    color: "#be123c",
+                    background: "#fff1f2",
+                    opacity: statusBusy !== null ? 0.7 : 1,
+                  }}
+                >
+                  <Trash2 size={14} />
+                  Delete permanently
+                </button>
               </div>
             </div>
           </div>
