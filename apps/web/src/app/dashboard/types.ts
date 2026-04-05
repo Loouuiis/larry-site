@@ -377,3 +377,21 @@ export interface LarryDocument {
   updatedAt: string;
 }
 
+export interface Folder {
+  id: string;
+  tenantId: string;
+  projectId: string | null;
+  parentId: string | null;
+  name: string;
+  folderType: "project" | "company" | "general";
+  depth: number;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FolderBreadcrumbItem {
+  id: string;
+  name: string;
+}
+
