@@ -98,13 +98,16 @@ function MessageBubble({ msg }: { msg: LarryMessage }) {
         }`}
       >
         {isProcessing ? (
-          <span className="flex items-center gap-1 py-0.5">
-            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#6c44f6]" style={{ animationDelay: "0ms" }} />
-            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#6c44f6]" style={{ animationDelay: "150ms" }} />
-            <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#6c44f6]" style={{ animationDelay: "300ms" }} />
+          <span className="flex items-center gap-2 py-0.5">
+            <span className="flex items-center gap-1">
+              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#6c44f6]" style={{ animationDelay: "0ms" }} />
+              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#6c44f6]" style={{ animationDelay: "150ms" }} />
+              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#6c44f6]" style={{ animationDelay: "300ms" }} />
+            </span>
+            <span className="text-[12px] text-[#8b7fc7]">Larry is thinking…</span>
           </span>
         ) : (
-          <p>{msg.content}</p>
+          <p style={{ whiteSpace: "pre-line" }}>{msg.content}</p>
         )}
         {isLarry && !isProcessing && (msg.clarifications?.length ?? 0) > 0 && (
           <div className="mt-2 rounded-lg border border-[#ddd6fe] bg-[#faf5ff] p-2">

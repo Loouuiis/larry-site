@@ -240,16 +240,41 @@ export async function getProjectSnapshot(
   };
 }
 
+const LARRY_CONTEXT_MAX_CHARS = 6_000;
+
 export async function updateProjectLarryContext(
   db: Db,
   tenantId: string,
   projectId: string,
   context: string,
 ): Promise<void> {
+  // Load existing context so we can append
+  const rows = await db.queryTenant<{ larry_context: string | null }>(
+    tenantId,
+    `SELECT larry_context FROM projects WHERE tenant_id = $1 AND id = $2`,
+    [tenantId, projectId],
+  );
+  const existing = rows[0]?.larry_context ?? "";
+  const datestamp = new Date().toISOString().slice(0, 10);
+  const newEntry = `[${datestamp}] ${context.trim()}`;
+
+  let merged = existing ? `${existing}\n${newEntry}` : newEntry;
+
+  // If over the cap, trim the oldest entries (lines from the top)
+  while (merged.length > LARRY_CONTEXT_MAX_CHARS) {
+    const firstNewline = merged.indexOf("\n");
+    if (firstNewline === -1) {
+      // Single entry that's too long — truncate it
+      merged = merged.slice(0, LARRY_CONTEXT_MAX_CHARS);
+      break;
+    }
+    merged = merged.slice(firstNewline + 1);
+  }
+
   await db.queryTenant(
     tenantId,
     `UPDATE projects SET larry_context = $2, updated_at = NOW() WHERE tenant_id = $1 AND id = $3`,
-    [tenantId, context, projectId],
+    [tenantId, merged, projectId],
   );
 }
 
