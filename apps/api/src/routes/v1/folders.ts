@@ -106,7 +106,7 @@ export const folderRoutes: FastifyPluginAsync = async (fastify) => {
         breadcrumb.unshift({ id: current.id, name: current.name });
 
         if (!current.parentId) break;
-        const parentRows = await fastify.db.queryTenant<FolderRow>(
+        const parentRows: FolderRow[] = await fastify.db.queryTenant<FolderRow>(
           tenantId,
           `SELECT id, tenant_id AS "tenantId", project_id AS "projectId",
                   parent_id AS "parentId", name, folder_type AS "folderType",
