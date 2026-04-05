@@ -107,13 +107,13 @@ function WelcomeStep({ onNext }: { onNext: () => void }) {
       transition={{ duration: 0.24, ease: EASE }}
       className="flex flex-col items-center text-center"
     >
-      <div className="relative mb-6 h-[52px] w-[52px] overflow-hidden">
+      <div className="mb-6">
         <Image
-          src="/Larry_logos.png"
+          src="/icon.png"
           alt="Larry"
-          width={104}
-          height={130}
-          className="absolute left-1/2 top-0 w-full max-w-none -translate-x-1/2"
+          width={80}
+          height={80}
+          className="object-contain"
         />
       </div>
       <p className="text-caption" style={{ color: "var(--brand)" }}>NEW PROJECT</p>
@@ -588,9 +588,9 @@ function TranscriptPane({
           meeting: { meetingTitle: null, transcript: transcript.trim() },
         }),
       });
-      const draftData = (await draftRes.json()) as { draft?: { id: string }; error?: string };
+      const draftData = (await draftRes.json()) as { draft?: { id: string }; error?: string; message?: string };
       if (!draftRes.ok || !draftData.draft?.id) {
-        setError(draftData.error ?? "Failed to create intake draft.");
+        setError(draftData.message ?? draftData.error ?? "Failed to create intake draft.");
         return;
       }
 
@@ -598,9 +598,9 @@ function TranscriptPane({
       const bootstrapRes = await fetch(`/api/workspace/projects/intake/drafts/${encodeURIComponent(draftData.draft.id)}/bootstrap`, {
         method: "POST",
       });
-      const bootstrapData = (await bootstrapRes.json()) as { draft?: { id: string }; error?: string };
+      const bootstrapData = (await bootstrapRes.json()) as { draft?: { id: string }; error?: string; message?: string };
       if (!bootstrapRes.ok || !bootstrapData.draft) {
-        setError(bootstrapData.error ?? "Failed to extract actions from transcript.");
+        setError(bootstrapData.message ?? bootstrapData.error ?? "Failed to extract actions from transcript.");
         return;
       }
 
@@ -608,9 +608,9 @@ function TranscriptPane({
       const finalizeRes = await fetch(`/api/workspace/projects/intake/drafts/${encodeURIComponent(draftData.draft.id)}/finalize`, {
         method: "POST",
       });
-      const finalizeData = (await finalizeRes.json()) as { draft?: { id: string; projectId?: string }; error?: string };
+      const finalizeData = (await finalizeRes.json()) as { draft?: { id: string; projectId?: string }; error?: string; message?: string };
       if (!finalizeRes.ok || !finalizeData.draft) {
-        setError(finalizeData.error ?? "Failed to finalize the project.");
+        setError(finalizeData.message ?? finalizeData.error ?? "Failed to finalize the project.");
         return;
       }
 
