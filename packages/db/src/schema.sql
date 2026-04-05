@@ -1308,3 +1308,86 @@ ALTER TABLE tasks ADD COLUMN IF NOT EXISTS completed_by_larry BOOLEAN NOT NULL D
 ALTER TABLE tasks ADD COLUMN IF NOT EXISTS larry_document_id UUID REFERENCES larry_documents(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_tasks_larry_assigned ON tasks(project_id) WHERE assigned_to_larry = TRUE;
 CREATE INDEX IF NOT EXISTS idx_tasks_larry_completed ON tasks(project_id) WHERE completed_by_larry = TRUE;
+
+-- ── Phase 14: Folders ────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS folders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+  parent_id UUID REFERENCES folders(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  folder_type TEXT NOT NULL DEFAULT 'general'
+    CHECK (folder_type IN ('project', 'company', 'general')),
+  depth INT NOT NULL DEFAULT 0 CHECK (depth >= 0 AND depth <= 4),
+  sort_order INT NOT NULL DEFAULT 0,
+  created_by_user_id UUID REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_folders_tenant_parent
+  ON folders (tenant_id, parent_id, sort_order);
+
+CREATE INDEX IF NOT EXISTS idx_folders_tenant_project
+  ON folders (tenant_id, project_id);
+
+ALTER TABLE folders ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_folders
+    ON folders
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+-- 014: Add folder_id to documents and larry_documents
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS folder_id UUID REFERENCES folders(id) ON DELETE SET NULL;
+ALTER TABLE larry_documents ADD COLUMN IF NOT EXISTS folder_id UUID REFERENCES folders(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_documents_folder ON documents (tenant_id, folder_id);
+CREATE INDEX IF NOT EXISTS idx_larry_documents_folder ON larry_documents (tenant_id, folder_id);
+
+-- 015: Backfill — create General folder per tenant (if missing)
+INSERT INTO folders (tenant_id, name, folder_type, depth)
+SELECT id, 'General', 'general', 0
+FROM tenants t
+WHERE NOT EXISTS (
+  SELECT 1 FROM folders f WHERE f.tenant_id = t.id AND f.folder_type = 'general'
+);
+
+-- 016: Backfill — create root folder per project (if missing)
+INSERT INTO folders (tenant_id, project_id, name, folder_type, depth)
+SELECT p.tenant_id, p.id, p.name, 'project', 0
+FROM projects p
+WHERE NOT EXISTS (
+  SELECT 1 FROM folders f WHERE f.tenant_id = p.tenant_id AND f.project_id = p.id AND f.parent_id IS NULL
+);
+
+-- 017: Backfill — move existing documents into their project's root folder
+UPDATE documents d
+SET folder_id = f.id
+FROM folders f
+WHERE d.folder_id IS NULL
+  AND d.project_id IS NOT NULL
+  AND f.project_id = d.project_id
+  AND f.parent_id IS NULL
+  AND f.tenant_id = d.tenant_id;
+
+-- 018: Backfill — move orphan documents (no project) into General folder
+UPDATE documents d
+SET folder_id = f.id
+FROM folders f
+WHERE d.folder_id IS NULL
+  AND d.project_id IS NULL
+  AND f.folder_type = 'general'
+  AND f.tenant_id = d.tenant_id;
+
+-- 019: Backfill — move larry_documents into their project's root folder
+UPDATE larry_documents d
+SET folder_id = f.id
+FROM folders f
+WHERE d.folder_id IS NULL
+  AND d.project_id IS NOT NULL
+  AND f.project_id = d.project_id
+  AND f.parent_id IS NULL
+  AND f.tenant_id = d.tenant_id;
