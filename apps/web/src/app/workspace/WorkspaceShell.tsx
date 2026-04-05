@@ -9,6 +9,8 @@ import type { WorkspaceProject } from "@/app/dashboard/types";
 import { MeetingTranscriptModal } from "./MeetingTranscriptModal";
 import { WorkspaceChromeProvider } from "./WorkspaceChromeContext";
 import { WorkspaceTopBar } from "./WorkspaceTopBar";
+import { ToastProvider } from "@/components/toast/ToastContext";
+import { ToastContainer } from "@/components/toast/ToastContainer";
 import { triggerBoundedWorkspaceRefresh } from "./refresh";
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -131,6 +133,7 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
   }, [loadShell, projectIdFromPath, transcript]);
 
   return (
+    <ToastProvider>
     <WorkspaceChromeProvider
       value={{
         openMeeting: () => setMeetingOpen(true),
@@ -199,5 +202,7 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
         </>
       )}
     </WorkspaceChromeProvider>
+    <ToastContainer />
+    </ToastProvider>
   );
 }

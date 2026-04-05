@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WorkspaceProjectActionCentre } from "@/app/dashboard/types";
+import { getActionTypeTag } from "@/lib/action-types";
 
 const EMPTY_ACTION_CENTRE: WorkspaceProjectActionCentre = {
   suggested: [],
@@ -35,9 +36,11 @@ export interface ActionError {
 export function useLarryActionCentre({
   projectId,
   onMutate = noopMutate,
+  onAccepted,
 }: {
   projectId?: string;
   onMutate?: () => Promise<void>;
+  onAccepted?: (toast: { actionType: string; actionLabel: string; actionColor: string; displayText: string; projectName: string | null; projectId: string }) => void;
 } = {}) {
   const [data, setData] = useState<WorkspaceProjectActionCentre>(EMPTY_ACTION_CENTRE);
   const [loading, setLoading] = useState(true);
@@ -133,8 +136,23 @@ export function useLarryActionCentre({
       try {
         const response = await fetch(`/api/workspace/larry/events/${id}/accept`, { method: "POST" });
         if (response.ok) {
+          const body = await readJson<{
+            accepted: boolean;
+            event?: { actionType: string; displayText: string; projectName: string | null; projectId: string };
+          }>(response);
           window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
           await Promise.all([load(), onMutate()]);
+          if (body.event && onAccepted) {
+            const tag = getActionTypeTag(body.event.actionType);
+            onAccepted({
+              actionType: body.event.actionType,
+              actionLabel: tag.label,
+              actionColor: tag.color,
+              displayText: body.event.displayText,
+              projectName: body.event.projectName,
+              projectId: body.event.projectId,
+            });
+          }
         } else {
           const body = await readJson<{ message?: string; error?: string }>(response);
           setActionError({
@@ -146,7 +164,7 @@ export function useLarryActionCentre({
         setAccepting(null);
       }
     },
-    [load, onMutate]
+    [load, onMutate, onAccepted]
   );
 
   const dismiss = useCallback(

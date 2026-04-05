@@ -7,6 +7,7 @@ import type { WorkspaceLarryEvent } from "@/app/dashboard/types";
 import { useLarryActionCentre } from "@/hooks/useLarryActionCentre";
 import { useEmailDrafts } from "@/hooks/useEmailDrafts";
 import { getActionTypeTag, getAllActionTypes } from "@/lib/action-types";
+import { useToast } from "@/components/toast/ToastContext";
 
 export const dynamic = "force-dynamic";
 
@@ -211,6 +212,8 @@ function applyFilters(
 }
 
 export default function WorkspaceActionsPage() {
+  const { pushToast } = useToast();
+
   const {
     suggested,
     activity,
@@ -228,7 +231,9 @@ export default function WorkspaceActionsPage() {
     letLarryExecute,
     clearActionError,
     refresh,
-  } = useLarryActionCentre();
+  } = useLarryActionCentre({
+    onAccepted: (toast) => pushToast(toast),
+  });
 
   const { drafts: emailDrafts, sending: sendingDraft, send: sendDraft, dismiss: dismissDraft } = useEmailDrafts();
 
