@@ -15,6 +15,7 @@ import {
 const ListDocumentsQuerySchema = z.object({
   projectId: z.string().uuid().optional(),
   docType: z.string().trim().min(1).max(80).optional(),
+  folderId: z.string().uuid().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(30),
 });
 
@@ -28,6 +29,7 @@ const CreateDocumentSchema = z.object({
   version: z.number().int().min(1).max(10_000).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
   attachTaskId: z.string().uuid().optional(),
+  folderId: z.string().uuid().optional(),
 });
 
 const GenerateDocumentSchema = z.object({
@@ -53,6 +55,7 @@ type DocumentListRow = {
   createdByUserId: string | null;
   createdAt: string;
   updatedAt: string;
+  folderId: string | null;
 };
 
 type AttachmentRow = {
@@ -178,6 +181,11 @@ export const documentRoutes: FastifyPluginAsync = async (fastify) => {
         sql += ` AND d.doc_type = $${values.length}`;
       }
 
+      if (query.folderId) {
+        values.push(query.folderId);
+        sql += ` AND d.folder_id = $${values.length}`;
+      }
+
       values.push(query.limit);
       sql += ` ORDER BY d.updated_at DESC, d.created_at DESC
                LIMIT $${values.length}`;
@@ -233,9 +241,9 @@ export const documentRoutes: FastifyPluginAsync = async (fastify) => {
       const createdRows = await fastify.db.queryTenant<DocumentListRow>(
         tenantId,
         `INSERT INTO documents
-          (tenant_id, project_id, title, content, doc_type, source_kind, source_record_id, version, metadata, created_by_user_id)
+          (tenant_id, project_id, title, content, doc_type, source_kind, source_record_id, version, metadata, created_by_user_id, folder_id)
          VALUES
-          ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)
+          ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11)
          RETURNING id,
                    project_id as "projectId",
                    title,
@@ -247,7 +255,8 @@ export const documentRoutes: FastifyPluginAsync = async (fastify) => {
                    metadata,
                    created_by_user_id as "createdByUserId",
                    created_at as "createdAt",
-                   updated_at as "updatedAt"`,
+                   updated_at as "updatedAt",
+                   folder_id as "folderId"`,
         [
           tenantId,
           body.projectId,
@@ -259,6 +268,7 @@ export const documentRoutes: FastifyPluginAsync = async (fastify) => {
           version,
           JSON.stringify(metadata),
           actorUserId,
+          body.folderId ?? null,
         ]
       );
 
@@ -577,6 +587,39 @@ export const documentRoutes: FastifyPluginAsync = async (fastify) => {
       reply.header("Content-Type", mimeType);
       reply.header("Content-Disposition", `attachment; filename="${fileName}"`);
       return reply.send(binary);
+    }
+  );
+
+  // PATCH /v1/documents/:id/move
+  fastify.patch(
+    "/:id/move",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
+    async (request) => {
+      const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+      const { folderId } = z.object({ folderId: z.string().uuid() }).parse(request.body);
+      const tenantId = request.user.tenantId;
+
+      const docRows = await fastify.db.queryTenant<{ id: string }>(
+        tenantId,
+        `SELECT id FROM documents WHERE tenant_id = $1 AND id = $2 LIMIT 1`,
+        [tenantId, id]
+      );
+      if (!docRows[0]) throw fastify.httpErrors.notFound("Document not found.");
+
+      const folderRows = await fastify.db.queryTenant<{ id: string }>(
+        tenantId,
+        `SELECT id FROM folders WHERE tenant_id = $1 AND id = $2 LIMIT 1`,
+        [tenantId, folderId]
+      );
+      if (!folderRows[0]) throw fastify.httpErrors.notFound("Target folder not found.");
+
+      await fastify.db.queryTenant(
+        tenantId,
+        `UPDATE documents SET folder_id = $3, updated_at = NOW() WHERE tenant_id = $1 AND id = $2`,
+        [tenantId, id, folderId]
+      );
+
+      return { ok: true };
     }
   );
 };
