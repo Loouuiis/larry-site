@@ -86,6 +86,17 @@ function formatDueDate(value: string | null): string {
   return `${day} ${month}`;
 }
 
+function dueDateColour(value: string | null, status: string): string {
+  if (!value || status === "completed") return "var(--text-disabled)";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const d = new Date(value + "T00:00:00");
+  if (isNaN(d.getTime())) return "var(--text-disabled)";
+  if (d < today) return "#ef4444";       // overdue → red
+  if (d.getTime() === today.getTime()) return "#f59e0b"; // today → amber
+  return "var(--text-2)";
+}
+
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
@@ -336,6 +347,10 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
         {/* Priority */}
         <span className="w-[72px] text-right text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#4b556b", flexShrink: 0 }}>
           Priority
+        </span>
+        {/* Due */}
+        <span className="w-[60px] text-right text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#4b556b", flexShrink: 0 }}>
+          Due
         </span>
         {/* Assignee */}
         <span className="w-[110px] text-right text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#4b556b", flexShrink: 0 }}>
@@ -674,6 +689,14 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
                             document.body
                           )}
                         </div>
+
+                        {/* due date */}
+                        <span
+                          className="w-[60px] text-right text-[11px] font-medium tabular-nums"
+                          style={{ color: dueDateColour(task.dueDate, task.status), flexShrink: 0 }}
+                        >
+                          {formatDueDate(task.dueDate)}
+                        </span>
 
                         {/* assignee — click for dropdown */}
                         <div className="relative" style={{ flexShrink: 0 }}>
