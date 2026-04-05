@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
+import Image from "next/image";
 import {
   ArrowLeft,
   ArrowRight,
@@ -86,13 +87,13 @@ function StepIndicator({ step }: { step: FlowStep }) {
           key={item}
           animate={{
             width: item === step ? 28 : 10,
-            backgroundColor: item <= step ? "#6c44f6" : "#d6dde8",
+            backgroundColor: item <= step ? "#6c44f6" : "#bdb7d0",
           }}
           transition={{ duration: 0.24, ease: EASE }}
           className="h-2 rounded-full"
         />
       ))}
-      <span className="ml-2 text-[11px] font-medium text-neutral-400">Step {step} / 3</span>
+      <span className="ml-2 text-[11px] font-medium" style={{ color: "var(--text-disabled)" }}>Step {step} / 3</span>
     </div>
   );
 }
@@ -106,28 +107,27 @@ function WelcomeStep({ onNext }: { onNext: () => void }) {
       transition={{ duration: 0.24, ease: EASE }}
       className="flex flex-col items-center text-center"
     >
-      <div className="relative mb-8">
-        <div className="flex h-24 w-24 items-center justify-center rounded-[28px] bg-[linear-gradient(135deg,_#6c44f6_0%,_#9b7aff_100%)] text-4xl font-bold text-white shadow-[0_20px_40px_rgba(108,68,246,0.22)]">
-          L
-        </div>
-        <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-400 ring-2 ring-white">
-          <span className="block h-2 w-2 rounded-full bg-white" />
-        </span>
+      <div className="relative mb-6 h-[52px] w-[52px] overflow-hidden">
+        <Image
+          src="/Larry_logos.png"
+          alt="Larry"
+          width={104}
+          height={130}
+          className="absolute left-1/2 top-0 w-full max-w-none -translate-x-1/2"
+        />
       </div>
-      <p className="text-[11px] font-semibold uppercase tracking-[0.2em]" style={{ color: "#6c44f6" }}>New Project</p>
-      <h1 className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-neutral-900">
+      <p className="text-caption" style={{ color: "var(--brand)" }}>NEW PROJECT</p>
+      <h1 className="text-h1 mt-3" style={{ color: "var(--text-1)" }}>
         Start a project with Larry
       </h1>
-      <p className="mt-4 max-w-lg text-[14px] leading-relaxed text-neutral-500">
+      <p className="text-body mt-4 max-w-lg leading-relaxed" style={{ color: "var(--text-2)" }}>
         Pick the intake path that fits your team. Every option here is wired to the live project, Larry, and transcript routes.
       </p>
       <button
         type="button"
         onClick={onNext}
-        className="mt-10 inline-flex items-center gap-2 rounded-2xl px-7 py-3 text-sm font-semibold text-white transition"
-        style={{ background: "#6c44f6" }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = "#5a35e0")}
-        onMouseLeave={(e) => (e.currentTarget.style.background = "#6c44f6")}
+        className="pm-btn pm-btn-primary mt-10 gap-2 px-7"
+        style={{ height: 42 }}
       >
         Choose a setup path
         <ArrowRight size={16} />
@@ -154,10 +154,10 @@ function ModeSelectionStep({
       className="space-y-6"
     >
       <div className="text-center">
-        <h2 className="text-2xl font-semibold tracking-[-0.03em] text-neutral-900">
+        <h2 className="text-h1" style={{ color: "var(--text-1)" }}>
           How would you like to start?
         </h2>
-        <p className="mt-2 text-sm text-neutral-500">
+        <p className="text-body mt-2" style={{ color: "var(--text-2)" }}>
           Manual creates immediately, chat lets Larry guide you, and transcript runs the real extraction flow.
         </p>
       </div>
@@ -171,21 +171,22 @@ function ModeSelectionStep({
               key={option.id}
               type="button"
               onClick={() => onSelect(option.id)}
-              className="rounded-[24px] border p-5 text-left transition"
+              className="p-5 text-left transition"
               style={{
-                borderColor: active ? "#6c44f6" : "#dbe3ef",
-                background: active ? "#f3efff" : "#ffffff",
+                borderRadius: "var(--radius-card)",
+                border: `1px solid ${active ? "var(--brand)" : "var(--border)"}`,
+                background: active ? "var(--surface-2)" : "var(--surface)",
               }}
-              onMouseEnter={(e) => { if (!active) e.currentTarget.style.borderColor = "#b8a4ff"; }}
-              onMouseLeave={(e) => { if (!active) e.currentTarget.style.borderColor = "#dbe3ef"; }}
+              onMouseEnter={(e) => { if (!active) e.currentTarget.style.borderColor = "var(--border-2)"; }}
+              onMouseLeave={(e) => { if (!active) e.currentTarget.style.borderColor = active ? "var(--brand)" : "var(--border)"; }}
             >
-              <span className="flex h-10 w-10 items-center justify-center rounded-2xl" style={{ background: "#f3efff", color: "#6c44f6" }}>
+              <span className="flex h-10 w-10 items-center justify-center rounded-lg" style={{ background: "var(--surface-2)", color: "var(--brand)" }}>
                 <Icon size={18} />
               </span>
-              <p className="mt-4 text-[16px] font-semibold text-neutral-900">{option.title}</p>
-              <p className="mt-2 text-[13px] leading-relaxed text-neutral-500">{option.description}</p>
+              <p className="text-h3 mt-4" style={{ color: "var(--text-1)" }}>{option.title}</p>
+              <p className="text-body-sm mt-2 leading-relaxed">{option.description}</p>
               {active && (
-                <div className="mt-3 flex h-6 w-6 items-center justify-center rounded-full" style={{ background: "#6c44f6" }}>
+                <div className="mt-3 flex h-6 w-6 items-center justify-center rounded-full" style={{ background: "var(--brand)" }}>
                   <Check size={14} className="text-white" />
                 </div>
               )}
@@ -199,10 +200,8 @@ function ModeSelectionStep({
           type="button"
           onClick={onContinue}
           disabled={!selectedMode}
-          className="inline-flex items-center gap-2 rounded-2xl px-6 py-3 text-sm font-semibold text-white transition disabled:opacity-50"
-          style={{ background: "#6c44f6" }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = "#5a35e0")}
-          onMouseLeave={(e) => (e.currentTarget.style.background = "#6c44f6")}
+          className="pm-btn pm-btn-primary gap-2 px-6"
+          style={{ height: 42 }}
         >
           Continue
           <ArrowRight size={16} />
@@ -264,9 +263,9 @@ function ManualPane({
 
   return (
     <div className="space-y-5">
-      <div className="rounded-[24px] border border-[#dbe3ef] bg-[#fafaff] p-5">
-        <h2 className="text-2xl font-semibold tracking-[-0.03em] text-neutral-900">Manual setup</h2>
-        <p className="mt-2 text-[14px] text-neutral-500">
+      <div className="p-5" style={{ borderRadius: "var(--radius-card)", border: "1px solid var(--border)", background: "var(--bg-soft)" }}>
+        <h2 className="text-h1" style={{ color: "var(--text-1)" }}>Manual setup</h2>
+        <p className="text-body mt-2" style={{ color: "var(--text-2)" }}>
           Create your project directly with a name, description, and dates.
         </p>
       </div>
@@ -277,7 +276,10 @@ function ManualPane({
           onChange={(event) => setName(event.target.value)}
           placeholder="Project name"
           aria-label="Project name"
-          className="h-12 rounded-2xl border border-[#dbe3ef] px-4 text-sm outline-none focus:border-[#6c44f6]"
+          className="h-12 rounded-lg px-4 text-sm outline-none"
+          style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-input)" }}
+          onFocus={(e) => (e.currentTarget.style.borderColor = "var(--brand)")}
+          onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
         />
         <textarea
           value={description}
@@ -285,39 +287,45 @@ function ManualPane({
           rows={4}
           placeholder="Description"
           aria-label="Project description"
-          className="rounded-2xl border border-[#dbe3ef] px-4 py-3 text-sm outline-none focus:border-[#6c44f6]"
+          className="rounded-lg px-4 py-3 text-sm outline-none"
+          style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-input)" }}
+          onFocus={(e) => (e.currentTarget.style.borderColor = "var(--brand)")}
+          onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
         />
         <div className="grid gap-4 md:grid-cols-2">
           <label className="relative">
-            <CalendarRange size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" />
+            <CalendarRange size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2" style={{ color: "var(--text-disabled)" }} />
             <input
               type="date"
               value={startDate}
               onChange={(event) => setStartDate(event.target.value)}
               aria-label="Project start date"
-              className="h-12 w-full rounded-2xl border border-[#dbe3ef] pl-11 pr-4 text-sm outline-none focus:border-[#6c44f6]"
+              className="h-12 w-full pl-11 pr-4 text-sm outline-none"
+              style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-input)" }}
+              onFocus={(e) => (e.currentTarget.style.borderColor = "var(--brand)")}
+              onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
             />
           </label>
           <label className="relative">
-            <CalendarRange size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400" />
+            <CalendarRange size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2" style={{ color: "var(--text-disabled)" }} />
             <input
               type="date"
               value={targetDate}
               onChange={(event) => setTargetDate(event.target.value)}
               aria-label="Project target date"
-              className="h-12 w-full rounded-2xl border border-[#dbe3ef] pl-11 pr-4 text-sm outline-none focus:border-[#6c44f6]"
+              className="h-12 w-full pl-11 pr-4 text-sm outline-none"
+              style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-input)" }}
+              onFocus={(e) => (e.currentTarget.style.borderColor = "var(--brand)")}
+              onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
             />
           </label>
         </div>
-        {error && <div className="rounded-2xl bg-rose-50 px-4 py-3 text-[13px] text-rose-700">{error}</div>}
+        {error && <div className="rounded-lg bg-rose-50 px-4 py-3 text-[13px] text-rose-700">{error}</div>}
         <div className="flex justify-end">
           <button
             type="submit"
             disabled={loading || name.trim().length === 0}
-            className="inline-flex h-11 items-center gap-2 rounded-2xl px-5 text-sm font-semibold text-white transition disabled:opacity-50"
-            style={{ background: "#6c44f6" }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "#5a35e0")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "#6c44f6")}
+            className="pm-btn pm-btn-primary gap-2"
           >
             {loading ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
             {loading ? "Creating..." : "Create project"}
@@ -430,12 +438,12 @@ function ChatPane({
   if (success) {
     return (
       <div className="space-y-5">
-        <div className="rounded-[24px] border border-emerald-200 bg-emerald-50 p-5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-500 text-white">
+        <div className="border border-emerald-200 bg-emerald-50 p-5" style={{ borderRadius: "var(--radius-card)" }}>
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500 text-white">
             <Check size={18} />
           </div>
-          <h2 className="mt-4 text-2xl font-semibold tracking-[-0.03em] text-neutral-900">{success.projectName} is ready</h2>
-          <p className="mt-2 text-[14px] text-neutral-600">
+          <h2 className="text-h1 mt-4" style={{ color: "var(--text-1)" }}>{success.projectName} is ready</h2>
+          <p className="text-body mt-2" style={{ color: "var(--text-2)" }}>
             {success.seeded
               ? "Open the project and continue from the seeded Larry chat context."
               : "Open the project and continue in Larry chat with your intake summary."}
@@ -443,10 +451,7 @@ function ChatPane({
           <button
             type="button"
             onClick={onReviewActions}
-            className="mt-5 inline-flex h-11 items-center gap-2 rounded-2xl px-5 text-sm font-semibold text-white transition"
-            style={{ background: "#6c44f6" }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "#5a35e0")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "#6c44f6")}
+            className="pm-btn pm-btn-primary mt-5 gap-2"
           >
             Open Project
             <ArrowRight size={16} />
@@ -458,32 +463,32 @@ function ChatPane({
 
   return (
     <div className="space-y-5">
-      <div className="rounded-[24px] border border-[#dbe3ef] bg-[#fafaff] p-5">
-        <h2 className="text-2xl font-semibold tracking-[-0.03em] text-neutral-900">Chat with Larry</h2>
-        <p className="mt-2 text-[14px] text-neutral-500">
+      <div className="p-5" style={{ borderRadius: "var(--radius-card)", border: "1px solid var(--border)", background: "var(--bg-soft)" }}>
+        <h2 className="text-h1" style={{ color: "var(--text-1)" }}>Chat with Larry</h2>
+        <p className="text-body mt-2" style={{ color: "var(--text-2)" }}>
           Answer five guided questions and Larry will create your project with full context.
         </p>
       </div>
 
-      <div className="rounded-[24px] border border-[#dbe3ef] bg-white p-5">
+      <div className="p-5" style={{ borderRadius: "var(--radius-card)", border: "1px solid var(--border)", background: "var(--surface)" }}>
         <div className="mb-4 flex items-center justify-between">
-          <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-neutral-400">
+          <p className="text-caption">
             Question {questionIndex + 1} / {CHAT_QUESTIONS.length}
           </p>
-          <div className="h-2 w-32 overflow-hidden rounded-full bg-neutral-100">
-            <div className="h-full rounded-full transition-all" style={{ width: `${((questionIndex + 1) / CHAT_QUESTIONS.length) * 100}%`, background: "#6c44f6" }} />
+          <div className="h-2 w-32 overflow-hidden rounded-full" style={{ background: "var(--surface-2)" }}>
+            <div className="h-full rounded-full transition-all" style={{ width: `${((questionIndex + 1) / CHAT_QUESTIONS.length) * 100}%`, background: "var(--brand)" }} />
           </div>
         </div>
         <div className="space-y-4">
           {messages.map((message) => (
             <div key={message.id} className={`flex ${message.role === "larry" ? "justify-start" : "justify-end"}`}>
               <div
-                className={`max-w-[88%] rounded-[22px] px-4 py-3 text-[13px] leading-relaxed ${
+                className={`max-w-[88%] px-4 py-3 text-[13px] leading-relaxed ${
                   message.role === "larry"
-                    ? "rounded-tl-md bg-[#f3efff] text-neutral-800"
-                    : "rounded-tr-md text-white"
+                    ? "rounded-lg rounded-tl-sm text-neutral-800"
+                    : "rounded-lg rounded-tr-sm text-white"
                 }`}
-                style={message.role === "user" ? { background: "#6c44f6" } : undefined}
+                style={message.role === "user" ? { background: "var(--brand)" } : { background: "var(--surface-2)" }}
               >
                 {busy && message.id === "processing" ? (
                   <span className="inline-flex items-center gap-2"><Loader2 size={14} className="animate-spin" />{message.text}</span>
@@ -496,25 +501,25 @@ function ChatPane({
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4 rounded-[24px] border border-[#dbe3ef] bg-white p-5">
+      <form onSubmit={handleSubmit} className="space-y-4 p-5" style={{ borderRadius: "var(--radius-card)", border: "1px solid var(--border)", background: "var(--surface)" }}>
         <textarea
           value={input}
           onChange={(event) => setInput(event.target.value)}
           rows={4}
           placeholder="Type your answer here..."
           aria-label="Current chat intake answer"
-          className="w-full rounded-2xl border border-[#dbe3ef] bg-[#fafaff] px-4 py-3 text-sm outline-none focus:border-[#6c44f6]"
+          className="w-full px-4 py-3 text-sm outline-none"
+          style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-input)", background: "var(--bg-soft)" }}
+          onFocus={(e) => (e.currentTarget.style.borderColor = "var(--brand)")}
+          onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
         />
-        {error && <div className="rounded-2xl bg-rose-50 px-4 py-3 text-[13px] text-rose-700">{error}</div>}
+        {error && <div className="rounded-lg bg-rose-50 px-4 py-3 text-[13px] text-rose-700">{error}</div>}
         <div className="flex items-center justify-between gap-4">
-          <p className="text-[12px] text-neutral-500">Intake answers stay local until project creation.</p>
+          <p className="text-body-sm">Intake answers stay local until project creation.</p>
           <button
             type="submit"
             disabled={busy || input.trim().length < 2}
-            className="inline-flex h-11 items-center gap-2 rounded-2xl px-5 text-sm font-semibold text-white transition disabled:opacity-50"
-            style={{ background: "#6c44f6" }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "#5a35e0")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "#6c44f6")}
+            className="pm-btn pm-btn-primary gap-2"
           >
             {busy ? <Loader2 size={16} className="animate-spin" /> : <ArrowRight size={16} />}
             {questionIndex === CHAT_QUESTIONS.length - 1 ? "Create project" : "Next answer"}
@@ -625,20 +630,23 @@ function TranscriptPane({
 
   return (
     <div className="space-y-5">
-      <div className="rounded-[24px] border border-[#dbe3ef] bg-[#fafaff] p-5">
-        <h2 className="text-2xl font-semibold tracking-[-0.03em] text-neutral-900">Start from meeting</h2>
-        <p className="mt-2 text-[14px] text-neutral-500">
+      <div className="p-5" style={{ borderRadius: "var(--radius-card)", border: "1px solid var(--border)", background: "var(--bg-soft)" }}>
+        <h2 className="text-h1" style={{ color: "var(--text-1)" }}>Start from meeting</h2>
+        <p className="text-body mt-2" style={{ color: "var(--text-2)" }}>
           Paste transcript text or upload a .txt file. Larry will extract actions and structure your project.
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4 rounded-[24px] border border-[#dbe3ef] bg-white p-5">
+      <form onSubmit={handleSubmit} className="space-y-4 p-5" style={{ borderRadius: "var(--radius-card)", border: "1px solid var(--border)", background: "var(--surface)" }}>
         <input
           value={projectName}
           onChange={(event) => setProjectName(event.target.value)}
           placeholder="Project name"
           aria-label="Project name"
-          className="h-12 w-full rounded-2xl border border-[#dbe3ef] px-4 text-sm outline-none focus:border-[#6c44f6]"
+          className="h-12 w-full px-4 text-sm outline-none"
+          style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-input)" }}
+          onFocus={(e) => (e.currentTarget.style.borderColor = "var(--brand)")}
+          onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
         />
         <textarea
           value={transcript}
@@ -646,31 +654,31 @@ function TranscriptPane({
           rows={10}
           placeholder="Paste meeting notes or transcript text here..."
           aria-label="Transcript text"
-          className="w-full rounded-2xl border border-[#dbe3ef] bg-[#fafaff] px-4 py-3 text-sm outline-none focus:border-[#6c44f6]"
+          className="w-full px-4 py-3 text-sm outline-none"
+          style={{ border: "1px solid var(--border)", borderRadius: "var(--radius-input)", background: "var(--bg-soft)" }}
+          onFocus={(e) => (e.currentTarget.style.borderColor = "var(--brand)")}
+          onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
         />
-        <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-dashed border-[#c8d4e6] bg-[#fafaff] px-4 py-3">
-          <p className="text-[13px] text-neutral-600">{fileName ? `Loaded ${fileName}` : "Upload a .txt transcript file"}</p>
-          <label className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-[#dbe3ef] bg-white px-4 py-2 text-[12px] font-semibold text-neutral-700">
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg px-4 py-3" style={{ border: "1px dashed var(--border-2)", background: "var(--bg-soft)" }}>
+          <p className="text-[13px]" style={{ color: "var(--text-2)" }}>{fileName ? `Loaded ${fileName}` : "Upload a .txt transcript file"}</p>
+          <label className="pm-btn pm-btn-secondary pm-btn-sm cursor-pointer gap-2">
             <Upload size={14} />
             Choose file
             <input type="file" accept=".txt,text/plain" onChange={handleFileChange} className="sr-only" />
           </label>
         </div>
-        {error && <div className="rounded-2xl bg-rose-50 px-4 py-3 text-[13px] text-rose-700">{error}</div>}
+        {error && <div className="rounded-lg bg-rose-50 px-4 py-3 text-[13px] text-rose-700">{error}</div>}
         {done && (
-          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4">
-            <p className="text-[14px] font-semibold text-neutral-900">Project created from transcript</p>
-            <p className="mt-1 text-[13px] text-neutral-600">Larry extracted actions and bootstrapped your project.</p>
+          <div className="border border-emerald-200 bg-emerald-50 px-4 py-4" style={{ borderRadius: "var(--radius-card)" }}>
+            <p className="text-h3" style={{ color: "var(--text-1)" }}>Project created from transcript</p>
+            <p className="text-body-sm mt-1">Larry extracted actions and bootstrapped your project.</p>
           </div>
         )}
         <div className="flex justify-end">
           <button
             type="submit"
             disabled={loading || transcript.trim().length < 20 || !projectName.trim() || done}
-            className="inline-flex h-11 items-center gap-2 rounded-2xl px-5 text-sm font-semibold text-white transition disabled:opacity-50"
-            style={{ background: "#6c44f6" }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "#5a35e0")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "#6c44f6")}
+            className="pm-btn pm-btn-primary gap-2"
           >
             {loading ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
             {loading ? "Processing..." : "Extract & create project"}
@@ -729,14 +737,17 @@ export function StartProjectFlow({ onClose, onCreated }: StartProjectFlowProps) 
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.96, opacity: 0, y: 12 }}
         transition={{ duration: 0.28, ease: EASE }}
-        className="relative w-full max-w-4xl overflow-y-auto rounded-[32px] border border-[#dbe3ef] bg-white p-8 shadow-[0_30px_80px_rgba(15,23,42,0.2)]"
-        style={{ maxHeight: "90vh" }}
+        className="relative w-full max-w-4xl overflow-y-auto bg-white p-8"
+        style={{ maxHeight: "90vh", borderRadius: "var(--radius-card)", border: "1px solid var(--border)", boxShadow: "var(--shadow-3)" }}
       >
         <button
           type="button"
           onClick={onClose}
           aria-label="Close new project flow"
-          className="absolute right-5 top-5 flex h-10 w-10 items-center justify-center rounded-2xl text-neutral-400 transition hover:bg-neutral-100 hover:text-neutral-700"
+          className="absolute right-5 top-5 flex h-10 w-10 items-center justify-center rounded-lg transition"
+          style={{ color: "var(--text-muted)" }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-2)"; e.currentTarget.style.color = "var(--text-1)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = ""; e.currentTarget.style.color = "var(--text-muted)"; }}
         >
           <X size={18} />
         </button>
@@ -747,9 +758,7 @@ export function StartProjectFlow({ onClose, onCreated }: StartProjectFlowProps) 
               <button
                 type="button"
                 onClick={() => setStep(step === 3 ? 2 : 1)}
-                className="inline-flex h-10 items-center gap-2 rounded-2xl border border-[#dbe3ef] px-4 text-[13px] font-semibold text-neutral-600 transition hover:text-[#6c44f6]"
-                onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#b8a4ff")}
-                onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#dbe3ef")}
+                className="pm-btn pm-btn-secondary pm-btn-sm"
               >
                 <ArrowLeft size={14} />
                 Back
@@ -790,11 +799,12 @@ export function StartProjectFlow({ onClose, onCreated }: StartProjectFlowProps) 
               exit={{ opacity: 0, y: 10 }}
               transition={{ duration: 0.2 }}
               className={[
-                "pointer-events-none absolute bottom-6 right-6 max-w-sm rounded-2xl px-4 py-3 text-[13px] shadow-lg",
+                "pointer-events-none absolute bottom-6 right-6 max-w-sm rounded-lg px-4 py-3 text-[13px] font-medium",
                 toast.tone === "success"
                   ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
                   : "border border-rose-200 bg-rose-50 text-rose-700",
               ].join(" ")}
+              style={{ boxShadow: "var(--shadow-2)" }}
             >
               {toast.message}
             </motion.div>
