@@ -44,6 +44,7 @@ import { ProjectTimeline } from "@/components/workspace/timeline/ProjectTimeline
 import { getActionTypeTag, getAllActionTypes } from "@/lib/action-types";
 import { ActionBellDropdown } from "./overview/ActionBellDropdown";
 import { ProjectOverviewTab } from "./overview/ProjectOverviewTab";
+import { ProjectDescriptionCard } from "./overview/ProjectDescriptionCard";
 
 async function readJson<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -1609,6 +1610,9 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
         {/* ── Tab: Extra ────────────────────────────────── */}
         {activeTab === "extra" && (
           <div className="space-y-6">
+            {/* Project description (moved from Overview) */}
+            <ProjectDescriptionCard description={project.description} />
+
             {/* Analytics widgets moved from Dashboard */}
             <ProjectDashboardExtra projectId={projectId} />
 

@@ -4,11 +4,41 @@ import { useMemo } from "react";
 import type { WorkspaceTask } from "@/app/dashboard/types";
 
 const STATUS_CONFIG = [
-  { key: "completed",   label: "Completed",   color: "#22c55e", bg: "rgba(34,197,94,0.08)",   border: "rgba(34,197,94,0.2)" },
-  { key: "not_started", label: "Not Started",  color: "#9ca3af", bg: "rgba(156,163,175,0.08)", border: "rgba(156,163,175,0.2)" },
-  { key: "on_track",    label: "In Progress",  color: "#6c44f6", bg: "rgba(108,68,246,0.08)",  border: "rgba(108,68,246,0.2)" },
-  { key: "at_risk",     label: "At Risk",      color: "#f59e0b", bg: "rgba(245,158,11,0.08)",  border: "rgba(245,158,11,0.2)" },
-  { key: "overdue",     label: "Delayed",      color: "#ef4444", bg: "rgba(239,68,68,0.08)",   border: "rgba(239,68,68,0.2)" },
+  {
+    key: "not_started",
+    label: "Not Started",
+    color: "#b0b0b0",
+    bg: "rgba(196,196,196,0.15)",
+    border: "rgba(196,196,196,0.35)",
+  },
+  {
+    key: "on_track",
+    label: "In Progress",
+    color: "#7ab0d8",
+    bg: "rgba(122,176,216,0.12)",
+    border: "rgba(122,176,216,0.35)",
+  },
+  {
+    key: "at_risk",
+    label: "At Risk",
+    color: "#d4b84a",
+    bg: "rgba(234,217,122,0.18)",
+    border: "rgba(234,217,122,0.45)",
+  },
+  {
+    key: "overdue",
+    label: "Delayed",
+    color: "#e87878",
+    bg: "rgba(232,120,120,0.10)",
+    border: "rgba(232,120,120,0.30)",
+  },
+  {
+    key: "completed",
+    label: "Completed",
+    color: "#6ab86a",
+    bg: "rgba(136,196,122,0.12)",
+    border: "rgba(136,196,122,0.35)",
+  },
 ] as const;
 
 function bucketStatus(status: string): string {
@@ -16,6 +46,52 @@ function bucketStatus(status: string): string {
   if (status === "in_progress" || status === "waiting") return "on_track";
   if (status === "blocked") return "at_risk";
   return status;
+}
+
+function StatusBarChart({ counts, maxVal }: { counts: Record<string, number>; maxVal: number }) {
+  return (
+    <div
+      style={{
+        borderRadius: "var(--radius-card)",
+        border: "1px solid var(--border)",
+        background: "var(--surface)",
+        padding: "20px",
+      }}
+    >
+      <h2 className="mb-4 text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
+        Tasks by Status
+      </h2>
+      <div className="flex items-end gap-3" style={{ height: "160px" }}>
+        {STATUS_CONFIG.map((cfg) => {
+          const val = counts[cfg.key] ?? 0;
+          const safeMax = maxVal || 1;
+          const heightPct = (val / safeMax) * 100;
+          return (
+            <div key={cfg.key} className="flex flex-1 flex-col items-center gap-1">
+              <span className="text-[11px] font-semibold" style={{ color: cfg.color }}>
+                {val}
+              </span>
+              <div className="w-full flex items-end" style={{ height: "120px" }}>
+                <div
+                  style={{
+                    width: "100%",
+                    height: `${heightPct}%`,
+                    background: cfg.color,
+                    borderRadius: "4px 4px 0 0",
+                    minHeight: val > 0 ? "4px" : "0",
+                    transition: "height 0.4s ease",
+                  }}
+                />
+              </div>
+              <span className="text-[10px] text-center" style={{ color: "var(--text-muted)" }}>
+                {cfg.label}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export function StatusBreakdown({ tasks }: { tasks: WorkspaceTask[] }) {
@@ -29,90 +105,43 @@ export function StatusBreakdown({ tasks }: { tasks: WorkspaceTask[] }) {
     return map;
   }, [tasks]);
 
-  const total = tasks.length;
+  const maxVal = Math.max(...STATUS_CONFIG.map((c) => counts[c.key] ?? 0), 1);
 
   return (
-    <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-[1fr_auto]">
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-5">
-        {STATUS_CONFIG.map((cfg) => (
-          <div
-            key={cfg.key}
-            style={{
-              background: cfg.bg,
-              border: `1px solid ${cfg.border}`,
-              borderRadius: "var(--radius-card)",
-              padding: "14px 8px",
-              textAlign: "center",
-            }}
-          >
-            <p className="text-[24px] font-extrabold" style={{ color: cfg.color }}>
-              {counts[cfg.key]}
-            </p>
-            <p className="text-[10px]" style={{ color: "var(--text-muted)", marginTop: "4px" }}>
-              {cfg.label}
-            </p>
-          </div>
-        ))}
+    <div className="space-y-3">
+      {/* 5 status boxes with white background */}
+      <div
+        className="rounded-xl p-3"
+        style={{ background: "#ffffff", border: "1px solid var(--border)" }}
+      >
+        <div className="grid grid-cols-5 gap-2.5">
+          {STATUS_CONFIG.map((cfg) => (
+            <div
+              key={cfg.key}
+              style={{
+                background: cfg.bg,
+                border: `1px solid ${cfg.border}`,
+                borderRadius: "var(--radius-card)",
+                padding: "14px 8px",
+                textAlign: "center",
+              }}
+            >
+              <p className="text-[24px] font-extrabold" style={{ color: cfg.color }}>
+                {counts[cfg.key]}
+              </p>
+              <p
+                className="text-[10px]"
+                style={{ color: "var(--text-muted)", marginTop: "4px" }}
+              >
+                {cfg.label}
+              </p>
+            </div>
+          ))}
+        </div>
       </div>
 
-      <DonutChart counts={counts} total={total} />
-    </div>
-  );
-}
-
-function DonutChart({ counts, total }: { counts: Record<string, number>; total: number }) {
-  const segments = useMemo(() => {
-    const entries = STATUS_CONFIG.filter((cfg) => counts[cfg.key] > 0);
-    const safeTotal = total || 1;
-    let cumAngle = 0;
-    return entries.map((cfg) => {
-      const angle = (counts[cfg.key] / safeTotal) * 360;
-      const startAngle = cumAngle;
-      cumAngle += angle;
-      return { ...cfg, count: counts[cfg.key], angle, startAngle };
-    });
-  }, [counts, total]);
-
-  const R = 56;
-  const innerR = 36;
-  const cx = 70;
-  const cy = 70;
-
-  const polarToXY = (r: number, angleDeg: number) => {
-    const rad = ((angleDeg - 90) * Math.PI) / 180;
-    return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
-  };
-
-  return (
-    <div style={{ width: "140px", textAlign: "center" }}>
-      <svg width={140} height={140} viewBox="0 0 140 140">
-        {total === 0 ? (
-          <circle cx={cx} cy={cy} r={R} fill="none" stroke="var(--border)" strokeWidth={R - innerR} />
-        ) : (
-          segments.map((seg) => {
-            if (seg.angle <= 0) return null;
-            const start = polarToXY(R, seg.startAngle);
-            const end = polarToXY(R, seg.startAngle + seg.angle);
-            const large = seg.angle > 180 ? 1 : 0;
-            const innerStart = polarToXY(innerR, seg.startAngle + seg.angle);
-            const innerEnd = polarToXY(innerR, seg.startAngle);
-            const d = [
-              `M ${start.x} ${start.y}`,
-              `A ${R} ${R} 0 ${large} 1 ${end.x} ${end.y}`,
-              `L ${innerStart.x} ${innerStart.y}`,
-              `A ${innerR} ${innerR} 0 ${large} 0 ${innerEnd.x} ${innerEnd.y}`,
-              "Z",
-            ].join(" ");
-            return <path key={seg.key} d={d} fill={seg.color} />;
-          })
-        )}
-        <text x={cx} y={cy - 4} textAnchor="middle" fontSize={18} fontWeight={800} fill="var(--text-1)">
-          {total}
-        </text>
-        <text x={cx} y={cy + 12} textAnchor="middle" fontSize={9} fill="var(--text-muted)">
-          total
-        </text>
-      </svg>
+      {/* Full-width bar chart */}
+      <StatusBarChart counts={counts} maxVal={maxVal} />
     </div>
   );
 }

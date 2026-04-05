@@ -8,11 +8,11 @@ import type {
   WorkspaceOutcomes,
   WorkspaceProjectMember,
 } from "@/app/dashboard/types";
-import { ProjectDescriptionCard } from "./ProjectDescriptionCard";
 import { ProjectInfoTabs } from "./ProjectInfoTabs";
 import { ProgressBox } from "./ProgressBox";
 import { ActionBox } from "./ActionBox";
 import { StatusBreakdown } from "./StatusBreakdown";
+import { MiniDonutChart } from "./MiniDonutChart";
 
 interface ProjectOverviewTabProps {
   project: WorkspaceProject;
@@ -37,10 +37,22 @@ export function ProjectOverviewTab({
 }: ProjectOverviewTabProps) {
   return (
     <div className="space-y-4">
-      {/* Project description */}
-      <ProjectDescriptionCard description={project.description} />
+      {/* Row 1: Progress bar | Mini donut | Action box */}
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto]">
+        <ProgressBox
+          tasks={tasks}
+          timeline={timeline}
+          targetDate={project.targetDate}
+          members={members}
+        />
+        <MiniDonutChart tasks={tasks} />
+        <ActionBox
+          pendingCount={suggested.length}
+          onGoToActionCenter={() => onNavigateToTab("actions")}
+        />
+      </div>
 
-      {/* Tabbed info card: AI Summary | Recent Activity | My Tasks */}
+      {/* Row 2: Tabbed info card: AI Summary | Recent Activity | My Tasks */}
       <ProjectInfoTabs
         narrative={outcomes?.narrative}
         activity={activity}
@@ -48,21 +60,7 @@ export function ProjectOverviewTab({
         onNavigateToTaskCenter={() => onNavigateToTab("tasks")}
       />
 
-      {/* Progress box + Action box side by side */}
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
-        <ProgressBox
-          tasks={tasks}
-          timeline={timeline}
-          targetDate={project.targetDate}
-          members={members}
-        />
-        <ActionBox
-          pendingCount={suggested.length}
-          onGoToActionCenter={() => onNavigateToTab("actions")}
-        />
-      </div>
-
-      {/* Status cards + Donut chart */}
+      {/* Row 3+4: New status boxes + full-width bar chart */}
       <StatusBreakdown tasks={tasks} />
     </div>
   );
