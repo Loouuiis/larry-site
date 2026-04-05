@@ -226,44 +226,34 @@ export function CollaboratorsPanel({ projectId }: { projectId: string }) {
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-[18px] font-semibold" style={{ color: "var(--text-1)" }}>
-            Collaborators
+            Team
           </p>
           <p className="mt-1 text-[13px]" style={{ color: "var(--text-2)" }}>
-            Project-scoped members and roles for shared chat and action visibility.
+            Team members and collaborators with shared access to the project
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 rounded-lg border p-0.5" style={{ borderColor: "var(--border)" }}>
-            <button
-              type="button"
-              onClick={() => setViewMode("list")}
-              className="rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors"
-              style={{
-                background: viewMode === "list" ? "var(--surface-2)" : "transparent",
-                color: viewMode === "list" ? "var(--text-1)" : "var(--text-muted)",
-              }}
-            >
-              List
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode("tree")}
-              className="rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors"
-              style={{
-                background: viewMode === "tree" ? "var(--surface-2)" : "transparent",
-                color: viewMode === "tree" ? "var(--text-1)" : "var(--text-muted)",
-              }}
-            >
-              Tree
-            </button>
-          </div>
+        <div className="flex items-center gap-1 rounded-lg border p-0.5 self-start" style={{ borderColor: "var(--border)" }}>
           <button
             type="button"
-            onClick={() => void refresh()}
-            className="text-[12px] font-semibold"
-            style={{ color: "var(--cta)" }}
+            onClick={() => setViewMode("list")}
+            className="rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors"
+            style={{
+              background: viewMode === "list" ? "var(--surface-2)" : "transparent",
+              color: viewMode === "list" ? "var(--text-1)" : "var(--text-muted)",
+            }}
           >
-            Refresh
+            List
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("tree")}
+            className="rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors"
+            style={{
+              background: viewMode === "tree" ? "var(--surface-2)" : "transparent",
+              color: viewMode === "tree" ? "var(--text-1)" : "var(--text-muted)",
+            }}
+          >
+            Tree
           </button>
         </div>
       </div>
@@ -286,8 +276,13 @@ export function CollaboratorsPanel({ projectId }: { projectId: string }) {
       {!loading && !error && membersPayload && (
         <div className="mt-5 space-y-4">
           <p className="text-[12px]" style={{ color: "var(--text-muted)" }}>
-            Your role: {membersPayload.currentUserRole ? formatRole(membersPayload.currentUserRole) : "None"}
-            {canManage ? " (can manage collaborators)" : " (read-only)"}
+            {membersPayload.currentUserRole === "owner"
+              ? "Owner: Full control and manages access"
+              : membersPayload.currentUserRole === "editor"
+              ? "Editor: Can edit the project"
+              : membersPayload.currentUserRole === "viewer"
+              ? "Viewer: Can view the project"
+              : "No role assigned"}
           </p>
 
           {canManage && (

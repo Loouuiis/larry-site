@@ -144,8 +144,8 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, onTogg
     <div className="flex h-full flex-col" style={{ background: "#ffffff" }}>
 
       {/* Logo */}
-      <div className="shrink-0 px-4 pt-4 pb-3 flex items-center justify-between">
-        <Link href="/workspace" onClick={onClose} className="flex items-center gap-2">
+      <div className="shrink-0 pr-4 pt-4 pb-3 flex items-center justify-between">
+        <Link href="/workspace" onClick={onClose} className="flex items-center gap-2 -ml-3">
           <Image src="/Larryfulllogo.png" alt="Larry" width={105} height={38} className="object-contain" />
         </Link>
         {onToggleCollapsed && (
