@@ -274,6 +274,14 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
         ownerUserId
       );
 
+      // Auto-create root folder for the new project
+      await fastify.db.queryTenant(
+        request.user.tenantId,
+        `INSERT INTO folders (tenant_id, project_id, name, folder_type, depth, created_by_user_id)
+         VALUES ($1, $2, $3, 'project', 0, $4)`,
+        [request.user.tenantId, projectId, body.name, request.user.userId]
+      );
+
       await writeAuditLog(fastify.db, {
         tenantId: request.user.tenantId,
         actorUserId: request.user.userId,
