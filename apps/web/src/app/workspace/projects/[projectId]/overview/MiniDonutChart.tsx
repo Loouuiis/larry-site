@@ -71,7 +71,7 @@ export function MiniDonutChart({ tasks }: { tasks: WorkspaceTask[] }) {
         Distribution
       </p>
 
-      <svg width={100} height={100} viewBox="0 0 100 100">
+      <svg width={100} height={100} viewBox="-6 -6 112 112">
         {total === 0 ? (
           <circle
             cx={cx}
@@ -121,7 +121,7 @@ export function MiniDonutChart({ tasks }: { tasks: WorkspaceTask[] }) {
       </svg>
 
       {/* Compact legend */}
-      <div className="grid grid-cols-2 gap-x-3 gap-y-1 self-start">
+      <div className="grid grid-cols-3 gap-x-3 gap-y-1 self-start">
         {STATUS_CONFIG.map((cfg) => (
           <div key={cfg.key} className="flex items-center gap-1">
             <span
