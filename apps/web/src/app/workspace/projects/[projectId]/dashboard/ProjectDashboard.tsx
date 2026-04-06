@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Download, Plus } from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Download, Plus, Pencil, X } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer,
@@ -253,7 +253,7 @@ function StatusFiveBoxes({ byStatus }: { byStatus: Record<string, number> }) {
 
 /* ── Bar chart ──────────────────────────────────────────────────────── */
 
-function StatusBarChart({ byStatus }: { byStatus: Record<string, number> }) {
+function StatusBarChart({ byStatus, memberName, title = "Tasks by Status" }: { byStatus: Record<string, number>; memberName?: string | null; title?: string }) {
   const counts = useMemo(() => mapToFiveStatuses(byStatus), [byStatus]);
   const maxVal = Math.max(...STATUS_5_CONFIG.map((c) => counts[c.key]), 1);
   return (
@@ -263,12 +263,19 @@ function StatusBarChart({ byStatus }: { byStatus: Record<string, number> }) {
         border: "1px solid var(--border)",
         background: "var(--surface)",
         padding: "20px",
-        flex: 1,
+        width: "100%",
       }}
     >
-      <h2 className="mb-4 text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
-        Tasks by Status
-      </h2>
+      <div className="mb-4">
+        <h2 className="text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
+          {title}
+        </h2>
+        {memberName && (
+          <p className="text-[11px] mt-0.5" style={{ color: "#6c44f6" }}>
+            {memberName}
+          </p>
+        )}
+      </div>
       <div className="flex items-end gap-3" style={{ height: "160px" }}>
         {STATUS_5_CONFIG.map((cfg) => {
           const val = counts[cfg.key];
@@ -303,7 +310,7 @@ function StatusBarChart({ byStatus }: { byStatus: Record<string, number> }) {
 
 /* ── Overview-style donut ───────────────────────────────────────────── */
 
-function OverviewDonutWidget({ byStatus }: { byStatus: Record<string, number> }) {
+function OverviewDonutWidget({ byStatus, memberName, title = "Task Distribution" }: { byStatus: Record<string, number>; memberName?: string | null; title?: string }) {
   const counts = useMemo(() => mapToFiveStatuses(byStatus), [byStatus]);
   const total = useMemo(
     () => STATUS_5_CONFIG.reduce((s, cfg) => s + counts[cfg.key], 0),
@@ -338,19 +345,26 @@ function OverviewDonutWidget({ byStatus }: { byStatus: Record<string, number> })
         border: "1px solid var(--border)",
         background: "var(--surface)",
         padding: "20px",
-        flex: 1,
+        width: "100%",
       }}
     >
-      <h2 className="mb-4 text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
-        Task Distribution
-      </h2>
+      <div className="mb-4">
+        <h2 className="text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
+          {title}
+        </h2>
+        {memberName && (
+          <p className="text-[11px] mt-0.5" style={{ color: "#6c44f6" }}>
+            {memberName}
+          </p>
+        )}
+      </div>
       <div className="flex items-center gap-6">
         <svg width={200} height={200} viewBox="0 0 200 200">
           {total === 0 ? (
             <circle
               cx={cx}
               cy={cy}
-              r={R}
+              r={(R + innerR) / 2}
               fill="none"
               stroke="var(--border)"
               strokeWidth={R - innerR}
@@ -358,6 +372,20 @@ function OverviewDonutWidget({ byStatus }: { byStatus: Record<string, number> })
           ) : (
             segments.map((seg) => {
               if (seg.angle <= 0) return null;
+              // Full circle — arc path degenerates when start === end, use circle instead
+              if (seg.angle >= 359.9) {
+                return (
+                  <circle
+                    key={seg.key}
+                    cx={cx}
+                    cy={cy}
+                    r={(R + innerR) / 2}
+                    fill="none"
+                    stroke={seg.color}
+                    strokeWidth={R - innerR}
+                  />
+                );
+              }
               const start = polarToXY(R, seg.startAngle);
               const end = polarToXY(R, seg.startAngle + seg.angle);
               const large = seg.angle > 180 ? 1 : 0;
@@ -453,7 +481,7 @@ function HistoryTooltip({ active, payload, label }: {
   );
 }
 
-function StatusHistoryChart({ history }: { history: HistoryPoint[] | null | undefined }) {
+function StatusHistoryChart({ history, memberName }: { history: HistoryPoint[] | null | undefined; memberName?: string | null }) {
   const [period, setPeriod] = useState<3 | 6 | 12>(6);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
 
@@ -480,9 +508,16 @@ function StatusHistoryChart({ history }: { history: HistoryPoint[] | null | unde
     >
       {/* Header row */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
-          Status Over Time
-        </h2>
+        <div>
+          <h2 className="text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
+            Status Over Time
+          </h2>
+          {memberName && (
+            <p className="text-[11px] mt-0.5" style={{ color: "#6c44f6" }}>
+              {memberName}
+            </p>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           {/* Series toggles */}
           <div className="flex items-center gap-1">
@@ -558,6 +593,314 @@ function StatusHistoryChart({ history }: { history: HistoryPoint[] | null | unde
   );
 }
 
+/* ── Per-widget helpers ─────────────────────────────────────────────── */
+
+function computeByStatusForMember(
+  tasks: WorkspaceTask[],
+  memberId: string,
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const cfg of STATUS_5_CONFIG) counts[cfg.key] = 0;
+  for (const t of tasks) {
+    if (t.assigneeUserId !== memberId) continue;
+    const bucket = bucketTaskStatus(t.status);
+    if (bucket in counts) counts[bucket]++;
+  }
+  return counts;
+}
+
+function computeHistoryForMember(
+  tasks: WorkspaceTask[],
+  memberId: string,
+  history: HistoryPoint[] | null | undefined,
+): HistoryPoint[] | null {
+  if (!history?.length) return history ?? null;
+  let completed = 0;
+  let active = 0;
+  for (const t of tasks) {
+    if (t.assigneeUserId !== memberId) continue;
+    const bucket = bucketTaskStatus(t.status);
+    if (bucket === "completed") completed++;
+    else active++;
+  }
+  return history.map((p) => ({ ...p, completed, active, created: completed + active }));
+}
+
+/* ── Hoverable edit wrapper ─────────────────────────────────────────── */
+
+function EditableWidgetWrapper({
+  children,
+  onEdit,
+  style,
+}: {
+  children: React.ReactNode;
+  onEdit: () => void;
+  style?: React.CSSProperties;
+}) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <div
+      style={{ position: "relative", ...style }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {children}
+      <button
+        type="button"
+        onClick={onEdit}
+        aria-label="Edit widget"
+        style={{
+          position: "absolute",
+          top: "10px",
+          right: "10px",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "4px",
+          padding: "3px 9px",
+          fontSize: "11px",
+          fontWeight: 500,
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "6px",
+          color: "var(--text-2)",
+          cursor: "pointer",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+          transition: "opacity 0.15s ease, transform 0.15s ease",
+          opacity: hovered ? 1 : 0,
+          pointerEvents: hovered ? "auto" : "none",
+          transform: hovered ? "translateY(0)" : "translateY(-2px)",
+          zIndex: 5,
+        }}
+      >
+        <Pencil size={10} />
+        Edit
+      </button>
+    </div>
+  );
+}
+
+/* ── Chart edit modal ───────────────────────────────────────────────── */
+
+type WidgetKey = "bar" | "donut" | "history";
+type ChartType = "bar" | "donut";
+type WidgetSize = "half" | "full";
+
+interface WidgetConfig {
+  chartType: ChartType;
+  size: WidgetSize;
+  memberId: string | null;
+}
+
+const WIDGET_LABELS: Record<WidgetKey, string> = {
+  bar: "Tasks by Status",
+  donut: "Task Distribution",
+  history: "Status Over Time",
+};
+
+function RadioDot({ selected }: { selected: boolean }) {
+  return (
+    <span
+      style={{
+        width: "16px",
+        height: "16px",
+        borderRadius: "50%",
+        border: `2px solid ${selected ? "#6c44f6" : "var(--border)"}`,
+        background: selected ? "#6c44f6" : "transparent",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+        transition: "all 0.15s",
+      }}
+    >
+      {selected && <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#fff", display: "block" }} />}
+    </span>
+  );
+}
+
+function ChartEditModal({
+  widgetKey,
+  members,
+  config,
+  onSave,
+  onClose,
+}: {
+  widgetKey: WidgetKey;
+  members: WorkspaceProjectMember[];
+  config: WidgetConfig;
+  onSave: (config: WidgetConfig) => void;
+  onClose: () => void;
+}) {
+  const [localChartType, setLocalChartType] = useState<ChartType>(config.chartType);
+  const [localSize, setLocalSize] = useState<WidgetSize>(config.size);
+  const [localMemberId, setLocalMemberId] = useState<string | null>(config.memberId);
+  const widgetLabel = WIDGET_LABELS[widgetKey];
+  const showChartType = widgetKey !== "history";
+
+  const optionBtn = (active: boolean) => ({
+    display: "flex" as const,
+    alignItems: "center" as const,
+    gap: "10px",
+    flex: 1,
+    padding: "10px 12px",
+    borderRadius: "8px",
+    border: `1.5px solid ${active ? "#6c44f6" : "var(--border)"}`,
+    background: active ? "rgba(108,68,246,0.07)" : "var(--surface-2)",
+    cursor: "pointer" as const,
+    transition: "all 0.15s",
+  });
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      {/* Backdrop */}
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.35)", backdropFilter: "blur(2px)" }} />
+
+      {/* Modal card */}
+      <div
+        style={{
+          position: "relative",
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius-card)",
+          padding: "24px",
+          width: "380px",
+          maxHeight: "82vh",
+          display: "flex",
+          flexDirection: "column",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.16)",
+        }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-widest mb-0.5" style={{ color: "var(--text-muted)" }}>
+              Edit widget
+            </p>
+            <h3 className="text-[15px] font-bold" style={{ color: "var(--text-1)" }}>{widgetLabel}</h3>
+          </div>
+          <button type="button" onClick={onClose} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: "6px", padding: "4px", cursor: "pointer", color: "var(--text-muted)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <X size={14} />
+          </button>
+        </div>
+
+        {/* Scrollable body */}
+        <div style={{ flex: 1, overflowY: "auto", marginRight: "-4px", paddingRight: "4px" }}>
+
+          {/* ── CONFIGURATION ── */}
+          <p className="text-[13px] font-bold mb-4" style={{ color: "var(--text-1)" }}>Configuration</p>
+
+          {/* Chart type */}
+          {showChartType && (
+            <div className="mb-5">
+              <p className="text-[11px] font-semibold uppercase tracking-widest mb-2.5" style={{ color: "var(--text-muted)" }}>
+                Chart type
+              </p>
+              <div className="flex gap-2">
+                {/* Bar option */}
+                <button type="button" onClick={() => setLocalChartType("bar")} style={optionBtn(localChartType === "bar")}>
+                  {/* Mini bar chart icon */}
+                  <svg width="28" height="20" viewBox="0 0 28 20" fill="none" style={{ flexShrink: 0 }}>
+                    <rect x="1" y="11" width="5" height="9" rx="1" fill={localChartType === "bar" ? "#6c44f6" : "var(--border)"} />
+                    <rect x="8" y="5" width="5" height="15" rx="1" fill={localChartType === "bar" ? "#9b7aff" : "var(--border)"} />
+                    <rect x="15" y="8" width="5" height="12" rx="1" fill={localChartType === "bar" ? "#6c44f6" : "var(--border)"} />
+                    <rect x="22" y="2" width="5" height="18" rx="1" fill={localChartType === "bar" ? "#9b7aff" : "var(--border)"} />
+                  </svg>
+                  <div>
+                    <p className="text-[12px] font-semibold" style={{ color: localChartType === "bar" ? "#6c44f6" : "var(--text-1)" }}>Bar chart</p>
+                  </div>
+                </button>
+                {/* Donut option */}
+                <button type="button" onClick={() => setLocalChartType("donut")} style={optionBtn(localChartType === "donut")}>
+                  <svg width="22" height="22" viewBox="0 0 22 22" fill="none" style={{ flexShrink: 0 }}>
+                    <circle cx="11" cy="11" r="9" fill="none" stroke={localChartType === "donut" ? "#6c44f6" : "var(--border)"} strokeWidth="4.5" strokeDasharray="18 39" strokeDashoffset="-5" />
+                    <circle cx="11" cy="11" r="9" fill="none" stroke={localChartType === "donut" ? "#9b7aff" : "#e5e7eb"} strokeWidth="4.5" strokeDasharray="39 18" strokeDashoffset="13" />
+                  </svg>
+                  <div>
+                    <p className="text-[12px] font-semibold" style={{ color: localChartType === "donut" ? "#6c44f6" : "var(--text-1)" }}>Donut chart</p>
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Widget size */}
+          <div className="mb-5">
+            <p className="text-[11px] font-semibold uppercase tracking-widest mb-2.5" style={{ color: "var(--text-muted)" }}>
+              Widget size
+            </p>
+            <div className="flex gap-2">
+              {/* Half width */}
+              <button type="button" onClick={() => setLocalSize("half")} style={optionBtn(localSize === "half")}>
+                <svg width="28" height="18" viewBox="0 0 28 18" fill="none" style={{ flexShrink: 0 }}>
+                  <rect x="0.5" y="0.5" width="12" height="17" rx="2" fill={localSize === "half" ? "rgba(108,68,246,0.15)" : "var(--surface)"} stroke={localSize === "half" ? "#6c44f6" : "var(--border)"} />
+                  <rect x="15.5" y="0.5" width="12" height="17" rx="2" fill={localSize === "half" ? "rgba(108,68,246,0.08)" : "var(--surface-2)"} stroke={localSize === "half" ? "#9b7aff" : "var(--border)"} strokeDasharray="3 2" />
+                </svg>
+                <div>
+                  <p className="text-[12px] font-semibold" style={{ color: localSize === "half" ? "#6c44f6" : "var(--text-1)" }}>Half width</p>
+                </div>
+              </button>
+              {/* Full width */}
+              <button type="button" onClick={() => setLocalSize("full")} style={optionBtn(localSize === "full")}>
+                <svg width="28" height="18" viewBox="0 0 28 18" fill="none" style={{ flexShrink: 0 }}>
+                  <rect x="0.5" y="0.5" width="27" height="17" rx="2" fill={localSize === "full" ? "rgba(108,68,246,0.15)" : "var(--surface)"} stroke={localSize === "full" ? "#6c44f6" : "var(--border)"} />
+                </svg>
+                <div>
+                  <p className="text-[12px] font-semibold" style={{ color: localSize === "full" ? "#6c44f6" : "var(--text-1)" }}>Full width</p>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* Divider */}
+          <div style={{ height: "1px", background: "var(--border)", margin: "4px 0 20px" }} />
+
+          {/* ── FILTERS ── */}
+          <p className="text-[13px] font-bold mb-4" style={{ color: "var(--text-1)" }}>Filters</p>
+          <div className="space-y-1">
+            {/* All members */}
+            <button type="button" onClick={() => setLocalMemberId(null)}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-[13px]"
+              style={{ background: localMemberId === null ? "rgba(108,68,246,0.08)" : "transparent", border: `1px solid ${localMemberId === null ? "rgba(108,68,246,0.3)" : "transparent"}`, color: "var(--text-1)", cursor: "pointer", textAlign: "left" }}
+            >
+              <RadioDot selected={localMemberId === null} />
+              <span>All members</span>
+            </button>
+            {members.map((m) => (
+              <button key={m.userId} type="button" onClick={() => setLocalMemberId(m.userId)}
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-[13px]"
+                style={{ background: localMemberId === m.userId ? "rgba(108,68,246,0.08)" : "transparent", border: `1px solid ${localMemberId === m.userId ? "rgba(108,68,246,0.3)" : "transparent"}`, color: "var(--text-1)", cursor: "pointer", textAlign: "left" }}
+              >
+                <RadioDot selected={localMemberId === m.userId} />
+                <div style={{ minWidth: 0 }}>
+                  <p className="font-medium truncate">{m.name || m.email}</p>
+                  {m.name && <p className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>{m.email}</p>}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 mt-5 pt-4" style={{ borderTop: "1px solid var(--border)" }}>
+          <button type="button" onClick={onClose}
+            className="px-4 py-2 text-[13px] font-medium rounded-lg"
+            style={{ background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text-2)", cursor: "pointer" }}
+          >
+            Cancel
+          </button>
+          <button type="button"
+            onClick={() => { onSave({ chartType: localChartType, size: localSize, memberId: localMemberId }); onClose(); }}
+            className="px-4 py-2 text-[13px] font-medium rounded-lg"
+            style={{ background: "#6c44f6", border: "none", color: "#fff", cursor: "pointer" }}
+          >
+            Save chart
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Main component ─────────────────────────────────────────────────── */
 
 export function ProjectDashboard({
@@ -582,6 +925,14 @@ export function ProjectDashboard({
   const [areaDropdownOpen, setAreaDropdownOpen] = useState(false);
   const [employeeDropdownOpen, setEmployeeDropdownOpen] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
+
+  /* ── Per-widget config ────────────────────────────────────────────── */
+  const [widgetConfig, setWidgetConfig] = useState<Record<WidgetKey, WidgetConfig>>({
+    bar:     { chartType: "bar",   size: "half", memberId: null },
+    donut:   { chartType: "donut", size: "half", memberId: null },
+    history: { chartType: "bar",   size: "half", memberId: null },
+  });
+  const [editingWidget, setEditingWidget] = useState<WidgetKey | null>(null);
 
   useEffect(() => {
     if (!areaDropdownOpen && !employeeDropdownOpen) return;
@@ -650,6 +1001,17 @@ export function ProjectDashboard({
     if (total === 0) return 0;
     return ((filteredByStatus.completed ?? 0) / total) * 100;
   }, [filteredByStatus, filteredTasks]);
+
+  /* ── Per-widget member-filtered data ─────────────────────────────── */
+  const barByStatus = useMemo(
+    () => widgetConfig.bar.memberId ? computeByStatusForMember(tasks, widgetConfig.bar.memberId) : null,
+    [widgetConfig.bar.memberId, tasks],
+  );
+  const donutByStatus = useMemo(
+    () => widgetConfig.donut.memberId ? computeByStatusForMember(tasks, widgetConfig.donut.memberId) : null,
+    [widgetConfig.donut.memberId, tasks],
+  );
+  const historyMemberId = widgetConfig.history.memberId;
 
   const toggleArea = (area: string) =>
     setSelectedAreas((prev) =>
@@ -724,6 +1086,20 @@ export function ProjectDashboard({
   const activeByStatus = filteredByStatus ?? apiByStatus;
   const activeCompletionRate = filteredCompletionRate ?? health.completionRate ?? 0;
   const activeTaskCount = filteredByStatus ? filteredTasks.length : (health.taskCount ?? 0);
+
+  /* ── Per-widget data resolved after API load ─────────────────────── */
+  const resolvedBarByStatus = barByStatus ?? activeByStatus;
+  const resolvedDonutByStatus = donutByStatus ?? activeByStatus;
+  const resolvedHistoryData = historyMemberId
+    ? computeHistoryForMember(tasks, historyMemberId, history)
+    : history;
+
+  const memberName = (key: WidgetKey) => {
+    const id = widgetConfig[key].memberId;
+    if (!id) return null;
+    const m = members.find((mem) => mem.userId === id);
+    return m?.name || m?.email || null;
+  };
 
   return (
     <div ref={dashboardRef} className="space-y-3">
@@ -933,14 +1309,62 @@ export function ProjectDashboard({
       {/* 5 status boxes in white card */}
       <StatusFiveBoxes byStatus={activeByStatus} />
 
-      {/* Bar chart + Overview donut — full row */}
-      <div className="flex gap-3">
-        <StatusBarChart byStatus={activeByStatus} />
-        <OverviewDonutWidget byStatus={activeByStatus} />
-      </div>
+      {/* Bar chart + Overview donut — flex row, respects full-width setting */}
+      {(() => {
+        const barFull = widgetConfig.bar.size === "full";
+        const donutFull = widgetConfig.donut.size === "full";
+        const stack = barFull || donutFull;
+
+        const BarContent = widgetConfig.bar.chartType === "donut"
+          ? <OverviewDonutWidget byStatus={resolvedBarByStatus} memberName={memberName("bar")} title="Tasks by Status" />
+          : <StatusBarChart byStatus={resolvedBarByStatus} memberName={memberName("bar")} />;
+
+        const DonutContent = widgetConfig.donut.chartType === "bar"
+          ? <StatusBarChart byStatus={resolvedDonutByStatus} memberName={memberName("donut")} title="Task Distribution" />
+          : <OverviewDonutWidget byStatus={resolvedDonutByStatus} memberName={memberName("donut")} />;
+
+        if (stack) {
+          return (
+            <div className="space-y-3">
+              <EditableWidgetWrapper onEdit={() => setEditingWidget("bar")} style={{ width: "100%" }}>
+                {BarContent}
+              </EditableWidgetWrapper>
+              <EditableWidgetWrapper onEdit={() => setEditingWidget("donut")} style={{ width: "100%" }}>
+                {DonutContent}
+              </EditableWidgetWrapper>
+            </div>
+          );
+        }
+        return (
+          <div className="flex gap-3">
+            <EditableWidgetWrapper onEdit={() => setEditingWidget("bar")} style={{ flex: 1, minWidth: 0 }}>
+              {BarContent}
+            </EditableWidgetWrapper>
+            <EditableWidgetWrapper onEdit={() => setEditingWidget("donut")} style={{ flex: 1, minWidth: 0 }}>
+              {DonutContent}
+            </EditableWidgetWrapper>
+          </div>
+        );
+      })()}
 
       {/* Status over time — line chart */}
-      <StatusHistoryChart history={history} />
+      <EditableWidgetWrapper
+        onEdit={() => setEditingWidget("history")}
+        style={{ width: "100%" }}
+      >
+        <StatusHistoryChart history={resolvedHistoryData} memberName={memberName("history")} />
+      </EditableWidgetWrapper>
+
+      {/* Chart edit modal */}
+      {editingWidget && (
+        <ChartEditModal
+          widgetKey={editingWidget}
+          members={members}
+          config={widgetConfig[editingWidget]}
+          onSave={(cfg) => setWidgetConfig((prev) => ({ ...prev, [editingWidget]: cfg }))}
+          onClose={() => setEditingWidget(null)}
+        />
+      )}
     </div>
   );
 }
