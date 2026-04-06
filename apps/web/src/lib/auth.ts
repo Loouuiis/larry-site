@@ -1,10 +1,8 @@
-import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import type { JWTPayload } from "jose";
 import { cookies } from "next/headers";
 import { getSessionSecret } from "./session-secret";
 
-const SALT_ROUNDS = 12;
 const SESSION_COOKIE = "larry_session";
 const SESSION_DURATION_SECS = 24 * 60 * 60; // 24 hours — sliding refresh handled in middleware
 
@@ -34,17 +32,6 @@ const getSecret = getSessionSecret;
 
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
-}
-
-export async function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, SALT_ROUNDS);
-}
-
-export async function verifyPassword(
-  password: string,
-  hash: string
-): Promise<boolean> {
-  return bcrypt.compare(password, hash);
 }
 
 export async function createSessionToken(session: AppSession): Promise<string> {
