@@ -67,7 +67,7 @@ const STATUS_5_CONFIG = [
   },
   {
     key: "overdue",
-    label: "Delayed",
+    label: "Overdue",
     color: "#e87878",
     bg: "rgba(232,120,120,0.10)",
     border: "rgba(232,120,120,0.30)",

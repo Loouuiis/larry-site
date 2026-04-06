@@ -78,10 +78,10 @@ const PANEL_TO_API_STATUS: Record<TaskStatus, string> = {
 /* ─── Config maps ───────────────────────────────────────────────────────── */
 
 const STATUS_OPTIONS: { value: TaskStatus; label: string; dot: string; badge: string }[] = [
-  { value: "done",      label: "Done",       dot: "bg-emerald-400", badge: "bg-emerald-50 text-emerald-600 border-emerald-100"   },
-  { value: "on-track",  label: "On track",   dot: "bg-[var(--text-1)]", badge: "bg-[var(--surface-2)] text-[var(--text-2)] border-[var(--border)]" },
-  { value: "at-risk",   label: "At risk",    dot: "bg-amber-400",   badge: "bg-amber-50 text-amber-600 border-amber-100"         },
-  { value: "overdue",   label: "Overdue",    dot: "bg-red-400",     badge: "bg-red-50 text-red-500 border-red-100"               },
+  { value: "done",      label: "Done",       dot: "bg-[#6ab86a]", badge: "bg-[#6ab86a]/10 text-[#245820] border-[#6ab86a]/20"   },
+  { value: "on-track",  label: "On track",   dot: "bg-[#7ab0d8]", badge: "bg-[#7ab0d8]/10 text-[#1a3f70] border-[#7ab0d8]/20" },
+  { value: "at-risk",   label: "At risk",    dot: "bg-[#d4b84a]",   badge: "bg-[#d4b84a]/10 text-[#705800] border-[#d4b84a]/20"         },
+  { value: "overdue",   label: "Overdue",    dot: "bg-[#e87878]",     badge: "bg-[#e87878]/10 text-[#701818] border-[#e87878]/20"               },
   { value: "upcoming",  label: "Upcoming",   dot: "bg-[var(--text-disabled)]", badge: "bg-[var(--surface-2)] text-[var(--text-muted)] border-[var(--border)]"  },
 ];
 

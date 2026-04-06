@@ -19,10 +19,11 @@ const EASE = [0.22, 1, 0.36, 1] as const;
 /* ─── Colours (hex for SVG fills) ──────────────────────────────────────── */
 
 const C = {
-  completed:  "#34d399",
-  onTrack:    "#8b5cf6",
-  atRisk:     "#fbbf24",
-  notStarted: "#d1d5db",
+  completed:  "#6ab86a",
+  onTrack:    "#7ab0d8",
+  atRisk:     "#d4b84a",
+  notStarted: "#b0b0b0",
+  overdue:    "#e87878",
 };
 
 /* ─── Mock data (fallbacks) ──────────────────────────────────────────────── */

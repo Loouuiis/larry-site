@@ -11,11 +11,11 @@ const STATUS_LABELS: Record<TaskStatus, string> = {
 };
 
 const STATUS_STYLES: Record<TaskStatus, string> = {
-  not_started: "bg-[#ebebeb] text-[#606060]",
-  on_track: "bg-[#a8c0e0] text-[#1a3f70]",
-  at_risk: "bg-[#ece4a0] text-[#705800]",
-  overdue: "bg-[#ecaaaa] text-[#701818]",
-  completed: "bg-[#b8d9b4] text-[#245820]",
+  not_started: "bg-[#b0b0b0]/20 text-[#606060]",
+  on_track: "bg-[#7ab0d8]/20 text-[#1a3f70]",
+  at_risk: "bg-[#d4b84a]/20 text-[#705800]",
+  overdue: "bg-[#e87878]/20 text-[#701818]",
+  completed: "bg-[#6ab86a]/20 text-[#245820]",
 };
 
 export function StatusChip({ status }: { status: TaskStatus }) {

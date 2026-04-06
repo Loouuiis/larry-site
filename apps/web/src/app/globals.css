@@ -25,16 +25,16 @@
   --text-muted:         #bdb7d0;
   --text-disabled:      #b7b8ba;
 
-  /* Status — colour-coded palette */
-  --status-todo-bg:     #e8e8e8;
+  /* Status — colour-coded palette (canonical) */
+  --status-todo-bg:     #b0b0b0;
   --status-todo-text:   #606060;
-  --status-wip-bg:      #a8c0e0;
+  --status-wip-bg:      #7ab0d8;
   --status-wip-text:    #1a3f70;
-  --status-done-bg:     #b8d9b4;
+  --status-done-bg:     #6ab86a;
   --status-done-text:   #245820;
-  --status-stuck-bg:    #ecaaaa;
+  --status-stuck-bg:    #e87878;
   --status-stuck-text:  #701818;
-  --status-review-bg:   #ece4a0;
+  --status-review-bg:   #d4b84a;
   --status-review-text: #705800;
 
   /* Semantic colours (keep for compatibility) */
@@ -46,17 +46,17 @@
   --pm-red-light:       #f6f2fc;
   --pm-gray:            #bdb7d0;
 
-  /* Timeline status fills */
-  --tl-not-started:     #e8e0ff;
-  --tl-in-progress:     #6c44f6;
-  --tl-at-risk:         #b29cf8;
-  --tl-overdue:         #e84c6f;
-  --tl-completed:       #3ecf8e;
-  --tl-not-started-dark:#d4c8f9;
-  --tl-in-progress-dark:#5b38d4;
-  --tl-at-risk-dark:    #9a7fe0;
-  --tl-overdue-dark:    #c73a58;
-  --tl-completed-dark:  #2fb87a;
+  /* Timeline status fills (aligned with canonical palette) */
+  --tl-not-started:     #d0d0d0;
+  --tl-in-progress:     #7ab0d8;
+  --tl-at-risk:         #d4b84a;
+  --tl-overdue:         #e87878;
+  --tl-completed:       #6ab86a;
+  --tl-not-started-dark:#b0b0b0;
+  --tl-in-progress-dark:#5a94be;
+  --tl-at-risk-dark:    #b89e3a;
+  --tl-overdue-dark:    #c75a5a;
+  --tl-completed-dark:  #52a352;
 
   /* Border radius */
   --radius-card:        12px;

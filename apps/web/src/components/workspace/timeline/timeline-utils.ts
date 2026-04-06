@@ -27,7 +27,7 @@ export const STATUS_COLOURS: Record<TaskStatus, StatusColourConfig> = {
   not_started: {
     bg: "var(--tl-not-started)",
     bgDark: "var(--tl-not-started-dark)",
-    text: "#5b3ec9",
+    text: "#606060",
     label: "Not started",
   },
   on_track: {
@@ -39,7 +39,7 @@ export const STATUS_COLOURS: Record<TaskStatus, StatusColourConfig> = {
   at_risk: {
     bg: "var(--tl-at-risk)",
     bgDark: "var(--tl-at-risk-dark)",
-    text: "#ffffff",
+    text: "#705800",
     label: "At risk",
   },
   overdue: {
