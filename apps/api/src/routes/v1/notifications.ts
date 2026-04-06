@@ -63,8 +63,8 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
 
       await fastify.db.queryTenant(
         tenantId,
-        `UPDATE notifications SET read_at = NOW() WHERE tenant_id = $1 AND id = $2`,
-        [tenantId, params.id]
+        `UPDATE notifications SET read_at = NOW() WHERE tenant_id = $1 AND id = $2 AND (user_id = $3 OR user_id IS NULL)`,
+        [tenantId, params.id, request.user.userId]
       );
 
       return reply.send({ success: true });
