@@ -32,23 +32,13 @@ export const TimelineGrid = forwardRef<HTMLDivElement, TimelineGridProps>(
           {/* ── Time axis header (sticky top) ── */}
           <div
             className="sticky top-0 z-20 border-b border-[var(--border)] bg-white"
-            style={{ minHeight: 36 }}
+            style={{ minHeight: todayInRange ? 48 : 36 }}
           >
-            <div className="relative h-9">
-              {markers.map((m, i) => (
-                <span
-                  key={i}
-                  className="absolute top-2.5 text-[10px] font-medium text-[var(--text-disabled)] -translate-x-1/2 whitespace-nowrap"
-                  style={{ left: `${m.pct}%` }}
-                >
-                  {m.label}
-                </span>
-              ))}
-
-              {/* Today pill */}
+            <div className="relative" style={{ height: todayInRange ? 48 : 36 }}>
+              {/* Today pill — own row at top */}
               {todayInRange && (
                 <span
-                  className="absolute top-1 -translate-x-1/2 rounded-full px-2 py-0.5 text-[9px] font-semibold whitespace-nowrap"
+                  className="absolute top-1 -translate-x-1/2 rounded-full px-2 py-0.5 text-[9px] font-semibold whitespace-nowrap z-10"
                   style={{
                     left: `${todayPct}%`,
                     background: "rgba(108, 68, 246, 0.1)",
@@ -58,6 +48,17 @@ export const TimelineGrid = forwardRef<HTMLDivElement, TimelineGridProps>(
                   Today, {formatDateShort(today)}
                 </span>
               )}
+
+              {/* Date range markers — below the today pill */}
+              {markers.map((m, i) => (
+                <span
+                  key={i}
+                  className="absolute text-[10px] font-medium text-[var(--text-disabled)] -translate-x-1/2 whitespace-nowrap"
+                  style={{ left: `${m.pct}%`, top: todayInRange ? 24 : 10 }}
+                >
+                  {m.label}
+                </span>
+              ))}
             </div>
           </div>
 
