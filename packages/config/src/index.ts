@@ -55,6 +55,7 @@ const ApiSchema = SharedSchema.extend({
   GMAIL_REDIRECT_URI: z.string().url().optional(),
   GMAIL_SCOPES: z.string().default("https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email"),
   RESEND_API_KEY: z.string().optional(),
+  FRONTEND_URL: z.string().url().optional(),
 });
 
 const WorkerSchema = SharedSchema.extend({
