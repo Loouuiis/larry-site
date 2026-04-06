@@ -338,7 +338,7 @@ export function CollaboratorsPanel({ projectId }: { projectId: string }) {
                     <select
                       value={addRole}
                       onChange={(e) => setAddRole(e.target.value as ProjectMembershipRole)}
-                      className="mt-1 w-full rounded-[12px] border px-3 py-2 text-[13px]"
+                      className="mt-1 w-full rounded-full border px-3 py-1.5 text-[12px] font-semibold"
                       style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-1)" }}
                     >
                       {ROLE_OPTIONS.map((role) => (
