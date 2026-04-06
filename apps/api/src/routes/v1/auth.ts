@@ -3,6 +3,7 @@ import { z } from "zod";
 import { hashToken, issueAccessToken, issueRefreshToken, verifyPassword } from "../../lib/auth.js";
 import { writeAuditLog } from "../../lib/audit.js";
 import { emailSchema } from "../../lib/validation.js";
+import { authPasswordResetRoutes } from "./auth-password-reset.js";
 
 const LoginSchema = z.object({
   email: emailSchema,
@@ -16,6 +17,8 @@ const RefreshSchema = z.object({
 });
 
 export const authRoutes: FastifyPluginAsync = async (fastify) => {
+  await fastify.register(authPasswordResetRoutes);
+
   fastify.post("/login", {
     config: {
       rateLimit: {

@@ -18,6 +18,11 @@ export function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
+export function generateSecureToken(): { raw: string; hash: string } {
+  const raw = randomBytes(48).toString("base64url");
+  return { raw, hash: hashToken(raw) };
+}
+
 export async function issueAccessToken(
   app: FastifyInstance,
   payload: { userId: string; tenantId: string; role: "admin" | "pm" | "member" | "executive"; email?: string }
