@@ -87,17 +87,16 @@ export async function POST(req: NextRequest) {
     }
 
     if (!apiResponse.ok) {
-      // Try to extract error message from API response
       try {
-        const errorBody = await apiResponse.json();
-        if (errorBody?.error) {
-          return NextResponse.json(
-            { error: errorBody.error },
-            { status: apiResponse.status }
-          );
-        }
+        const errorBody = await apiResponse.json() as Record<string, unknown>;
+        // Fastify returns { statusCode, error, message } for validation errors
+        const msg = typeof errorBody.message === "string" ? errorBody.message
+          : typeof errorBody.error === "string" ? errorBody.error
+          : "Signup failed. Please try again.";
+        console.error("[signup] API error:", apiResponse.status, JSON.stringify(errorBody));
+        return NextResponse.json({ error: msg }, { status: apiResponse.status });
       } catch {
-        // ignore JSON parse errors
+        console.error("[signup] API error (non-JSON):", apiResponse.status);
       }
       return NextResponse.json(
         { error: "Signup failed. Please try again." },
@@ -126,17 +125,10 @@ export async function POST(req: NextRequest) {
     res.cookies.set(sessionCookieOptions(token));
     return res;
   } catch (err) {
-    console.error("[signup]", err);
-    const message = err instanceof Error ? err.message : "Something went wrong.";
-    // Surface config errors clearly so they can be diagnosed
-    if (message.includes("SESSION_SECRET")) {
-      return NextResponse.json(
-        { error: "Server configuration error. Please contact support." },
-        { status: 500 }
-      );
-    }
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[signup] unhandled error:", message);
     return NextResponse.json(
-      { error: "Something went wrong. Please try again." },
+      { error: message.includes("SESSION_SECRET") ? "Server configuration error." : message },
       { status: 500 }
     );
   }
