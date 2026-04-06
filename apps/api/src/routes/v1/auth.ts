@@ -7,6 +7,7 @@ import { sendVerificationEmail } from "../../lib/email.js";
 import { authPasswordResetRoutes } from "./auth-password-reset.js";
 import { authVerificationRoutes } from "./auth-verification.js";
 import { authGoogleRoutes } from "./auth-google.js";
+import { authAccountRoutes } from "./auth-account.js";
 
 const LoginSchema = z.object({
   email: emailSchema,
@@ -30,6 +31,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(authPasswordResetRoutes);
   await fastify.register(authVerificationRoutes);
   await fastify.register(authGoogleRoutes);
+  await fastify.register(authAccountRoutes);
 
   // -----------------------------------------------------------------------
   // POST /signup

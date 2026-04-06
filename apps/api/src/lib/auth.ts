@@ -48,13 +48,14 @@ export async function issueAccessToken(
 export async function issueRefreshToken(
   app: FastifyInstance,
   payload: { userId: string; tenantId: string; role: "admin" | "pm" | "member" | "executive"; email?: string },
-  dbClient?: PoolClient
+  dbClient?: PoolClient,
+  meta?: { ipAddress?: string; userAgent?: string }
 ): Promise<string> {
   const token = randomBytes(48).toString("base64url");
   const tokenHash = hashToken(token);
   const expiresAt = futureIsoDate(app.config.REFRESH_TOKEN_TTL);
-  const query = `INSERT INTO refresh_tokens (tenant_id, user_id, token_hash, expires_at) VALUES ($1, $2, $3, $4)`;
-  const values = [payload.tenantId, payload.userId, tokenHash, expiresAt];
+  const query = `INSERT INTO refresh_tokens (tenant_id, user_id, token_hash, expires_at, ip_address, user_agent) VALUES ($1, $2, $3, $4, $5, $6)`;
+  const values = [payload.tenantId, payload.userId, tokenHash, expiresAt, meta?.ipAddress ?? null, meta?.userAgent ?? null];
   if (dbClient) {
     await dbClient.query(query, values);
   } else {
