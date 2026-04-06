@@ -14,7 +14,10 @@ export function normalizeProjectStatus(value: string | null | undefined): Projec
   return value === ARCHIVED_PROJECT_STATUS ? ARCHIVED_PROJECT_STATUS : ACTIVE_PROJECT_STATUS;
 }
 
-export function projectStatusSql(statusColumn: string): string {
+const ALLOWED_STATUS_COLUMNS = ["projects.status", "status"] as const;
+type StatusColumn = typeof ALLOWED_STATUS_COLUMNS[number];
+
+export function projectStatusSql(statusColumn: StatusColumn): string {
   return `CASE WHEN ${statusColumn} = '${ARCHIVED_PROJECT_STATUS}' THEN '${ARCHIVED_PROJECT_STATUS}' ELSE '${ACTIVE_PROJECT_STATUS}' END`;
 }
 
@@ -22,7 +25,7 @@ export function appendProjectStatusFilter(input: {
   filters: string[];
   values: unknown[];
   filter?: ProjectStatusFilter;
-  statusColumn: string;
+  statusColumn: StatusColumn;
 }): void {
   const filter = input.filter ?? "all";
   if (filter === "all") return;

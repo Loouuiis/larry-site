@@ -407,7 +407,10 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
       const purgeResult = await fastify.db.tx(async (client) => {
         await client.query("SELECT set_config('app.tenant_id', $1, true)", [tenantId]);
 
-        async function deleteAndCount(tableName: string): Promise<number> {
+        const PURGEABLE_TABLES = ["meeting_notes", "documents", "email_outbound_drafts", "larry_conversations"] as const;
+        type PurgeableTable = typeof PURGEABLE_TABLES[number];
+
+        async function deleteAndCount(tableName: PurgeableTable): Promise<number> {
           const rows = await client.query<{ row_count: number }>(
             `WITH deleted AS (
                DELETE FROM ${tableName}
