@@ -1019,38 +1019,38 @@ export function EmailDraftsClient() {
       )}
 
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "4px" }}>
-        <h1 className="text-h1">Mail</h1>
+      <h1 className="text-h1" style={{ marginBottom: "4px" }}>Mail</h1>
+      <p className="text-body-sm" style={{ marginBottom: "16px" }}>
+        Outbound mail drafts and sent messages from Larry.
+      </p>
+
+      {/* Tabs + Compose button on same row */}
+      <div style={{ display: "flex", alignItems: "center", borderBottom: "1px solid var(--border)", marginBottom: "16px" }}>
+        <button style={TAB_STYLE(tab === "draft")} onClick={() => setTab("draft")}>Drafts</button>
+        <button style={TAB_STYLE(tab === "sent")} onClick={() => setTab("sent")}>Sent</button>
         <button
           type="button"
           onClick={() => setComposing(true)}
           style={{
+            marginLeft: "auto",
             display: "inline-flex",
             alignItems: "center",
             gap: "6px",
-            height: "34px",
-            padding: "0 16px",
+            height: "30px",
+            padding: "0 14px",
             borderRadius: "var(--radius-btn)",
             border: "none",
             background: "var(--cta)",
             color: "#fff",
-            fontSize: "13px",
+            fontSize: "12px",
             fontWeight: 600,
             cursor: "pointer",
+            marginBottom: "4px",
           }}
         >
-          <SquarePen size={14} />
+          <SquarePen size={13} />
           Compose
         </button>
-      </div>
-      <p className="text-body-sm" style={{ marginBottom: "20px" }}>
-        Outbound mail drafts and sent messages from Larry.
-      </p>
-
-      {/* Tabs */}
-      <div style={{ display: "flex", borderBottom: "1px solid var(--border)", marginBottom: "16px" }}>
-        <button style={TAB_STYLE(tab === "draft")} onClick={() => setTab("draft")}>Drafts</button>
-        <button style={TAB_STYLE(tab === "sent")} onClick={() => setTab("sent")}>Sent</button>
       </div>
 
       {/* Table */}
