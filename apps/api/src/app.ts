@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import sensible from "@fastify/sensible";
 import { getApiEnv } from "@larry/config";
@@ -23,6 +24,9 @@ export async function createApp() {
   app.decorate("queue", createQueuePublisher(env.REDIS_URL));
 
   await app.register(sensible);
+  await app.register(helmet, {
+    contentSecurityPolicy: false,
+  });
   await app.register(rateLimit, {
     global: false, // opt-in per route
     redis: undefined, // in-memory store is fine for MVP demo
