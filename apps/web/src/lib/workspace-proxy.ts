@@ -269,24 +269,8 @@ export async function proxyApiRequest(
       }
     }
 
-    // If still 401 (refresh failed or refreshed token rejected), fall back to
-    // service credentials so the user isn't locked out by a stale session.
-    if (response.status === 401) {
-      const serviceLogin = await loginWithServiceCredentials(baseUrl);
-      if (serviceLogin.session?.apiAccessToken) {
-        activeSession = serviceLogin.session;
-        try {
-          response = await perform(serviceLogin.session.apiAccessToken);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : "Upstream API request failed.";
-          return {
-            status: 504,
-            body: { error: message },
-            session: activeSession,
-          };
-        }
-      }
-    }
+    // If still 401 after refresh attempt, the session is dead — force re-login.
+    // Do NOT fall back to service credentials; that silently escalates identity.
   }
 
   let body: unknown;
