@@ -67,6 +67,7 @@ const FALLBACK_STATUS: StatusColourConfig = {
   bgDark: "var(--tl-not-started-dark)",
   text: "#5b3ec9",
   label: "Unknown",
+  dot: "#b0b0b0",
 };
 
 /** Safe accessor — returns fallback config for unknown status values */
