@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { classifyRiskLevel } from "@larry/ai";
+import { getProjectMembershipAccess } from "../../lib/project-memberships.js";
 
 async function insertProjectRiskSnapshotOncePerDay(
   fastify: Parameters<FastifyPluginAsync>[0],
@@ -51,12 +52,29 @@ async function insertReportSnapshotOncePerDay(
 }
 
 export const reportingRoutes: FastifyPluginAsync = async (fastify) => {
+  async function assertProjectReadOrThrow(tenantId: string, userId: string, tenantRole: string, projectId: string) {
+    const access = await getProjectMembershipAccess({
+      db: fastify.db,
+      tenantId,
+      projectId,
+      userId,
+      tenantRole,
+    });
+    if (!access.projectExists) {
+      throw fastify.httpErrors.notFound("Project not found.");
+    }
+    if (!access.canRead) {
+      throw fastify.httpErrors.forbidden("Project access denied.");
+    }
+  }
+
   fastify.get(
     "/projects/:id/health",
     { preHandler: [fastify.authenticate] },
     async (request) => {
       const params = z.object({ id: z.string().uuid() }).parse(request.params);
       const tenantId = request.user.tenantId;
+      await assertProjectReadOrThrow(tenantId, request.user.userId, request.user.role, params.id);
 
       const taskRows = await fastify.db.queryTenant<{
         status: "backlog" | "not_started" | "in_progress" | "waiting" | "completed" | "blocked";
@@ -98,6 +116,7 @@ export const reportingRoutes: FastifyPluginAsync = async (fastify) => {
     async (request) => {
       const params = z.object({ id: z.string().uuid() }).parse(request.params);
       const tenantId = request.user.tenantId;
+      await assertProjectReadOrThrow(tenantId, request.user.userId, request.user.role, params.id);
 
       const taskRows = await fastify.db.queryTenant<{
         status: "backlog" | "not_started" | "in_progress" | "waiting" | "completed" | "blocked";
@@ -178,6 +197,7 @@ export const reportingRoutes: FastifyPluginAsync = async (fastify) => {
     async (request) => {
       const params = z.object({ id: z.string().uuid() }).parse(request.params);
       const tenantId = request.user.tenantId;
+      await assertProjectReadOrThrow(tenantId, request.user.userId, request.user.role, params.id);
 
       const taskRows = await fastify.db.queryTenant<{
         id: string;
@@ -242,6 +262,7 @@ export const reportingRoutes: FastifyPluginAsync = async (fastify) => {
     async (request) => {
       const params = z.object({ id: z.string().uuid() }).parse(request.params);
       const tenantId = request.user.tenantId;
+      await assertProjectReadOrThrow(tenantId, request.user.userId, request.user.role, params.id);
 
       const rows = await fastify.db.queryTenant<{
         status: string;
@@ -274,6 +295,7 @@ export const reportingRoutes: FastifyPluginAsync = async (fastify) => {
       const params = z.object({ id: z.string().uuid() }).parse(request.params);
       const query = z.object({ months: z.coerce.number().int().min(1).max(24).default(6) }).parse(request.query);
       const tenantId = request.user.tenantId;
+      await assertProjectReadOrThrow(tenantId, request.user.userId, request.user.role, params.id);
       const months = query.months;
 
       const [completedRows, createdRows, activeRows] = await Promise.all([
