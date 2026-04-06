@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { ingestCanonicalEvent } from "../../services/ingest/pipeline.js";
@@ -423,7 +423,12 @@ export const emailConnectorRoutes: FastifyPluginAsync = async (fastify) => {
 
     const secretHeader = request.headers["x-larry-email-secret"];
     const inboundSecret = typeof secretHeader === "string" ? secretHeader : undefined;
-    if (!inboundSecret || inboundSecret !== installation.webhookSecret) {
+    if (!inboundSecret) {
+      throw fastify.httpErrors.unauthorized("Invalid email inbound secret.");
+    }
+    const a = Buffer.from(inboundSecret, "utf8");
+    const b = Buffer.from(installation.webhookSecret, "utf8");
+    if (a.length !== b.length || !timingSafeEqual(a, b)) {
       throw fastify.httpErrors.unauthorized("Invalid email inbound secret.");
     }
 
