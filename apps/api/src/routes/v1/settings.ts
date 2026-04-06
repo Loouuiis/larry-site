@@ -89,12 +89,8 @@ export const settingsRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.patch(
     "/policy",
-    { preHandler: [fastify.authenticate] },
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin"])] },
     async (request, reply) => {
-      if (request.user.role !== "admin") {
-        return reply.status(403).send({ error: "Admin role required" });
-      }
-
       const body = PatchPolicySchema.parse(request.body);
       const tenantId = request.user.tenantId;
 
@@ -210,7 +206,7 @@ export const settingsRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.post(
     "/rules",
-    { preHandler: [fastify.authenticate] },
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
     async (request, reply) => {
       const tenantId = request.user.tenantId;
       const body = CreateRuleSchema.parse(request.body ?? {});
@@ -249,7 +245,7 @@ export const settingsRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.patch(
     "/rules/:id",
-    { preHandler: [fastify.authenticate] },
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
     async (request, reply) => {
       const tenantId = request.user.tenantId;
       const params = z.object({ id: z.string().uuid() }).parse(request.params ?? {});
@@ -319,7 +315,7 @@ export const settingsRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.delete(
     "/rules/:id",
-    { preHandler: [fastify.authenticate] },
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
     async (request, reply) => {
       const tenantId = request.user.tenantId;
       const params = z.object({ id: z.string().uuid() }).parse(request.params ?? {});
