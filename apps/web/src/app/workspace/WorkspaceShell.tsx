@@ -12,6 +12,7 @@ import { WorkspaceTopBar } from "./WorkspaceTopBar";
 import { ToastProvider } from "@/components/toast/ToastContext";
 import { ToastContainer } from "@/components/toast/ToastContainer";
 import { triggerBoundedWorkspaceRefresh } from "./refresh";
+import { VerificationBanner } from "@/components/auth/VerificationBanner";
 
 async function readJson<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -26,9 +27,10 @@ async function readJson<T>(response: Response): Promise<T> {
 type WorkspaceShellProps = {
   children: React.ReactNode;
   userEmail?: string | null;
+  emailVerified?: boolean;
 };
 
-export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
+export function WorkspaceShell({ children, userEmail, emailVerified }: WorkspaceShellProps) {
   const pathname = usePathname();
   const [projects, setProjects] = useState<WorkspaceProject[]>([]);
   const [chatProjectId, setChatProjectId] = useState<string>("");
@@ -156,6 +158,7 @@ export function WorkspaceShell({ children, userEmail }: WorkspaceShellProps) {
         />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <WorkspaceTopBar userEmail={userEmail} onMobileMenuOpen={() => setMobileOpen(true)} />
+          {!emailVerified && <VerificationBanner />}
           <div className="flex-1 overflow-y-auto">
             {children}
           </div>

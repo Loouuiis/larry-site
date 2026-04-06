@@ -1,9 +1,11 @@
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { hashToken, issueAccessToken, issueRefreshToken, verifyPassword } from "../../lib/auth.js";
+import { generateSecureToken, hashPassword, hashToken, issueAccessToken, issueRefreshToken, verifyPassword } from "../../lib/auth.js";
 import { writeAuditLog } from "../../lib/audit.js";
-import { emailSchema } from "../../lib/validation.js";
+import { emailSchema, passwordSchema } from "../../lib/validation.js";
+import { sendVerificationEmail } from "../../lib/email.js";
 import { authPasswordResetRoutes } from "./auth-password-reset.js";
+import { authVerificationRoutes } from "./auth-verification.js";
 
 const LoginSchema = z.object({
   email: emailSchema,
@@ -16,9 +18,136 @@ const RefreshSchema = z.object({
   tenantId: z.string().uuid().optional(),
 });
 
+const SignupSchema = z.object({
+  email: emailSchema,
+  password: passwordSchema,
+  fullName: z.string().max(200).optional(),
+  tenantId: z.string().uuid(),
+});
+
 export const authRoutes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(authPasswordResetRoutes);
+  await fastify.register(authVerificationRoutes);
 
+  // -----------------------------------------------------------------------
+  // POST /signup
+  // -----------------------------------------------------------------------
+  fastify.post("/signup", {
+    config: {
+      rateLimit: {
+        max: 5,
+        timeWindow: "1 hour",
+        keyGenerator: (req: import("fastify").FastifyRequest) => req.ip,
+      },
+    },
+  }, async (request, reply) => {
+    const body = SignupSchema.parse(request.body);
+
+    // Check for existing user with same email in this tenant
+    const existing = await fastify.db.query<{ id: string }>(
+      `SELECT u.id FROM users u
+       JOIN memberships m ON m.user_id = u.id
+       WHERE u.email = $1 AND m.tenant_id = $2
+       LIMIT 1`,
+      [body.email, body.tenantId],
+    );
+
+    if (existing.length > 0) {
+      return reply.code(409).send({ error: "An account with this email already exists." });
+    }
+
+    // Check tenant exists
+    const tenants = await fastify.db.query<{ id: string }>(
+      `SELECT id FROM tenants WHERE id = $1 LIMIT 1`,
+      [body.tenantId],
+    );
+
+    if (tenants.length === 0) {
+      return reply.badRequest("Invalid tenant.");
+    }
+
+    const passwordHash = await hashPassword(body.password);
+
+    // Create user + membership in a transaction
+    const newUser = await fastify.db.tx(async (client) => {
+      const result = await client.query(
+        `INSERT INTO users (email, password_hash, display_name, verification_grace_deadline, email_verified_at)
+         VALUES ($1, $2, $3, NOW() + INTERVAL '7 days', NULL)
+         RETURNING id, email`,
+        [body.email, passwordHash, body.fullName ?? null],
+      );
+
+      const user = result.rows[0] as { id: string; email: string };
+
+      await client.query(
+        `INSERT INTO memberships (user_id, tenant_id, role) VALUES ($1, $2, 'member')`,
+        [user.id, body.tenantId],
+      );
+
+      return user;
+    });
+
+    // Issue tokens
+    const accessToken = await issueAccessToken(fastify, {
+      userId: newUser.id,
+      tenantId: body.tenantId,
+      role: "member",
+      email: newUser.email,
+    });
+
+    const refreshToken = await issueRefreshToken(fastify, {
+      userId: newUser.id,
+      tenantId: body.tenantId,
+      role: "member",
+      email: newUser.email,
+    });
+
+    // Send verification email (best-effort, don't block signup)
+    try {
+      const { raw, hash } = generateSecureToken();
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+      await fastify.db.query(
+        `INSERT INTO email_verification_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)`,
+        [newUser.id, hash, expiresAt],
+      );
+
+      const frontendUrl = (
+        fastify.config.FRONTEND_URL ??
+        fastify.config.CORS_ORIGINS.split(",")[0].trim()
+      ).replace(/\/+$/, "");
+      const verifyUrl = `${frontendUrl}/verify-email?token=${encodeURIComponent(raw)}`;
+
+      await sendVerificationEmail(newUser.email, verifyUrl);
+    } catch (err) {
+      request.log.error({ err, userId: newUser.id }, "Failed to send verification email on signup");
+    }
+
+    // Audit log
+    await writeAuditLog(fastify.db, {
+      tenantId: body.tenantId,
+      actorUserId: newUser.id,
+      actionType: "auth.signup",
+      objectType: "user",
+      objectId: newUser.id,
+      details: { email: newUser.email },
+    });
+
+    return reply.code(201).send({
+      accessToken,
+      refreshToken,
+      user: {
+        id: newUser.id,
+        email: newUser.email,
+        role: "member",
+        tenantId: body.tenantId,
+      },
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // POST /login
+  // -----------------------------------------------------------------------
   fastify.post("/login", {
     config: {
       rateLimit: {
@@ -171,8 +300,10 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       const rows = await fastify.db.query<{
         display_name: string | null;
         is_active: boolean;
+        email_verified_at: string | null;
+        verification_grace_deadline: string | null;
       }>(
-        `SELECT display_name, is_active
+        `SELECT display_name, is_active, email_verified_at, verification_grace_deadline
          FROM users
          WHERE id = $1
          LIMIT 1`,
@@ -187,6 +318,8 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
           email: user.email,
           displayName: rows[0]?.display_name ?? null,
           isActive: rows[0]?.is_active ?? true,
+          emailVerifiedAt: rows[0]?.email_verified_at ?? null,
+          verificationGraceDeadline: rows[0]?.verification_grace_deadline ?? null,
         },
       };
     }
