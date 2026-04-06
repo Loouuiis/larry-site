@@ -41,7 +41,6 @@ export function CollaboratorsPanel({ projectId }: { projectId: string }) {
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [addUserId, setAddUserId] = useState("");
   const [addRole, setAddRole] = useState<ProjectMembershipRole>("viewer");
-  const [addEmail, setAddEmail] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
   const [viewMode, setViewMode] = useState<"list" | "tree">("list");
 
@@ -143,6 +142,8 @@ export function CollaboratorsPanel({ projectId }: { projectId: string }) {
         return;
       }
       setMembersPayload(data);
+      setShowAddForm(false);
+      setAddRole("viewer");
     } catch (mutationError) {
       setInlineError(
         mutationError instanceof Error ? mutationError.message : "Could not add collaborator."
@@ -297,24 +298,46 @@ export function CollaboratorsPanel({ projectId }: { projectId: string }) {
                   <Plus size={14} />
                   Add member
                 </button>
+              ) : availableTenantMembers.length === 0 ? (
+                <div className="flex items-center justify-between rounded-[16px] border px-4 py-3" style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}>
+                  <p className="text-[12px]" style={{ color: "var(--text-muted)" }}>
+                    All workspace members are already in this project.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddForm(false)}
+                    className="flex items-center justify-center"
+                    style={{ color: "var(--text-muted)", background: "transparent", border: "none", cursor: "pointer" }}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
               ) : (
-                <div className="flex items-end gap-2 rounded-[16px] border px-4 py-3" style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}>
+                <form
+                  onSubmit={(e) => void addMember(e)}
+                  className="flex items-end gap-2 rounded-[16px] border px-4 py-3"
+                  style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
+                >
                   <label className="flex-1 text-[12px] font-semibold" style={{ color: "var(--text-muted)" }}>
-                    Email
-                    <input
-                      type="email"
-                      value={addEmail}
-                      onChange={(e) => setAddEmail(e.target.value)}
-                      placeholder="name@gmail.com"
-                      className="mt-1 w-full rounded-[12px] border px-3 py-2 text-[13px] outline-none"
+                    Member
+                    <select
+                      value={addUserId}
+                      onChange={(e) => setAddUserId(e.target.value)}
+                      className="mt-1 w-full rounded-[12px] border px-3 py-2 text-[13px]"
                       style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-1)" }}
-                    />
+                    >
+                      {availableTenantMembers.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name || m.email}
+                        </option>
+                      ))}
+                    </select>
                   </label>
                   <label className="w-[130px] shrink-0 text-[12px] font-semibold" style={{ color: "var(--text-muted)" }}>
                     Role
                     <select
                       value={addRole}
-                      onChange={(event) => setAddRole(event.target.value as ProjectMembershipRole)}
+                      onChange={(e) => setAddRole(e.target.value as ProjectMembershipRole)}
                       className="mt-1 w-full rounded-[12px] border px-3 py-2 text-[13px]"
                       style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-1)" }}
                     >
@@ -326,12 +349,12 @@ export function CollaboratorsPanel({ projectId }: { projectId: string }) {
                     </select>
                   </label>
                   <button
-                    type="button"
-                    disabled
+                    type="submit"
+                    disabled={busyAction === "add" || !addUserId}
                     className="h-[40px] shrink-0 rounded-full px-4 text-[12px] font-semibold text-white"
-                    style={{ background: "var(--cta)", opacity: 0.45, cursor: "not-allowed" }}
+                    style={{ background: "var(--cta)" }}
                   >
-                    Add member
+                    {busyAction === "add" ? "Adding..." : "Add"}
                   </button>
                   <button
                     type="button"
@@ -341,7 +364,7 @@ export function CollaboratorsPanel({ projectId }: { projectId: string }) {
                   >
                     <X size={14} />
                   </button>
-                </div>
+                </form>
               )}
             </div>
           )}
