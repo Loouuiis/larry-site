@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import { createSessionToken, sessionCookieOptions, AppSession } from "@/lib/auth";
 
-const allowed =
-  process.env.ALLOW_DEV_AUTH_BYPASS === "true" ||
-  process.env.NODE_ENV !== "production";
+const allowed = process.env.ALLOW_DEV_AUTH_BYPASS === "true";
 
 // Attempt a real API login so the session carries a valid access token.
 // This prevents workspace-proxy from hammering /v1/auth/login on every request.
