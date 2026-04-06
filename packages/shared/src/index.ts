@@ -305,6 +305,7 @@ export interface ProjectTaskSnapshot {
 export interface ProjectTeamMember {
   id: string;
   name: string;
+  email: string;
   role: string;
   activeTaskCount: number;
 }

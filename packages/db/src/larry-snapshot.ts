@@ -198,6 +198,7 @@ export async function getProjectSnapshot(
   const team: ProjectTeamMember[] = memberRows.map((m) => ({
     id: m.user_id,
     name: m.display_name ?? m.email,
+    email: m.email,
     role: m.role,
     activeTaskCount: parseInt(m.active_task_count, 10),
   }));

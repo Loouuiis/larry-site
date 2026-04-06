@@ -44,6 +44,7 @@ const ApiSchema = SharedSchema.extend({
   GOOGLE_CALENDAR_SCOPES: z.string().default("https://www.googleapis.com/auth/calendar.readonly"),
   GOOGLE_OAUTH_STATE_TTL_SECONDS: z.coerce.number().int().positive().default(3600),
   GOOGLE_CALENDAR_WEBHOOK_URL: z.string().url().optional(),
+  GOOGLE_AUTH_REDIRECT_URI: z.string().url().optional(),
   OUTLOOK_CLIENT_ID: z.string().optional(),
   OUTLOOK_CLIENT_SECRET: z.string().optional(),
   OUTLOOK_REDIRECT_URI: z.string().url().optional(),
@@ -55,6 +56,7 @@ const ApiSchema = SharedSchema.extend({
   GMAIL_REDIRECT_URI: z.string().url().optional(),
   GMAIL_SCOPES: z.string().default("https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email"),
   RESEND_API_KEY: z.string().optional(),
+  FRONTEND_URL: z.string().url().optional(),
 });
 
 const WorkerSchema = SharedSchema.extend({

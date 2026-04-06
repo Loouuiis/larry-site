@@ -8,6 +8,7 @@ import { useLarryActionCentre } from "@/hooks/useLarryActionCentre";
 import { useEmailDrafts } from "@/hooks/useEmailDrafts";
 import { getActionTypeTag, getAllActionTypes } from "@/lib/action-types";
 import { useToast } from "@/components/toast/ToastContext";
+import { ActionDetailPreview } from "@/components/workspace/ActionDetailPreview";
 
 export const dynamic = "force-dynamic";
 
@@ -603,6 +604,8 @@ export default function WorkspaceActionsPage() {
                       </div>
                     </div>
 
+                    <ActionDetailPreview event={event} />
+
                     <p className="mt-3 text-[12px]" style={{ color: "var(--text-muted)" }}>
                       {getEventMeta(event)} | {formatRelativeTime(event.createdAt)}
                     </p>
@@ -781,6 +784,7 @@ export default function WorkspaceActionsPage() {
                         <p className="mt-3 text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
                           {event.displayText}
                         </p>
+                        <ActionDetailPreview event={event} />
                         <p className="mt-1 text-[12px]" style={{ color: "var(--text-muted)" }}>
                           {getEventMeta(event)} | {formatRelativeTime(event.executedAt ?? event.createdAt)}
                         </p>

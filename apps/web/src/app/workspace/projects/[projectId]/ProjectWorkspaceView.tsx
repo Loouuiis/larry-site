@@ -44,6 +44,7 @@ import { ProjectDashboardExtra } from "./dashboard/ProjectDashboardExtra";
 import { ProjectTimeline } from "@/components/workspace/timeline/ProjectTimeline";
 import { getActionTypeTag, getAllActionTypes } from "@/lib/action-types";
 import { useToast } from "@/components/toast/ToastContext";
+import { ActionDetailPreview } from "@/components/workspace/ActionDetailPreview";
 import { ActionBellDropdown } from "./overview/ActionBellDropdown";
 import { ProjectOverviewTab } from "./overview/ProjectOverviewTab";
 import { ProjectDescriptionCard } from "./overview/ProjectDescriptionCard";
@@ -1080,6 +1081,8 @@ function ProjectActionCentreTab({
                     </div>
                   </div>
 
+                  <ActionDetailPreview event={event} />
+
                   <p className="mt-3 text-[12px]" style={{ color: "var(--text-muted)" }}>
                     {getEventMeta(event)} | {formatRelativeTime(event.createdAt)}
                   </p>
@@ -1232,6 +1235,7 @@ function ProjectActionCentreTab({
                       <p className="mt-3 text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
                         {event.displayText}
                       </p>
+                      <ActionDetailPreview event={event} />
                       <p className="mt-1 text-[12px]" style={{ color: "var(--text-muted)" }}>
                         {getEventMeta(event)} | {formatRelativeTime(event.executedAt ?? event.createdAt)}
                       </p>

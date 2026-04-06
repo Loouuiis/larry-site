@@ -1,10 +1,16 @@
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { hashToken, issueAccessToken, issueRefreshToken, verifyPassword } from "../../lib/auth.js";
+import { generateSecureToken, hashPassword, hashToken, issueAccessToken, issueRefreshToken, verifyPassword } from "../../lib/auth.js";
 import { writeAuditLog } from "../../lib/audit.js";
+import { emailSchema, passwordSchema } from "../../lib/validation.js";
+import { sendVerificationEmail } from "../../lib/email.js";
+import { authPasswordResetRoutes } from "./auth-password-reset.js";
+import { authVerificationRoutes } from "./auth-verification.js";
+import { authGoogleRoutes } from "./auth-google.js";
+import { authAccountRoutes } from "./auth-account.js";
 
 const LoginSchema = z.object({
-  email: z.string().email().transform((value) => value.trim().toLowerCase()),
+  email: emailSchema,
   password: z.string().min(8),
   tenantId: z.string().uuid().optional(),
 });
@@ -14,7 +20,138 @@ const RefreshSchema = z.object({
   tenantId: z.string().uuid().optional(),
 });
 
+const SignupSchema = z.object({
+  email: emailSchema,
+  password: passwordSchema,
+  fullName: z.string().max(200).optional(),
+  tenantId: z.string().uuid(),
+});
+
 export const authRoutes: FastifyPluginAsync = async (fastify) => {
+  await fastify.register(authPasswordResetRoutes);
+  await fastify.register(authVerificationRoutes);
+  await fastify.register(authGoogleRoutes);
+  await fastify.register(authAccountRoutes);
+
+  // -----------------------------------------------------------------------
+  // POST /signup
+  // -----------------------------------------------------------------------
+  fastify.post("/signup", {
+    config: {
+      rateLimit: {
+        max: 5,
+        timeWindow: "1 hour",
+        keyGenerator: (req: import("fastify").FastifyRequest) => req.ip,
+      },
+    },
+  }, async (request, reply) => {
+    const body = SignupSchema.parse(request.body);
+
+    // Check for existing user with same email in this tenant
+    const existing = await fastify.db.query<{ id: string }>(
+      `SELECT u.id FROM users u
+       JOIN memberships m ON m.user_id = u.id
+       WHERE u.email = $1 AND m.tenant_id = $2
+       LIMIT 1`,
+      [body.email, body.tenantId],
+    );
+
+    if (existing.length > 0) {
+      return reply.code(409).send({ error: "An account with this email already exists." });
+    }
+
+    // Check tenant exists
+    const tenants = await fastify.db.query<{ id: string }>(
+      `SELECT id FROM tenants WHERE id = $1 LIMIT 1`,
+      [body.tenantId],
+    );
+
+    if (tenants.length === 0) {
+      return reply.badRequest("Invalid tenant.");
+    }
+
+    const passwordHash = await hashPassword(body.password);
+
+    // Create user + membership in a transaction
+    const newUser = await fastify.db.tx(async (client) => {
+      const result = await client.query(
+        `INSERT INTO users (email, password_hash, display_name, verification_grace_deadline, email_verified_at)
+         VALUES ($1, $2, $3, NOW() + INTERVAL '7 days', NULL)
+         RETURNING id, email`,
+        [body.email, passwordHash, body.fullName ?? null],
+      );
+
+      const user = result.rows[0] as { id: string; email: string };
+
+      await client.query(
+        `INSERT INTO memberships (user_id, tenant_id, role) VALUES ($1, $2, 'member')`,
+        [user.id, body.tenantId],
+      );
+
+      return user;
+    });
+
+    // Issue tokens
+    const accessToken = await issueAccessToken(fastify, {
+      userId: newUser.id,
+      tenantId: body.tenantId,
+      role: "member",
+      email: newUser.email,
+    });
+
+    const refreshToken = await issueRefreshToken(fastify, {
+      userId: newUser.id,
+      tenantId: body.tenantId,
+      role: "member",
+      email: newUser.email,
+    });
+
+    // Send verification email (best-effort, don't block signup)
+    try {
+      const { raw, hash } = generateSecureToken();
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+      await fastify.db.query(
+        `INSERT INTO email_verification_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)`,
+        [newUser.id, hash, expiresAt],
+      );
+
+      const frontendUrl = (
+        fastify.config.FRONTEND_URL ??
+        fastify.config.CORS_ORIGINS.split(",")[0].trim()
+      ).replace(/\/+$/, "");
+      const verifyUrl = `${frontendUrl}/verify-email?token=${encodeURIComponent(raw)}`;
+
+      await sendVerificationEmail(newUser.email, verifyUrl);
+    } catch (err) {
+      request.log.error({ err, userId: newUser.id }, "Failed to send verification email on signup");
+    }
+
+    // Audit log
+    await writeAuditLog(fastify.db, {
+      tenantId: body.tenantId,
+      actorUserId: newUser.id,
+      actionType: "auth.signup",
+      objectType: "user",
+      objectId: newUser.id,
+      details: { email: newUser.email },
+    });
+
+    return reply.code(201).send({
+      accessToken,
+      refreshToken,
+      user: {
+        id: newUser.id,
+        email: newUser.email,
+        role: "member",
+        tenantId: body.tenantId,
+      },
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // POST /login
+  // -----------------------------------------------------------------------
   fastify.post("/login", {
     config: {
       rateLimit: {
@@ -53,10 +190,79 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.unauthorized("Invalid credentials.");
     }
 
-    const valid = await verifyPassword(body.password, user.password_hash);
-    if (!valid) {
+    // OAuth-only users have NULL password_hash — reject password login early
+    if (!user.password_hash) {
       return reply.unauthorized("Invalid credentials.");
     }
+
+    // --- Lockout check (before password verification) ---
+    const lockout = await fastify.db.query<{ attempt_count: number; locked_until: string | null }>(
+      "SELECT attempt_count, locked_until FROM login_attempts WHERE user_id = $1",
+      [user.id]
+    );
+    if (lockout[0]?.locked_until && new Date(lockout[0].locked_until) > new Date()) {
+      const minutesLeft = Math.ceil((new Date(lockout[0].locked_until).getTime() - Date.now()) / 60000);
+      return reply.status(423).send({
+        error: `Account temporarily locked. Try again in ${minutesLeft} minute${minutesLeft === 1 ? "" : "s"}, or reset your password.`,
+      });
+    }
+
+    const valid = await verifyPassword(body.password, user.password_hash);
+    if (!valid) {
+      // Record failed attempt and potentially lock the account
+      const result = await fastify.db.query<{ attempt_count: number; locked_until: string | null }>(
+        `INSERT INTO login_attempts (user_id, attempt_count, last_attempt_at)
+         VALUES ($1, 1, NOW())
+         ON CONFLICT (user_id)
+         DO UPDATE SET
+           attempt_count = login_attempts.attempt_count + 1,
+           last_attempt_at = NOW(),
+           locked_until = CASE
+             WHEN login_attempts.attempt_count + 1 >= 10
+             THEN NOW() + INTERVAL '30 minutes'
+             ELSE login_attempts.locked_until
+           END
+         RETURNING attempt_count, locked_until`,
+        [user.id]
+      );
+
+      // Audit log if account was just locked
+      if (result[0]?.locked_until && result[0].attempt_count >= 10) {
+        await writeAuditLog(fastify.db, {
+          tenantId: user.tenant_id,
+          actorUserId: user.id,
+          actionType: "auth.account_locked",
+          objectType: "user",
+          objectId: user.id,
+          details: { attemptCount: result[0].attempt_count, lockedUntil: result[0].locked_until },
+        });
+      }
+
+      return reply.unauthorized("Invalid credentials.");
+    }
+
+    // --- Successful login: reset lockout counter ---
+    await fastify.db.query("DELETE FROM login_attempts WHERE user_id = $1", [user.id]);
+
+    // --- New-device detection (best-effort, don't block login) ---
+    // Must run BEFORE issueRefreshToken so the just-created token doesn't match itself.
+    try {
+      const recentSessions = await fastify.db.query<{ ip_address: string | null; user_agent: string | null }>(
+        `SELECT ip_address, user_agent FROM refresh_tokens
+         WHERE user_id = $1 AND tenant_id = $2 AND created_at > NOW() - INTERVAL '30 days'
+         ORDER BY created_at DESC LIMIT 50`,
+        [user.id, user.tenant_id]
+      );
+      const isKnownDevice = recentSessions.some(
+        (s) => s.ip_address === request.ip && s.user_agent === (request.headers["user-agent"] ?? "unknown")
+      );
+      if (!isKnownDevice && recentSessions.length > 0) {
+        const ua = request.headers["user-agent"] ?? "Unknown device";
+        const uaShort = ua.length > 100 ? ua.substring(0, 100) + "..." : ua;
+        const { sendNewDeviceAlert } = await import("../../lib/email.js");
+        await sendNewDeviceAlert(user.email, { browser: uaShort, ip: request.ip }).catch(() => {});
+      }
+    } catch { /* non-fatal */ }
 
     const accessToken = await issueAccessToken(fastify, {
       userId: user.id,
@@ -70,6 +276,9 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       tenantId: user.tenant_id,
       role: user.role,
       email: user.email,
+    }, undefined, {
+      ipAddress: request.ip,
+      userAgent: request.headers["user-agent"] ?? undefined,
     });
 
     await writeAuditLog(fastify.db, {
@@ -167,8 +376,10 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       const rows = await fastify.db.query<{
         display_name: string | null;
         is_active: boolean;
+        email_verified_at: string | null;
+        verification_grace_deadline: string | null;
       }>(
-        `SELECT display_name, is_active
+        `SELECT display_name, is_active, email_verified_at, verification_grace_deadline
          FROM users
          WHERE id = $1
          LIMIT 1`,
@@ -183,6 +394,8 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
           email: user.email,
           displayName: rows[0]?.display_name ?? null,
           isActive: rows[0]?.is_active ?? true,
+          emailVerifiedAt: rows[0]?.email_verified_at ?? null,
+          verificationGraceDeadline: rows[0]?.verification_grace_deadline ?? null,
         },
       };
     }

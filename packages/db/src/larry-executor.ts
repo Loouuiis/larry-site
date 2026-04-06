@@ -1287,6 +1287,73 @@ async function executeProjectNoteSend(
   return note;
 }
 
+/**
+ * Pre-execution validation: ensure required payload fields are non-null, non-empty strings.
+ * Throws a clear, human-readable error BEFORE hitting the database, preventing raw
+ * constraint-violation 422 errors from surfacing to the user.
+ */
+function validatePayloadOrThrow(
+  actionType: LarryActionType,
+  payload: Record<string, unknown>
+): void {
+  const REQUIRED: Record<string, string[]> = {
+    task_create: ["title", "priority"],
+    status_update: ["taskId", "newStatus", "newRiskLevel"],
+    risk_flag: ["taskId", "riskLevel"],
+    reminder_send: ["assigneeName", "taskId", "message"],
+    deadline_change: ["taskId", "newDeadline"],
+    owner_change: ["taskId", "newOwnerName"],
+    scope_change: ["entityId", "entityType", "newDescription"],
+    email_draft: ["to", "subject", "body"],
+    project_create: ["name", "description"],
+    collaborator_add: ["userId", "role"],
+    collaborator_role_update: ["userId", "role"],
+    collaborator_remove: ["userId"],
+    project_note_send: ["visibility", "content"],
+    calendar_event_create: ["summary", "startDateTime", "endDateTime"],
+    calendar_event_update: ["eventId"],
+    slack_message_draft: ["channelName", "message"],
+  };
+
+  const FRIENDLY_NAMES: Record<string, string> = {
+    task_create: "Create Task",
+    status_update: "Status Update",
+    risk_flag: "Risk Flag",
+    reminder_send: "Reminder",
+    deadline_change: "Deadline Change",
+    owner_change: "Owner Change",
+    scope_change: "Scope Change",
+    email_draft: "Email Draft",
+    project_create: "Create Project",
+    collaborator_add: "Add Collaborator",
+    collaborator_role_update: "Update Collaborator Role",
+    collaborator_remove: "Remove Collaborator",
+    project_note_send: "Project Note",
+    calendar_event_create: "Create Calendar Event",
+    calendar_event_update: "Update Calendar Event",
+    slack_message_draft: "Slack Message",
+  };
+
+  const required = REQUIRED[actionType];
+  if (!required) return;
+
+  const missing = required.filter((field) => {
+    const value = payload[field];
+    if (value === null || value === undefined) return true;
+    if (typeof value === "string" && value.trim().length === 0) return true;
+    return false;
+  });
+
+  if (missing.length > 0) {
+    const friendly = FRIENDLY_NAMES[actionType] ?? actionType;
+    const fieldList = missing.map((f) => `"${f}"`).join(", ");
+    throw new Error(
+      `Cannot execute ${friendly} — missing required field${missing.length > 1 ? "s" : ""}: ${fieldList}. ` +
+      `Edit the action to fill in the missing information before accepting.`
+    );
+  }
+}
+
 export async function executeAction(
   db: Db,
   tenantId: string,
@@ -1295,6 +1362,10 @@ export async function executeAction(
   payload: Record<string, unknown>,
   actorUserId?: string | null
 ): Promise<unknown> {
+  // Validate required fields BEFORE attempting DB operations.
+  // This provides clear error messages instead of raw constraint violations.
+  validatePayloadOrThrow(actionType, payload);
+
   switch (actionType) {
     case "task_create":
       return executeTaskCreate(db, tenantId, projectId, payload as unknown as TaskCreatePayload);
@@ -1460,6 +1531,21 @@ export async function executeAction(
 // ── Orchestration ─────────────────────────────────────────────────────────────
 
 /**
+ * Build a concise memory entry for an auto-executed action.
+ * This is written to project_memory_entries so Larry has context about
+ * its own past automatic actions in future scans.
+ */
+function buildAutoActionMemoryEntry(action: LarryAction): string {
+  const parts = [`Larry auto-executed: ${action.displayText}`];
+  if (action.reasoning) parts.push(`Reason: ${action.reasoning}`);
+  const desc = typeof action.payload.description === "string"
+    ? action.payload.description.trim()
+    : null;
+  if (desc) parts.push(desc);
+  return parts.join(". ").slice(0, 4_000);
+}
+
+/**
  * Execute all auto-actions from an IntelligenceResult.
  * Writes a larry_event with event_type='auto_executed' for each successful execution.
  * Errors in individual actions are logged and skipped — partial success is acceptable.
@@ -1595,6 +1681,27 @@ export async function runAutoActions(
             [tenantId, doc.id, taskId],
           );
         }
+      }
+
+      // ── Document auto-executed action in project memory ───────────
+      // This ensures Larry remembers what it did automatically,
+      // so future scans have full context of past actions.
+      try {
+        const memoryContent = buildAutoActionMemoryEntry(action);
+        await insertProjectMemoryEntry(db, tenantId, projectId, {
+          source: "Auto-execution",
+          sourceKind: "action",
+          sourceRecordId: eventId,
+          content: memoryContent,
+        });
+      } catch (memErr) {
+        // Project memory write is best-effort — don't fail the action
+        console.warn(`runAutoActions: project memory write failed for "${action.type}"`, {
+          tenantId,
+          projectId,
+          eventId,
+          error: memErr instanceof Error ? memErr.message : String(memErr),
+        });
       }
 
       eventIds.push(eventId);

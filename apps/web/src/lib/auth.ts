@@ -1,10 +1,9 @@
-import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import type { JWTPayload } from "jose";
 import { cookies } from "next/headers";
+import { randomUUID } from "node:crypto";
 import { getSessionSecret } from "./session-secret";
 
-const SALT_ROUNDS = 12;
 const SESSION_COOKIE = "larry_session";
 const SESSION_DURATION_SECS = 24 * 60 * 60; // 24 hours — sliding refresh handled in middleware
 
@@ -18,6 +17,7 @@ export interface AppSession {
   apiAccessToken?: string;
   apiRefreshToken?: string;
   authMode?: SessionAuthMode;
+  csrfToken?: string;
 }
 
 interface SessionJwtPayload extends JWTPayload {
@@ -28,23 +28,13 @@ interface SessionJwtPayload extends JWTPayload {
   apiAccessToken?: string;
   apiRefreshToken?: string;
   authMode?: SessionAuthMode;
+  csrfToken?: string;
 }
 
 const getSecret = getSessionSecret;
 
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
-}
-
-export async function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, SALT_ROUNDS);
-}
-
-export async function verifyPassword(
-  password: string,
-  hash: string
-): Promise<boolean> {
-  return bcrypt.compare(password, hash);
 }
 
 export async function createSessionToken(session: AppSession): Promise<string> {
@@ -56,6 +46,7 @@ export async function createSessionToken(session: AppSession): Promise<string> {
     apiAccessToken: session.apiAccessToken,
     apiRefreshToken: session.apiRefreshToken,
     authMode: session.authMode,
+    csrfToken: session.csrfToken ?? randomUUID(),
   };
 
   return new SignJWT(payload)
@@ -82,6 +73,7 @@ export async function verifySessionToken(
         payload.authMode === "api" || payload.authMode === "legacy" || payload.authMode === "dev"
           ? payload.authMode
           : undefined,
+      csrfToken: typeof payload.csrfToken === "string" ? payload.csrfToken : undefined,
     };
   } catch {
     return null;

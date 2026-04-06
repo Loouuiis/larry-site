@@ -58,9 +58,11 @@ CREATE TABLE IF NOT EXISTS tenants (
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email TEXT UNIQUE NOT NULL,
-  password_hash TEXT NOT NULL,
+  password_hash TEXT,
   display_name TEXT,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  email_verified_at TIMESTAMPTZ,
+  verification_grace_deadline TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -109,6 +111,45 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
 
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_tenant
   ON refresh_tokens (tenant_id, user_id, expires_at DESC);
+
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_hash ON password_reset_tokens(token_hash);
+CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user ON password_reset_tokens(user_id);
+
+CREATE TABLE IF NOT EXISTS email_verification_tokens (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_verification_tokens_hash ON email_verification_tokens(token_hash);
+CREATE INDEX IF NOT EXISTS idx_email_verification_tokens_user ON email_verification_tokens(user_id);
+
+CREATE TABLE IF NOT EXISTS user_oauth_accounts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL,
+  provider_user_id TEXT NOT NULL,
+  email TEXT NOT NULL,
+  display_name TEXT,
+  avatar_url TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (provider, provider_user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_oauth_provider ON user_oauth_accounts(provider, provider_user_id);
+CREATE INDEX IF NOT EXISTS idx_user_oauth_user ON user_oauth_accounts(user_id);
 
 CREATE TABLE IF NOT EXISTS projects (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1391,3 +1432,28 @@ WHERE d.folder_id IS NULL
   AND f.project_id = d.project_id
   AND f.parent_id IS NULL
   AND f.tenant_id = d.tenant_id;
+
+-- 020: Account settings — email change requests + refresh token metadata
+CREATE TABLE IF NOT EXISTS email_change_requests (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  new_email TEXT NOT NULL,
+  token_hash TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  confirmed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_change_token ON email_change_requests(token_hash);
+CREATE INDEX IF NOT EXISTS idx_email_change_user ON email_change_requests(user_id);
+
+ALTER TABLE refresh_tokens
+  ADD COLUMN IF NOT EXISTS ip_address TEXT,
+  ADD COLUMN IF NOT EXISTS user_agent TEXT;
+
+CREATE TABLE IF NOT EXISTS login_attempts (
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  locked_until TIMESTAMPTZ,
+  last_attempt_at TIMESTAMPTZ
+);

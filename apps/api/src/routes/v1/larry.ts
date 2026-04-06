@@ -1320,6 +1320,11 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           firstMsg.includes("not found for tenant");
         const isUserResolution =
           firstMsg.includes("user") && firstMsg.includes("not found in tenant");
+        const isMissingField =
+          firstMsg.includes("missing required field");
+        const isNullConstraint =
+          firstMsg.includes("violates not-null constraint") ||
+          firstMsg.includes("null value in column");
 
         if (isTaskResolution || isUserResolution) {
           try {
@@ -1376,7 +1381,49 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
               candidates,
             });
           }
+        } else if (isMissingField || isNullConstraint) {
+          // ── Missing required field / null constraint ─────────────────
+          // The action payload is incomplete (e.g., null recipient on email_draft,
+          // null status on status_update). These cannot be retried — the payload
+          // itself needs editing. Return a clear, user-facing error.
+          request.log.warn(
+            { tenantId, eventId: id, actionType: event.actionType, error: firstMsg },
+            "Accept failed: action payload has missing or null required fields"
+          );
+
+          // Extract the missing field names from the error message for a clear UI message
+          const friendlyType: Record<string, string> = {
+            task_create: "Create Task",
+            status_update: "Status Update",
+            risk_flag: "Risk Flag",
+            reminder_send: "Reminder",
+            deadline_change: "Deadline Change",
+            owner_change: "Owner Change",
+            scope_change: "Scope Change",
+            email_draft: "Email Draft",
+            project_create: "Create Project",
+            collaborator_add: "Add Collaborator",
+            collaborator_role_update: "Update Collaborator Role",
+            collaborator_remove: "Remove Collaborator",
+            project_note_send: "Project Note",
+            calendar_event_create: "Create Calendar Event",
+            calendar_event_update: "Update Calendar Event",
+            slack_message_draft: "Slack Message",
+          };
+          const actionLabel = friendlyType[event.actionType] ?? event.actionType;
+
+          return reply.code(422).send({
+            statusCode: 422,
+            error: "Unprocessable Entity",
+            message: `This ${actionLabel} action is missing required information and cannot be executed. Use "Modify" to edit the action, or dismiss it and ask Larry to regenerate it with complete details.`,
+            originalError: firstMsg,
+            resolvable: true,
+            candidates: [],
+          });
         } else {
+          // ── Other errors ────────────────────────────────────────────
+          // These already have clear, user-facing messages (e.g. "No calendar
+          // connector is linked to this project") — preserve the original message.
           throw fastify.httpErrors.unprocessableEntity(firstMsg);
         }
       }

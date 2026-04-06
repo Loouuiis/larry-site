@@ -77,38 +77,123 @@ const LarryActionTypeEnum = z.enum([
   "slack_message_draft",
 ]);
 
-const LarryActionSchema = z.object({
-  type: LarryActionTypeEnum,
-  displayText: z.string().min(1).transform((s) => s.slice(0, 500)),
-  reasoning: z.string().min(1).transform((s) => s.slice(0, 400)),
-  payload: z.record(z.string(), z.unknown()),
-  selfExecutable: z.boolean().optional().default(false),
-  offerExecution: z.boolean().optional().default(false),
-  executionOutput: z
-    .object({
-      docType: z.enum(["email_draft", "letter", "memo", "report", "note", "other"]),
-      title: z.string().min(1),
-      content: z.string().min(1),
-      emailRecipient: z.string().optional(),
-      emailSubject: z.string().optional(),
-    })
-    .nullable()
-    .optional(),
-});
+/**
+ * Per-action-type required payload fields.
+ * If a field is listed here, it MUST be a non-null, non-empty string in the payload.
+ * This is the schema-level enforcement that prevents 422 null-constraint DB errors.
+ */
+const REQUIRED_PAYLOAD_FIELDS: Record<string, string[]> = {
+  task_create: ["title", "priority"],
+  status_update: ["taskId", "newStatus", "newRiskLevel"],
+  risk_flag: ["taskId", "riskLevel"],
+  reminder_send: ["assigneeName", "taskId", "message"],
+  deadline_change: ["taskId", "newDeadline"],
+  owner_change: ["taskId", "newOwnerName"],
+  scope_change: ["entityId", "entityType", "newDescription"],
+  email_draft: ["to", "subject", "body"],
+  project_create: ["name", "description"],
+  collaborator_add: ["userId", "role"],
+  collaborator_role_update: ["userId", "role"],
+  collaborator_remove: ["userId"],
+  project_note_send: ["visibility", "content"],
+  calendar_event_create: ["summary", "startDateTime", "endDateTime"],
+  calendar_event_update: ["eventId"],
+  slack_message_draft: ["channelName", "message"],
+};
+
+function isNonEmptyString(value: unknown): boolean {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+/**
+ * Strip null/empty values from REQUIRED payload fields only.
+ * Optional-nullable fields (taskId, dueDate, description, etc.) are kept as-is
+ * so downstream code sees the correct null vs undefined distinction.
+ */
+function sanitizePayloadValues(
+  type: string,
+  payload: Record<string, unknown>
+): Record<string, unknown> {
+  const required = new Set(REQUIRED_PAYLOAD_FIELDS[type] ?? []);
+  const cleaned: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(payload)) {
+    if (required.has(key)) {
+      // For required fields: drop null, undefined, and empty strings
+      if (value === null || value === undefined) continue;
+      if (typeof value === "string" && value.trim().length === 0) continue;
+    }
+    cleaned[key] = value;
+  }
+  return cleaned;
+}
+
+/**
+ * Check whether an action has all required payload fields present and non-empty.
+ */
+function actionHasRequiredFields(action: { type: string; payload: Record<string, unknown> }): boolean {
+  const required = REQUIRED_PAYLOAD_FIELDS[action.type] ?? [];
+  return required.every((field) => isNonEmptyString(action.payload[field]));
+}
+
+const LarryActionSchema = z
+  .object({
+    type: LarryActionTypeEnum,
+    displayText: z.string().min(1).transform((s) => s.slice(0, 500)),
+    reasoning: z.string().min(1).transform((s) => s.slice(0, 400)),
+    payload: z.record(z.string(), z.unknown()),
+    selfExecutable: z.boolean().optional().default(false),
+    offerExecution: z.boolean().optional().default(false),
+    executionOutput: z
+      .object({
+        docType: z.enum(["email_draft", "letter", "memo", "report", "note", "other"]),
+        title: z.string().min(1),
+        content: z.string().min(1),
+        emailRecipient: z.string().optional(),
+        emailSubject: z.string().optional(),
+      })
+      .nullable()
+      .optional(),
+  })
+  .transform((action) => ({
+    ...action,
+    payload: sanitizePayloadValues(action.type, action.payload),
+  }));
 
 const FollowUpQuestionSchema = z.object({
   field: z.string().min(1).max(200),
   question: z.string().min(1).transform((s) => s.slice(0, 1000)),
 });
 
-const IntelligenceResultSchema = z.object({
-  thinking: z.string().optional(),
-  briefing: z.string().min(1).transform((s) => s.slice(0, 2000)),
-  autoActions: z.array(LarryActionSchema).default([]),
-  suggestedActions: z.array(LarryActionSchema).default([]),
-  followUpQuestions: z.array(FollowUpQuestionSchema).default([]),
-  contextUpdate: z.string().nullable().optional(),
-});
+const IntelligenceResultSchema = z
+  .object({
+    thinking: z.string().optional(),
+    briefing: z.string().min(1).transform((s) => s.slice(0, 2000)),
+    autoActions: z.array(LarryActionSchema).default([]),
+    suggestedActions: z.array(LarryActionSchema).default([]),
+    followUpQuestions: z.array(FollowUpQuestionSchema).default([]),
+    contextUpdate: z.string().nullable().optional(),
+  })
+  .transform((result) => {
+    // Filter out any actions that are missing required payload fields.
+    // This prevents malformed actions from reaching the Action Centre or executor,
+    // eliminating 422 null-constraint DB errors at the source.
+    const filterValid = (actions: typeof result.autoActions) =>
+      actions.filter((action) => {
+        const valid = actionHasRequiredFields(action);
+        if (!valid) {
+          console.warn(
+            `[LarryIntelligence] Dropped malformed "${action.type}" action — missing required payload fields.`,
+            { type: action.type, payload: action.payload, displayText: action.displayText }
+          );
+        }
+        return valid;
+      });
+    return {
+      ...result,
+      autoActions: filterValid(result.autoActions),
+      suggestedActions: filterValid(result.suggestedActions),
+    };
+  });
 
 // ── System prompt ─────────────────────────────────────────────────────────────
 
@@ -237,7 +322,34 @@ Each action in autoActions and suggestedActions must have these fields:
 "reasoning"   — REQUIRED. ONE sentence, specific signals.
                 Good: "7 days inactive, deadline Friday"
                 Bad:  "Based on analysis of project execution metrics"
-"payload"     — REQUIRED. Fields depend on action type (see below)
+"payload"     — REQUIRED. Fields depend on action type (see below).
+                EVERY payload MUST include a "description" field (see below).
+
+### The "description" field (REQUIRED in every payload)
+
+Every action payload MUST include a "description" key — a 2-3 sentence paragraph that explains what this action does and why it matters. This description is shown to the user in the Action Centre so they can quickly understand the action before approving or dismissing it.
+
+**Rules:**
+- Write it in third person, present tense: "This updates...", "This email asks..."
+- Be specific: name the task, person, deadline, or blocker.
+- Explain the WHY — what signal triggered this action and what impact it has.
+- For content actions (email_draft, slack_message_draft, project_note_send): summarise what the content says so the user can decide without reading the full draft.
+- 2-3 sentences max. This is a preview, not an essay.
+
+**Examples:**
+
+Good (email_draft):
+"description": "This email notifies Sarah Chen that the QA sign-off task is 5 days overdue and blocking the checkout flow launch. It asks her to deliver by Thursday or flag what's blocking her."
+
+Good (status_update):
+"description": "This marks the Authentication Module as blocked and high risk. The task is 3 days overdue with no activity, and two downstream tasks (Checkout Flow, Analytics Dashboard) depend on it."
+
+Good (reminder_send):
+"description": "This sends a reminder to Joel about the API spec, which is 7 days inactive and due Friday. Frontend integration is waiting on this deliverable."
+
+Bad:
+"description": "Updating the task status." (too vague, no context)
+"description": "Based on project analysis metrics, this action has been determined to be necessary." (jargon, no specifics)
 
 ### Action type reference:
 
@@ -289,6 +401,92 @@ Each action in autoActions and suggestedActions must have these fields:
 "slack_message_draft" [ACTION CENTRE ONLY]
   payload: { "channelName": string (Slack channel name, e.g. "#engineering"), "message": string (the draft message content), "threadTs": string|null (thread timestamp to reply to, or null for new message), "isDm": boolean (true to send as a direct message to a user instead of a channel), "slackUserId": string|null (Slack user ID for DMs — use from team snapshot if available) }
 
+**REMINDER:** In addition to the type-specific fields above, EVERY payload must also include "description": string (2-3 sentences, see section above).
+
+---
+
+## 5B. CRITICAL — PAYLOAD COMPLETENESS RULES (ZERO TOLERANCE)
+
+These rules are ABSOLUTE. Violating them causes system failures (422 errors) that the user sees as broken actions. Every single action you generate must pass these checks.
+
+### Iron rule: NEVER generate an action with null or empty required fields.
+If you cannot fill a required field, DO NOT generate the action. Mention the gap in your briefing instead and ask for the missing information.
+
+### Per-type required field checklist (every field listed MUST be a non-empty string):
+
+| Action type | Required fields (must ALL be non-null, non-empty strings) |
+|---|---|
+| task_create | title, priority |
+| status_update | taskId, taskTitle, newStatus, newRiskLevel |
+| risk_flag | taskId, taskTitle, riskLevel |
+| reminder_send | assigneeName, taskId, taskTitle, message |
+| deadline_change | taskId, taskTitle, newDeadline |
+| owner_change | taskId, taskTitle, newOwnerName |
+| scope_change | entityId, entityType, newDescription |
+| email_draft | to, subject, body |
+| project_create | name, description |
+| collaborator_add | userId, role |
+| collaborator_role_update | userId, role |
+| collaborator_remove | userId |
+| project_note_send | visibility, content |
+| calendar_event_create | summary, startDateTime, endDateTime |
+| calendar_event_update | eventId |
+| slack_message_draft | channelName, message |
+
+### Specific field rules:
+
+**email_draft:**
+- "to" MUST be a real email address from the team snapshot. If no email is available, DO NOT generate the email_draft action — instead mention in the briefing "I'd suggest emailing [person] but I don't have their email address."
+- "subject" MUST be a clear, actionable subject line (not empty, not generic like "Update").
+- "body" MUST be a properly formatted professional email (see Section 5C below).
+
+**status_update:**
+- "newStatus" MUST be exactly one of: "backlog", "not_started", "in_progress", "waiting", "completed", "blocked". No other values.
+- "newRiskLevel" MUST be exactly one of: "low", "medium", "high". No other values.
+- "taskId" MUST be a UUID copied exactly from the snapshot. Never invent a task ID.
+
+**reminder_send:**
+- "message" MUST be a complete, specific reminder message — not generic. Include the task name, what's needed, and why it's urgent.
+
+**slack_message_draft:**
+- "channelName" MUST start with "#" for channels.
+- "message" MUST be a complete, ready-to-send message — not a placeholder.
+
+### Insufficient context rule:
+If you lack enough context to fill ALL required fields for an action, DO NOT generate the action. Instead:
+1. Mention what you would do in the briefing
+2. Ask a followUpQuestion for the missing information
+3. Generate the action in a future response once you have the information
+
+A malformed action wastes the user's time. No action is always better than a broken action.
+
+---
+
+## 5C. EMAIL DRAFT FORMAT REQUIREMENTS
+
+Every email_draft body MUST be formatted as a real, professional email — not a plain text blob. Follow this structure exactly:
+
+**Required structure:**
+1. **Greeting line** — "Hi [Name]," or "Hello [Name]," (use first name from team snapshot)
+2. **Opening line** — State the purpose in one sentence. Get to the point immediately.
+3. **Body** — 1-3 short paragraphs with the details. Be specific: name tasks, dates, blockers.
+4. **Clear ask** — What do you need from the recipient? By when?
+5. **Sign-off** — "Best," or "Thanks," followed by a newline and the sender's name (use the project owner's first name from the team snapshot, or "Larry" if unknown)
+
+**Example of a CORRECT email_draft body:**
+"Hi Sarah,\\n\\nThe API spec (due Tuesday) is now 3 days overdue and blocking frontend work on the checkout flow. Anna's team can't start integration until this is delivered.\\n\\nCan you get the spec over by end of day Thursday? If something is blocking you, let me know and I'll see what I can clear.\\n\\nThanks,\\nAlex"
+
+**Example of a BAD email_draft body (DO NOT do this):**
+"Sarah Chen is the owner for 'Send email to anna.wigrena@gmail.com'. Due tomorrow. April 7th. It's high priority and not started. I've drafted an update for..."
+
+The second example is not an email — it's a status dump. Never do this.
+
+**Rules:**
+- Use \\n for line breaks in the body string. Emails need whitespace to be readable.
+- Never include metadata, task IDs, or system jargon in email bodies.
+- Match tone to the relationship: internal team = warm but direct, external stakeholder = more formal.
+- Every email must have a clear ask or next step. "Let me know your thoughts" is weak. "Can you confirm by Thursday?" is strong.
+
 ---
 
 ## 6. AUTO-EXECUTE vs APPROVAL RULES
@@ -338,7 +536,7 @@ When you raise a significant action, also suggest a relevant email_draft in the 
 - **deadline_change** → suggest an email to affected stakeholders notifying them of the change. Subject: "Deadline update: [task title]"
 - **No activity for 7+ days on a critical task** → suggest an email to the assignee following up. Subject: "Follow-up: [task title]"
 
-Use the team snapshot to populate "to" with the most relevant person's email or name. If no email is available, use their name as a placeholder. Write the body in plain professional English — concise, specific, actionable. Always link the email to the same "taskId" as the triggering action.
+Use the team snapshot to populate "to" with the most relevant person's email address. The "to" field MUST be a valid email address — NEVER use a person's name as the "to" value. If no email address is available in the snapshot for the intended recipient, DO NOT generate the email_draft action. Instead, mention in the briefing: "I'd suggest emailing [person] about this, but I don't have their email address on file." Write the body as a properly formatted professional email following the structure in Section 5C. Always link the email to the same "taskId" as the triggering action.
 
 Only suggest one email per scan. Do not suggest an email if one is already pending for the same task (see ALREADY PENDING list).
 
@@ -569,7 +767,7 @@ function buildUserPrompt(snapshot: ProjectSnapshot, hint: string | null): string
   });
 
   const teamLines = team.map(
-    (m) => `  id: "${m.id}" | name: "${m.name}" | role: ${m.role} | active tasks: ${m.activeTaskCount}`
+    (m) => `  id: "${m.id}" | name: "${m.name}" | email: ${m.email} | role: ${m.role} | active tasks: ${m.activeTaskCount}`
   );
 
   const activityLines =

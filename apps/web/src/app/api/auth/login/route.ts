@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
 import {
-  verifyPassword,
   createSessionToken,
   normalizeEmail,
   sessionCookieOptions,
 } from "@/lib/auth";
-import { checkRateLimit, recordLoginAttempt } from "@/lib/rate-limit";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 const GENERIC_ERROR = "Invalid email or password.";
 
@@ -19,54 +17,6 @@ interface ApiLoginResponse {
     tenantId: string;
     role: string;
   };
-}
-
-function hasTursoConfig(): boolean {
-  return Boolean(process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN);
-}
-
-async function tryApiLogin(input: {
-  apiBaseUrl: string;
-  tenantId: string;
-  email: string;
-  password: string;
-}): Promise<{
-  userId: string;
-  email: string;
-  tenantId: string;
-  role: string;
-  accessToken: string;
-  refreshToken?: string;
-} | null> {
-  try {
-    const response = await fetch(`${input.apiBaseUrl.replace(/\/+$/, "")}/v1/auth/login`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        tenantId: input.tenantId,
-        email: input.email,
-        password: input.password,
-      }),
-      cache: "no-store",
-      signal: AbortSignal.timeout(12_000),
-    });
-
-    if (!response.ok) return null;
-
-    const payload = (await response.json()) as ApiLoginResponse;
-    if (!payload?.user?.id || !payload?.accessToken) return null;
-
-    return {
-      userId: payload.user.id,
-      email: payload.user.email,
-      tenantId: payload.user.tenantId,
-      role: payload.user.role,
-      accessToken: payload.accessToken,
-      refreshToken: payload.refreshToken,
-    };
-  } catch {
-    return null;
-  }
 }
 
 export async function POST(req: NextRequest) {
@@ -96,77 +46,75 @@ export async function POST(req: NextRequest) {
     }
 
     const email = normalizeEmail(String(rawEmail));
-    await recordLoginAttempt(ip);
 
     const apiBaseUrl = process.env.LARRY_API_BASE_URL;
-    if (apiBaseUrl) {
-      if (!tenantId) {
-        return NextResponse.json(
-          { error: "Missing tenant ID for API login. Set LARRY_API_TENANT_ID in web env." },
-          { status: 400 }
-        );
-      }
-
-      const apiAuth = await tryApiLogin({
-        apiBaseUrl,
-        tenantId,
-        email,
-        password: String(password),
-      });
-
-      if (!apiAuth) {
-        return NextResponse.json({ error: GENERIC_ERROR }, { status: 401 });
-      }
-
-      const token = await createSessionToken({
-        userId: apiAuth.userId,
-        email: apiAuth.email,
-        tenantId: apiAuth.tenantId,
-        role: apiAuth.role,
-        apiAccessToken: apiAuth.accessToken,
-        apiRefreshToken: apiAuth.refreshToken,
-        authMode: "api",
-      });
-      const res = NextResponse.json({ success: true });
-      res.cookies.set(sessionCookieOptions(token));
-      return res;
-    }
-
-    if (!hasTursoConfig()) {
+    if (!apiBaseUrl) {
       return NextResponse.json(
-        {
-          error:
-            "Login is not configured. Set LARRY_API_BASE_URL/LARRY_API_TENANT_ID for API auth, or TURSO_DATABASE_URL/TURSO_AUTH_TOKEN for legacy auth.",
-        },
+        { error: "Login service is not configured." },
         { status: 503 }
       );
     }
 
-    const db = getDb();
-    const result = await db.execute({
-      sql: "SELECT id, password_hash FROM users WHERE email = ?",
-      args: [email],
-    });
-
-    if (result.rows.length === 0) {
-      await verifyPassword(
-        String(password),
-        "$2b$12$AAAAAAAAAAAAAAAAAAAAAA.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    if (!tenantId) {
+      return NextResponse.json(
+        { error: "Missing tenant ID for API login. Set LARRY_API_TENANT_ID in web env." },
+        { status: 400 }
       );
+    }
+
+    let apiResponse: Response;
+    try {
+      apiResponse = await fetch(`${apiBaseUrl.replace(/\/+$/, "")}/v1/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenantId,
+          email,
+          password: String(password),
+        }),
+        cache: "no-store",
+        signal: AbortSignal.timeout(12_000),
+      });
+    } catch {
+      return NextResponse.json(
+        { error: "Login service is temporarily unavailable. Please try again." },
+        { status: 502 }
+      );
+    }
+
+    // Pass through account lockout response so the frontend can show the specific message
+    if (apiResponse.status === 423) {
+      try {
+        const lockoutBody = await apiResponse.json() as { error?: string };
+        return NextResponse.json(
+          { error: lockoutBody.error ?? "Account temporarily locked." },
+          { status: 423 }
+        );
+      } catch {
+        return NextResponse.json(
+          { error: "Account temporarily locked. Please try again later." },
+          { status: 423 }
+        );
+      }
+    }
+
+    if (!apiResponse.ok) {
       return NextResponse.json({ error: GENERIC_ERROR }, { status: 401 });
     }
 
-    const user = result.rows[0];
-    const valid = await verifyPassword(String(password), String(user.password_hash));
-
-    if (!valid) {
+    const payload = (await apiResponse.json()) as ApiLoginResponse;
+    if (!payload?.user?.id || !payload?.accessToken) {
       return NextResponse.json({ error: GENERIC_ERROR }, { status: 401 });
     }
 
     const token = await createSessionToken({
-      userId: String(user.id),
-      email,
-      authMode: "legacy",
+      userId: payload.user.id,
+      email: payload.user.email,
+      tenantId: payload.user.tenantId,
+      role: payload.user.role,
+      apiAccessToken: payload.accessToken,
+      apiRefreshToken: payload.refreshToken,
+      authMode: "api",
     });
     const res = NextResponse.json({ success: true });
     res.cookies.set(sessionCookieOptions(token));

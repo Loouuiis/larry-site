@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
+import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -51,6 +52,14 @@ export default function LoginPage() {
             Welcome back
           </p>
           <h1 className="text-xl font-bold tracking-tight text-[var(--text-1)]">Log in to Larry</h1>
+        </div>
+
+        <GoogleSignInButton />
+
+        <div className="flex items-center gap-3 my-4">
+          <div className="h-px flex-1" style={{ background: "var(--border)" }} />
+          <span className="text-xs text-[var(--text-disabled)]">or</span>
+          <div className="h-px flex-1" style={{ background: "var(--border)" }} />
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-3" noValidate>
@@ -113,6 +122,15 @@ export default function LoginPage() {
           >
             {loading ? "Logging in…" : "Log in"}
           </button>
+
+          <p className="mt-3 text-center">
+            <Link
+              href="/forgot-password"
+              className="text-sm text-[var(--text-muted)] transition-colors hover:text-[var(--brand)]"
+            >
+              Forgot your password?
+            </Link>
+          </p>
 
         </form>
 

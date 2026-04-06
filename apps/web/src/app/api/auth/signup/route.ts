@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/db";
 import {
-  hashPassword,
   createSessionToken,
   normalizeEmail,
   sessionCookieOptions,
@@ -9,8 +7,15 @@ import {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function hasTursoConfig(): boolean {
-  return Boolean(process.env.TURSO_DATABASE_URL && process.env.TURSO_AUTH_TOKEN);
+interface ApiSignupResponse {
+  accessToken: string;
+  refreshToken?: string;
+  user: {
+    id: string;
+    email: string;
+    tenantId: string;
+    role: string;
+  };
 }
 
 export async function POST(req: NextRequest) {
@@ -47,42 +52,74 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!hasTursoConfig()) {
+    const apiBaseUrl = process.env.LARRY_API_BASE_URL;
+    if (!apiBaseUrl) {
       return NextResponse.json(
-        {
-          error:
-            "Signup is temporarily disabled in workspace mode. Use the existing dev login or the dev bypass button.",
-        },
+        { error: "Signup service is not configured." },
         { status: 503 }
       );
     }
 
-    const db = getDb();
+    const tenantId =
+      typeof body?.tenantId === "string" && body.tenantId.length > 0
+        ? body.tenantId
+        : process.env.LARRY_API_TENANT_ID;
 
-    const existing = await db.execute({
-      sql: "SELECT id FROM users WHERE email = ?",
-      args: [email],
-    });
-
-    if (existing.rows.length > 0) {
+    let apiResponse: Response;
+    try {
+      apiResponse = await fetch(`${apiBaseUrl.replace(/\/+$/, "")}/v1/auth/signup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tenantId,
+          email,
+          password: String(password),
+        }),
+        cache: "no-store",
+        signal: AbortSignal.timeout(12_000),
+      });
+    } catch {
       return NextResponse.json(
-        { error: "An account with this email already exists." },
-        { status: 409 }
+        { error: "Signup service is temporarily unavailable. Please try again." },
+        { status: 502 }
       );
     }
 
-    const passwordHash = await hashPassword(password);
-    const id = crypto.randomUUID();
+    if (!apiResponse.ok) {
+      // Try to extract error message from API response
+      try {
+        const errorBody = await apiResponse.json();
+        if (errorBody?.error) {
+          return NextResponse.json(
+            { error: errorBody.error },
+            { status: apiResponse.status }
+          );
+        }
+      } catch {
+        // ignore JSON parse errors
+      }
+      return NextResponse.json(
+        { error: "Signup failed. Please try again." },
+        { status: apiResponse.status }
+      );
+    }
 
-    await db.execute({
-      sql: "INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)",
-      args: [id, email, passwordHash, new Date().toISOString()],
-    });
+    const payload = (await apiResponse.json()) as ApiSignupResponse;
+    if (!payload?.user?.id || !payload?.accessToken) {
+      return NextResponse.json(
+        { error: "Signup failed. Please try again." },
+        { status: 500 }
+      );
+    }
 
     const token = await createSessionToken({
-      userId: id,
-      email,
-      authMode: "legacy",
+      userId: payload.user.id,
+      email: payload.user.email,
+      tenantId: payload.user.tenantId,
+      role: payload.user.role,
+      apiAccessToken: payload.accessToken,
+      apiRefreshToken: payload.refreshToken,
+      authMode: "api",
     });
     const res = NextResponse.json({ success: true }, { status: 201 });
     res.cookies.set(sessionCookieOptions(token));
