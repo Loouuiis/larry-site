@@ -1431,7 +1431,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       const tenantId = request.user.tenantId;
       const actorUserId = request.user.userId;
       const { id } = request.params as { id: string };
-      const body = (request.body ?? {}) as { reason?: string };
+      const body = z.object({ reason: z.string().max(1000).optional() }).parse(request.body ?? {});
 
       const event = await getLarryEventForMutation(fastify.db, tenantId, id);
       if (!event) {
