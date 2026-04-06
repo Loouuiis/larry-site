@@ -103,12 +103,21 @@ function bucketTaskStatus(status: string): string {
 function DashboardProgress({
   completionRate,
   taskCount,
+  avgRiskScore,
+  riskLevel,
 }: {
   completionRate: number;
   taskCount: number;
+  avgRiskScore: number;
+  riskLevel?: string;
 }) {
   const pct = Math.round(completionRate);
   const completed = Math.round((completionRate / 100) * taskCount);
+  const riskColor =
+    avgRiskScore >= 70 ? "#ef4444" : avgRiskScore >= 35 ? "#f59e0b" : "#22c55e";
+  const riskLabel =
+    riskLevel ?? (avgRiskScore >= 70 ? "High" : avgRiskScore >= 35 ? "Medium" : "Low");
+
   return (
     <div
       style={{
@@ -118,34 +127,54 @@ function DashboardProgress({
         padding: "20px",
       }}
     >
-      <p className="text-[13px] font-semibold mb-3" style={{ color: "var(--text-muted)" }}>
-        Progress
+      <p className="text-[11px] font-semibold tracking-wide uppercase mb-3" style={{ color: "var(--text-muted)" }}>
+        Overall Progress
       </p>
-      <div className="flex items-center gap-3.5">
-        <p className="text-[28px] font-extrabold" style={{ color: "#6c44f6" }}>
+
+      {/* Bar */}
+      <div
+        className="w-full overflow-hidden"
+        style={{ height: "12px", borderRadius: "6px", background: "var(--surface-2)" }}
+      >
+        <div
+          style={{
+            width: `${pct > 0 ? Math.max(pct, 2) : 0}%`,
+            height: "100%",
+            borderRadius: "6px",
+            background: "linear-gradient(90deg, #6c44f6, #9b7aff)",
+            transition: "width 0.4s ease",
+          }}
+        />
+      </div>
+
+      {/* Below bar: % + task count */}
+      <div className="mt-2 flex items-baseline justify-between">
+        <p className="text-[28px] font-extrabold leading-none" style={{ color: "#6c44f6" }}>
           {pct}%
         </p>
-        <div style={{ flex: 1 }}>
-          <div
-            className="w-full overflow-hidden"
-            style={{ height: "12px", borderRadius: "6px", background: "var(--surface-2)" }}
+        <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+          {completed} of {taskCount} tasks completed
+        </span>
+      </div>
+
+      {/* Divider + risk row */}
+      <div
+        className="mt-3 pt-3 flex items-center justify-between"
+        style={{ borderTop: "1px solid var(--border)" }}
+      >
+        <span className="text-[11px] font-medium" style={{ color: "var(--text-muted)" }}>
+          Risk Score
+        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[13px] font-extrabold" style={{ color: riskColor }}>
+            {Math.round(avgRiskScore)}
+          </span>
+          <span
+            className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+            style={{ background: `${riskColor}18`, color: riskColor }}
           >
-            <div
-              style={{
-                width: `${pct > 0 ? Math.max(pct, 2) : 0}%`,
-                height: "100%",
-                borderRadius: "6px",
-                background: "linear-gradient(90deg, #6c44f6, #9b7aff)",
-                transition: "width 0.4s ease",
-              }}
-            />
-          </div>
-          <div
-            className="mt-1 flex items-center justify-between text-[10px]"
-            style={{ color: "var(--text-muted)" }}
-          >
-            <span>{completed} of {taskCount} tasks completed</span>
-          </div>
+            {riskLabel} Risk
+          </span>
         </div>
       </div>
     </div>
@@ -893,17 +922,13 @@ export function ProjectDashboard({
         </button>
       </div>
 
-      {/* Progress bar + Risk Score side by side */}
-      <div className="grid gap-3" style={{ gridTemplateColumns: "1fr auto", alignItems: "start" }}>
-        <DashboardProgress
-          completionRate={activeCompletionRate}
-          taskCount={activeTaskCount}
-        />
-        <RiskScoreWidget
-          avgRiskScore={health.avgRiskScore ?? 0}
-          riskLevel={health.riskLevel}
-        />
-      </div>
+      {/* Progress bar + Risk Score combined */}
+      <DashboardProgress
+        completionRate={activeCompletionRate}
+        taskCount={activeTaskCount}
+        avgRiskScore={health.avgRiskScore ?? 0}
+        riskLevel={health.riskLevel}
+      />
 
       {/* 5 status boxes in white card */}
       <StatusFiveBoxes byStatus={activeByStatus} />
