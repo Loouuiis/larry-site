@@ -221,6 +221,11 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       const authHeader = request.headers.authorization;
       if (!authHeader) return { success: true };
 
+      await fastify.db.query(
+        "UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND tenant_id = $2 AND revoked_at IS NULL",
+        [request.user.userId, request.user.tenantId]
+      );
+
       await writeAuditLog(fastify.db, {
         tenantId: request.user.tenantId,
         actorUserId: request.user.userId,
