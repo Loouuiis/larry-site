@@ -37,13 +37,13 @@
   --status-review-bg:   #d4b84a;
   --status-review-text: #705800;
 
-  /* Semantic colours (keep for compatibility) */
-  --pm-green:           #6c44f6;
-  --pm-green-light:     #e2d6fc;
-  --pm-orange:          #b29cf8;
-  --pm-orange-light:    #f6f2fc;
-  --pm-red:             #9a7fa7;
-  --pm-red-light:       #f6f2fc;
+  /* Semantic colours — success / caution / danger */
+  --pm-green:           #6ab86a;
+  --pm-green-light:     #edf7ed;
+  --pm-orange:          #d4b84a;
+  --pm-orange-light:    #faf6e8;
+  --pm-red:             #e87878;
+  --pm-red-light:       #fef0f0;
   --pm-gray:            #bdb7d0;
 
   /* Timeline status fills (aligned with canonical palette) */
@@ -319,12 +319,12 @@ h3, h4 {
   --pm-accent-soft:      #f0eeff;
   --pm-blue:             var(--cta);
   --pm-blue-hover:       var(--cta-hover);
-  --pm-green:            #6c44f6;
-  --pm-green-light:      #e2d6fc;
-  --pm-orange:           #b29cf8;
-  --pm-orange-light:     #f6f2fc;
-  --pm-red:              #9a7fa7;
-  --pm-red-light:        #f6f2fc;
+  --pm-green:            #6ab86a;
+  --pm-green-light:      #edf7ed;
+  --pm-orange:           #d4b84a;
+  --pm-orange-light:     #faf6e8;
+  --pm-red:              #e87878;
+  --pm-red-light:        #fef0f0;
   --pm-gray:             #bdb7d0;
   --pm-gray-light:       var(--surface-2);
   --pm-bg:               var(--page-bg);

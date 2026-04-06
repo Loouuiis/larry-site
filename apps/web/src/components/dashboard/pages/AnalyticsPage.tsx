@@ -31,7 +31,8 @@ const C = {
 const DONUT_DATA_MOCK = [
   { name: "Completed",   value: 28, color: C.completed  },
   { name: "On track",    value: 18, color: C.onTrack    },
-  { name: "At risk",     value:  9, color: C.atRisk     },
+  { name: "At risk",     value:  5, color: C.atRisk     },
+  { name: "Overdue",     value:  4, color: C.overdue    },
   { name: "Not started", value:  5, color: C.notStarted },
 ];
 
@@ -61,8 +62,8 @@ function buildStats(breakdown: BreakdownData | null) {
   if (!breakdown) {
     return [
       { label: "Total Tasks",  value: "—",  icon: Circle,        color: "text-[var(--text-muted)]",      bg: "bg-[var(--surface-2)]"    },
-      { label: "Completed",    value: "—",  icon: CheckCircle2,  color: "text-emerald-500",              bg: "bg-emerald-50"            },
-      { label: "At Risk",      value: "—",  icon: AlertTriangle, color: "text-amber-500",                bg: "bg-amber-50"              },
+      { label: "Completed",    value: "—",  icon: CheckCircle2,  color: "text-[#6ab86a]",                bg: "bg-[#6ab86a]/10"          },
+      { label: "At Risk",      value: "—",  icon: AlertTriangle, color: "text-[#d4b84a]",                bg: "bg-[#d4b84a]/10"          },
       { label: "On Time %",    value: "—",  icon: TrendingUp,    color: "text-[var(--color-brand)]",    bg: "bg-[var(--color-brand)]/8" },
     ];
   }
@@ -73,8 +74,8 @@ function buildStats(breakdown: BreakdownData | null) {
   const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
   return [
     { label: "Total Tasks",  value: String(total),    icon: Circle,        color: "text-[var(--text-muted)]",      bg: "bg-[var(--surface-2)]"    },
-    { label: "Completed",    value: String(completed), icon: CheckCircle2, color: "text-emerald-500",              bg: "bg-emerald-50"            },
-    { label: "At Risk",      value: String(atRisk),   icon: AlertTriangle, color: "text-amber-500",                bg: "bg-amber-50"              },
+    { label: "Completed",    value: String(completed), icon: CheckCircle2, color: "text-[#6ab86a]",                bg: "bg-[#6ab86a]/10"          },
+    { label: "At Risk",      value: String(atRisk),   icon: AlertTriangle, color: "text-[#d4b84a]",                bg: "bg-[#d4b84a]/10"          },
     { label: "On Time %",    value: `${pct}%`,        icon: TrendingUp,    color: "text-[var(--color-brand)]",    bg: "bg-[var(--color-brand)]/8" },
   ];
 }
@@ -84,12 +85,14 @@ function buildDonutData(breakdown: BreakdownData | null) {
   const bs = breakdown.byStatus;
   const completed  = bs["completed"]  ?? 0;
   const onTrack    = bs["on_track"]    ?? 0;
-  const atRisk     = (bs["at_risk"] ?? 0) + (bs["overdue"] ?? 0);
+  const atRisk     = bs["at_risk"]     ?? 0;
+  const overdue    = bs["overdue"]     ?? 0;
   const notStarted = bs["not_started"] ?? 0;
   const items = [
     { name: "Completed",   value: completed,  color: C.completed  },
     { name: "On track",    value: onTrack,    color: C.onTrack    },
     { name: "At risk",     value: atRisk,     color: C.atRisk     },
+    { name: "Overdue",     value: overdue,    color: C.overdue    },
     { name: "Not started", value: notStarted, color: C.notStarted },
   ];
   return items.some((d) => d.value > 0) ? items : DONUT_DATA_MOCK;
