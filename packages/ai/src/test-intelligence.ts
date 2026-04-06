@@ -156,10 +156,10 @@ const snapshot: ProjectSnapshot = {
     },
   ],
   team: [
-    { id: "user-001", name: "Marcus", role: "member", activeTaskCount: 1 },
-    { id: "user-002", name: "Anton", role: "member", activeTaskCount: 1 },
-    { id: "user-003", name: "Joel", role: "member", activeTaskCount: 1 },
-    { id: "user-004", name: "Fergus", role: "pm", activeTaskCount: 0 },
+    { id: "user-001", name: "Marcus", email: "marcus@example.com", role: "member", activeTaskCount: 1 },
+    { id: "user-002", name: "Anton", email: "anton@example.com", role: "member", activeTaskCount: 1 },
+    { id: "user-003", name: "Joel", email: "joel@example.com", role: "member", activeTaskCount: 1 },
+    { id: "user-004", name: "Fergus", email: "fergus@example.com", role: "pm", activeTaskCount: 0 },
   ],
   recentActivity: [
     { description: "Marcus updated Authentication module implementation", timestamp: daysAgo(8) },
