@@ -151,14 +151,14 @@ export function TimelineToolbar({
       />
 
       {/* Search */}
-      <div className="relative ml-auto">
+      <div className="relative">
         <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-disabled)]" />
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Search tasks..."
-          className="w-[160px] rounded-lg border border-[var(--border)] bg-white py-1.5 pl-7 pr-2.5 text-[11px] text-[var(--text-2)] placeholder:text-[var(--text-disabled)] outline-none focus:border-[var(--brand)]/40 focus:ring-2 focus:ring-[var(--brand)]/10 transition-all"
+          className="w-[120px] rounded-lg border border-[var(--border)] bg-white py-1.5 pl-7 pr-2.5 text-[11px] text-[var(--text-2)] placeholder:text-[var(--text-disabled)] outline-none focus:border-[var(--brand)]/40 focus:ring-2 focus:ring-[var(--brand)]/10 transition-all"
         />
       </div>
 
