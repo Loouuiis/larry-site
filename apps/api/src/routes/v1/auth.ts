@@ -2,9 +2,10 @@ import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { hashToken, issueAccessToken, issueRefreshToken, verifyPassword } from "../../lib/auth.js";
 import { writeAuditLog } from "../../lib/audit.js";
+import { emailSchema } from "../../lib/validation.js";
 
 const LoginSchema = z.object({
-  email: z.string().email().transform((value) => value.trim().toLowerCase()),
+  email: emailSchema,
   password: z.string().min(8),
   tenantId: z.string().uuid().optional(),
 });
