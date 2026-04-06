@@ -1,4 +1,6 @@
 import { getDb } from "@/lib/db";
+import { getSession } from "@/lib/auth";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +29,10 @@ function fmt(iso: string): string {
 }
 
 export default async function AdminPage() {
+  const session = await getSession();
+  if (!session) redirect("/login");
+  if (session.role !== "admin") redirect("/workspace");
+
   const db = getDb();
 
   const [waitlistResult, foundersResult] = await Promise.all([
