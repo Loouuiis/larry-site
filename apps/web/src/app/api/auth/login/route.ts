@@ -82,6 +82,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Pass through account lockout response so the frontend can show the specific message
+    if (apiResponse.status === 423) {
+      try {
+        const lockoutBody = await apiResponse.json() as { error?: string };
+        return NextResponse.json(
+          { error: lockoutBody.error ?? "Account temporarily locked." },
+          { status: 423 }
+        );
+      } catch {
+        return NextResponse.json(
+          { error: "Account temporarily locked. Please try again later." },
+          { status: 423 }
+        );
+      }
+    }
+
     if (!apiResponse.ok) {
       return NextResponse.json({ error: GENERIC_ERROR }, { status: 401 });
     }

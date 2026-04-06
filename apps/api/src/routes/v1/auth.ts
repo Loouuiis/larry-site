@@ -190,6 +190,11 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.unauthorized("Invalid credentials.");
     }
 
+    // OAuth-only users have NULL password_hash — reject password login early
+    if (!user.password_hash) {
+      return reply.unauthorized("Invalid credentials.");
+    }
+
     // --- Lockout check (before password verification) ---
     const lockout = await fastify.db.query<{ attempt_count: number; locked_until: string | null }>(
       "SELECT attempt_count, locked_until FROM login_attempts WHERE user_id = $1",
@@ -239,24 +244,8 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     // --- Successful login: reset lockout counter ---
     await fastify.db.query("DELETE FROM login_attempts WHERE user_id = $1", [user.id]);
 
-    const accessToken = await issueAccessToken(fastify, {
-      userId: user.id,
-      tenantId: user.tenant_id,
-      role: user.role,
-      email: user.email,
-    });
-
-    const refreshToken = await issueRefreshToken(fastify, {
-      userId: user.id,
-      tenantId: user.tenant_id,
-      role: user.role,
-      email: user.email,
-    }, undefined, {
-      ipAddress: request.ip,
-      userAgent: request.headers["user-agent"] ?? undefined,
-    });
-
     // --- New-device detection (best-effort, don't block login) ---
+    // Must run BEFORE issueRefreshToken so the just-created token doesn't match itself.
     try {
       const recentSessions = await fastify.db.query<{ ip_address: string | null; user_agent: string | null }>(
         `SELECT ip_address, user_agent FROM refresh_tokens
@@ -274,6 +263,23 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         await sendNewDeviceAlert(user.email, { browser: uaShort, ip: request.ip }).catch(() => {});
       }
     } catch { /* non-fatal */ }
+
+    const accessToken = await issueAccessToken(fastify, {
+      userId: user.id,
+      tenantId: user.tenant_id,
+      role: user.role,
+      email: user.email,
+    });
+
+    const refreshToken = await issueRefreshToken(fastify, {
+      userId: user.id,
+      tenantId: user.tenant_id,
+      role: user.role,
+      email: user.email,
+    }, undefined, {
+      ipAddress: request.ip,
+      userAgent: request.headers["user-agent"] ?? undefined,
+    });
 
     await writeAuditLog(fastify.db, {
       tenantId: user.tenant_id,
