@@ -27,6 +27,18 @@ export async function middleware(req: NextRequest) {
     const { payload } = await jwtVerify(token, secret);
     const res = NextResponse.next();
 
+    // CSRF double-submit cookie: expose the CSRF token to frontend JS
+    if (payload.csrfToken) {
+      res.cookies.set({
+        name: "larry_csrf",
+        value: String(payload.csrfToken),
+        httpOnly: false,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+      });
+    }
+
     // Sliding refresh: reissue the session JWT if less than 12 hours remain,
     // so active users never get logged out unexpectedly.
     const now = Math.floor(Date.now() / 1000);

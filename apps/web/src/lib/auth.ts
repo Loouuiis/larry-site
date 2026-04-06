@@ -1,6 +1,7 @@
 import { SignJWT, jwtVerify } from "jose";
 import type { JWTPayload } from "jose";
 import { cookies } from "next/headers";
+import { randomUUID } from "node:crypto";
 import { getSessionSecret } from "./session-secret";
 
 const SESSION_COOKIE = "larry_session";
@@ -16,6 +17,7 @@ export interface AppSession {
   apiAccessToken?: string;
   apiRefreshToken?: string;
   authMode?: SessionAuthMode;
+  csrfToken?: string;
 }
 
 interface SessionJwtPayload extends JWTPayload {
@@ -26,6 +28,7 @@ interface SessionJwtPayload extends JWTPayload {
   apiAccessToken?: string;
   apiRefreshToken?: string;
   authMode?: SessionAuthMode;
+  csrfToken?: string;
 }
 
 const getSecret = getSessionSecret;
@@ -43,6 +46,7 @@ export async function createSessionToken(session: AppSession): Promise<string> {
     apiAccessToken: session.apiAccessToken,
     apiRefreshToken: session.apiRefreshToken,
     authMode: session.authMode,
+    csrfToken: session.csrfToken ?? randomUUID(),
   };
 
   return new SignJWT(payload)
@@ -69,6 +73,7 @@ export async function verifySessionToken(
         payload.authMode === "api" || payload.authMode === "legacy" || payload.authMode === "dev"
           ? payload.authMode
           : undefined,
+      csrfToken: typeof payload.csrfToken === "string" ? payload.csrfToken : undefined,
     };
   } catch {
     return null;

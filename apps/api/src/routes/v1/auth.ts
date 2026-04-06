@@ -190,10 +190,54 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.unauthorized("Invalid credentials.");
     }
 
+    // --- Lockout check (before password verification) ---
+    const lockout = await fastify.db.query<{ attempt_count: number; locked_until: string | null }>(
+      "SELECT attempt_count, locked_until FROM login_attempts WHERE user_id = $1",
+      [user.id]
+    );
+    if (lockout[0]?.locked_until && new Date(lockout[0].locked_until) > new Date()) {
+      const minutesLeft = Math.ceil((new Date(lockout[0].locked_until).getTime() - Date.now()) / 60000);
+      return reply.status(423).send({
+        error: `Account temporarily locked. Try again in ${minutesLeft} minute${minutesLeft === 1 ? "" : "s"}, or reset your password.`,
+      });
+    }
+
     const valid = await verifyPassword(body.password, user.password_hash);
     if (!valid) {
+      // Record failed attempt and potentially lock the account
+      const result = await fastify.db.query<{ attempt_count: number; locked_until: string | null }>(
+        `INSERT INTO login_attempts (user_id, attempt_count, last_attempt_at)
+         VALUES ($1, 1, NOW())
+         ON CONFLICT (user_id)
+         DO UPDATE SET
+           attempt_count = login_attempts.attempt_count + 1,
+           last_attempt_at = NOW(),
+           locked_until = CASE
+             WHEN login_attempts.attempt_count + 1 >= 10
+             THEN NOW() + INTERVAL '30 minutes'
+             ELSE login_attempts.locked_until
+           END
+         RETURNING attempt_count, locked_until`,
+        [user.id]
+      );
+
+      // Audit log if account was just locked
+      if (result[0]?.locked_until && result[0].attempt_count >= 10) {
+        await writeAuditLog(fastify.db, {
+          tenantId: user.tenant_id,
+          actorUserId: user.id,
+          actionType: "auth.account_locked",
+          objectType: "user",
+          objectId: user.id,
+          details: { attemptCount: result[0].attempt_count, lockedUntil: result[0].locked_until },
+        });
+      }
+
       return reply.unauthorized("Invalid credentials.");
     }
+
+    // --- Successful login: reset lockout counter ---
+    await fastify.db.query("DELETE FROM login_attempts WHERE user_id = $1", [user.id]);
 
     const accessToken = await issueAccessToken(fastify, {
       userId: user.id,
@@ -207,7 +251,29 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       tenantId: user.tenant_id,
       role: user.role,
       email: user.email,
+    }, undefined, {
+      ipAddress: request.ip,
+      userAgent: request.headers["user-agent"] ?? undefined,
     });
+
+    // --- New-device detection (best-effort, don't block login) ---
+    try {
+      const recentSessions = await fastify.db.query<{ ip_address: string | null; user_agent: string | null }>(
+        `SELECT ip_address, user_agent FROM refresh_tokens
+         WHERE user_id = $1 AND tenant_id = $2 AND created_at > NOW() - INTERVAL '30 days'
+         ORDER BY created_at DESC LIMIT 50`,
+        [user.id, user.tenant_id]
+      );
+      const isKnownDevice = recentSessions.some(
+        (s) => s.ip_address === request.ip && s.user_agent === (request.headers["user-agent"] ?? "unknown")
+      );
+      if (!isKnownDevice && recentSessions.length > 0) {
+        const ua = request.headers["user-agent"] ?? "Unknown device";
+        const uaShort = ua.length > 100 ? ua.substring(0, 100) + "..." : ua;
+        const { sendNewDeviceAlert } = await import("../../lib/email.js");
+        await sendNewDeviceAlert(user.email, { browser: uaShort, ip: request.ip }).catch(() => {});
+      }
+    } catch { /* non-fatal */ }
 
     await writeAuditLog(fastify.db, {
       tenantId: user.tenant_id,

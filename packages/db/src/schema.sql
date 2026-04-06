@@ -1421,3 +1421,10 @@ CREATE INDEX IF NOT EXISTS idx_email_change_user ON email_change_requests(user_i
 ALTER TABLE refresh_tokens
   ADD COLUMN IF NOT EXISTS ip_address TEXT,
   ADD COLUMN IF NOT EXISTS user_agent TEXT;
+
+CREATE TABLE IF NOT EXISTS login_attempts (
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  locked_until TIMESTAMPTZ,
+  last_attempt_at TIMESTAMPTZ
+);
