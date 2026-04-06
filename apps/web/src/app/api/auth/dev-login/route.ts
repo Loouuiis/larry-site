@@ -45,6 +45,10 @@ async function tryApiLogin(): Promise<AppSession | null> {
 }
 
 export async function POST() {
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   if (!allowed) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
