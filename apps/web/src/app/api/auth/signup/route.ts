@@ -74,6 +74,7 @@ export async function POST(req: NextRequest) {
           tenantId,
           email,
           password: String(password),
+          fullName: typeof body?.fullName === "string" ? body.fullName : undefined,
         }),
         cache: "no-store",
         signal: AbortSignal.timeout(12_000),
@@ -126,6 +127,14 @@ export async function POST(req: NextRequest) {
     return res;
   } catch (err) {
     console.error("[signup]", err);
+    const message = err instanceof Error ? err.message : "Something went wrong.";
+    // Surface config errors clearly so they can be diagnosed
+    if (message.includes("SESSION_SECRET")) {
+      return NextResponse.json(
+        { error: "Server configuration error. Please contact support." },
+        { status: 500 }
+      );
+    }
     return NextResponse.json(
       { error: "Something went wrong. Please try again." },
       { status: 500 }
