@@ -14,7 +14,7 @@ export function normalizeProjectStatus(value: string | null | undefined): Projec
   return value === ARCHIVED_PROJECT_STATUS ? ARCHIVED_PROJECT_STATUS : ACTIVE_PROJECT_STATUS;
 }
 
-const ALLOWED_STATUS_COLUMNS = ["projects.status", "status"] as const;
+const ALLOWED_STATUS_COLUMNS = ["projects.status", "status", "p.status", "project.status"] as const;
 type StatusColumn = typeof ALLOWED_STATUS_COLUMNS[number];
 
 export function projectStatusSql(statusColumn: StatusColumn): string {
