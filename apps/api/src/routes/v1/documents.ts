@@ -574,10 +574,14 @@ export const documentRoutes: FastifyPluginAsync = async (fastify) => {
         throw fastify.httpErrors.unprocessableEntity("Document content could not be decoded.");
       }
 
-      const mimeType =
-        typeof metadataRecord.mimeType === "string" && metadataRecord.mimeType.length > 0
-          ? metadataRecord.mimeType
-          : MIME_TYPE_BY_FORMAT[document.docType] ?? "application/octet-stream";
+      const SAFE_MIME_TYPES = new Set(Object.values(MIME_TYPE_BY_FORMAT));
+      SAFE_MIME_TYPES.add("application/octet-stream");
+
+      const rawMime =
+        typeof metadataRecord.mimeType === "string" ? metadataRecord.mimeType : "";
+      const mimeType = SAFE_MIME_TYPES.has(rawMime)
+        ? rawMime
+        : MIME_TYPE_BY_FORMAT[document.docType] ?? "application/octet-stream";
       const fileNameRaw =
         typeof metadataRecord.fileName === "string" && metadataRecord.fileName.length > 0
           ? metadataRecord.fileName
@@ -586,6 +590,7 @@ export const documentRoutes: FastifyPluginAsync = async (fastify) => {
 
       reply.header("Content-Type", mimeType);
       reply.header("Content-Disposition", `attachment; filename="${fileName}"`);
+      reply.header("X-Content-Type-Options", "nosniff");
       return reply.send(binary);
     }
   );
