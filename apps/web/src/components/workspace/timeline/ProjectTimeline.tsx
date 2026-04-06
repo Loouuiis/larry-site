@@ -84,11 +84,13 @@ export function ProjectTimeline({
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  // Use timeline.gantt tasks if available, fall back to allTasks
+  // Merge timeline.gantt tasks with allTasks so newly created tasks always appear
   const timelineTasks = useMemo(() => {
     const ganttTasks = timeline?.gantt;
-    if (ganttTasks && ganttTasks.length > 0) return ganttTasks;
-    return allTasks as WorkspaceTimelineTask[];
+    if (!ganttTasks || ganttTasks.length === 0) return allTasks as WorkspaceTimelineTask[];
+    const ganttIds = new Set(ganttTasks.map((t) => t.id));
+    const extra = (allTasks as WorkspaceTimelineTask[]).filter((t) => !ganttIds.has(t.id));
+    return [...ganttTasks, ...extra];
   }, [timeline?.gantt, allTasks]);
 
   // Split scheduled / unscheduled

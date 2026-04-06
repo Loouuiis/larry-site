@@ -77,9 +77,14 @@ const ALL_STATUSES = ["backlog", "not_started", "in_progress", "waiting", "block
 
 /* ── helpers ────────────────────────────────────────────── */
 
+function parseDate(value: string): Date {
+  // Handle both "YYYY-MM-DD" and ISO datetime strings like "2026-04-20T00:00:00.000Z"
+  return value.includes("T") ? new Date(value) : new Date(value + "T00:00:00");
+}
+
 function formatDueDate(value: string | null): string {
   if (!value) return "—";
-  const d = new Date(value + "T00:00:00");
+  const d = parseDate(value);
   if (isNaN(d.getTime())) return "—";
   const day = String(d.getDate()).padStart(2, "0");
   const month = d.toLocaleDateString("en-GB", { month: "short" });
@@ -90,10 +95,10 @@ function dueDateColour(value: string | null, status: string): string {
   if (!value || status === "completed") return "var(--text-disabled)";
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const d = new Date(value + "T00:00:00");
+  const d = parseDate(value);
   if (isNaN(d.getTime())) return "var(--text-disabled)";
-  if (d < today) return "#ef4444";       // overdue → red
-  if (d.getTime() === today.getTime()) return "#f59e0b"; // today → amber
+  if (d < today) return "#ef4444";
+  if (d.getTime() === today.getTime()) return "#f59e0b";
   return "var(--text-2)";
 }
 
@@ -139,6 +144,7 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
   const [newDescription, setNewDescription] = useState("");
   const [saving, setSaving] = useState(false);
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const dueDateInputRef = useRef<HTMLInputElement>(null);
 
   /* ── inline editing state ─────────────────────────────── */
 
@@ -235,7 +241,8 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
         priority: newPriority,
       };
       if (newAssignee) body.assigneeUserId = newAssignee;
-      if (newDueDate) body.dueDate = newDueDate;
+      const effectiveDueDate = dueDateInputRef.current?.value || newDueDate;
+      if (effectiveDueDate) body.dueDate = effectiveDueDate;
       if (newDescription.trim()) body.description = newDescription.trim();
 
       const res = await fetch("/api/workspace/tasks", {
@@ -961,18 +968,20 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
 
                   {/* due date input */}
                   <input
+                    ref={dueDateInputRef}
                     type="date"
                     aria-label="Due date"
                     value={newDueDate}
                     onChange={(e) => setNewDueDate(e.target.value)}
+                    onBlur={(e) => { if (e.target.value) setNewDueDate(e.target.value); }}
                     onKeyDown={(e) => { if (e.key === "Escape") cancelCreating(); }}
                     disabled={saving}
-                    className="w-[60px] text-[12px]"
+                    className="w-[130px] text-[12px]"
                     style={{
                       background: "var(--surface-2)",
                       border: "1px solid var(--border)",
                       borderRadius: 2,
-                      color: newDueDate ? "var(--text-2)" : "var(--text-disabled)",
+                      color: "var(--text-2)",
                       padding: "2px 4px",
                       flexShrink: 0,
                     }}

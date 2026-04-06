@@ -106,9 +106,31 @@ export function ProjectInfoTabs({
 
       <div style={{ padding: "16px 18px" }}>
         {activeTab === "summary" && (
-          <p className="text-[13px] leading-[1.7]" style={{ color: "var(--text-2)" }}>
-            {narrative?.trim() || "Larry hasn't generated a summary yet."}
-          </p>
+          <div className="space-y-3">
+            <p className="text-[13px] leading-[1.7]" style={{ color: "var(--text-2)" }}>
+              {narrative?.trim() || "Larry hasn't generated a summary yet. Once there's project activity, Larry will write a brief here — covering decisions made, deadline changes, new team members, and other notable updates."}
+            </p>
+            {recentActivity.length > 0 && (
+              <div style={{ borderTop: "1px solid var(--border)", paddingTop: "12px" }}>
+                <p className="text-[11px] font-semibold uppercase tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>
+                  Recent highlights
+                </p>
+                <ul className="space-y-1.5">
+                  {recentActivity.slice(0, 4).map((event) => (
+                    <li key={event.id} className="flex items-start gap-2 text-[12px]" style={{ color: "var(--text-2)" }}>
+                      <span style={{ color: "#6c44f6", flexShrink: 0, marginTop: "2px" }}>•</span>
+                      <span>
+                        {event.displayText}
+                        <span className="ml-1.5 text-[10px]" style={{ color: "var(--text-muted)" }}>
+                          {formatRelative(event.executedAt ?? event.createdAt)}
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
         )}
 
         {activeTab === "activity" && (

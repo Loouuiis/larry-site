@@ -31,6 +31,7 @@ import type {
   WorkspaceLarryEvent,
   WorkspaceProjectMemoryEntry,
   WorkspaceProjectMember,
+  WorkspaceTimelineTask,
 } from "@/app/dashboard/types";
 import { useProjectData } from "@/hooks/useProjectData";
 import { useProjectActionCentre } from "@/hooks/useProjectActionCentre";
@@ -1630,7 +1631,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
         {activeTab === "timeline" && (
           <ProjectTimeline
             projectId={projectId}
-            tasks={timeline?.gantt ?? []}
+            tasks={tasks as unknown as WorkspaceTimelineTask[]}
             timeline={timeline}
             refresh={refresh}
           />
@@ -1863,7 +1864,19 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
                 <div style={{ borderRadius: "var(--radius-btn)", border: "1px solid var(--border)", background: "var(--surface-2)", padding: "16px" }}>
                   <p className="text-[12px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--text-muted)" }}>Health Summary</p>
                   <p className="mt-3 text-[14px] leading-7" style={{ color: "var(--text-2)" }}>
-                    Completion {formatPercent(health?.completionRate ?? completionRate)} with {blockedTasks} blocked tasks and average risk score {Math.round(health?.avgRiskScore ?? 0)}.
+                    {(() => {
+                      const pct = formatPercent(health?.completionRate ?? completionRate);
+                      const risk = Math.round(health?.avgRiskScore ?? 0);
+                      const riskLabel = risk >= 70 ? "high" : risk >= 35 ? "medium" : "low";
+                      const total = tasks.length;
+                      const completed = tasks.filter(t => t.status === "completed").length;
+                      if (total === 0) return "No tasks have been added to this project yet.";
+                      const parts: string[] = [];
+                      parts.push(`The project is ${pct} complete — ${completed} of ${total} tasks done.`);
+                      if (blockedTasks > 0) parts.push(`${blockedTasks} task${blockedTasks > 1 ? "s are" : " is"} currently at risk.`);
+                      parts.push(`Overall risk is ${riskLabel}.`);
+                      return parts.join(" ");
+                    })()}
                   </p>
                 </div>
                 <div style={{ borderRadius: "var(--radius-btn)", border: "1px solid var(--border)", background: "var(--surface-2)", padding: "16px" }}>

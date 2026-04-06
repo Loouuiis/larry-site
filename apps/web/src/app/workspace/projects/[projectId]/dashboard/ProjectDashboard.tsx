@@ -264,6 +264,8 @@ function StatusBarChart({ byStatus, memberName, title = "Tasks by Status" }: { b
         background: "var(--surface)",
         padding: "20px",
         width: "100%",
+        height: "100%",
+        boxSizing: "border-box",
       }}
     >
       <div className="mb-4">
