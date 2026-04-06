@@ -15,7 +15,15 @@ const RefreshSchema = z.object({
 });
 
 export const authRoutes: FastifyPluginAsync = async (fastify) => {
-  fastify.post("/login", async (request, reply) => {
+  fastify.post("/login", {
+    config: {
+      rateLimit: {
+        max: 10,
+        timeWindow: "15 minutes",
+        keyGenerator: (req: import("fastify").FastifyRequest) => req.ip,
+      },
+    },
+  }, async (request, reply) => {
     const body = LoginSchema.parse(request.body);
     const tenantFromHeader =
       typeof request.headers["x-tenant-id"] === "string" ? request.headers["x-tenant-id"] : undefined;
@@ -85,7 +93,15 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     });
   });
 
-  fastify.post("/refresh", async (request, reply) => {
+  fastify.post("/refresh", {
+    config: {
+      rateLimit: {
+        max: 30,
+        timeWindow: "1 hour",
+        keyGenerator: (req: import("fastify").FastifyRequest) => req.ip,
+      },
+    },
+  }, async (request, reply) => {
     const body = RefreshSchema.parse(request.body);
     const tokenHash = hashToken(body.refreshToken);
     const tenantFromHeader =
