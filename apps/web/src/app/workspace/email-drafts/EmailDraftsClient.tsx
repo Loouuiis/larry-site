@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Mail, Send, ChevronDown, ChevronUp, Check,
-  Pencil, Sparkles, FolderKanban, Zap, X,
+  Pencil, Sparkles, FolderKanban, Zap, X, SquarePen,
 } from "lucide-react";
 
 interface EmailDraft {
@@ -578,21 +578,405 @@ function DraftRow({
   );
 }
 
+/* ── Tenant member type ───────────────────────────────────────────── */
+
+interface TenantMember {
+  id: string;
+  name: string;
+  email: string;
+}
+
+/* ── Recipient input with member autocomplete ─────────────────────── */
+
+function RecipientInput({
+  value,
+  onChange,
+  members,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  members: TenantMember[];
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const suggestions = value.trim().length > 0
+    ? members.filter((m) => {
+        const q = value.toLowerCase();
+        return (
+          m.email.toLowerCase().includes(q) ||
+          m.name.toLowerCase().includes(q)
+        );
+      }).slice(0, 6)
+    : [];
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => { onChange(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        placeholder="name@example.com"
+        style={FIELD_STYLE}
+      />
+      {open && suggestions.length > 0 && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 4px)",
+            left: 0,
+            right: 0,
+            background: "var(--surface)",
+            border: "1px solid var(--border)",
+            borderRadius: "var(--radius-card)",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+            zIndex: 50,
+            overflow: "hidden",
+          }}
+        >
+          {suggestions.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                onChange(m.email);
+                setOpen(false);
+              }}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "flex-start",
+                width: "100%",
+                padding: "8px 12px",
+                background: "none",
+                border: "none",
+                borderBottom: "1px solid var(--border)",
+                cursor: "pointer",
+                textAlign: "left",
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--surface-2)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "none"; }}
+            >
+              <span style={{ fontSize: "13px", fontWeight: 500, color: "var(--text-1)" }}>
+                {m.name || m.email}
+              </span>
+              {m.name && (
+                <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>{m.email}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Compose modal ────────────────────────────────────────────────── */
+
+function ComposeModal({
+  members,
+  onClose,
+  onSent,
+}: {
+  members: TenantMember[];
+  onClose: () => void;
+  onSent: () => void;
+}) {
+  const [to, setTo] = useState("");
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestion, setSuggestion] = useState<string | null>(null);
+
+  async function handleSend(sendNow: boolean) {
+    if (!to.trim() || !subject.trim() || !body.trim()) {
+      setError("Please fill in To, Subject and Body.");
+      return;
+    }
+    setSending(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/workspace/email/drafts/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: to.trim(), subject, body, sendNow }),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(json.error ?? "Failed.");
+      }
+      onSent();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function handleSuggest() {
+    if (!subject.trim() && !body.trim()) return;
+    setSuggesting(true);
+    setSuggestion(null);
+    try {
+      const res = await fetch("/api/workspace/larry/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: `Improve this email draft. Return only the improved body text, no commentary.\n\nSubject: ${subject}\nTo: ${to}\n\n${body}`,
+        }),
+      });
+      const json = await res.json() as { message?: string; error?: string };
+      if (!res.ok || json.error) throw new Error(json.error ?? "Could not suggest.");
+      setSuggestion(json.message ?? null);
+    } catch {
+      setError("Larry couldn't suggest improvements right now.");
+    } finally {
+      setSuggesting(false);
+    }
+  }
+
+  return (
+    /* Backdrop */
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 60,
+        background: "rgba(15,23,42,0.35)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "16px",
+      }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      {/* Modal */}
+      <div
+        style={{
+          width: "100%",
+          maxWidth: "560px",
+          background: "var(--surface)",
+          borderRadius: "var(--radius-card)",
+          border: "1px solid var(--border)",
+          boxShadow: "0 12px 40px rgba(0,0,0,0.12)",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+      >
+        {/* Header */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "14px 18px",
+            borderBottom: "1px solid var(--border)",
+            background: "var(--surface-2)",
+          }}
+        >
+          <span style={{ fontSize: "14px", fontWeight: 600, color: "var(--text-1)" }}>
+            New message
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", display: "flex", alignItems: "center" }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Fields */}
+        <div style={{ padding: "16px 18px", display: "flex", flexDirection: "column", gap: "12px" }}>
+          <div>
+            <label style={LABEL_STYLE}>To</label>
+            <RecipientInput value={to} onChange={setTo} members={members} />
+          </div>
+          <div>
+            <label style={LABEL_STYLE}>Subject</label>
+            <input
+              type="text"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              placeholder="Subject"
+              style={FIELD_STYLE}
+            />
+          </div>
+          <div>
+            <label style={LABEL_STYLE}>Body</label>
+            <textarea
+              rows={8}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder="Write your message…"
+              style={{ ...FIELD_STYLE, resize: "vertical", lineHeight: 1.6 }}
+            />
+          </div>
+
+          {/* AI suggestion button */}
+          <div>
+            <button
+              type="button"
+              onClick={() => void handleSuggest()}
+              disabled={suggesting || (!subject.trim() && !body.trim())}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                height: "30px",
+                padding: "0 12px",
+                borderRadius: "var(--radius-btn)",
+                border: "1px solid rgba(108,68,246,0.3)",
+                background: "rgba(108,68,246,0.06)",
+                color: "#6c44f6",
+                fontSize: "12px",
+                fontWeight: 600,
+                opacity: suggesting ? 0.7 : 1,
+              }}
+            >
+              <Sparkles size={12} />
+              {suggesting ? "Thinking…" : "Suggest improvements"}
+            </button>
+          </div>
+
+          {/* Suggestion block */}
+          {suggestion && (
+            <div
+              style={{
+                background: "rgba(108,68,246,0.06)",
+                border: "1px solid rgba(108,68,246,0.2)",
+                borderRadius: "var(--radius-card)",
+                padding: "12px 14px",
+              }}
+            >
+              <p style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#6c44f6", marginBottom: "8px" }}>
+                Larry's suggestion
+              </p>
+              <p style={{ fontSize: "13px", color: "var(--text-2)", whiteSpace: "pre-wrap", lineHeight: 1.6, marginBottom: "10px" }}>
+                {suggestion}
+              </p>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <button
+                  type="button"
+                  onClick={() => { setBody(suggestion); setSuggestion(null); }}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "5px", height: "28px", padding: "0 10px", borderRadius: "var(--radius-btn)", border: "none", background: "#6c44f6", color: "#fff", fontSize: "12px", fontWeight: 600 }}
+                >
+                  <Check size={11} /> Use this
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSuggestion(null)}
+                  style={{ display: "inline-flex", alignItems: "center", gap: "5px", height: "28px", padding: "0 10px", borderRadius: "var(--radius-btn)", border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text-2)", fontSize: "12px", fontWeight: 500 }}
+                >
+                  <X size={11} /> Dismiss
+                </button>
+              </div>
+            </div>
+          )}
+
+          {error && <p style={{ fontSize: "12px", color: "#c0392b" }}>{error}</p>}
+        </div>
+
+        {/* Footer */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: "8px",
+            padding: "12px 18px",
+            borderTop: "1px solid var(--border)",
+            background: "var(--surface-2)",
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => void handleSend(false)}
+            disabled={sending}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              height: "34px",
+              padding: "0 16px",
+              borderRadius: "var(--radius-btn)",
+              border: "1px solid var(--border)",
+              background: "var(--surface)",
+              color: "var(--text-2)",
+              fontSize: "13px",
+              fontWeight: 500,
+              opacity: sending ? 0.6 : 1,
+            }}
+          >
+            Save draft
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleSend(true)}
+            disabled={sending}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              height: "34px",
+              padding: "0 16px",
+              borderRadius: "var(--radius-btn)",
+              border: "none",
+              background: "var(--cta)",
+              color: "#fff",
+              fontSize: "13px",
+              fontWeight: 600,
+              opacity: sending ? 0.7 : 1,
+            }}
+          >
+            <Send size={13} />
+            {sending ? "Sending…" : "Send now"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 type Tab = "draft" | "sent";
 
 export function EmailDraftsClient() {
   const [tab, setTab] = useState<Tab>("draft");
   const [drafts, setDrafts] = useState<EmailDraft[]>([]);
   const [loading, setLoading] = useState(true);
+  const [composing, setComposing] = useState(false);
+  const [members, setMembers] = useState<TenantMember[]>([]);
 
   useEffect(() => {
+    fetch("/api/workspace/members", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data: { members?: TenantMember[] }) => setMembers(data.members ?? []))
+      .catch(() => {});
+  }, []);
+
+  function loadDrafts(state: Tab) {
     setLoading(true);
-    fetch(`/api/workspace/email/drafts?state=${tab}&limit=50`, { cache: "no-store" })
+    fetch(`/api/workspace/email/drafts?state=${state}&limit=50`, { cache: "no-store" })
       .then((r) => r.json())
       .then((data: { items?: EmailDraft[] }) => setDrafts(data.items ?? []))
       .catch(() => setDrafts([]))
       .finally(() => setLoading(false));
-  }, [tab]);
+  }
+
+  useEffect(() => { loadDrafts(tab); }, [tab]);
 
   const handleSend = async (draft: EmailDraft) => {
     const res = await fetch("/api/workspace/email/drafts/send", {
@@ -626,9 +1010,38 @@ export function EmailDraftsClient() {
 
   return (
     <div style={{ minHeight: "100%", overflowY: "auto", background: "var(--page-bg)", padding: "24px" }}>
+      {composing && (
+        <ComposeModal
+          members={members}
+          onClose={() => setComposing(false)}
+          onSent={() => { setTab("sent"); loadDrafts("sent"); }}
+        />
+      )}
+
       {/* Header */}
-      <div style={{ marginBottom: "4px" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "4px" }}>
         <h1 className="text-h1">Mail</h1>
+        <button
+          type="button"
+          onClick={() => setComposing(true)}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "6px",
+            height: "34px",
+            padding: "0 16px",
+            borderRadius: "var(--radius-btn)",
+            border: "none",
+            background: "var(--cta)",
+            color: "#fff",
+            fontSize: "13px",
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
+        >
+          <SquarePen size={14} />
+          Compose
+        </button>
       </div>
       <p className="text-body-sm" style={{ marginBottom: "20px" }}>
         Outbound mail drafts and sent messages from Larry.
