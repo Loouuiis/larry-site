@@ -114,6 +114,15 @@ export default function LoginPage() {
             {loading ? "Logging in…" : "Log in"}
           </button>
 
+          <p className="mt-3 text-center">
+            <Link
+              href="/forgot-password"
+              className="text-sm text-[var(--text-muted)] transition-colors hover:text-[var(--brand)]"
+            >
+              Forgot your password?
+            </Link>
+          </p>
+
         </form>
 
         <p className="mt-6 text-center text-sm text-[var(--text-muted)]">
