@@ -358,7 +358,7 @@ export function ProjectTimeline({
       <div className="mt-1.5 flex flex-wrap items-center gap-3">
         {Object.entries(STATUS_COLOURS).map(([key, cfg]) => (
           <span key={key} className="flex items-center gap-1.5 text-[10px] text-[var(--text-disabled)]">
-            <span className="h-2 w-2 rounded-full" style={{ background: cfg.bg }} />
+            <span className="h-2 w-2 rounded-full" style={{ background: cfg.dot }} />
             {cfg.label}
           </span>
         ))}

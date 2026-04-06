@@ -21,6 +21,7 @@ export interface StatusColourConfig {
   bgDark: string;
   text: string;
   label: string;
+  dot: string;
 }
 
 export const STATUS_COLOURS: Record<TaskStatus, StatusColourConfig> = {
@@ -29,30 +30,35 @@ export const STATUS_COLOURS: Record<TaskStatus, StatusColourConfig> = {
     bgDark: "var(--tl-not-started-dark)",
     text: "#606060",
     label: "Not started",
+    dot: "#b0b0b0",
   },
   on_track: {
     bg: "var(--tl-in-progress)",
     bgDark: "var(--tl-in-progress-dark)",
     text: "#ffffff",
     label: "In progress",
+    dot: "#7ab0d8",
   },
   at_risk: {
     bg: "var(--tl-at-risk)",
     bgDark: "var(--tl-at-risk-dark)",
     text: "#705800",
     label: "At risk",
+    dot: "#d4b84a",
   },
   overdue: {
     bg: "var(--tl-overdue)",
     bgDark: "var(--tl-overdue-dark)",
     text: "#ffffff",
     label: "Overdue",
+    dot: "#e87878",
   },
   completed: {
     bg: "var(--tl-completed)",
     bgDark: "var(--tl-completed-dark)",
     text: "#ffffff",
     label: "Completed",
+    dot: "#6ab86a",
   },
 };
 
