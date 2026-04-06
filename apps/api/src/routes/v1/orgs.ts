@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import type { PoolClient } from "pg";
 import { FastifyInstance, FastifyPluginAsync, FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -47,7 +47,13 @@ function ensureAdminSecret(fastify: FastifyInstance, request: FastifyRequest): v
   }
 
   const providedSecret = readAdminSecret(request);
-  if (!providedSecret || providedSecret !== expectedSecret) {
+  if (!providedSecret) {
+    throw fastify.httpErrors.unauthorized("Admin approval requires a valid admin secret.");
+  }
+
+  const a = Buffer.from(providedSecret, "utf8");
+  const b = Buffer.from(expectedSecret, "utf8");
+  if (a.length !== b.length || !timingSafeEqual(a, b)) {
     throw fastify.httpErrors.unauthorized("Admin approval requires a valid admin secret.");
   }
 }
