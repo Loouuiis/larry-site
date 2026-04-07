@@ -413,11 +413,11 @@ function ProjectCalendar({ projectId }: { projectId: string }) {
                     className="min-h-[60px] p-1.5 transition-colors cursor-pointer"
                     style={{
                       borderRight: di < 6 ? "1px solid var(--border)" : undefined,
-                      background: isToday ? "var(--surface-2)" : undefined,
+                      background: isToday || (day ? day.toISOString().slice(0, 10) === selectedDate : false) ? "var(--surface-2)" : undefined,
                     }}
                     onClick={isCurrentMonth ? () => setSelectedDate(day!.toISOString().slice(0, 10)) : undefined}
-                    onMouseEnter={(e) => { if (!isToday) e.currentTarget.style.background = "var(--surface-2)"; }}
-                    onMouseLeave={(e) => { if (!isToday) e.currentTarget.style.background = ""; }}
+                    onMouseEnter={(e) => { const isSel = day ? day.toISOString().slice(0, 10) === selectedDate : false; if (!isToday && !isSel) e.currentTarget.style.background = "var(--surface-2)"; }}
+                    onMouseLeave={(e) => { const isSel = day ? day.toISOString().slice(0, 10) === selectedDate : false; if (!isToday && !isSel) e.currentTarget.style.background = ""; }}
                   >
                     {isCurrentMonth && (
                       <>
@@ -438,7 +438,7 @@ function ProjectCalendar({ projectId }: { projectId: string }) {
                               {dayEvents.slice(0, 3).map((evt) => (
                                 <div
                                   key={evt.id}
-                                  className="h-1 w-1 rounded-full"
+                                  className="h-2.5 w-2.5 rounded-full"
                                   style={{ background: evt.color }}
                                   title={evt.title}
                                 />
@@ -492,23 +492,38 @@ function ProjectCalendar({ projectId }: { projectId: string }) {
               </p>
             ) : (
               <div className="mt-2 space-y-1.5">
-                {dayEvents.map((evt) => (
-                  <div
-                    key={evt.id}
-                    className="flex items-center gap-2 rounded-lg border px-2.5 py-1.5"
-                    style={{ borderColor: "var(--border)" }}
-                  >
-                    <div className="h-2 w-2 shrink-0 rounded-full" style={{ background: evt.color }} />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[12px] font-medium truncate" style={{ color: "var(--text-1)" }}>
-                        {evt.title}
-                      </p>
-                      <p className="text-[10px]" style={{ color: "var(--text-disabled)" }}>
-                        {evt.kind === "deadline" ? "Task deadline" : evt.kind === "meeting" ? "Meeting" : "Event"}
-                      </p>
+                {dayEvents.map((evt) => {
+                  const href =
+                    evt.kind === "meeting" && evt.meetingId
+                      ? `/workspace/meetings?id=${evt.meetingId}`
+                      : evt.kind === "deadline" && evt.projectId
+                      ? `/workspace/projects/${evt.projectId}?tab=tasks${evt.taskId ? `&task=${evt.taskId}` : ""}`
+                      : null;
+                  const inner = (
+                    <>
+                      <div className="h-2 w-2 shrink-0 rounded-full" style={{ background: evt.color }} />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[12px] font-medium truncate" style={{ color: "var(--text-1)" }}>
+                          {evt.title}
+                        </p>
+                        <p className="text-[10px]" style={{ color: "var(--text-disabled)" }}>
+                          {evt.kind === "deadline" ? "Task deadline" : evt.kind === "meeting" ? "Meeting" : "Event"}
+                        </p>
+                      </div>
+                    </>
+                  );
+                  const sharedClass = "flex items-center gap-2 rounded-lg border px-2.5 py-1.5";
+                  const sharedStyle = { borderColor: "var(--border)" };
+                  return href ? (
+                    <Link key={evt.id} href={href} className={sharedClass} style={sharedStyle}>
+                      {inner}
+                    </Link>
+                  ) : (
+                    <div key={evt.id} className={sharedClass} style={sharedStyle}>
+                      {inner}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1278,9 +1293,15 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
   const { pushToast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initialTab = (searchParams.get("tab") as ProjectTab | null) ?? "overview";
   const openTaskId = searchParams.get("task");
-  const [activeTab, setActiveTab] = useState<ProjectTab>(initialTab);
+  const [activeTab, setActiveTab] = useState<ProjectTab>(
+    (searchParams.get("tab") as ProjectTab | null) ?? "overview"
+  );
+
+  useEffect(() => {
+    const tab = searchParams.get("tab") as ProjectTab | null;
+    if (tab) setActiveTab(tab);
+  }, [searchParams]);
   const [memorySourceFilter, setMemorySourceFilter] = useState("all");
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [statusBusy, setStatusBusy] = useState<"archive" | "unarchive" | "delete" | null>(null);
