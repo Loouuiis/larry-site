@@ -294,6 +294,35 @@ export function ProjectDashboardExtra({ projectId }: { projectId: string }) {
           </p>
         </div>
       )}
+
+      {/* Risk Level indicator */}
+      <div
+        style={{
+          borderRadius: "var(--radius-card)",
+          border: "1px solid var(--border)",
+          background: "var(--surface)",
+          padding: "20px",
+        }}
+      >
+        <h2 className="mb-3 text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
+          Risk Level
+        </h2>
+        <div className="flex items-center gap-3">
+          <span
+            className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold"
+            style={{
+              background: riskColor === "#f07878" ? "#fff1f2" : riskColor === "#f5c842" ? "#fffbeb" : "#eff6ff",
+              color: riskColor === "#f07878" ? "#be123c" : riskColor === "#f5c842" ? "#854d0e" : "#1d4ed8",
+              borderColor: riskColor === "#f07878" ? "#fecdd3" : riskColor === "#f5c842" ? "#fde68a" : "#bfdbfe",
+            }}
+          >
+            {(health.avgRiskScore ?? 0) >= 70 ? "High" : (health.avgRiskScore ?? 0) >= 35 ? "Medium" : "Low"} risk
+          </span>
+          <span className="text-[12px]" style={{ color: "var(--text-muted)" }}>
+            Risk score: {Math.round(health.avgRiskScore ?? 0)}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }

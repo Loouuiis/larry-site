@@ -10,7 +10,6 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  CircleAlert,
   FolderKanban,
   MessageSquare,
   Layers,
@@ -1359,7 +1358,6 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
   const openTasks = tasks.filter((task) => task.status !== "completed").length;
   const blockedTasks = tasks.filter((task) => task.status === "at_risk").length;
   const recentTasks = (timeline?.gantt ?? tasks).slice(0, 6);
-  const riskTone = getRiskTone(project?.riskLevel ?? health?.riskLevel ?? "low");
   const isArchived = project?.status === "archived";
 
   useEffect(() => {
@@ -1525,19 +1523,8 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
                 {project.name}
               </h1>
               <div className="mt-1 flex flex-wrap items-center gap-2">
-                <span className={`pm-pill ${projectStatusPillClass(project.status)}`}>
+                <span className={`pm-pill ${projectStatusPillClass(project.status)}`} style={{ height: "18px", fontSize: "10px", minWidth: "76px", padding: "0 8px" }}>
                   {projectStatusLabel(project.status)}
-                </span>
-                <span
-                  className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-semibold"
-                  style={{
-                    background: riskTone.background,
-                    color: riskTone.color,
-                    borderColor: riskTone.border,
-                  }}
-                >
-                  <CircleAlert size={12} />
-                  {formatStatus(project.riskLevel ?? health?.riskLevel ?? "low")} risk
                 </span>
               </div>
             </div>

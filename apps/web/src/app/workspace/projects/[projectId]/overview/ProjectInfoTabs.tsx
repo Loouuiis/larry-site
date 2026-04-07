@@ -115,19 +115,17 @@ export function ProjectInfoTabs({
                 <p className="text-[11px] font-semibold uppercase tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>
                   Recent highlights
                 </p>
-                <ul className="space-y-1.5">
-                  {recentActivity.slice(0, 4).map((event) => (
-                    <li key={event.id} className="flex items-start gap-2 text-[12px]" style={{ color: "var(--text-2)" }}>
-                      <span style={{ color: "#6c44f6", flexShrink: 0, marginTop: "2px" }}>•</span>
-                      <span>
-                        {event.displayText}
-                        <span className="ml-1.5 text-[10px]" style={{ color: "var(--text-muted)" }}>
-                          {formatRelative(event.executedAt ?? event.createdAt)}
-                        </span>
+                <p className="text-[12px] leading-[1.75]" style={{ color: "var(--text-2)" }}>
+                  {recentActivity.slice(0, 4).map((event, i, arr) => (
+                    <span key={event.id}>
+                      {event.displayText}
+                      <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                        {" "}({formatRelative(event.executedAt ?? event.createdAt)})
                       </span>
-                    </li>
+                      {i < arr.length - 1 ? " " : ""}
+                    </span>
                   ))}
-                </ul>
+                </p>
               </div>
             )}
           </div>

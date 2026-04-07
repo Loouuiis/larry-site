@@ -483,7 +483,7 @@ function HistoryTooltip({ active, payload, label }: {
   );
 }
 
-function StatusHistoryChart({ history, memberName }: { history: HistoryPoint[] | null | undefined; memberName?: string | null }) {
+function StatusHistoryChart({ history, memberName, title = "Status Over Time" }: { history: HistoryPoint[] | null | undefined; memberName?: string | null; title?: string }) {
   const [period, setPeriod] = useState<3 | 6 | 12>(6);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
 
@@ -512,7 +512,7 @@ function StatusHistoryChart({ history, memberName }: { history: HistoryPoint[] |
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
-            Status Over Time
+            {title}
           </h2>
           {memberName && (
             <p className="text-[11px] mt-0.5" style={{ color: "#6c44f6" }}>
@@ -686,11 +686,22 @@ function EditableWidgetWrapper({
 type WidgetKey = "bar" | "donut" | "history";
 type ChartType = "bar" | "donut";
 type WidgetSize = "half" | "full";
+type DataType = "tasks_by_status" | "status_over_time";
 
 interface WidgetConfig {
   chartType: ChartType;
   size: WidgetSize;
   memberId: string | null;
+  name: string;
+}
+
+interface ExtraWidget {
+  id: string;
+  dataType: DataType;
+  chartType: ChartType;
+  size: WidgetSize;
+  memberId: string | null;
+  name: string;
 }
 
 const WIDGET_LABELS: Record<WidgetKey, string> = {
@@ -736,6 +747,7 @@ function ChartEditModal({
   const [localChartType, setLocalChartType] = useState<ChartType>(config.chartType);
   const [localSize, setLocalSize] = useState<WidgetSize>(config.size);
   const [localMemberId, setLocalMemberId] = useState<string | null>(config.memberId);
+  const [localName, setLocalName] = useState(config.name);
   const widgetLabel = WIDGET_LABELS[widgetKey];
   const showChartType = widgetKey !== "history";
 
@@ -787,6 +799,30 @@ function ChartEditModal({
 
         {/* Scrollable body */}
         <div style={{ flex: 1, overflowY: "auto", marginRight: "-4px", paddingRight: "4px" }}>
+
+          {/* ── CHART NAME ── */}
+          <div className="mb-5">
+            <p className="text-[11px] font-semibold uppercase tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>
+              Chart name
+            </p>
+            <input
+              type="text"
+              value={localName}
+              onChange={(e) => setLocalName(e.target.value)}
+              placeholder="Chart name"
+              style={{
+                width: "100%",
+                padding: "8px 10px",
+                borderRadius: "6px",
+                border: "1.5px solid var(--border)",
+                background: "var(--surface-2)",
+                color: "var(--text-1)",
+                fontSize: "13px",
+                outline: "none",
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
 
           {/* ── CONFIGURATION ── */}
           <p className="text-[13px] font-bold mb-4" style={{ color: "var(--text-1)" }}>Configuration</p>
@@ -891,12 +927,257 @@ function ChartEditModal({
             Cancel
           </button>
           <button type="button"
-            onClick={() => { onSave({ chartType: localChartType, size: localSize, memberId: localMemberId }); onClose(); }}
+            onClick={() => { onSave({ chartType: localChartType, size: localSize, memberId: localMemberId, name: localName }); onClose(); }}
             className="px-4 py-2 text-[13px] font-medium rounded-lg"
             style={{ background: "#6c44f6", border: "none", color: "#fff", cursor: "pointer" }}
           >
             Save chart
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Add / Edit extra widget modal ─────────────────────────────────── */
+
+function ExtraWidgetModal({
+  initial,
+  members,
+  onSave,
+  onDelete,
+  onClose,
+}: {
+  initial?: ExtraWidget;
+  members: WorkspaceProjectMember[];
+  onSave: (w: Omit<ExtraWidget, "id">) => void;
+  onDelete?: () => void;
+  onClose: () => void;
+}) {
+  const isEditing = !!initial;
+  const [localDataType, setLocalDataType] = useState<DataType>(initial?.dataType ?? "tasks_by_status");
+  const [localChartType, setLocalChartType] = useState<ChartType>(initial?.chartType ?? "bar");
+  const [localSize, setLocalSize] = useState<WidgetSize>(initial?.size ?? "half");
+  const [localMemberId, setLocalMemberId] = useState<string | null>(initial?.memberId ?? null);
+  const [localName, setLocalName] = useState(initial?.name ?? "New Widget");
+
+  const showChartType = localDataType === "tasks_by_status";
+
+  const optionBtn = (active: boolean) => ({
+    display: "flex" as const,
+    alignItems: "center" as const,
+    gap: "10px",
+    flex: 1,
+    padding: "10px 12px",
+    borderRadius: "8px",
+    border: `1.5px solid ${active ? "#6c44f6" : "var(--border)"}`,
+    background: active ? "rgba(108,68,246,0.07)" : "var(--surface-2)",
+    cursor: "pointer" as const,
+    transition: "all 0.15s",
+  });
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.35)", backdropFilter: "blur(2px)" }} />
+      <div
+        style={{
+          position: "relative",
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius-card)",
+          padding: "24px",
+          width: "380px",
+          maxHeight: "82vh",
+          display: "flex",
+          flexDirection: "column",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.16)",
+        }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-widest mb-0.5" style={{ color: "var(--text-muted)" }}>
+              {isEditing ? "Edit widget" : "Add widget"}
+            </p>
+            <h3 className="text-[15px] font-bold" style={{ color: "var(--text-1)" }}>
+              {isEditing ? localName : "New Widget"}
+            </h3>
+          </div>
+          <button type="button" onClick={onClose} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: "6px", padding: "4px", cursor: "pointer", color: "var(--text-muted)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <X size={14} />
+          </button>
+        </div>
+
+        {/* Scrollable body */}
+        <div style={{ flex: 1, overflowY: "auto", marginRight: "-4px", paddingRight: "4px" }}>
+
+          {/* Chart name */}
+          <div className="mb-5">
+            <p className="text-[11px] font-semibold uppercase tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>
+              Chart name
+            </p>
+            <input
+              type="text"
+              value={localName}
+              onChange={(e) => setLocalName(e.target.value)}
+              placeholder="Chart name"
+              style={{
+                width: "100%",
+                padding: "8px 10px",
+                borderRadius: "6px",
+                border: "1.5px solid var(--border)",
+                background: "var(--surface-2)",
+                color: "var(--text-1)",
+                fontSize: "13px",
+                outline: "none",
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
+
+          {/* ── CONFIGURATION ── */}
+          <p className="text-[13px] font-bold mb-4" style={{ color: "var(--text-1)" }}>Configuration</p>
+
+          {/* Chart data */}
+          <div className="mb-5">
+            <p className="text-[11px] font-semibold uppercase tracking-widest mb-2.5" style={{ color: "var(--text-muted)" }}>
+              Chart data
+            </p>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setLocalDataType("tasks_by_status")} style={optionBtn(localDataType === "tasks_by_status")}>
+                <svg width="22" height="20" viewBox="0 0 22 20" fill="none" style={{ flexShrink: 0 }}>
+                  <rect x="0" y="9" width="4" height="11" rx="1" fill={localDataType === "tasks_by_status" ? "#6c44f6" : "var(--border)"} />
+                  <rect x="6" y="4" width="4" height="16" rx="1" fill={localDataType === "tasks_by_status" ? "#9b7aff" : "var(--border)"} />
+                  <rect x="12" y="6" width="4" height="14" rx="1" fill={localDataType === "tasks_by_status" ? "#6c44f6" : "var(--border)"} />
+                  <rect x="18" y="1" width="4" height="19" rx="1" fill={localDataType === "tasks_by_status" ? "#9b7aff" : "var(--border)"} />
+                </svg>
+                <div>
+                  <p className="text-[12px] font-semibold" style={{ color: localDataType === "tasks_by_status" ? "#6c44f6" : "var(--text-1)" }}>Tasks by Status</p>
+                </div>
+              </button>
+              <button type="button" onClick={() => setLocalDataType("status_over_time")} style={optionBtn(localDataType === "status_over_time")}>
+                <svg width="22" height="20" viewBox="0 0 22 20" fill="none" style={{ flexShrink: 0 }}>
+                  <polyline points="0,16 5,10 10,13 15,5 22,8" fill="none" stroke={localDataType === "status_over_time" ? "#6c44f6" : "var(--border)"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <div>
+                  <p className="text-[12px] font-semibold" style={{ color: localDataType === "status_over_time" ? "#6c44f6" : "var(--text-1)" }}>Status Over Time</p>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* Chart type — only for tasks_by_status */}
+          {showChartType && (
+            <div className="mb-5">
+              <p className="text-[11px] font-semibold uppercase tracking-widest mb-2.5" style={{ color: "var(--text-muted)" }}>
+                Chart type
+              </p>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setLocalChartType("bar")} style={optionBtn(localChartType === "bar")}>
+                  <svg width="28" height="20" viewBox="0 0 28 20" fill="none" style={{ flexShrink: 0 }}>
+                    <rect x="1" y="11" width="5" height="9" rx="1" fill={localChartType === "bar" ? "#6c44f6" : "var(--border)"} />
+                    <rect x="8" y="5" width="5" height="15" rx="1" fill={localChartType === "bar" ? "#9b7aff" : "var(--border)"} />
+                    <rect x="15" y="8" width="5" height="12" rx="1" fill={localChartType === "bar" ? "#6c44f6" : "var(--border)"} />
+                    <rect x="22" y="2" width="5" height="18" rx="1" fill={localChartType === "bar" ? "#9b7aff" : "var(--border)"} />
+                  </svg>
+                  <div>
+                    <p className="text-[12px] font-semibold" style={{ color: localChartType === "bar" ? "#6c44f6" : "var(--text-1)" }}>Bar chart</p>
+                  </div>
+                </button>
+                <button type="button" onClick={() => setLocalChartType("donut")} style={optionBtn(localChartType === "donut")}>
+                  <svg width="22" height="22" viewBox="0 0 22 22" fill="none" style={{ flexShrink: 0 }}>
+                    <circle cx="11" cy="11" r="9" fill="none" stroke={localChartType === "donut" ? "#6c44f6" : "var(--border)"} strokeWidth="4.5" strokeDasharray="18 39" strokeDashoffset="-5" />
+                    <circle cx="11" cy="11" r="9" fill="none" stroke={localChartType === "donut" ? "#9b7aff" : "#e5e7eb"} strokeWidth="4.5" strokeDasharray="39 18" strokeDashoffset="13" />
+                  </svg>
+                  <div>
+                    <p className="text-[12px] font-semibold" style={{ color: localChartType === "donut" ? "#6c44f6" : "var(--text-1)" }}>Donut chart</p>
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Widget size */}
+          <div className="mb-5">
+            <p className="text-[11px] font-semibold uppercase tracking-widest mb-2.5" style={{ color: "var(--text-muted)" }}>
+              Widget size
+            </p>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setLocalSize("half")} style={optionBtn(localSize === "half")}>
+                <svg width="28" height="18" viewBox="0 0 28 18" fill="none" style={{ flexShrink: 0 }}>
+                  <rect x="0.5" y="0.5" width="12" height="17" rx="2" fill={localSize === "half" ? "rgba(108,68,246,0.15)" : "var(--surface)"} stroke={localSize === "half" ? "#6c44f6" : "var(--border)"} />
+                  <rect x="15.5" y="0.5" width="12" height="17" rx="2" fill={localSize === "half" ? "rgba(108,68,246,0.08)" : "var(--surface-2)"} stroke={localSize === "half" ? "#9b7aff" : "var(--border)"} strokeDasharray="3 2" />
+                </svg>
+                <div>
+                  <p className="text-[12px] font-semibold" style={{ color: localSize === "half" ? "#6c44f6" : "var(--text-1)" }}>Half width</p>
+                </div>
+              </button>
+              <button type="button" onClick={() => setLocalSize("full")} style={optionBtn(localSize === "full")}>
+                <svg width="28" height="18" viewBox="0 0 28 18" fill="none" style={{ flexShrink: 0 }}>
+                  <rect x="0.5" y="0.5" width="27" height="17" rx="2" fill={localSize === "full" ? "rgba(108,68,246,0.15)" : "var(--surface)"} stroke={localSize === "full" ? "#6c44f6" : "var(--border)"} />
+                </svg>
+                <div>
+                  <p className="text-[12px] font-semibold" style={{ color: localSize === "full" ? "#6c44f6" : "var(--text-1)" }}>Full width</p>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* Divider */}
+          <div style={{ height: "1px", background: "var(--border)", margin: "4px 0 20px" }} />
+
+          {/* Filters */}
+          <p className="text-[13px] font-bold mb-4" style={{ color: "var(--text-1)" }}>Filters</p>
+          <div className="space-y-1">
+            <button type="button" onClick={() => setLocalMemberId(null)}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-[13px]"
+              style={{ background: localMemberId === null ? "rgba(108,68,246,0.08)" : "transparent", border: `1px solid ${localMemberId === null ? "rgba(108,68,246,0.3)" : "transparent"}`, color: "var(--text-1)", cursor: "pointer", textAlign: "left" }}
+            >
+              <RadioDot selected={localMemberId === null} />
+              <span>All members</span>
+            </button>
+            {members.map((m) => (
+              <button key={m.userId} type="button" onClick={() => setLocalMemberId(m.userId)}
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-[13px]"
+                style={{ background: localMemberId === m.userId ? "rgba(108,68,246,0.08)" : "transparent", border: `1px solid ${localMemberId === m.userId ? "rgba(108,68,246,0.3)" : "transparent"}`, color: "var(--text-1)", cursor: "pointer", textAlign: "left" }}
+              >
+                <RadioDot selected={localMemberId === m.userId} />
+                <div style={{ minWidth: 0 }}>
+                  <p className="font-medium truncate">{m.name || m.email}</p>
+                  {m.name && <p className="text-[11px] truncate" style={{ color: "var(--text-muted)" }}>{m.email}</p>}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between gap-2 mt-5 pt-4" style={{ borderTop: "1px solid var(--border)" }}>
+          <div>
+            {isEditing && onDelete && (
+              <button type="button" onClick={() => { onDelete(); onClose(); }}
+                className="px-3 py-2 text-[12px] font-medium rounded-lg"
+                style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: "#ef4444", cursor: "pointer" }}
+              >
+                Delete widget
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={onClose}
+              className="px-4 py-2 text-[13px] font-medium rounded-lg"
+              style={{ background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text-2)", cursor: "pointer" }}
+            >
+              Cancel
+            </button>
+            <button type="button"
+              onClick={() => { onSave({ dataType: localDataType, chartType: localChartType, size: localSize, memberId: localMemberId, name: localName || "New Widget" }); onClose(); }}
+              className="px-4 py-2 text-[13px] font-medium rounded-lg"
+              style={{ background: "#6c44f6", border: "none", color: "#fff", cursor: "pointer" }}
+            >
+              {isEditing ? "Save widget" : "Add widget"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -930,11 +1211,14 @@ export function ProjectDashboard({
 
   /* ── Per-widget config ────────────────────────────────────────────── */
   const [widgetConfig, setWidgetConfig] = useState<Record<WidgetKey, WidgetConfig>>({
-    bar:     { chartType: "bar",   size: "half", memberId: null },
-    donut:   { chartType: "donut", size: "half", memberId: null },
-    history: { chartType: "bar",   size: "half", memberId: null },
+    bar:     { chartType: "bar",   size: "half", memberId: null, name: "Tasks by Status" },
+    donut:   { chartType: "donut", size: "half", memberId: null, name: "Task Distribution" },
+    history: { chartType: "bar",   size: "half", memberId: null, name: "Status Over Time" },
   });
   const [editingWidget, setEditingWidget] = useState<WidgetKey | null>(null);
+  const [extraWidgets, setExtraWidgets] = useState<ExtraWidget[]>([]);
+  const [addingWidget, setAddingWidget] = useState(false);
+  const [editingExtraId, setEditingExtraId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!areaDropdownOpen && !employeeDropdownOpen) return;
@@ -1109,6 +1393,7 @@ export function ProjectDashboard({
       <div className="flex items-center justify-between gap-2 print:hidden">
         <button
           type="button"
+          onClick={() => setAddingWidget(true)}
           className="inline-flex h-6 items-center gap-1 rounded-lg border px-2 text-[11px] font-medium transition-colors"
           style={{
             borderColor: "var(--border)",
@@ -1318,12 +1603,12 @@ export function ProjectDashboard({
         const stack = barFull || donutFull;
 
         const BarContent = widgetConfig.bar.chartType === "donut"
-          ? <OverviewDonutWidget byStatus={resolvedBarByStatus} memberName={memberName("bar")} title="Tasks by Status" />
-          : <StatusBarChart byStatus={resolvedBarByStatus} memberName={memberName("bar")} />;
+          ? <OverviewDonutWidget byStatus={resolvedBarByStatus} memberName={memberName("bar")} title={widgetConfig.bar.name} />
+          : <StatusBarChart byStatus={resolvedBarByStatus} memberName={memberName("bar")} title={widgetConfig.bar.name} />;
 
         const DonutContent = widgetConfig.donut.chartType === "bar"
-          ? <StatusBarChart byStatus={resolvedDonutByStatus} memberName={memberName("donut")} title="Task Distribution" />
-          : <OverviewDonutWidget byStatus={resolvedDonutByStatus} memberName={memberName("donut")} />;
+          ? <StatusBarChart byStatus={resolvedDonutByStatus} memberName={memberName("donut")} title={widgetConfig.donut.name} />
+          : <OverviewDonutWidget byStatus={resolvedDonutByStatus} memberName={memberName("donut")} title={widgetConfig.donut.name} />;
 
         if (stack) {
           return (
@@ -1354,8 +1639,50 @@ export function ProjectDashboard({
         onEdit={() => setEditingWidget("history")}
         style={{ width: "100%" }}
       >
-        <StatusHistoryChart history={resolvedHistoryData} memberName={memberName("history")} />
+        <StatusHistoryChart history={resolvedHistoryData} memberName={memberName("history")} title={widgetConfig.history.name} />
       </EditableWidgetWrapper>
+
+      {/* Extra widgets — added via Add widget button */}
+      {extraWidgets.length > 0 && (() => {
+        const rows: ExtraWidget[][] = [];
+        let currentRow: ExtraWidget[] = [];
+        for (const w of extraWidgets) {
+          if (w.size === "full") {
+            if (currentRow.length > 0) { rows.push([...currentRow]); currentRow = []; }
+            rows.push([w]);
+          } else {
+            currentRow.push(w);
+            if (currentRow.length === 2) { rows.push([...currentRow]); currentRow = []; }
+          }
+        }
+        if (currentRow.length > 0) rows.push([...currentRow]);
+
+        return rows.map((row, rowIdx) => (
+          <div key={rowIdx} className={row.length === 2 ? "flex gap-3" : ""}>
+            {row.map((w) => {
+              const wMemberName = w.memberId
+                ? (members.find((m) => m.userId === w.memberId)?.name ?? members.find((m) => m.userId === w.memberId)?.email ?? null)
+                : null;
+              const wByStatus = w.memberId ? computeByStatusForMember(tasks, w.memberId) : activeByStatus;
+              const wHistory = w.memberId ? computeHistoryForMember(tasks, w.memberId, history) : history;
+              const content = w.dataType === "status_over_time"
+                ? <StatusHistoryChart history={wHistory} memberName={wMemberName} title={w.name} />
+                : w.chartType === "donut"
+                  ? <OverviewDonutWidget byStatus={wByStatus} memberName={wMemberName} title={w.name} />
+                  : <StatusBarChart byStatus={wByStatus} memberName={wMemberName} title={w.name} />;
+              return (
+                <EditableWidgetWrapper
+                  key={w.id}
+                  onEdit={() => setEditingExtraId(w.id)}
+                  style={w.size === "full" ? { width: "100%" } : { flex: 1, minWidth: 0 }}
+                >
+                  {content}
+                </EditableWidgetWrapper>
+              );
+            })}
+          </div>
+        ));
+      })()}
 
       {/* Chart edit modal */}
       {editingWidget && (
@@ -1367,6 +1694,30 @@ export function ProjectDashboard({
           onClose={() => setEditingWidget(null)}
         />
       )}
+
+      {/* Add widget modal */}
+      {addingWidget && (
+        <ExtraWidgetModal
+          members={members}
+          onSave={(w) => setExtraWidgets((prev) => [...prev, { ...w, id: crypto.randomUUID() }])}
+          onClose={() => setAddingWidget(false)}
+        />
+      )}
+
+      {/* Edit extra widget modal */}
+      {editingExtraId && (() => {
+        const w = extraWidgets.find((x) => x.id === editingExtraId);
+        if (!w) return null;
+        return (
+          <ExtraWidgetModal
+            initial={w}
+            members={members}
+            onSave={(updated) => setExtraWidgets((prev) => prev.map((x) => x.id === editingExtraId ? { ...updated, id: editingExtraId } : x))}
+            onDelete={() => { setExtraWidgets((prev) => prev.filter((x) => x.id !== editingExtraId)); setEditingExtraId(null); }}
+            onClose={() => setEditingExtraId(null)}
+          />
+        );
+      })()}
     </div>
   );
 }
