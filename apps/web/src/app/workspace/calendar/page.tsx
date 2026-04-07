@@ -177,14 +177,16 @@ export default function CalendarPage() {
                       className="min-h-[80px] p-2 transition-colors cursor-pointer"
                       style={{
                         borderRight: di < 6 ? "1px solid var(--border)" : undefined,
-                        background: isToday ? "var(--surface-2)" : undefined,
+                        background: isToday || (day ? day.toISOString().slice(0, 10) === selectedDate : false) ? "var(--surface-2)" : undefined,
                       }}
                       onClick={isCurrentMonth ? () => setSelectedDate(day!.toISOString().slice(0, 10)) : undefined}
                       onMouseEnter={(e) => {
-                        if (!isToday) e.currentTarget.style.background = "var(--surface-2)";
+                        const isSel = day ? day.toISOString().slice(0, 10) === selectedDate : false;
+                        if (!isToday && !isSel) e.currentTarget.style.background = "var(--surface-2)";
                       }}
                       onMouseLeave={(e) => {
-                        if (!isToday) e.currentTarget.style.background = "";
+                        const isSel = day ? day.toISOString().slice(0, 10) === selectedDate : false;
+                        if (!isToday && !isSel) e.currentTarget.style.background = "";
                       }}
                     >
                       {isCurrentMonth && (
@@ -206,7 +208,7 @@ export default function CalendarPage() {
                                 {dayEvents.slice(0, 3).map((evt) => (
                                   <div
                                     key={evt.id}
-                                    className="h-1.5 w-1.5 rounded-full"
+                                    className="h-2.5 w-2.5 rounded-full"
                                     style={{ background: evt.color }}
                                     title={evt.title}
                                   />
@@ -260,41 +262,38 @@ export default function CalendarPage() {
                 </p>
               ) : (
                 <div className="mt-3 space-y-2">
-                  {dayEvents.map((evt) => (
-                    <div
-                      key={evt.id}
-                      className="flex items-center gap-3 rounded-lg border px-3 py-2"
-                      style={{ borderColor: "var(--border)" }}
-                    >
-                      <div className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: evt.color }} />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[13px] font-medium truncate" style={{ color: "var(--text-1)" }}>
-                          {evt.title}
-                        </p>
-                        <p className="text-[11px]" style={{ color: "var(--text-disabled)" }}>
-                          {evt.kind === "deadline" ? "Task deadline" : evt.kind === "meeting" ? "Meeting" : "Event"}
-                        </p>
-                        {evt.kind === "meeting" && evt.meetingId && (
-                          <Link
-                            href={`/workspace/meetings?id=${evt.meetingId}`}
-                            className="text-[11px] font-medium"
-                            style={{ color: "var(--cta)" }}
-                          >
-                            View meeting notes
-                          </Link>
-                        )}
-                        {evt.kind === "deadline" && evt.projectId && (
-                          <Link
-                            href={`/workspace/projects/${evt.projectId}`}
-                            className="text-[11px] font-medium"
-                            style={{ color: "var(--cta)" }}
-                          >
-                            Open project
-                          </Link>
-                        )}
+                  {dayEvents.map((evt) => {
+                    const href =
+                      evt.kind === "meeting" && evt.meetingId
+                        ? `/workspace/meetings?id=${evt.meetingId}`
+                        : evt.kind === "deadline" && evt.projectId
+                        ? `/workspace/projects/${evt.projectId}`
+                        : null;
+                    const inner = (
+                      <>
+                        <div className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: evt.color }} />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[13px] font-medium truncate" style={{ color: "var(--text-1)" }}>
+                            {evt.title}
+                          </p>
+                          <p className="text-[11px]" style={{ color: "var(--text-disabled)" }}>
+                            {evt.kind === "deadline" ? "Task deadline" : evt.kind === "meeting" ? "Meeting" : "Event"}
+                          </p>
+                        </div>
+                      </>
+                    );
+                    const sharedClass = "flex items-center gap-3 rounded-lg border px-3 py-2";
+                    const sharedStyle = { borderColor: "var(--border)" };
+                    return href ? (
+                      <Link key={evt.id} href={href} className={sharedClass} style={sharedStyle}>
+                        {inner}
+                      </Link>
+                    ) : (
+                      <div key={evt.id} className={sharedClass} style={sharedStyle}>
+                        {inner}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
