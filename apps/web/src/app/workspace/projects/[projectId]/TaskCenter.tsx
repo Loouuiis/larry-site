@@ -112,6 +112,7 @@ interface TaskCenterProps {
   projectId: string;
   tasks: WorkspaceTask[];
   refresh: () => Promise<void>;
+  openTaskId?: string | null;
 }
 
 /* ── status group → DB status mapping ──────────────────── */
@@ -123,7 +124,7 @@ const GROUP_TO_DB_STATUS: Record<string, string> = {
   completed: "completed",
 };
 
-export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
+export function TaskCenter({ projectId, tasks, refresh, openTaskId }: TaskCenterProps) {
   const initialCollapsed = () => {
     const m: Record<string, boolean> = {};
     for (const g of STATUS_GROUPS) {
@@ -148,7 +149,9 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
 
   /* ── inline editing state ─────────────────────────────── */
 
-  const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>({});
+  const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>(
+    openTaskId ? { [openTaskId]: true } : {}
+  );
   const [editingTitle, setEditingTitle] = useState<string | null>(null);
   const [editTitleValue, setEditTitleValue] = useState("");
   const [openDropdown, setOpenDropdown] = useState<{ taskId: string; field: "status" | "priority" | "assignee"; rect: DOMRect } | null>(null);
@@ -174,6 +177,16 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
       .catch(() => {});
     return () => { cancelled = true; };
   }, [projectId]);
+
+  /* ── uncollapse group containing openTaskId when tasks load ── */
+
+  useEffect(() => {
+    if (!openTaskId || tasks.length === 0) return;
+    const task = tasks.find((t) => t.id === openTaskId);
+    if (!task) return;
+    const group = STATUS_GROUPS.find((g) => g.statuses.includes(task.status));
+    if (group) setCollapsed((prev) => ({ ...prev, [group.id]: false }));
+  }, [openTaskId, tasks]);
 
   /* ── auto-focus title input when inline creation opens ── */
 

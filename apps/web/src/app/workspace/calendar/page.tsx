@@ -267,7 +267,7 @@ export default function CalendarPage() {
                       evt.kind === "meeting" && evt.meetingId
                         ? `/workspace/meetings?id=${evt.meetingId}`
                         : evt.kind === "deadline" && evt.projectId
-                        ? `/workspace/projects/${evt.projectId}`
+                        ? `/workspace/projects/${evt.projectId}?tab=tasks${evt.taskId ? `&task=${evt.taskId}` : ""}`
                         : null;
                     const inner = (
                       <>

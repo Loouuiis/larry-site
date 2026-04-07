@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
@@ -1277,7 +1277,10 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
   const chrome = useWorkspaceChrome();
   const { pushToast } = useToast();
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<ProjectTab>("overview");
+  const searchParams = useSearchParams();
+  const initialTab = (searchParams.get("tab") as ProjectTab | null) ?? "overview";
+  const openTaskId = searchParams.get("task");
+  const [activeTab, setActiveTab] = useState<ProjectTab>(initialTab);
   const [memorySourceFilter, setMemorySourceFilter] = useState("all");
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [statusBusy, setStatusBusy] = useState<"archive" | "unarchive" | "delete" | null>(null);
@@ -1626,7 +1629,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
 
         {/* ── Tab: Task center ──────────────────────────── */}
         {activeTab === "tasks" && (
-          <TaskCenter projectId={projectId} tasks={tasks} refresh={refresh} />
+          <TaskCenter projectId={projectId} tasks={tasks} refresh={refresh} openTaskId={openTaskId} />
         )}
 
         {/* ── Tab: Calendar ──────────────── */}
