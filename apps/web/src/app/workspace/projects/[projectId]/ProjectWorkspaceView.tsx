@@ -1763,6 +1763,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
             suggested={suggested}
             activity={activity}
             members={overviewMembers}
+            health={health}
             onNavigateToTab={(tab) => setActiveTab(tab as ProjectTab)}
           />
         )}

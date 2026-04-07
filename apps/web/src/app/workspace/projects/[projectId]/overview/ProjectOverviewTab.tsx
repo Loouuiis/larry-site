@@ -7,6 +7,7 @@ import type {
   WorkspaceTimeline,
   WorkspaceOutcomes,
   WorkspaceProjectMember,
+  WorkspaceHealth,
 } from "@/app/dashboard/types";
 import { ProjectInfoTabs } from "./ProjectInfoTabs";
 import { ProgressBox } from "./ProgressBox";
@@ -22,6 +23,7 @@ interface ProjectOverviewTabProps {
   suggested: WorkspaceLarryEvent[];
   activity: WorkspaceLarryEvent[];
   members: WorkspaceProjectMember[];
+  health: WorkspaceHealth | null | undefined;
   onNavigateToTab: (tab: string) => void;
 }
 
@@ -33,6 +35,7 @@ export function ProjectOverviewTab({
   suggested,
   activity,
   members,
+  health,
   onNavigateToTab,
 }: ProjectOverviewTabProps) {
   return (
@@ -44,6 +47,8 @@ export function ProjectOverviewTab({
           timeline={timeline}
           targetDate={project.targetDate}
           members={members}
+          avgRiskScore={health?.avgRiskScore}
+          riskLevel={health?.riskLevel}
         />
         <MiniDonutChart tasks={tasks} />
         <ActionBox

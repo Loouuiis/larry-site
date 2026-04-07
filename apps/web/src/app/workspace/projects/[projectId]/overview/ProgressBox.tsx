@@ -12,9 +12,11 @@ interface ProgressBoxProps {
   timeline: WorkspaceTimeline | null;
   targetDate?: string | null;
   members?: WorkspaceProjectMember[];
+  avgRiskScore?: number | null;
+  riskLevel?: string | null;
 }
 
-export function ProgressBox({ tasks, timeline, targetDate, members }: ProgressBoxProps) {
+export function ProgressBox({ tasks, timeline, targetDate, members, avgRiskScore, riskLevel }: ProgressBoxProps) {
   const [selectedAreas, setSelectedAreas] = useState<string[]>([]);
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
   const [areaDropdownOpen, setAreaDropdownOpen] = useState(false);
@@ -268,34 +270,52 @@ export function ProgressBox({ tasks, timeline, targetDate, members }: ProgressBo
           )}
         </div>
       </div>
-      <div className="flex items-center gap-3.5">
-        <p className="text-[28px] font-extrabold" style={{ color: "#6c44f6" }}>
+      <div
+        className="w-full overflow-hidden"
+        style={{ height: "12px", borderRadius: "6px", background: "var(--surface-2)" }}
+      >
+        <div
+          style={{
+            width: `${pct > 0 ? Math.max(pct, 2) : 0}%`,
+            height: "100%",
+            borderRadius: "6px",
+            background: "linear-gradient(90deg, #6c44f6, #9b7aff)",
+            transition: "width 0.4s ease",
+          }}
+        />
+      </div>
+      <div className="mt-2 flex items-baseline justify-between">
+        <p className="text-[28px] font-extrabold leading-none" style={{ color: "#6c44f6" }}>
           {pct}%
         </p>
-        <div style={{ flex: 1 }}>
-          <div
-            className="w-full overflow-hidden"
-            style={{ height: "12px", borderRadius: "6px", background: "var(--surface-2)" }}
-          >
-            <div
-              style={{
-                width: `${pct > 0 ? Math.max(pct, 2) : 0}%`,
-                height: "100%",
-                borderRadius: "6px",
-                background: "linear-gradient(90deg, #6c44f6, #9b7aff)",
-                transition: "width 0.4s ease",
-              }}
-            />
-          </div>
-          <div
-            className="mt-1 flex items-center justify-between text-[10px]"
-            style={{ color: "var(--text-muted)" }}
-          >
-            <span>{completed} of {total} tasks completed</span>
-            {targetDate && <span>Target: {formatTarget(targetDate)}</span>}
-          </div>
+        <div className="flex items-center gap-3 text-[10px]" style={{ color: "var(--text-muted)" }}>
+          <span>{completed} of {total} tasks completed</span>
+          {targetDate && <span>Target: {formatTarget(targetDate)}</span>}
         </div>
       </div>
+      {avgRiskScore != null && (() => {
+        const riskColor = avgRiskScore >= 70 ? "#ef4444" : avgRiskScore >= 35 ? "#f59e0b" : "#22c55e";
+        const label = riskLevel ?? (avgRiskScore >= 70 ? "High" : avgRiskScore >= 35 ? "Medium" : "Low");
+        return (
+          <div
+            className="mt-3 pt-3 flex items-center justify-between"
+            style={{ borderTop: "1px solid var(--border)" }}
+          >
+            <span className="text-[11px] font-medium" style={{ color: "var(--text-muted)" }}>Risk Score</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[13px] font-extrabold" style={{ color: riskColor }}>
+                {Math.round(avgRiskScore)}
+              </span>
+              <span
+                className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                style={{ background: `${riskColor}18`, color: riskColor }}
+              >
+                {label} Risk
+              </span>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
