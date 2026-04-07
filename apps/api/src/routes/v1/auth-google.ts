@@ -199,7 +199,7 @@ export const authGoogleRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.redirect(`${frontendUrl}/login?error=google_no_email`);
     }
 
-    const tenantId = oauthState.tenantId;
+    let tenantId = oauthState.tenantId;
     let isNewUser = false;
 
     // --- Try to find existing user by provider_user_id ---
@@ -265,21 +265,38 @@ export const authGoogleRoutes: FastifyPluginAsync = async (fastify) => {
           ]
         );
       } else {
-        // --- New user: create account ---
+        // --- New user: create account + new tenant (they're the admin) ---
         isNewUser = true;
 
-        const newUser = await fastify.db.tx(async (client) => {
-          const result = await client.query(
+        const result = await fastify.db.tx(async (client) => {
+          // Create a new tenant for this user
+          const orgName = googleUser.name ?? googleUser.email.split("@")[0];
+          const slugBase = orgName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "my-org";
+          let slug = slugBase;
+          let suffix = 2;
+          while (true) {
+            const dup = await client.query("SELECT id FROM tenants WHERE slug = $1 LIMIT 1", [slug]);
+            if (!dup.rows[0]) break;
+            slug = `${slugBase}-${suffix++}`;
+          }
+
+          const tenantResult = await client.query(
+            `INSERT INTO tenants (name, slug) VALUES ($1, $2) RETURNING id`,
+            [orgName, slug],
+          );
+          const newTenantId = (tenantResult.rows[0] as { id: string }).id;
+
+          const userResult = await client.query(
             `INSERT INTO users (email, password_hash, display_name, email_verified_at)
              VALUES ($1, NULL, $2, NOW())
              RETURNING id, email`,
             [googleUser.email, googleUser.name ?? null]
           );
-          const user = result.rows[0] as { id: string; email: string };
+          const user = userResult.rows[0] as { id: string; email: string };
 
           await client.query(
-            `INSERT INTO memberships (user_id, tenant_id, role) VALUES ($1, $2, 'member')`,
-            [user.id, tenantId]
+            `INSERT INTO memberships (user_id, tenant_id, role) VALUES ($1, $2, 'admin')`,
+            [user.id, newTenantId]
           );
 
           await client.query(
@@ -294,11 +311,13 @@ export const authGoogleRoutes: FastifyPluginAsync = async (fastify) => {
             ]
           );
 
-          return user;
+          return { user, tenantId: newTenantId };
         });
 
-        userId = newUser.id;
-        userEmail = newUser.email;
+        userId = result.user.id;
+        userEmail = result.user.email;
+        tenantId = result.tenantId;
+        role = "admin";
       }
     }
 

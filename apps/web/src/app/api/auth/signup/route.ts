@@ -60,18 +60,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const tenantId =
-      typeof body?.tenantId === "string" && body.tenantId.length > 0
-        ? body.tenantId
-        : process.env.LARRY_API_TENANT_ID;
-
     let apiResponse: Response;
     try {
       apiResponse = await fetch(`${apiBaseUrl.replace(/\/+$/, "")}/v1/auth/signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          tenantId,
           email,
           password: String(password),
           fullName: typeof body?.fullName === "string" ? body.fullName : undefined,

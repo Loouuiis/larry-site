@@ -24,7 +24,8 @@ const SignupSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
   fullName: z.string().max(200).optional(),
-  tenantId: z.string().uuid(),
+  orgName: z.string().max(200).optional(),
+  tenantId: z.string().uuid().optional(),
 });
 
 export const authRoutes: FastifyPluginAsync = async (fastify) => {
@@ -47,62 +48,67 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
   }, async (request, reply) => {
     const body = SignupSchema.parse(request.body);
 
-    // Check for existing user with same email in this tenant
+    // Check for existing user with same email
     const existing = await fastify.db.query<{ id: string }>(
-      `SELECT u.id FROM users u
-       JOIN memberships m ON m.user_id = u.id
-       WHERE u.email = $1 AND m.tenant_id = $2
-       LIMIT 1`,
-      [body.email, body.tenantId],
+      `SELECT id FROM users WHERE email = $1 LIMIT 1`,
+      [body.email],
     );
 
     if (existing.length > 0) {
       return reply.code(409).send({ error: "An account with this email already exists." });
     }
 
-    // Check tenant exists
-    const tenants = await fastify.db.query<{ id: string }>(
-      `SELECT id FROM tenants WHERE id = $1 LIMIT 1`,
-      [body.tenantId],
-    );
-
-    if (tenants.length === 0) {
-      return reply.badRequest("Invalid tenant.");
-    }
-
     const passwordHash = await hashPassword(body.password);
 
-    // Create user + membership in a transaction
-    const newUser = await fastify.db.tx(async (client) => {
-      const result = await client.query(
+    // Create tenant + user + membership in a transaction.
+    // Each new signup gets their own organization — they're the admin.
+    const { newUser, tenantId } = await fastify.db.tx(async (client) => {
+      // Create a new tenant for this user
+      const orgName = body.orgName?.trim() || body.fullName?.trim() || body.email.split("@")[0];
+      const slugBase = orgName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "my-org";
+      let slug = slugBase;
+      let suffix = 2;
+      while (true) {
+        const dup = await client.query("SELECT id FROM tenants WHERE slug = $1 LIMIT 1", [slug]);
+        if (!dup.rows[0]) break;
+        slug = `${slugBase}-${suffix++}`;
+      }
+
+      const tenantResult = await client.query(
+        `INSERT INTO tenants (name, slug) VALUES ($1, $2) RETURNING id`,
+        [orgName, slug],
+      );
+      const tId = (tenantResult.rows[0] as { id: string }).id;
+
+      const userResult = await client.query(
         `INSERT INTO users (email, password_hash, display_name, verification_grace_deadline, email_verified_at)
          VALUES ($1, $2, $3, NOW() + INTERVAL '7 days', NULL)
          RETURNING id, email`,
         [body.email, passwordHash, body.fullName ?? null],
       );
 
-      const user = result.rows[0] as { id: string; email: string };
+      const user = userResult.rows[0] as { id: string; email: string };
 
       await client.query(
-        `INSERT INTO memberships (user_id, tenant_id, role) VALUES ($1, $2, 'member')`,
-        [user.id, body.tenantId],
+        `INSERT INTO memberships (user_id, tenant_id, role) VALUES ($1, $2, 'admin')`,
+        [user.id, tId],
       );
 
-      return user;
+      return { newUser: user, tenantId: tId };
     });
 
     // Issue tokens
     const accessToken = await issueAccessToken(fastify, {
       userId: newUser.id,
-      tenantId: body.tenantId,
-      role: "member",
+      tenantId,
+      role: "admin",
       email: newUser.email,
     });
 
     const refreshToken = await issueRefreshToken(fastify, {
       userId: newUser.id,
-      tenantId: body.tenantId,
-      role: "member",
+      tenantId,
+      role: "admin",
       email: newUser.email,
     });
 
@@ -129,7 +135,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Audit log
     await writeAuditLog(fastify.db, {
-      tenantId: body.tenantId,
+      tenantId,
       actorUserId: newUser.id,
       actionType: "auth.signup",
       objectType: "user",
@@ -143,8 +149,8 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       user: {
         id: newUser.id,
         email: newUser.email,
-        role: "member",
-        tenantId: body.tenantId,
+        role: "admin",
+        tenantId,
       },
     });
   });
