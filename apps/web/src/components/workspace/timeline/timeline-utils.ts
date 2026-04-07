@@ -242,6 +242,18 @@ export function groupTasks(
 
 /* ─── Scheduled vs unscheduled split ───────────────────────────────── */
 
+export function computeGroupSummary(tasks: WorkspaceTimelineTask[]): { start: Date | null; end: Date | null } {
+  let start: Date | null = null;
+  let end: Date | null = null;
+  for (const t of tasks) {
+    const s = parseDate(t.startDate);
+    const e = parseDate(t.endDate) ?? parseDate(t.dueDate);
+    if (s && (!start || s < start)) start = s;
+    if (e && (!end || e > end)) end = e;
+  }
+  return { start, end };
+}
+
 export function splitScheduled(tasks: WorkspaceTimelineTask[]): {
   scheduled: WorkspaceTimelineTask[];
   unscheduled: WorkspaceTimelineTask[];

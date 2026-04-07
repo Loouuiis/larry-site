@@ -7,7 +7,7 @@ import type { WorkspaceTimelineTask, WorkspaceTimeline } from "@/app/dashboard/t
 import { TaskDetailPanel, type TaskPanelData, type TaskStatus as PanelStatus } from "@/components/dashboard/TaskDetailPanel";
 import { TimelineToolbar } from "./TimelineToolbar";
 import { TimelineGrid } from "./TimelineGrid";
-import { TimelineSwimlane } from "./TimelineSwimlane";
+import { GanttGroup } from "./TimelineSwimlane";
 import { TimelineDependencyLines } from "./TimelineDependencyLines";
 import { TimelineTooltip } from "./TimelineTooltip";
 import { UnscheduledPanel } from "./UnscheduledPanel";
@@ -251,7 +251,7 @@ export function ProjectTimeline({
     return "quarter";
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [zoom, setZoom] = useState<ZoomLevel>(defaultZoom);
-  const [groupBy, setGroupBy] = useState<GroupBy>("phase");
+  const [groupBy, setGroupBy] = useState<GroupBy>("assignee");
   const [colourBy, setColourBy] = useState<ColourBy>("status");
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
@@ -447,12 +447,12 @@ export function ProjectTimeline({
   // Task positions for dependency lines
   const taskPositions = useMemo(() => {
     const positions = new Map<string, number>();
-    let y = 18;
+    let y = 0;
     for (const group of groups) {
-      y += 36;
+      y += 40; // group header height
       if (expandedGroups.has(group.key)) {
         for (const task of group.tasks) {
-          y += 20;
+          y += 20; // mid-point of task row (40px / 2)
           positions.set(task.id, y);
           y += 20;
         }
@@ -498,13 +498,7 @@ export function ProjectTimeline({
           ref={gridRef}
           range={range}
           zoom={zoom}
-        >
-          {/* Drop zone */}
-          <div
-            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
-            onDrop={handleDrop}
-          >
-            {/* Dependency lines */}
+          chartOverlay={
             <TimelineDependencyLines
               dependencies={deps}
               tasks={scheduled}
@@ -512,10 +506,16 @@ export function ProjectTimeline({
               hoveredTaskId={hoveredTaskId}
               taskPositions={taskPositions}
             />
-
-            {/* Swimlanes */}
+          }
+        >
+          {/* Drop zone */}
+          <div
+            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+            onDrop={handleDrop}
+          >
+            {/* Gantt rows */}
             {groups.map((group) => (
-              <TimelineSwimlane
+              <GanttGroup
                 key={group.key}
                 group={group}
                 range={range}

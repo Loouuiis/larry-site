@@ -986,7 +986,6 @@ export function DocumentsPageClient() {
                   draggable
                   onDragStart={handleDragStart("document", doc.id)}
                   onDragEnd={handleDragEnd}
-                  onDoubleClick={() => openDocument(doc)}
                   onClick={() => openDocument(doc)}
                   onContextMenu={(e) => {
                     e.preventDefault();
