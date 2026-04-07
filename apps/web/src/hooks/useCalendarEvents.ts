@@ -14,7 +14,15 @@ export interface CalendarEvent {
   projectName?: string | null;
   meetingId?: string | null;
   taskId?: string | null;
+  taskStatus?: string | null;
   color: string; // Larry palette hex
+}
+
+function taskPriorityColor(priority: string | null | undefined): string {
+  if (priority === "critical") return "#ef4444";
+  if (priority === "high") return "#f59e0b";
+  if (priority === "medium") return "#3b82f6";
+  return "#22c55e"; // low
 }
 
 function toDateStr(value: string | null | undefined): string | null {
@@ -56,7 +64,8 @@ export function useCalendarEvents(projectId?: string) {
           date: dateStr,
           projectId: task.projectId,
           taskId: task.id,
-          color: "#bfd2ff", // Larry 7.0 — accent blue for deadlines
+          taskStatus: task.status,
+          color: taskPriorityColor(task.priority),
         });
       }
 

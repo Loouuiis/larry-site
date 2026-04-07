@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { useCalendarEvents, type CalendarEvent } from "@/hooks/useCalendarEvents";
@@ -50,8 +50,36 @@ function isSameDay(a: Date, b: Date): boolean {
 export default function CalendarPage() {
   const today = useMemo(() => new Date(), []);
   const [viewDate, setViewDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
-  const { events, loading: eventsLoading } = useCalendarEvents();
+  const { events, loading: eventsLoading, refresh } = useCalendarEvents();
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+
+  // Task creation state
+  const [creating, setCreating] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [newTaskProject, setNewTaskProject] = useState("");
+  const [taskSaving, setTaskSaving] = useState(false);
+  const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    fetch("/api/workspace/projects", { cache: "no-store" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data?.projects) setProjects(data.projects);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (creating) titleInputRef.current?.focus();
+  }, [creating]);
+
+  // Reset creation form when day changes
+  useEffect(() => {
+    setCreating(false);
+    setNewTaskTitle("");
+    setNewTaskProject("");
+  }, [selectedDate]);
 
   function eventsForDate(date: Date): CalendarEvent[] {
     const key = date.toISOString().slice(0, 10);
@@ -68,6 +96,27 @@ export default function CalendarPage() {
   const nextMonth = () => setViewDate(new Date(year, month + 1, 1));
   const goToday = () => setViewDate(new Date(today.getFullYear(), today.getMonth(), 1));
 
+  async function handleCreateTask(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newTaskTitle.trim() || !newTaskProject || !selectedDate || taskSaving) return;
+    setTaskSaving(true);
+    try {
+      await fetch("/api/workspace/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: newTaskProject, title: newTaskTitle.trim(), dueDate: selectedDate }),
+      });
+      await refresh();
+      setCreating(false);
+      setNewTaskTitle("");
+      setNewTaskProject("");
+    } catch {
+      // ignore
+    } finally {
+      setTaskSaving(false);
+    }
+  }
+
   return (
     <div className="min-h-0 flex-1 overflow-y-auto" style={{ background: "var(--page-bg)" }}>
       <div className="mx-auto max-w-[1000px] px-6 py-8 space-y-6">
@@ -82,15 +131,6 @@ export default function CalendarPage() {
               Deadlines, meetings, and events across all projects.
             </p>
           </div>
-          <button
-            type="button"
-            disabled
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg px-4 text-[13px] font-medium text-white opacity-60 cursor-not-allowed"
-            style={{ background: "var(--cta)" }}
-          >
-            <Plus size={14} />
-            Add event
-          </button>
         </div>
 
         {/* Calendar card */}
@@ -234,6 +274,7 @@ export default function CalendarPage() {
         {/* Day detail panel */}
         {selectedDate && (() => {
           const dayEvents = events.filter((e) => e.date === selectedDate);
+          const dateLabel = new Date(selectedDate + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
           return (
             <div
               style={{
@@ -245,22 +286,81 @@ export default function CalendarPage() {
             >
               <div className="flex items-center justify-between">
                 <h3 className="text-[16px] font-semibold" style={{ color: "var(--text-1)" }}>
-                  {new Date(selectedDate + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+                  {dateLabel}
                 </h3>
-                <button
-                  type="button"
-                  onClick={() => setSelectedDate(null)}
-                  className="text-[12px]"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  Close
-                </button>
+                <div className="flex items-center gap-3">
+                  {!creating && (
+                    <button
+                      type="button"
+                      onClick={() => setCreating(true)}
+                      className="inline-flex items-center gap-1 text-[12px] font-medium"
+                      style={{ color: "var(--cta)" }}
+                    >
+                      <Plus size={13} />
+                      New task
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDate(null)}
+                    className="text-[12px]"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
-              {dayEvents.length === 0 ? (
+
+              {/* Inline task creation form */}
+              {creating && (
+                <form onSubmit={handleCreateTask} className="mt-3 flex flex-col gap-2">
+                  <input
+                    ref={titleInputRef}
+                    type="text"
+                    placeholder="Task title"
+                    value={newTaskTitle}
+                    onChange={(e) => setNewTaskTitle(e.target.value)}
+                    className="w-full rounded-lg border px-3 py-2 text-[13px] outline-none"
+                    style={{ borderColor: "var(--border)", background: "var(--surface-2)", color: "var(--text-1)" }}
+                    onKeyDown={(e) => { if (e.key === "Escape") setCreating(false); }}
+                  />
+                  <select
+                    value={newTaskProject}
+                    onChange={(e) => setNewTaskProject(e.target.value)}
+                    className="w-full rounded-lg border px-3 py-2 text-[13px] outline-none"
+                    style={{ borderColor: "var(--border)", background: "var(--surface-2)", color: newTaskProject ? "var(--text-1)" : "var(--text-disabled)" }}
+                  >
+                    <option value="">Select project…</option>
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="submit"
+                      disabled={!newTaskTitle.trim() || !newTaskProject || taskSaving}
+                      className="rounded-lg px-4 py-1.5 text-[12px] font-medium text-white disabled:opacity-40"
+                      style={{ background: "var(--cta)" }}
+                    >
+                      {taskSaving ? "Creating…" : "Create task"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCreating(false)}
+                      className="text-[12px]"
+                      style={{ color: "var(--text-muted)" }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {dayEvents.length === 0 && !creating ? (
                 <p className="mt-3 text-[13px]" style={{ color: "var(--text-disabled)" }}>
                   No events on this day.
                 </p>
-              ) : (
+              ) : dayEvents.length > 0 ? (
                 <div className="mt-3 space-y-2">
                   {dayEvents.map((evt) => {
                     const href =
@@ -295,7 +395,7 @@ export default function CalendarPage() {
                     );
                   })}
                 </div>
-              )}
+              ) : null}
             </div>
           );
         })()}

@@ -22,6 +22,7 @@ import {
   Search,
   Star,
   Trash2,
+  Plus,
 } from "lucide-react";
 import { useWorkspaceChrome } from "@/app/workspace/WorkspaceChromeContext";
 import { triggerBoundedWorkspaceRefresh } from "@/app/workspace/refresh";
@@ -283,8 +284,42 @@ const PROJECT_TABS: { id: ProjectTab; label: string; icon: React.ElementType }[]
 function ProjectCalendar({ projectId }: { projectId: string }) {
   const today = useMemo(() => new Date(), []);
   const [viewDate, setViewDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
-  const { events, loading } = useCalendarEvents(projectId);
+  const { events, loading, refresh } = useCalendarEvents(projectId);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+
+  const [creating, setCreating] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [taskSaving, setTaskSaving] = useState(false);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (creating) titleInputRef.current?.focus();
+  }, [creating]);
+
+  useEffect(() => {
+    setCreating(false);
+    setNewTaskTitle("");
+  }, [selectedDate]);
+
+  async function handleCreateTask(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newTaskTitle.trim() || !selectedDate || taskSaving) return;
+    setTaskSaving(true);
+    try {
+      await fetch("/api/workspace/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, title: newTaskTitle.trim(), dueDate: selectedDate }),
+      });
+      await refresh();
+      setCreating(false);
+      setNewTaskTitle("");
+    } catch {
+      // ignore
+    } finally {
+      setTaskSaving(false);
+    }
+  }
 
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
@@ -477,20 +512,65 @@ function ProjectCalendar({ projectId }: { projectId: string }) {
               <h4 className="text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
                 {new Date(selectedDate + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
               </h4>
-              <button
-                type="button"
-                onClick={() => setSelectedDate(null)}
-                className="text-[11px]"
-                style={{ color: "var(--text-muted)" }}
-              >
-                Close
-              </button>
+              <div className="flex items-center gap-3">
+                {!creating && (
+                  <button
+                    type="button"
+                    onClick={() => setCreating(true)}
+                    className="inline-flex items-center gap-1 text-[11px] font-medium"
+                    style={{ color: "var(--cta)" }}
+                  >
+                    <Plus size={12} />
+                    New task
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setSelectedDate(null)}
+                  className="text-[11px]"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  Close
+                </button>
+              </div>
             </div>
-            {dayEvents.length === 0 ? (
+            {creating && (
+              <form onSubmit={handleCreateTask} className="mt-2 flex flex-col gap-1.5">
+                <input
+                  ref={titleInputRef}
+                  type="text"
+                  placeholder="Task title"
+                  value={newTaskTitle}
+                  onChange={(e) => setNewTaskTitle(e.target.value)}
+                  className="w-full rounded-lg border px-2.5 py-1.5 text-[12px] outline-none"
+                  style={{ borderColor: "var(--border)", background: "var(--surface-2)", color: "var(--text-1)" }}
+                  onKeyDown={(e) => { if (e.key === "Escape") setCreating(false); }}
+                />
+                <div className="flex items-center gap-2">
+                  <button
+                    type="submit"
+                    disabled={!newTaskTitle.trim() || taskSaving}
+                    className="rounded-lg px-3 py-1 text-[11px] font-medium text-white disabled:opacity-40"
+                    style={{ background: "var(--cta)" }}
+                  >
+                    {taskSaving ? "Creating…" : "Create task"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCreating(false)}
+                    className="text-[11px]"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+            {dayEvents.length === 0 && !creating ? (
               <p className="mt-2 text-[12px]" style={{ color: "var(--text-disabled)" }}>
                 No events on this day.
               </p>
-            ) : (
+            ) : dayEvents.length > 0 ? (
               <div className="mt-2 space-y-1.5">
                 {dayEvents.map((evt) => {
                   const href =
@@ -525,7 +605,7 @@ function ProjectCalendar({ projectId }: { projectId: string }) {
                   );
                 })}
               </div>
-            )}
+            ) : null}
           </div>
         );
       })()}
