@@ -164,21 +164,24 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
         status: "backlog" | "not_started" | "in_progress" | "waiting" | "completed" | "blocked";
         priority: "low" | "medium" | "high" | "critical";
         assigneeUserId: string | null;
+        assigneeName: string | null;
         progressPercent: number;
         startDate: string | null;
         dueDate: string | null;
         riskLevel: "low" | "medium" | "high";
       }>(
         tenantId,
-        `SELECT id, title, status, priority,
-                assignee_user_id as "assigneeUserId",
-                progress_percent as "progressPercent",
-                start_date as "startDate",
-                due_date as "dueDate",
-                risk_level as "riskLevel"
+        `SELECT tasks.id, tasks.title, tasks.status, tasks.priority,
+                tasks.assignee_user_id as "assigneeUserId",
+                COALESCE(NULLIF(u.display_name, ''), split_part(u.email, '@', 1)) as "assigneeName",
+                tasks.progress_percent as "progressPercent",
+                tasks.start_date as "startDate",
+                tasks.due_date as "dueDate",
+                tasks.risk_level as "riskLevel"
          FROM tasks
-         WHERE tenant_id = $1 AND project_id = $2
-         ORDER BY created_at ASC`,
+         LEFT JOIN users u ON u.id = tasks.assignee_user_id
+         WHERE tasks.tenant_id = $1 AND tasks.project_id = $2
+         ORDER BY tasks.created_at ASC`,
         [tenantId, params.id]
       );
 

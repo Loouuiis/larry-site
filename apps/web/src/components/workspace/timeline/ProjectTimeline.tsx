@@ -272,13 +272,27 @@ export function ProjectTimeline({
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  // Merge timeline.gantt tasks with allTasks so newly created tasks always appear
+  // Merge timeline.gantt tasks with allTasks so newly created tasks always appear.
+  // Supplement gantt tasks with assigneeName from allTasks (gantt query omits the JOIN).
+  // Synthesize startDate = today for tasks that only have dueDate so they appear as bars.
   const timelineTasks = useMemo(() => {
+    const today = new Date().toISOString().split("T")[0];
+    const allTasksTyped = allTasks as WorkspaceTimelineTask[];
+    const nameById = new Map(allTasksTyped.map((t) => [t.id, t.assigneeName ?? null]));
+
+    function enrich(t: WorkspaceTimelineTask): WorkspaceTimelineTask {
+      return {
+        ...t,
+        assigneeName: t.assigneeName ?? nameById.get(t.id) ?? null,
+        startDate: t.startDate ?? (t.dueDate ? today : null),
+      };
+    }
+
     const ganttTasks = timeline?.gantt;
-    if (!ganttTasks || ganttTasks.length === 0) return allTasks as WorkspaceTimelineTask[];
+    if (!ganttTasks || ganttTasks.length === 0) return allTasksTyped.map(enrich);
     const ganttIds = new Set(ganttTasks.map((t) => t.id));
-    const extra = (allTasks as WorkspaceTimelineTask[]).filter((t) => !ganttIds.has(t.id));
-    return [...ganttTasks, ...extra];
+    const extra = allTasksTyped.filter((t) => !ganttIds.has(t.id));
+    return [...ganttTasks.map(enrich), ...extra.map(enrich)];
   }, [timeline?.gantt, allTasks]);
 
   // Split scheduled / unscheduled

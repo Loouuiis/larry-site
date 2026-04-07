@@ -224,7 +224,7 @@ export function groupTasks(
     if (groupBy === "phase") {
       key = t.category ?? "Uncategorised";
     } else if (groupBy === "assignee") {
-      key = t.assigneeName ?? t.assigneeUserId ?? "Unassigned";
+      key = t.assigneeName ?? "Unassigned";
     } else {
       key = STATUS_COLOURS[t.status]?.label ?? t.status;
     }
