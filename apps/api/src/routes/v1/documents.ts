@@ -513,6 +513,53 @@ export const documentRoutes: FastifyPluginAsync = async (fastify) => {
   );
 
   fastify.get(
+    "/:id",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
+    async (request) => {
+      const params = DownloadParamsSchema.parse(request.params ?? {});
+      const tenantId = request.user.tenantId;
+      const actorUserId = request.user.userId;
+
+      const rows = await fastify.db.queryTenant<DocumentListRow>(
+        tenantId,
+        `SELECT d.id,
+                d.project_id as "projectId",
+                d.title,
+                d.content,
+                d.doc_type as "docType",
+                d.source_kind as "sourceKind",
+                d.source_record_id as "sourceRecordId",
+                d.version,
+                d.metadata,
+                d.created_by_user_id as "createdByUserId",
+                d.created_at as "createdAt",
+                d.updated_at as "updatedAt"
+           FROM documents d
+          WHERE d.tenant_id = $1
+            AND d.id = $2
+          LIMIT 1`,
+        [tenantId, params.id]
+      );
+
+      const document = rows[0];
+      if (!document) {
+        throw fastify.httpErrors.notFound("Document not found.");
+      }
+
+      if (document.projectId) {
+        await assertProjectReadAccessOrThrow({
+          tenantId,
+          userId: actorUserId,
+          tenantRole: request.user.role,
+          projectId: document.projectId,
+        });
+      }
+
+      return document;
+    }
+  );
+
+  fastify.get(
     "/:id/download",
     { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
     async (request, reply) => {

@@ -35,7 +35,10 @@
       "Bash(npx tsc:*)",
       "Bash(find /Users/anton.gong/PROGRAMMERING/larry-site/apps/web/src/app/workspace/projects/[projectId] -type f -name \"*.tsx\" -o -name \"*.ts\")",
       "Bash(find:*)",
-      "Bash(psql:*)"
+      "Bash(psql:*)",
+      "Bash(mkdir -p /home/augustus/Work/larry/larry-site/apps/web/src/app/api/workspace/documents/\\\\[id\\\\])",
+      "Bash(mkdir -p /home/augustus/Work/larry/larry-site/apps/web/src/app/workspace/documents/\\\\[id\\\\])",
+      "Bash(cat:*)"
     ]
   }
 }

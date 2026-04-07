@@ -131,6 +131,13 @@ export function DocumentsPageClient() {
   const [dragging, setDragging] = useState<DragState | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
 
+  const openDocument = (doc: DocumentRow) => {
+    const url = doc.isLarryDoc
+      ? `/workspace/documents/${doc.id}?type=larry`
+      : `/workspace/documents/${doc.id}`;
+    router.push(url);
+  };
+
   /* ---- meeting drawer (legacy, kept for compat) ---- */
   const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null);
   const [drawerDetail, setDrawerDetail] = useState<MeetingDetail | null>(null);
@@ -446,9 +453,7 @@ export function DocumentsPageClient() {
 
   const getDocumentActions = (doc: DocumentRow) =>
     buildDocumentActions({
-      onOpen: () => {
-        // For now, just a placeholder
-      },
+      onOpen: () => openDocument(doc),
       onMoveTo: () => setMoveTarget({ kind: "document", id: doc.id }),
     });
 
@@ -981,6 +986,8 @@ export function DocumentsPageClient() {
                   draggable
                   onDragStart={handleDragStart("document", doc.id)}
                   onDragEnd={handleDragEnd}
+                  onDoubleClick={() => openDocument(doc)}
+                  onClick={() => openDocument(doc)}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     setCtxMenu({
@@ -992,7 +999,7 @@ export function DocumentsPageClient() {
                   }}
                   style={{
                     gridTemplateColumns: GRID_COLS,
-                    cursor: "default",
+                    cursor: "pointer",
                   }}
                 >
                   {/* Name */}
