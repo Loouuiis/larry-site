@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { AnimatePresence } from "framer-motion";
+import { X } from "lucide-react";
 import type { WorkspaceTimelineTask, WorkspaceTimeline } from "@/app/dashboard/types";
 import { TaskDetailPanel, type TaskPanelData, type TaskStatus as PanelStatus } from "@/components/dashboard/TaskDetailPanel";
 import { TimelineToolbar } from "./TimelineToolbar";
@@ -28,8 +29,12 @@ const STATUS_TO_PANEL: Record<string, PanelStatus> = {
 };
 
 function toTaskPanelData(task: WorkspaceTimelineTask): TaskPanelData {
-  const initials = (task.assigneeName ?? task.assigneeUserId ?? "?")
-    .split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+  const fullName = task.assigneeName ?? null;
+  const initials = fullName
+    ? fullName.split(" ").filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase()
+    : "?";
+  const rawDeadline = task.endDate ?? task.dueDate ?? "";
+  const deadline = rawDeadline ? rawDeadline.slice(0, 10) : "";
   return {
     id: task.id,
     name: task.title,
@@ -37,11 +42,193 @@ function toTaskPanelData(task: WorkspaceTimelineTask): TaskPanelData {
     status: STATUS_TO_PANEL[task.status] ?? "upcoming",
     priority: task.priority,
     assignee: initials,
-    assigneeFull: task.assigneeName ?? task.assigneeUserId ?? "Unassigned",
+    assigneeFull: fullName ?? "Unassigned",
     project: task.category ?? "",
-    deadline: task.endDate ?? task.dueDate ?? "",
+    deadline,
     progress: task.progressPercent ?? 0,
   };
+}
+
+/* ─── Add task modal ────────────────────────────────────────────────── */
+
+interface Member { userId: string; name: string; }
+
+function AddTaskModal({
+  projectId,
+  onSave,
+  onClose,
+}: {
+  projectId: string;
+  onSave: () => Promise<void>;
+  onClose: () => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [priority, setPriority] = useState<"low" | "medium" | "high" | "critical">("medium");
+  const [assigneeId, setAssigneeId] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [description, setDescription] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [members, setMembers] = useState<Member[]>([]);
+  const titleRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    titleRef.current?.focus();
+    let cancelled = false;
+    fetch(`/api/workspace/projects/${encodeURIComponent(projectId)}/members`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data) => {
+        if (!cancelled && Array.isArray(data?.members)) {
+          setMembers(data.members.map((m: { userId: string; name?: string; email?: string }) => ({
+            userId: m.userId,
+            name: m.name || m.email || "Unknown",
+          })));
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [projectId]);
+
+  const handleSave = async () => {
+    if (!title.trim() || saving) return;
+    setSaving(true);
+    try {
+      const body: Record<string, string> = { projectId, title: title.trim(), priority };
+      if (assigneeId) body.assigneeUserId = assigneeId;
+      if (dueDate) body.dueDate = dueDate;
+      if (startDate) body.startDate = startDate;
+      if (description.trim()) body.description = description.trim();
+      const res = await fetch("/api/workspace/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) return;
+      await onSave();
+      onClose();
+    } catch {
+      // silently fail
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    padding: "8px 10px",
+    borderRadius: "6px",
+    border: "1px solid var(--border)",
+    background: "var(--surface-2)",
+    color: "var(--text-1)",
+    fontSize: "13px",
+    outline: "none",
+    boxSizing: "border-box",
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.35)", backdropFilter: "blur(2px)" }} />
+      <div style={{
+        position: "relative",
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: "var(--radius-card)",
+        padding: "24px",
+        width: "400px",
+        maxHeight: "88vh",
+        display: "flex",
+        flexDirection: "column",
+        boxShadow: "0 8px 32px rgba(0,0,0,0.16)",
+      }}>
+        {/* Header */}
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-[15px] font-bold" style={{ color: "var(--text-1)" }}>Add task</h3>
+          <button type="button" onClick={onClose} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: "6px", padding: "4px", cursor: "pointer", color: "var(--text-muted)", display: "flex" }}>
+            <X size={14} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: "14px" }}>
+          {/* Title */}
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--text-muted)" }}>Title *</p>
+            <input
+              ref={titleRef}
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") void handleSave(); if (e.key === "Escape") onClose(); }}
+              placeholder="Task title..."
+              style={inputStyle}
+            />
+          </div>
+
+          {/* Priority */}
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--text-muted)" }}>Priority</p>
+            <select value={priority} onChange={(e) => setPriority(e.target.value as typeof priority)} style={inputStyle}>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="critical">Critical</option>
+            </select>
+          </div>
+
+          {/* Assignee */}
+          {members.length > 0 && (
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--text-muted)" }}>Assignee</p>
+              <select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)} style={inputStyle}>
+                <option value="">Unassigned</option>
+                {members.map((m) => <option key={m.userId} value={m.userId}>{m.name}</option>)}
+              </select>
+            </div>
+          )}
+
+          {/* Dates */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--text-muted)" }}>Start date</p>
+              <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={inputStyle} />
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--text-muted)" }}>Due date</p>
+              <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} style={inputStyle} />
+            </div>
+          </div>
+
+          {/* Description */}
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-widest mb-1.5" style={{ color: "var(--text-muted)" }}>Description</p>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Add a description (optional)..."
+              rows={3}
+              style={{ ...inputStyle, resize: "none" }}
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-2 mt-5 pt-4" style={{ borderTop: "1px solid var(--border)" }}>
+          <button type="button" onClick={onClose}
+            className="px-4 py-2 text-[13px] font-medium rounded-lg"
+            style={{ background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text-2)", cursor: "pointer" }}
+          >
+            Cancel
+          </button>
+          <button type="button" onClick={() => void handleSave()} disabled={!title.trim() || saving}
+            className="px-4 py-2 text-[13px] font-medium rounded-lg"
+            style={{ background: "#6c44f6", border: "none", color: "#fff", cursor: "pointer", opacity: (!title.trim() || saving) ? 0.5 : 1 }}
+          >
+            {saving ? "Adding..." : "Add task"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /* ─── Component ────────────────────────────────────────────────────── */
@@ -72,6 +259,7 @@ export function ProjectTimeline({
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [hoveredTaskId, setHoveredTaskId] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
+  const [addingTask, setAddingTask] = useState(false);
 
   const gridRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -284,6 +472,7 @@ export function ProjectTimeline({
         onSearchChange={setSearchQuery}
         onToggleCollapseAll={toggleCollapseAll}
         onJumpToToday={jumpToToday}
+        onAddTask={() => setAddingTask(true)}
       />
 
       {/* Main timeline area */}
@@ -369,6 +558,15 @@ export function ProjectTimeline({
           Today
         </span>
       </div>
+
+      {/* Add task modal */}
+      {addingTask && (
+        <AddTaskModal
+          projectId={projectId}
+          onSave={async () => { await refresh(); }}
+          onClose={() => setAddingTask(false)}
+        />
+      )}
     </div>
   );
 }

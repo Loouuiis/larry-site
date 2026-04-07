@@ -135,7 +135,13 @@ export function computeTimelineRange(
   // Add padding based on zoom level
   const padDays = zoom === "week" ? 3 : zoom === "month" ? 14 : 30;
   const start = addDays(earliest, -padDays);
-  const end = addDays(latest, padDays);
+
+  // Ensure the timeline always extends a meaningful distance into the future
+  const minFutureDays = zoom === "week" ? 42 : zoom === "month" ? 120 : 365;
+  const taskEnd = addDays(latest, padDays);
+  const minEnd = addDays(now, minFutureDays);
+  const end = taskEnd > minEnd ? taskEnd : minEnd;
+
   const totalDays = Math.max(daysBetween(start, end), 1);
 
   return { start, end, totalDays };

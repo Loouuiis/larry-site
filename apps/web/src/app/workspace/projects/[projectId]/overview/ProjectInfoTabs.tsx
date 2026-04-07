@@ -106,29 +106,19 @@ export function ProjectInfoTabs({
 
       <div style={{ padding: "16px 18px" }}>
         {activeTab === "summary" && (
-          <div className="space-y-3">
-            <p className="text-[13px] leading-[1.7]" style={{ color: "var(--text-2)" }}>
-              {narrative?.trim() || "Larry hasn't generated a summary yet. Once there's project activity, Larry will write a brief here — covering decisions made, deadline changes, new team members, and other notable updates."}
-            </p>
-            {recentActivity.length > 0 && (
-              <div style={{ borderTop: "1px solid var(--border)", paddingTop: "12px" }}>
-                <p className="text-[11px] font-semibold uppercase tracking-widest mb-2" style={{ color: "var(--text-muted)" }}>
-                  Recent highlights
-                </p>
-                <p className="text-[12px] leading-[1.75]" style={{ color: "var(--text-2)" }}>
+          <p className="text-[13px] leading-[1.8]" style={{ color: "var(--text-2)" }}>
+            {narrative?.trim()
+              ? <>
+                  {narrative.trim()}{" "}
                   {recentActivity.slice(0, 4).map((event, i, arr) => (
                     <span key={event.id}>
-                      {event.displayText}
-                      <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-                        {" "}({formatRelative(event.executedAt ?? event.createdAt)})
-                      </span>
-                      {i < arr.length - 1 ? " " : ""}
+                      {event.displayText} ({formatRelative(event.executedAt ?? event.createdAt)}){i < arr.length - 1 ? " " : ""}
                     </span>
                   ))}
-                </p>
-              </div>
-            )}
-          </div>
+                </>
+              : "Larry hasn't generated a summary yet. Once there's project activity, Larry will write a brief here — covering decisions made, deadline changes, new team members, and other notable updates."
+            }
+          </p>
         )}
 
         {activeTab === "activity" && (

@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Search, ChevronDown, ChevronsUpDown, Check,
+  Search, ChevronDown, ChevronsUpDown, Check, Plus,
 } from "lucide-react";
 import {
   EASE, ZOOM_LABELS,
@@ -87,6 +87,7 @@ interface TimelineToolbarProps {
   onSearchChange: (q: string) => void;
   onToggleCollapseAll: () => void;
   onJumpToToday: () => void;
+  onAddTask?: () => void;
 }
 
 const GROUP_OPTIONS: { value: GroupBy; label: string }[] = [
@@ -104,7 +105,7 @@ const COLOUR_OPTIONS: { value: ColourBy; label: string }[] = [
 export function TimelineToolbar({
   zoom, groupBy, colourBy, searchQuery, allCollapsed,
   onZoomChange, onGroupByChange, onColourByChange,
-  onSearchChange, onToggleCollapseAll, onJumpToToday,
+  onSearchChange, onToggleCollapseAll, onJumpToToday, onAddTask,
 }: TimelineToolbarProps) {
   return (
     <div className="flex items-center gap-2 flex-wrap mb-2">
@@ -170,6 +171,17 @@ export function TimelineToolbar({
         <ChevronsUpDown size={12} />
         {allCollapsed ? "Expand all" : "Collapse all"}
       </button>
+
+      {/* Add task */}
+      {onAddTask && (
+        <button
+          onClick={onAddTask}
+          className="ml-auto flex items-center gap-1.5 rounded-lg border border-[var(--brand)]/30 bg-[var(--brand)] px-2.5 py-1.5 text-[11px] font-semibold text-white hover:opacity-90 transition-opacity"
+        >
+          <Plus size={12} />
+          Add task
+        </button>
+      )}
     </div>
   );
 }

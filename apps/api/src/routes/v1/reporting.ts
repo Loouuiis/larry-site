@@ -175,7 +175,23 @@ export const reportingRoutes: FastifyPluginAsync = async (fastify) => {
           pendingApprovals,
           autoExecutedActions: autoExecuted,
         },
-        narrative: `Completion ${totalTasks === 0 ? 0 : Number(((completedTasks / totalTasks) * 100).toFixed(0))}%, ${highRiskTasks} high-risk tasks, ${pendingApprovals} pending suggestions, ${autoExecuted} actions auto-executed.`,
+        narrative: (() => {
+          const completionPct = totalTasks === 0 ? 0 : Number(((completedTasks / totalTasks) * 100).toFixed(0));
+          const parts: string[] = [];
+          parts.push(`The project is currently at ${completionPct}% completion.`);
+          if (highRiskTasks > 0) {
+            parts.push(`There ${highRiskTasks === 1 ? "is" : "are"} ${highRiskTasks} high-risk task${highRiskTasks === 1 ? "" : "s"} that need attention.`);
+          }
+          if (pendingApprovals > 0) {
+            parts.push(`${pendingApprovals} suggestion${pendingApprovals === 1 ? " is" : "s are"} pending review.`);
+          } else {
+            parts.push("There are no pending suggestions at the moment.");
+          }
+          if (autoExecuted > 0) {
+            parts.push(`Larry has auto-executed ${autoExecuted} action${autoExecuted === 1 ? "" : "s"} on behalf of the team.`);
+          }
+          return parts.join(" ");
+        })(),
       };
 
       await insertReportSnapshotOncePerDay(
