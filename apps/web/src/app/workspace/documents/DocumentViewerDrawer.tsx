@@ -105,8 +105,8 @@ export function DocumentViewerDrawer({ docId, isLarryDoc, onClose }: DocumentVie
       {/* Drawer */}
       <div
         className="fixed right-0 top-0 flex h-full flex-col"
-        style={{ zIndex: 70 }}
         style={{
+          zIndex: 70,
           width: "500px",
           background: "var(--surface)",
           borderLeft: "1px solid var(--border)",
