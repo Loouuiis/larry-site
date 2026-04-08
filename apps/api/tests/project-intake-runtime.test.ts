@@ -13,6 +13,23 @@ vi.mock("../src/lib/project-memberships.js", () => ({
   createProjectOwnerMembership: vi.fn(),
 }));
 
+vi.mock("@larry/ai", () => ({
+  generateBootstrapTasks: vi.fn().mockResolvedValue({
+    tasks: [
+      { title: "Define project scope", description: "Establish goals and success criteria.", priority: "high", workstream: null },
+      { title: "Create delivery plan", description: "Break work into phases with owners.", priority: "high", workstream: null },
+    ],
+    summary: "Larry created 2 starter tasks.",
+  }),
+  generateBootstrapFromTranscript: vi.fn().mockResolvedValue({
+    tasks: [
+      { title: "Follow up on meeting decisions", description: "Track commitments from the meeting.", priority: "high", workstream: null },
+      { title: "Share meeting summary", description: "Distribute outcomes to stakeholders.", priority: "medium", workstream: null },
+    ],
+    summary: "Larry identified 2 action items from the meeting.",
+  }),
+}));
+
 vi.mock("@larry/db", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@larry/db")>();
   return {
@@ -209,6 +226,7 @@ async function createTestApp(db: Db) {
   const app = Fastify({ logger: false });
 
   app.decorate("db", db);
+  app.decorate("config", { MODEL_PROVIDER: "gemini", GEMINI_API_KEY: "test-key", GEMINI_MODEL: "gemini-2.5-flash" });
   app.decorate("queue", { publish: vi.fn(async () => undefined), close: vi.fn(async () => undefined) });
   app.decorate(
     "authenticate",
