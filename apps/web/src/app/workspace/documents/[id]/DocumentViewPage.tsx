@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Copy, Check, Download } from "lucide-react";
+import { ArrowLeft, Copy, Check, Download, FileDown } from "lucide-react";
 
 interface DocumentData {
   id: string;
@@ -15,6 +15,7 @@ interface DocumentData {
   createdAt: string;
   updatedAt: string;
   projectId?: string | null;
+  metadata?: Record<string, unknown>;
 }
 
 const DOC_TYPE_LABELS: Record<string, string> = {
@@ -71,6 +72,16 @@ export function DocumentViewPage({ id, isLarry }: { id: string; isLarry: boolean
 
   const typeLabel = doc ? (DOC_TYPE_LABELS[doc.docType] ?? "Document") : "Document";
   const stateBadge = doc?.state ? STATE_BADGE[doc.state] : null;
+  const isBinary = doc?.metadata?.binaryEncoding === "base64";
+  const binaryFileName = doc?.metadata?.fileName as string | undefined;
+  const byteLength = doc?.metadata?.byteLength as number | undefined;
+  const downloadUrl = `/api/workspace/documents/${id}/download`;
+
+  function formatBytes(n: number): string {
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  }
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto" style={{ background: "var(--page-bg)" }}>
@@ -170,17 +181,19 @@ export function DocumentViewPage({ id, isLarry }: { id: string; isLarry: boolean
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={copyContent}
-                    className="pm-btn pm-btn-sm inline-flex items-center gap-1.5"
-                  >
-                    {copied ? <Check size={12} /> : <Copy size={12} />}
-                    {copied ? "Copied!" : "Copy"}
-                  </button>
+                  {!isBinary && (
+                    <button
+                      type="button"
+                      onClick={copyContent}
+                      className="pm-btn pm-btn-sm inline-flex items-center gap-1.5"
+                    >
+                      {copied ? <Check size={12} /> : <Copy size={12} />}
+                      {copied ? "Copied!" : "Copy"}
+                    </button>
+                  )}
                   {!isLarry && (
                     <a
-                      href={`/api/workspace/documents/${id}/download`}
+                      href={downloadUrl}
                       className="pm-btn pm-btn-sm inline-flex items-center gap-1.5"
                       download
                     >
@@ -218,26 +231,64 @@ export function DocumentViewPage({ id, isLarry }: { id: string; isLarry: boolean
             </div>
 
             {/* Document body */}
-            <div style={{ padding: "28px" }}>
-              {doc.content ? (
+            {isBinary && doc.docType === "pdf" ? (
+              <iframe
+                src={downloadUrl}
+                title={doc.title}
+                style={{ display: "block", width: "100%", height: "80vh", border: "none" }}
+              />
+            ) : isBinary ? (
+              <div style={{ padding: "28px" }}>
                 <div
-                  style={{
-                    fontSize: "14px",
-                    lineHeight: "1.8",
-                    color: "var(--text-2)",
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
-                    fontFamily: doc.docType === "transcript" ? "var(--font-mono, monospace)" : "inherit",
-                  }}
+                  className="flex items-center gap-4 rounded-xl border p-5"
+                  style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
                 >
-                  {doc.content}
+                  <div
+                    className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl"
+                    style={{ background: "var(--color-brand, #6c44f6)1a" }}
+                  >
+                    <FileDown size={22} style={{ color: "var(--color-brand, #6c44f6)" }} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[14px] font-medium" style={{ color: "var(--text-1)" }}>
+                      {binaryFileName ?? doc.title}
+                    </p>
+                    <p className="text-[12px] mt-0.5" style={{ color: "var(--text-muted)" }}>
+                      {doc.docType.toUpperCase()}{byteLength != null ? ` · ${formatBytes(byteLength)}` : ""}
+                    </p>
+                  </div>
+                  <a
+                    href={downloadUrl}
+                    download
+                    className="pm-btn pm-btn-primary pm-btn-sm inline-flex items-center gap-1.5 shrink-0"
+                  >
+                    <Download size={13} />
+                    Download
+                  </a>
                 </div>
-              ) : (
-                <p className="text-[13px]" style={{ color: "var(--text-disabled)" }}>
-                  No content available.
-                </p>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div style={{ padding: "28px" }}>
+                {doc.content ? (
+                  <div
+                    style={{
+                      fontSize: "14px",
+                      lineHeight: "1.8",
+                      color: "var(--text-2)",
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                      fontFamily: doc.docType === "transcript" ? "var(--font-mono, monospace)" : "inherit",
+                    }}
+                  >
+                    {doc.content}
+                  </div>
+                ) : (
+                  <p className="text-[13px]" style={{ color: "var(--text-disabled)" }}>
+                    No content available.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -154,7 +154,7 @@ export function UploadModal({ open, onClose, onUploaded, initialFolderId }: Uplo
         };
       } else {
         // Strip null bytes — PostgreSQL rejects U+0000 in text columns
-        content = (await file.text()).replace(/\0/g, "").slice(0, 50_000);
+        content = (await file.text()).replace(/\0/g, "").slice(0, 8_000_000);
         if (!content.trim()) {
           setError("File appears to be empty or unreadable.");
           setUploading(false);
