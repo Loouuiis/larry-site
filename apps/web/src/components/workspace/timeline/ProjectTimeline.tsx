@@ -34,7 +34,10 @@ function toTaskPanelData(task: WorkspaceTimelineTask): TaskPanelData {
     ? fullName.split(" ").filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase()
     : "?";
   const rawDeadline = task.endDate ?? task.dueDate ?? "";
-  const deadline = rawDeadline ? rawDeadline.slice(0, 10) : "";
+  const deadlineRaw = rawDeadline ? rawDeadline.slice(0, 10) : "";
+  const deadline = deadlineRaw
+    ? new Date(deadlineRaw + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short" })
+    : "";
   return {
     id: task.id,
     name: task.title,
@@ -43,8 +46,10 @@ function toTaskPanelData(task: WorkspaceTimelineTask): TaskPanelData {
     priority: task.priority,
     assignee: initials,
     assigneeFull: fullName ?? "Unassigned",
+    assigneeUserId: task.assigneeUserId ?? null,
     project: task.category ?? "",
     deadline,
+    deadlineRaw,
     progress: task.progressPercent ?? 0,
   };
 }
@@ -548,6 +553,8 @@ export function ProjectTimeline({
               key={selectedTask.id}
               task={toTaskPanelData(selectedTask)}
               onClose={() => setSelectedTaskId(null)}
+              projectId={projectId}
+              onSave={async () => { await refresh(); }}
             />
           )}
         </AnimatePresence>

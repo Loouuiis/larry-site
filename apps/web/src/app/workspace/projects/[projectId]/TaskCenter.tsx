@@ -106,6 +106,11 @@ function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+function toDateInputValue(value: string | null): string {
+  if (!value) return "";
+  return value.includes("T") ? value.split("T")[0] : value;
+}
+
 /* ── component ──────────────────────────────────────────── */
 
 interface TaskCenterProps {
@@ -155,6 +160,7 @@ export function TaskCenter({ projectId, tasks, refresh, openTaskId }: TaskCenter
   const [editingTitle, setEditingTitle] = useState<string | null>(null);
   const [editTitleValue, setEditTitleValue] = useState("");
   const [openDropdown, setOpenDropdown] = useState<{ taskId: string; field: "status" | "priority" | "assignee"; rect: DOMRect } | null>(null);
+  const [editingDueDate, setEditingDueDate] = useState<string | null>(null);
   const [descriptions, setDescriptions] = useState<Record<string, string>>({});
   const [members, setMembers] = useState<Array<{ userId: string; name: string }>>([]);
 
@@ -710,13 +716,53 @@ export function TaskCenter({ projectId, tasks, refresh, openTaskId }: TaskCenter
                           )}
                         </div>
 
-                        {/* due date */}
-                        <span
-                          className="w-[60px] text-right text-[11px] font-medium tabular-nums"
-                          style={{ color: dueDateColour(task.dueDate, task.status), flexShrink: 0 }}
-                        >
-                          {formatDueDate(task.dueDate)}
-                        </span>
+                        {/* due date — click to edit */}
+                        <div style={{ width: 60, flexShrink: 0, position: "relative", display: "flex", justifyContent: "flex-end" }}>
+                          {editingDueDate === task.id ? (
+                            <input
+                              type="date"
+                              autoFocus
+                              defaultValue={toDateInputValue(task.dueDate)}
+                              onBlur={(e) => {
+                                setEditingDueDate(null);
+                                const val = e.target.value;
+                                if (val !== toDateInputValue(task.dueDate)) {
+                                  void patchTask(task.id, { dueDate: val || null });
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Escape") { setEditingDueDate(null); }
+                                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                              }}
+                              className="text-[11px] outline-none border rounded"
+                              style={{
+                                width: 110,
+                                padding: "1px 4px",
+                                borderColor: "var(--brand)",
+                                background: "var(--surface)",
+                                color: "var(--text-1)",
+                                position: "absolute",
+                                right: 0,
+                                zIndex: 10,
+                              }}
+                            />
+                          ) : (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setEditingDueDate(task.id); }}
+                              className="text-right text-[11px] font-medium tabular-nums"
+                              style={{
+                                color: dueDateColour(task.dueDate, task.status),
+                                background: "transparent",
+                                border: "none",
+                                cursor: "pointer",
+                                padding: "2px 0",
+                                width: "100%",
+                              }}
+                            >
+                              {formatDueDate(task.dueDate)}
+                            </button>
+                          )}
+                        </div>
 
                         {/* assignee — click for dropdown */}
                         <div className="relative" style={{ flexShrink: 0 }}>
@@ -861,6 +907,36 @@ export function TaskCenter({ projectId, tasks, refresh, openTaskId }: TaskCenter
                             onFocus={(e) => { e.currentTarget.style.borderColor = "var(--brand)"; e.currentTarget.style.borderStyle = "solid"; }}
                             onBlurCapture={(e) => { e.currentTarget.style.borderColor = "var(--border-2)"; e.currentTarget.style.borderStyle = "dashed"; }}
                           />
+                          {/* Due date field in expanded view */}
+                          <div className="flex items-center gap-2 mt-3">
+                            <span className="text-[11px] font-medium" style={{ color: "var(--text-muted)", width: 70, flexShrink: 0 }}>
+                              Due date
+                            </span>
+                            <input
+                              key={task.id + (task.dueDate ?? "")}
+                              type="date"
+                              defaultValue={toDateInputValue(task.dueDate)}
+                              onBlur={(e) => {
+                                const val = e.target.value;
+                                if (val !== toDateInputValue(task.dueDate)) {
+                                  void patchTask(task.id, { dueDate: val || null });
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                              }}
+                              className="text-[12px] outline-none rounded"
+                              style={{
+                                border: "1px solid var(--border)",
+                                background: "var(--surface)",
+                                color: "var(--text-1)",
+                                padding: "3px 6px",
+                              }}
+                              onFocus={(e) => { e.currentTarget.style.borderColor = "var(--brand)"; }}
+                              onBlurCapture={(e) => { e.currentTarget.style.borderColor = "var(--border)"; }}
+                            />
+                          </div>
+
                           <div className="flex justify-start mt-2">
                             <button
                               onClick={() => deleteTask(task.id)}

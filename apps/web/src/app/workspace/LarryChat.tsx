@@ -80,7 +80,7 @@ function LinkedActionChips({ actions }: { actions: WorkspaceLarryEvent[] }) {
   );
 }
 
-function MessageBubble({ msg }: { msg: LarryMessage }) {
+function MessageBubble({ msg, projectId }: { msg: LarryMessage; projectId?: string }) {
   const isLarry = msg.role === "larry";
   const isProcessing = msg.id === "processing";
   const executedCount =
@@ -118,10 +118,23 @@ function MessageBubble({ msg }: { msg: LarryMessage }) {
           </div>
         )}
         {isLarry && !isProcessing && (executedCount > 0 || suggestionCount > 0) && (
-          <p className="mt-1 text-[11px] text-[#6c44f6]">
-            {executedCount} action{executedCount !== 1 ? "s" : ""} taken
-            {suggestionCount > 0 ? ` · ${suggestionCount} suggestion${suggestionCount !== 1 ? "s" : ""} pending` : ""}
-          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <p className="text-[11px] text-[#6c44f6]">
+              {executedCount > 0 && `${executedCount} action${executedCount !== 1 ? "s" : ""} taken`}
+              {executedCount > 0 && suggestionCount > 0 && " · "}
+              {suggestionCount > 0 && `${suggestionCount} awaiting your approval`}
+            </p>
+            {suggestionCount > 0 && (
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new CustomEvent("larry:open-actions"))}
+                className="rounded-full px-2.5 py-1 text-[10px] font-semibold text-white"
+                style={{ background: "#6c44f6", border: "none", cursor: "pointer" }}
+              >
+                Review in Action Centre →
+              </button>
+            )}
+          </div>
         )}
         {isLarry && !isProcessing && <LinkedActionChips actions={msg.linkedActions} />}
       </div>
@@ -344,7 +357,7 @@ export function LarryChat({ projectId, projectName, onVoiceInput }: LarryChatPro
           </div>
         )}
         {chat.messages.map((msg) => (
-          <MessageBubble key={msg.id} msg={msg} />
+          <MessageBubble key={msg.id} msg={msg} projectId={projectId} />
         ))}
         <div ref={endRef} />
       </div>

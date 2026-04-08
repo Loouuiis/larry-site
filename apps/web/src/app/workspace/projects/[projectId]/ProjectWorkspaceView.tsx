@@ -1527,6 +1527,15 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [archiveDialogOpen]);
 
+  // Navigate to Action Centre tab when Larry chat requests it
+  useEffect(() => {
+    function handleOpenActions() {
+      setActiveTab("actions");
+    }
+    window.addEventListener("larry:open-actions", handleOpenActions);
+    return () => window.removeEventListener("larry:open-actions", handleOpenActions);
+  }, []);
+
   function openLarry() {
     chrome?.openLarry();
   }

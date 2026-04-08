@@ -1,12 +1,15 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X, ChevronDown, Calendar, User, Paperclip,
   Send, Smile, MoreHorizontal, Check, Layers,
 } from "lucide-react";
 import { SourceBadge, type TaskSource } from "@/components/ui/SourceBadge";
+
+interface Member { userId: string; name: string; }
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -23,8 +26,10 @@ export interface TaskPanelData {
   priority: TaskPriority;
   assignee: string;
   assigneeFull: string;
+  assigneeUserId?: string | null;
   project: string;
   deadline: string;
+  deadlineRaw?: string;
   progress: number;
   source?: TaskSource;
   subtasks?: { name: string; status: TaskStatus; progress: number }[];
@@ -265,6 +270,8 @@ function CommentItem({ comment }: { comment: Comment }) {
 interface TaskDetailPanelProps {
   task: TaskPanelData;
   onClose: () => void;
+  projectId?: string;
+  onSave?: () => Promise<void>;
 }
 
 const panelVariants = {
@@ -282,16 +289,86 @@ const sectionItem = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: EASE } },
 };
 
-export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
+export function TaskDetailPanel({ task, onClose, projectId, onSave }: TaskDetailPanelProps) {
   const [status,   setStatus]   = useState<TaskStatus>(task.status);
   const [priority, setPriority] = useState<TaskPriority>(task.priority);
   const [progress, setProgress] = useState(task.progress);
   const [comment,  setComment]  = useState("");
   const [comments, setComments] = useState<Comment[]>([]);
 
+  // Editable fields
+  const [titleDraft, setTitleDraft]       = useState(task.name);
+  const [descDraft, setDescDraft]         = useState(task.description);
+  const [deadlineDraft, setDeadlineDraft] = useState(task.deadlineRaw ?? "");
+  const [editingDeadline, setEditingDeadline] = useState(false);
+  const [assigneeOpen, setAssigneeOpen]   = useState(false);
+  const [assigneeId, setAssigneeId]       = useState<string | null>(task.assigneeUserId ?? null);
+  const [assigneeName, setAssigneeName]   = useState(task.assigneeFull);
+  const [members, setMembers]             = useState<Member[]>([]);
+  const assigneeButtonRef = useRef<HTMLButtonElement>(null);
+  const assigneeMenuRef = useRef<HTMLDivElement>(null);
+
   const currentStatus = STATUS_OPTIONS.find((s) => s.value === status)!;
   const patchTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const isFirstRender = useRef(true);
+
+  // Reset editable state when task changes
+  useEffect(() => {
+    setTitleDraft(task.name);
+    setDescDraft(task.description);
+    setDeadlineDraft(task.deadlineRaw ?? "");
+    setAssigneeId(task.assigneeUserId ?? null);
+    setAssigneeName(task.assigneeFull);
+    setEditingDeadline(false);
+    setAssigneeOpen(false);
+  }, [task.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch members when projectId provided
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    fetch(`/api/workspace/projects/${encodeURIComponent(projectId)}/members`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data) => {
+        if (!cancelled && Array.isArray(data?.members)) {
+          setMembers(data.members.map((m: { userId: string; name?: string; email?: string }) => ({
+            userId: m.userId,
+            name: m.name || m.email || "Unknown",
+          })));
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [projectId]);
+
+  // Close assignee dropdown on outside click
+  useEffect(() => {
+    if (!assigneeOpen) return;
+    function handler(e: MouseEvent) {
+      if (
+        assigneeButtonRef.current?.contains(e.target as Node) ||
+        assigneeMenuRef.current?.contains(e.target as Node)
+      ) return;
+      setAssigneeOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [assigneeOpen]);
+
+  // Patch helper
+  const patchAndRefresh = useCallback(async (patch: Record<string, unknown>) => {
+    try {
+      await fetch(`/api/workspace/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
+      await onSave?.();
+    } catch {
+      // silently fail
+    }
+  }, [task.id, onSave]);
 
   // Fetch real comments on mount / task change
   useEffect(() => {
@@ -360,15 +437,22 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
           <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-[var(--color-muted)]">
             {task.project}
           </p>
-          {/* Title — looks editable */}
-          <h2
-            className="text-sm font-bold text-[var(--text-1)] leading-snug tracking-[-0.02em] outline-none rounded focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/30 cursor-text"
-           
-            contentEditable
-            suppressContentEditableWarning
-          >
-            {task.name}
-          </h2>
+          {/* Title — editable */}
+          <input
+            type="text"
+            value={titleDraft}
+            onChange={(e) => setTitleDraft(e.target.value)}
+            onBlur={() => {
+              const trimmed = titleDraft.trim();
+              if (trimmed && trimmed !== task.name) void patchAndRefresh({ title: trimmed });
+              else setTitleDraft(task.name);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              if (e.key === "Escape") { setTitleDraft(task.name); (e.target as HTMLInputElement).blur(); }
+            }}
+            className="w-full text-sm font-bold text-[var(--text-1)] leading-snug tracking-[-0.02em] outline-none rounded bg-transparent focus:bg-[var(--surface-2)] focus:px-1.5 focus:ring-2 focus:ring-[var(--color-brand)]/20 transition-all cursor-text"
+          />
         </div>
         <div className="flex shrink-0 items-center gap-1 mt-0.5">
           <button className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-disabled)] hover:bg-[var(--surface-2)] hover:text-[var(--text-2)] transition-colors">
@@ -392,13 +476,19 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
           {/* Description */}
           <motion.div variants={sectionItem}>
             <SectionLabel>Description</SectionLabel>
-            <p
-              className="min-h-[40px] w-full rounded-xl border border-transparent bg-[var(--surface-2)] px-3 py-2.5 text-xs leading-relaxed text-[var(--text-2)] outline-none hover:border-[var(--border)] focus:border-[var(--color-brand)]/30 focus:ring-2 focus:ring-[var(--color-brand)]/10 transition-all cursor-text"
-              contentEditable
-              suppressContentEditableWarning
-            >
-              {task.description}
-            </p>
+            <textarea
+              value={descDraft}
+              onChange={(e) => setDescDraft(e.target.value)}
+              onBlur={() => {
+                if (descDraft !== task.description) void patchAndRefresh({ description: descDraft });
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") { setDescDraft(task.description); (e.target as HTMLTextAreaElement).blur(); }
+              }}
+              placeholder="Add a description…"
+              rows={3}
+              className="min-h-[40px] w-full resize-none rounded-xl border border-transparent bg-[var(--surface-2)] px-3 py-2.5 text-xs leading-relaxed text-[var(--text-2)] outline-none hover:border-[var(--border)] focus:border-[var(--color-brand)]/30 focus:ring-2 focus:ring-[var(--color-brand)]/10 transition-all cursor-text"
+            />
           </motion.div>
 
           {/* Meta row */}
@@ -406,25 +496,116 @@ export function TaskDetailPanel({ task, onClose }: TaskDetailPanelProps) {
             <SectionLabel>Details</SectionLabel>
 
             {/* Assignee */}
-            <button className="flex w-full items-center gap-3 rounded-xl border border-[#f0edfa] bg-[var(--surface-2)] px-3 py-2.5 text-xs hover:border-[#f0edfa] hover:bg-[var(--surface-2)] transition-colors group" style={{ borderBottom: "1px solid #faf8ff" }}>
-              <User size={13} className="shrink-0 text-[var(--text-disabled)] group-hover:text-[var(--text-disabled)] transition-colors" />
-              <span className="text-[var(--text-disabled)] w-16 shrink-0 text-left">Assignee</span>
-              <div className="flex items-center gap-2">
-                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[8px] font-bold text-[var(--color-muted)]">
-                  {task.assignee}
-                </span>
-                <span className="font-medium text-[var(--text-2)]">{task.assigneeFull}</span>
-              </div>
-              <ChevronDown size={11} className="ml-auto text-[var(--text-disabled)]" />
-            </button>
+            <div className="relative">
+              <button
+                ref={assigneeButtonRef}
+                onClick={() => setAssigneeOpen((v) => !v)}
+                className="flex w-full items-center gap-3 rounded-xl border border-[#f0edfa] bg-[var(--surface-2)] px-3 py-2.5 text-xs hover:border-[var(--border)] transition-colors group"
+                style={{ borderBottom: "1px solid #faf8ff" }}
+              >
+                <User size={13} className="shrink-0 text-[var(--text-disabled)]" />
+                <span className="text-[var(--text-disabled)] w-16 shrink-0 text-left">Assignee</span>
+                <div className="flex items-center gap-2">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] text-[8px] font-bold text-[var(--color-muted)]">
+                    {assigneeId ? (assigneeName.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "?") : "—"}
+                  </span>
+                  <span className="font-medium text-[var(--text-2)]">{assigneeName}</span>
+                </div>
+                <ChevronDown size={11} className={`ml-auto text-[var(--text-disabled)] transition-transform ${assigneeOpen ? "rotate-180" : ""}`} />
+              </button>
+
+              {assigneeOpen && members.length > 0 && assigneeButtonRef.current && createPortal(
+                <div
+                  ref={assigneeMenuRef}
+                  style={{
+                    position: "fixed",
+                    top: assigneeButtonRef.current.getBoundingClientRect().bottom + 4,
+                    left: assigneeButtonRef.current.getBoundingClientRect().left,
+                    width: assigneeButtonRef.current.getBoundingClientRect().width,
+                    zIndex: 9999,
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+                    maxHeight: 200,
+                    overflowY: "auto",
+                  }}
+                >
+                  <button
+                    onClick={() => {
+                      setAssigneeOpen(false);
+                      setAssigneeId(null);
+                      setAssigneeName("Unassigned");
+                      void patchAndRefresh({ assigneeUserId: null });
+                    }}
+                    className="flex w-full items-center px-3 py-2 text-left text-[12px] transition-colors"
+                    style={{ color: "var(--text-disabled)", border: "none", cursor: "pointer", background: !assigneeId ? "var(--surface-2)" : "transparent", fontStyle: "italic", borderBottom: "1px solid var(--border)" }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-2)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = !assigneeId ? "var(--surface-2)" : "transparent"; }}
+                  >
+                    Unassign
+                  </button>
+                  {members.map((m) => (
+                    <button
+                      key={m.userId}
+                      onClick={() => {
+                        setAssigneeOpen(false);
+                        setAssigneeId(m.userId);
+                        setAssigneeName(m.name);
+                        void patchAndRefresh({ assigneeUserId: m.userId });
+                      }}
+                      className="flex w-full items-center px-3 py-2 text-left text-[12px] transition-colors"
+                      style={{ color: "var(--text-1)", border: "none", cursor: "pointer", background: m.userId === assigneeId ? "var(--surface-2)" : "transparent", borderBottom: "1px solid var(--border)" }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-2)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = m.userId === assigneeId ? "var(--surface-2)" : "transparent"; }}
+                    >
+                      {m.name}
+                    </button>
+                  ))}
+                </div>,
+                document.body
+              )}
+            </div>
 
             {/* Deadline */}
-            <button className="flex w-full items-center gap-3 rounded-xl border border-[#f0edfa] bg-[var(--surface-2)] px-3 py-2.5 text-xs hover:border-[#f0edfa] hover:bg-[var(--surface-2)] transition-colors group" style={{ borderBottom: "1px solid #faf8ff" }}>
-              <Calendar size={13} className="shrink-0 text-[var(--text-disabled)] group-hover:text-[var(--text-disabled)] transition-colors" />
-              <span className="text-[var(--text-disabled)] w-16 shrink-0 text-left">Deadline</span>
-              <span className="font-medium text-[var(--text-2)]">{task.deadline}</span>
-              <ChevronDown size={11} className="ml-auto text-[var(--text-disabled)]" />
-            </button>
+            {editingDeadline ? (
+              <div className="flex w-full items-center gap-3 rounded-xl border border-[var(--color-brand)]/30 bg-[var(--surface-2)] px-3 py-2.5 text-xs ring-2 ring-[var(--color-brand)]/10">
+                <Calendar size={13} className="shrink-0 text-[var(--text-disabled)]" />
+                <span className="text-[var(--text-disabled)] w-16 shrink-0 text-left">Deadline</span>
+                <input
+                  type="date"
+                  autoFocus
+                  value={deadlineDraft}
+                  onChange={(e) => setDeadlineDraft(e.target.value)}
+                  onBlur={() => {
+                    setEditingDeadline(false);
+                    if (deadlineDraft !== (task.deadlineRaw ?? "")) {
+                      void patchAndRefresh({ dueDate: deadlineDraft || null });
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") { setDeadlineDraft(task.deadlineRaw ?? ""); setEditingDeadline(false); }
+                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                  }}
+                  className="flex-1 bg-transparent outline-none text-[var(--text-2)] font-medium text-xs"
+                />
+              </div>
+            ) : (
+              <button
+                onClick={() => setEditingDeadline(true)}
+                className="flex w-full items-center gap-3 rounded-xl border border-[#f0edfa] bg-[var(--surface-2)] px-3 py-2.5 text-xs hover:border-[var(--border)] transition-colors group"
+                style={{ borderBottom: "1px solid #faf8ff" }}
+              >
+                <Calendar size={13} className="shrink-0 text-[var(--text-disabled)]" />
+                <span className="text-[var(--text-disabled)] w-16 shrink-0 text-left">Deadline</span>
+                <span className="font-medium text-[var(--text-2)]">
+                  {deadlineDraft
+                    ? new Date(deadlineDraft + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short" })
+                    : task.deadline || "Set date"}
+                </span>
+                <ChevronDown size={11} className="ml-auto text-[var(--text-disabled)]" />
+              </button>
+            )}
 
             {/* Source */}
             {task.source && (
