@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT UNIQUE NOT NULL,
   password_hash TEXT,
   display_name TEXT,
+  avatar_url TEXT,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   email_verified_at TIMESTAMPTZ,
   verification_grace_deadline TIMESTAMPTZ,

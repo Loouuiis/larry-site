@@ -11,6 +11,7 @@ interface ConnectorStatus {
   projectId?: string | null;
   installUrl?: string;
   lastEventAt?: string | null;
+  accountEmail?: string;
   recentEvents?: Array<{ id: string; title: string; source: string; createdAt: string }>;
 }
 
@@ -433,6 +434,11 @@ export function ConnectorsPage() {
                         <p className="text-body-sm" style={{ marginTop: "4px", maxWidth: "440px" }}>
                           {info.description}
                         </p>
+                        {connected && status?.accountEmail && (
+                          <p style={{ marginTop: "6px", fontSize: "12px", fontWeight: 500, color: "var(--text-1)" }}>
+                            Connected as: {status.accountEmail}
+                          </p>
+                        )}
                       </div>
                     </div>
 

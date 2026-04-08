@@ -20,7 +20,7 @@ const ListDocumentsQuerySchema = z.object({
 });
 
 const CreateDocumentSchema = z.object({
-  projectId: z.string().uuid(),
+  projectId: z.string().uuid().optional().nullable(),
   title: z.string().trim().min(1).max(300),
   content: z.string().trim().min(1).max(50_000),
   docType: z.string().trim().min(1).max(80),
@@ -203,14 +203,16 @@ export const documentRoutes: FastifyPluginAsync = async (fastify) => {
       const tenantId = request.user.tenantId;
       const actorUserId = request.user.userId;
 
-      const access = await assertProjectReadAccessOrThrow({
-        tenantId,
-        userId: actorUserId,
-        tenantRole: request.user.role,
-        projectId: body.projectId,
-      });
-      if (isProjectWriteLocked(access.projectStatus)) {
-        throw fastify.httpErrors.conflict(ARCHIVED_PROJECT_WRITE_LOCK_MESSAGE);
+      if (body.projectId) {
+        const access = await assertProjectReadAccessOrThrow({
+          tenantId,
+          userId: actorUserId,
+          tenantRole: request.user.role,
+          projectId: body.projectId,
+        });
+        if (isProjectWriteLocked(access.projectStatus)) {
+          throw fastify.httpErrors.conflict(ARCHIVED_PROJECT_WRITE_LOCK_MESSAGE);
+        }
       }
 
       if (body.attachTaskId) {

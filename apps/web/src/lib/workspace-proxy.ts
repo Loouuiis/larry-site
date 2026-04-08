@@ -269,8 +269,14 @@ export async function proxyApiRequest(
       }
     }
 
-    // If still 401 after refresh attempt, the session is dead — force re-login.
-    // Do NOT fall back to service credentials; that silently escalates identity.
+    // If still 401 after refresh attempt, the session is dead — return a friendly error.
+    if (response.status === 401) {
+      return {
+        status: 401,
+        body: { error: "Your session has expired. Please log in again." },
+        session: activeSession,
+      };
+    }
   }
 
   let body: unknown;

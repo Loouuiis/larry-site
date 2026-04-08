@@ -4,7 +4,7 @@ import { getSession } from "@/lib/auth";
 import { persistSession, proxyApiRequest } from "@/lib/workspace-proxy";
 
 const CreateDocumentSchema = z.object({
-  projectId: z.string().uuid(),
+  projectId: z.string().uuid().optional().nullable(),
   title: z.string().trim().min(1).max(300),
   content: z.string().trim().min(1).max(50_000),
   docType: z.string().trim().min(1).max(80),

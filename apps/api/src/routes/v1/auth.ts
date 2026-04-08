@@ -23,6 +23,8 @@ const RefreshSchema = z.object({
 const SignupSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
+  firstName: z.string().max(100).optional(),
+  lastName: z.string().max(100).optional(),
   fullName: z.string().max(200).optional(),
   orgName: z.string().max(200).optional(),
   tenantId: z.string().uuid().optional(),
@@ -60,11 +62,14 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
 
     const passwordHash = await hashPassword(body.password);
 
+    // Combine first/last name into display_name; fall back to legacy fullName field
+    const displayName = [body.firstName?.trim(), body.lastName?.trim()].filter(Boolean).join(" ") || body.fullName?.trim() || null;
+
     // Create tenant + user + membership in a transaction.
     // Each new signup gets their own organization — they're the admin.
     const { newUser, tenantId } = await fastify.db.tx(async (client) => {
       // Create a new tenant for this user
-      const orgName = body.orgName?.trim() || body.fullName?.trim() || body.email.split("@")[0];
+      const orgName = body.orgName?.trim() || displayName || body.email.split("@")[0];
       const slugBase = orgName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "my-org";
       let slug = slugBase;
       let suffix = 2;
@@ -84,7 +89,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         `INSERT INTO users (email, password_hash, display_name, verification_grace_deadline, email_verified_at)
          VALUES ($1, $2, $3, NOW() + INTERVAL '7 days', NULL)
          RETURNING id, email`,
-        [body.email, passwordHash, body.fullName ?? null],
+        [body.email, passwordHash, displayName],
       );
 
       const user = userResult.rows[0] as { id: string; email: string };

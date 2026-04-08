@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 
-/* ── Mock data ─────────────────────────────────────────────────── */
+/* ── Members (used for new conversation creation) ─────────────── */
 
 const MOCK_MEMBERS = [
   { id: "usr_001", name: "Alice Chen", email: "alice@company.com" },
@@ -27,44 +27,8 @@ export interface ColleagueConversation {
   createdAt: string;
 }
 
-const MOCK_CONVERSATIONS: ColleagueConversation[] = [
-  {
-    id: "chat_001",
-    type: "dm",
-    name: null,
-    members: [MOCK_MEMBERS[0]],
-    lastMessage: "Hey, can you review the latest PR?",
-    lastMessageAt: new Date(Date.now() - 10 * 60_000).toISOString(),
-    createdAt: new Date(Date.now() - 7 * 86_400_000).toISOString(),
-  },
-  {
-    id: "chat_002",
-    type: "dm",
-    name: null,
-    members: [MOCK_MEMBERS[1]],
-    lastMessage: "The deployment looks good, shipping today",
-    lastMessageAt: new Date(Date.now() - 3 * 3_600_000).toISOString(),
-    createdAt: new Date(Date.now() - 14 * 86_400_000).toISOString(),
-  },
-  {
-    id: "chat_003",
-    type: "group",
-    name: "Engineering",
-    members: [MOCK_MEMBERS[0], MOCK_MEMBERS[1], MOCK_MEMBERS[2]],
-    lastMessage: "Sprint retro at 3pm — don't forget!",
-    lastMessageAt: new Date(Date.now() - 45 * 60_000).toISOString(),
-    createdAt: new Date(Date.now() - 30 * 86_400_000).toISOString(),
-  },
-  {
-    id: "chat_004",
-    type: "group",
-    name: "Design Sync",
-    members: [MOCK_MEMBERS[2], MOCK_MEMBERS[3], MOCK_MEMBERS[4]],
-    lastMessage: "Updated mockups are in Figma",
-    lastMessageAt: new Date(Date.now() - 86_400_000).toISOString(),
-    createdAt: new Date(Date.now() - 21 * 86_400_000).toISOString(),
-  },
-];
+// In-memory store for conversations created during this session
+const conversationStore: ColleagueConversation[] = [];
 
 /* ── Handlers ──────────────────────────────────────────────────── */
 
@@ -73,7 +37,7 @@ export async function GET() {
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  return NextResponse.json({ conversations: MOCK_CONVERSATIONS });
+  return NextResponse.json({ conversations: conversationStore });
 }
 
 export async function POST(request: NextRequest) {
@@ -102,5 +66,6 @@ export async function POST(request: NextRequest) {
     createdAt: new Date().toISOString(),
   };
 
+  conversationStore.push(conversation);
   return NextResponse.json({ conversation }, { status: 201 });
 }

@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { Eye, EyeOff, Check, Upload, ArrowRight } from "lucide-react";
+import { Eye, EyeOff, Check, Upload, ArrowRight, X } from "lucide-react";
 import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 
 /* ─── Step dots ───────────────────────────────────────────────────── */
@@ -137,13 +137,34 @@ export function SignupWizard() {
   const [authMethod, setAuthMethod] = useState<"email" | null>(null);
 
   // Step 2: Profile
-  const [fullName, setFullName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [subscribeEmails, setSubscribeEmails] = useState(true);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+
+  // Profile photo
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleAvatarChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("Please upload an image file.");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setError("Image must be under 2 MB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setAvatarPreview(reader.result as string);
+    reader.readAsDataURL(file);
+  }, []);
 
   // Step 3-6: Profile questions
   const [roles, setRoles] = useState<string[]>([]);
@@ -186,7 +207,7 @@ export function SignupWizard() {
       const res = await fetch("/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, confirmPassword, fullName }),
+        body: JSON.stringify({ email, password, confirmPassword, firstName: firstName.trim(), lastName: lastName.trim() }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -312,36 +333,79 @@ export function SignupWizard() {
             <h2 className="text-lg font-bold text-[var(--text-1)]">Set up your profile</h2>
             <p className="text-[13px] text-[var(--text-2)]">Tell Larry a bit about yourself.</p>
 
-            <div>
-              <label htmlFor="full-name" className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">
-                Full name
-              </label>
-              <input
-                id="full-name"
-                type="text"
-                autoComplete="name"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                placeholder="Your full name"
-                className={INPUT_CLS}
-                style={{ fontSize: "1rem" }}
-              />
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label htmlFor="first-name" className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">
+                  First name
+                </label>
+                <input
+                  id="first-name"
+                  type="text"
+                  autoComplete="given-name"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  placeholder="First name"
+                  className={INPUT_CLS}
+                  style={{ fontSize: "1rem" }}
+                />
+              </div>
+              <div className="flex-1">
+                <label htmlFor="last-name" className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">
+                  Last name
+                </label>
+                <input
+                  id="last-name"
+                  type="text"
+                  autoComplete="family-name"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  placeholder="Last name"
+                  className={INPUT_CLS}
+                  style={{ fontSize: "1rem" }}
+                />
+              </div>
             </div>
 
-            {/* Photo placeholder */}
+            {/* Profile photo upload */}
             <div>
               <label className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">
                 Profile photo <span className="text-[var(--text-disabled)]">(optional)</span>
               </label>
-              <div
-                className="flex h-20 items-center justify-center rounded-lg border-2 border-dashed transition-colors cursor-pointer hover:border-[var(--brand)]"
-                style={{ borderColor: "var(--border)" }}
-              >
-                <div className="flex items-center gap-2 text-[13px] text-[var(--text-disabled)]">
-                  <Upload size={16} />
-                  <span>Upload photo</span>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarChange}
+                className="hidden"
+              />
+              {avatarPreview ? (
+                <div className="flex items-center gap-3">
+                  <div
+                    className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border"
+                    style={{ borderColor: "var(--border)" }}
+                  >
+                    <img src={avatarPreview} alt="Avatar preview" className="h-full w-full object-cover" />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setAvatarPreview(null); if (fileInputRef.current) fileInputRef.current.value = ""; }}
+                    className="flex items-center gap-1 text-[12px] text-[var(--text-2)] transition-colors hover:text-[var(--text-1)]"
+                  >
+                    <X size={14} /> Remove
+                  </button>
                 </div>
-              </div>
+              ) : (
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex h-20 items-center justify-center rounded-lg border-2 border-dashed transition-colors cursor-pointer hover:border-[var(--brand)]"
+                  style={{ borderColor: "var(--border)" }}
+                >
+                  <div className="flex items-center gap-2 text-[13px] text-[var(--text-disabled)]">
+                    <Upload size={16} />
+                    <span>Upload photo</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Password */}
@@ -484,6 +548,9 @@ export function SignupWizard() {
             >
               Continue <ArrowRight size={16} />
             </button>
+            <button type="button" onClick={finish} className="block w-full text-center text-xs text-[var(--text-disabled)] transition-colors hover:text-[var(--text-2)]">
+              Skip for now
+            </button>
           </div>
         )}
 
@@ -505,6 +572,9 @@ export function SignupWizard() {
             >
               Continue <ArrowRight size={16} />
             </button>
+            <button type="button" onClick={finish} className="block w-full text-center text-xs text-[var(--text-disabled)] transition-colors hover:text-[var(--text-2)]">
+              Skip for now
+            </button>
           </div>
         )}
 
@@ -525,6 +595,9 @@ export function SignupWizard() {
             >
               Continue <ArrowRight size={16} />
             </button>
+            <button type="button" onClick={finish} className="block w-full text-center text-xs text-[var(--text-disabled)] transition-colors hover:text-[var(--text-2)]">
+              Skip for now
+            </button>
           </div>
         )}
 
@@ -544,6 +617,9 @@ export function SignupWizard() {
               className="inline-flex h-[2.75rem] w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--cta)] text-[0.9375rem] font-medium text-white transition-colors hover:bg-[var(--cta-hover)]"
             >
               Continue <ArrowRight size={16} />
+            </button>
+            <button type="button" onClick={finish} className="block w-full text-center text-xs text-[var(--text-disabled)] transition-colors hover:text-[var(--text-2)]">
+              Skip for now
             </button>
           </div>
         )}

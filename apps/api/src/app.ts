@@ -3,6 +3,7 @@ import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import sensible from "@fastify/sensible";
+import { ZodError } from "zod";
 import { getApiEnv } from "@larry/config";
 import { Db } from "@larry/db";
 import { securityPlugin } from "./plugins/security.js";
@@ -38,6 +39,31 @@ export async function createApp() {
 
   await app.register(securityPlugin);
   await app.register(requestContextPlugin);
+
+  // Return human-readable messages for Zod validation errors
+  app.setErrorHandler((error: Error & { statusCode?: number }, _request, reply) => {
+    if (error instanceof ZodError) {
+      const messages = error.issues.map((issue) => issue.message);
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Validation Error",
+        message: messages.join(". ") + ".",
+      });
+    }
+    // Let Fastify handle everything else (including @fastify/sensible errors)
+    if (error.statusCode) {
+      return reply.status(error.statusCode).send({
+        statusCode: error.statusCode,
+        error: error.name,
+        message: error.message,
+      });
+    }
+    reply.status(500).send({
+      statusCode: 500,
+      error: "Internal Server Error",
+      message: "An unexpected error occurred.",
+    });
+  });
 
   await app.register(healthRoutes);
   await app.register(v1Routes, { prefix: "/v1" });

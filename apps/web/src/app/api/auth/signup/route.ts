@@ -68,7 +68,8 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify({
           email,
           password: String(password),
-          fullName: typeof body?.fullName === "string" ? body.fullName : undefined,
+          firstName: typeof body?.firstName === "string" ? body.firstName : undefined,
+          lastName: typeof body?.lastName === "string" ? body.lastName : undefined,
         }),
         cache: "no-store",
         signal: AbortSignal.timeout(12_000),

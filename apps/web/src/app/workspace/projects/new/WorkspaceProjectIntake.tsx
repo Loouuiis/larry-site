@@ -118,12 +118,19 @@ type UpsertDraftPayload = {
   };
 };
 
+function handleAuthRedirect(response: Response): void {
+  if (response.status === 401 && typeof window !== "undefined") {
+    window.location.href = "/login";
+  }
+}
+
 async function upsertIntakeDraft(payload: UpsertDraftPayload): Promise<IntakeDraft> {
   const response = await fetch("/api/workspace/projects/intake/drafts", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+  handleAuthRedirect(response);
   const data = await readJson<IntakeDraftResponse>(response);
   if (!response.ok || !data.draft) {
     throw new Error(data.error ?? "Failed to save intake draft.");
@@ -135,6 +142,7 @@ async function bootstrapIntakeDraft(draftId: string): Promise<IntakeDraft> {
   const response = await fetch(`/api/workspace/projects/intake/drafts/${encodeURIComponent(draftId)}/bootstrap`, {
     method: "POST",
   });
+  handleAuthRedirect(response);
   const data = await readJson<IntakeDraftResponse>(response);
   if (!response.ok || !data.draft) {
     throw new Error(data.error ?? "Failed to generate bootstrap preview.");
@@ -146,6 +154,7 @@ async function finalizeIntakeDraft(draftId: string): Promise<IntakeDraft> {
   const response = await fetch(`/api/workspace/projects/intake/drafts/${encodeURIComponent(draftId)}/finalize`, {
     method: "POST",
   });
+  handleAuthRedirect(response);
   const data = await readJson<IntakeDraftResponse>(response);
   if (!response.ok || !data.draft) {
     throw new Error(data.error ?? "Failed to finalize intake draft.");

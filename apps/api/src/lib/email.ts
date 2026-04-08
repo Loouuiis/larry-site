@@ -4,6 +4,10 @@ const FROM = "Larry <noreply@larry.app>";
 
 let resendInstance: Resend | null = null;
 
+function isResendConfigured(): boolean {
+  return Boolean(process.env.RESEND_API_KEY);
+}
+
 function getResend(): Resend {
   if (resendInstance) return resendInstance;
   const key = process.env.RESEND_API_KEY;
@@ -51,6 +55,10 @@ function ctaButton(href: string, label: string): string {
 // ---------------------------------------------------------------------------
 
 export async function sendPasswordResetEmail(to: string, resetUrl: string): Promise<void> {
+  if (!isResendConfigured()) {
+    console.log("[email] RESEND_API_KEY not configured. Password reset URL for %s:\n  %s", to, resetUrl);
+    return;
+  }
   const resend = getResend();
   const { error } = await resend.emails.send({
     from: FROM,
@@ -74,6 +82,10 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string): Prom
 }
 
 export async function sendVerificationEmail(to: string, verifyUrl: string): Promise<void> {
+  if (!isResendConfigured()) {
+    console.log("[email] RESEND_API_KEY not configured. Verification URL for %s:\n  %s", to, verifyUrl);
+    return;
+  }
   const resend = getResend();
   const { error } = await resend.emails.send({
     from: FROM,
@@ -97,6 +109,10 @@ export async function sendVerificationEmail(to: string, verifyUrl: string): Prom
 }
 
 export async function sendEmailChangeConfirmation(to: string, confirmUrl: string): Promise<void> {
+  if (!isResendConfigured()) {
+    console.log("[email] RESEND_API_KEY not configured. Email change confirm URL for %s:\n  %s", to, confirmUrl);
+    return;
+  }
   const resend = getResend();
   const { error } = await resend.emails.send({
     from: FROM,
@@ -120,6 +136,10 @@ export async function sendEmailChangeConfirmation(to: string, confirmUrl: string
 }
 
 export async function sendEmailChangeNotification(to: string): Promise<void> {
+  if (!isResendConfigured()) {
+    console.log("[email] RESEND_API_KEY not configured. Skipping email change notification for %s", to);
+    return;
+  }
   const resend = getResend();
   const frontendUrl = getFrontendUrl();
   const { error } = await resend.emails.send({
@@ -151,6 +171,10 @@ export interface DeviceInfo {
 }
 
 export async function sendNewDeviceAlert(to: string, deviceInfo: DeviceInfo): Promise<void> {
+  if (!isResendConfigured()) {
+    console.log("[email] RESEND_API_KEY not configured. Skipping new device alert for %s", to);
+    return;
+  }
   const resend = getResend();
   const frontendUrl = getFrontendUrl();
   const details = [
