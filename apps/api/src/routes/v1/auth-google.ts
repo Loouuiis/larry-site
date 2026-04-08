@@ -22,7 +22,7 @@ const GoogleLinkBodySchema = z.object({
 
 const GoogleStateSchema = z.object({
   kind: z.literal("google_auth_state"),
-  tenantId: z.string().uuid(),
+  tenantId: z.string(), // may be empty for sign-up (new user creates own tenant)
   nonce: z.string().uuid(),
 });
 
@@ -218,37 +218,70 @@ export const authGoogleRoutes: FastifyPluginAsync = async (fastify) => {
 
     if (userId) {
       // Existing OAuth-linked user — look up membership
-      const membership = await fastify.db.query<{
-        role: "admin" | "pm" | "member" | "executive";
-        email: string;
-      }>(
-        `SELECT m.role, u.email FROM memberships m
-         JOIN users u ON u.id = m.user_id
-         WHERE m.user_id = $1 AND m.tenant_id = $2
-         LIMIT 1`,
-        [userId, tenantId]
-      );
+      // When tenantId is empty (sign-up flow), pick the user's first membership
+      const membership = tenantId
+        ? await fastify.db.query<{
+            tenant_id: string;
+            role: "admin" | "pm" | "member" | "executive";
+            email: string;
+          }>(
+            `SELECT m.tenant_id, m.role, u.email FROM memberships m
+             JOIN users u ON u.id = m.user_id
+             WHERE m.user_id = $1 AND m.tenant_id = $2
+             LIMIT 1`,
+            [userId, tenantId]
+          )
+        : await fastify.db.query<{
+            tenant_id: string;
+            role: "admin" | "pm" | "member" | "executive";
+            email: string;
+          }>(
+            `SELECT m.tenant_id, m.role, u.email FROM memberships m
+             JOIN users u ON u.id = m.user_id
+             WHERE m.user_id = $1
+             ORDER BY m.created_at ASC
+             LIMIT 1`,
+            [userId]
+          );
       if (membership[0]) {
+        tenantId = membership[0].tenant_id;
         role = membership[0].role;
         userEmail = membership[0].email;
       }
     } else {
-      // --- Try to find existing user by email in this tenant ---
-      const emailMatch = await fastify.db.query<{
-        id: string;
-        role: "admin" | "pm" | "member" | "executive";
-        email: string;
-      }>(
-        `SELECT u.id, m.role, u.email FROM users u
-         JOIN memberships m ON m.user_id = u.id
-         WHERE u.email = $1 AND m.tenant_id = $2
-         LIMIT 1`,
-        [googleUser.email, tenantId]
-      );
+      // --- Try to find existing user by email ---
+      // When tenantId is empty, match by email across all tenants
+      const emailMatch = tenantId
+        ? await fastify.db.query<{
+            id: string;
+            tenant_id: string;
+            role: "admin" | "pm" | "member" | "executive";
+            email: string;
+          }>(
+            `SELECT u.id, m.tenant_id, m.role, u.email FROM users u
+             JOIN memberships m ON m.user_id = u.id
+             WHERE u.email = $1 AND m.tenant_id = $2
+             LIMIT 1`,
+            [googleUser.email, tenantId]
+          )
+        : await fastify.db.query<{
+            id: string;
+            tenant_id: string;
+            role: "admin" | "pm" | "member" | "executive";
+            email: string;
+          }>(
+            `SELECT u.id, m.tenant_id, m.role, u.email FROM users u
+             JOIN memberships m ON m.user_id = u.id
+             WHERE u.email = $1
+             ORDER BY m.created_at ASC
+             LIMIT 1`,
+            [googleUser.email]
+          );
 
       if (emailMatch[0]) {
         // Existing user matched by email — link Google account
         userId = emailMatch[0].id;
+        tenantId = emailMatch[0].tenant_id;
         role = emailMatch[0].role;
         userEmail = emailMatch[0].email;
 

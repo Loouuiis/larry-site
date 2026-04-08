@@ -1,16 +1,33 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
 import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 
+const GOOGLE_ERROR_MESSAGES: Record<string, string> = {
+  google_missing_code: "Google sign-in failed: no authorisation code received.",
+  google_invalid_code: "Google sign-in failed: token verification error. Please try again.",
+  google_denied: "Google sign-in was cancelled.",
+  google_missing_params: "Google sign-in failed: missing parameters from Google.",
+  google_invalid_state: "Google sign-in failed: invalid state token. Please try again.",
+  google_token_exchange: "Google sign-in failed: could not exchange token with Google.",
+  google_userinfo: "Google sign-in failed: could not retrieve your Google profile.",
+  google_no_email: "Google sign-in failed: no email address on your Google account.",
+  config: "Google sign-in is temporarily unavailable (server configuration issue).",
+  google_unexpected: "Google sign-in encountered an unexpected error. Please try again.",
+};
+
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const googleError = searchParams.get("error");
+  const [error, setError] = useState(
+    googleError ? (GOOGLE_ERROR_MESSAGES[googleError] ?? `Google sign-in error: ${googleError}`) : ""
+  );
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
