@@ -726,6 +726,63 @@ export async function generateBootstrapTasks(
   return object;
 }
 
+export interface TranscriptBootstrapInput {
+  projectName: string;
+  meetingTitle: string | null;
+  transcript: string;
+}
+
+export async function generateBootstrapFromTranscript(
+  config: IntelligenceConfig,
+  input: TranscriptBootstrapInput,
+): Promise<{ tasks: BootstrapTask[]; summary: string }> {
+  if (config.provider === "mock") {
+    return {
+      tasks: [
+        { title: "Review meeting decisions and assign owners", description: "Go through the key decisions made during the meeting and ensure each has a responsible owner.", priority: "high", workstream: null },
+        { title: "Follow up on open action items", description: "Track and follow up on any commitments or next steps mentioned during the meeting.", priority: "high", workstream: null },
+        { title: "Share meeting summary with stakeholders", description: "Prepare and distribute a concise summary of outcomes and action items to all relevant parties.", priority: "medium", workstream: null },
+      ],
+      summary: `Larry identified 3 action items from "${input.meetingTitle ?? "the meeting"}".`,
+    };
+  }
+
+  const systemPrompt = [
+    "You are Larry, an AI project management assistant. A user uploaded a meeting transcript.",
+    "Your job is to extract 3-8 real, actionable tasks from what was discussed and committed to in the meeting.",
+    "",
+    "Rules:",
+    "- Extract only COMMITTED actions — things people agreed to do, not hypotheticals or past work.",
+    "- Each task title must start with a verb and be specific (e.g. 'Send updated proposal to client by Friday', not 'Proposal').",
+    "- Each task MUST have a description explaining context from the meeting.",
+    "- Set priority: 'high' for urgent/blocking items, 'medium' for standard follow-ups, 'low' for nice-to-haves.",
+    "- If someone was assigned the task, mention them in the description.",
+    "- Group related tasks under a workstream when relevant.",
+    "- Do NOT create tasks from casual conversation or off-topic discussion.",
+    "- Also provide a one-sentence summary of the meeting's key outcomes.",
+  ].join("\n");
+
+  // Truncate transcript to avoid token limits (keep first 6000 chars)
+  const truncated = input.transcript.slice(0, 6_000);
+  const userPrompt = [
+    `Project: ${input.projectName}`,
+    input.meetingTitle ? `Meeting: ${input.meetingTitle}` : null,
+    "",
+    "Transcript:",
+    truncated,
+    input.transcript.length > 6_000 ? "\n[transcript truncated]" : "",
+  ].filter(Boolean).join("\n");
+
+  const { object } = await generateObject({
+    model: createModel(config),
+    schema: BootstrapResultSchema,
+    system: systemPrompt,
+    prompt: userPrompt,
+  });
+
+  return object;
+}
+
 // ── Larry Intelligence (Phase 1) ─────────────────────────────────────────────
 export { runIntelligence } from "./intelligence.js";
 

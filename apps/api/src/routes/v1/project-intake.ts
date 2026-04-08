@@ -6,7 +6,7 @@ import {
   storeSuggestions,
 } from "@larry/db";
 import type { LarryAction, IntelligenceConfig } from "@larry/shared";
-import { generateBootstrapTasks } from "@larry/ai";
+import { generateBootstrapTasks, generateBootstrapFromTranscript } from "@larry/ai";
 import { getApiEnv } from "@larry/config";
 import { writeAuditLog } from "../../lib/audit.js";
 import { createProjectOwnerMembership } from "../../lib/project-memberships.js";
@@ -285,50 +285,51 @@ async function buildBootstrapFromDraft(draft: IntakeDraftModel, aiConfig?: Intel
     const projectName = draft.projectName ?? draft.meetingTitle ?? "New Project";
     const transcript = draft.meetingTranscript ?? "";
 
-    const actionLines: string[] = [];
-    for (const line of transcript.split(/\n/)) {
-      const trimmed = line.trim();
-      const m = /^(?:action(?:\s+item)?s?:?\s*|todo:?\s*|follow[\s-]up:?\s*|-\s*\[\s*\]\s*)/i.exec(trimmed);
-      if (m) {
-        const content = trimmed.slice(m[0].length).trim();
-        if (content.length > 3) actionLines.push(content);
+    let tasks: IntakeBootstrapTask[];
+    let summary: string;
+
+    if (aiConfig && aiConfig.provider !== "mock" && transcript.length >= 20) {
+      try {
+        const aiResult = await generateBootstrapFromTranscript(aiConfig, {
+          projectName,
+          meetingTitle: draft.meetingTitle ?? null,
+          transcript,
+        });
+
+        tasks = aiResult.tasks.map((t) => ({
+          title: t.title.slice(0, 200),
+          description: t.description ?? null,
+          dueDate: draft.projectTargetDate,
+          assigneeName: null,
+          priority: t.priority ?? "medium",
+        }));
+
+        summary = aiResult.summary || `Larry identified ${tasks.length} action item${tasks.length === 1 ? "" : "s"} from "${draft.meetingTitle ?? "the meeting transcript"}".`;
+      } catch (err) {
+        console.error("[bootstrap] AI transcript extraction failed, falling back:", err);
+        const fallback = fallbackMeetingBootstrap(draft, projectName, transcript);
+        tasks = fallback.tasks;
+        summary = fallback.summary;
       }
+    } else {
+      const fallback = fallbackMeetingBootstrap(draft, projectName, transcript);
+      tasks = fallback.tasks;
+      summary = fallback.summary;
     }
-
-    const candidateTitles =
-      actionLines.length > 0
-        ? actionLines.flatMap((line) => tokenizeTaskTitles(line)).slice(0, 6)
-        : tokenizeTaskTitles(transcript.slice(0, 2_000)).slice(0, 6);
-
-    const fallbackTitles = [
-      "Review meeting decisions and outcomes",
-      "Follow up on action items",
-      "Share meeting summary with stakeholders",
-    ];
-    const taskTitles = candidateTitles.length > 0 ? candidateTitles : fallbackTitles;
-
-    const tasks: IntakeBootstrapTask[] = taskTitles.map((title) => ({
-      title: title.slice(0, 200),
-      description: null,
-      dueDate: draft.projectTargetDate,
-      assigneeName: null,
-      priority: "medium" as const,
-    }));
 
     const taskActions: LarryAction[] = tasks.map((task) => ({
       type: "task_create",
       displayText: `Create task "${task.title}"`,
-      reasoning: "Extracted from meeting transcript action items",
+      reasoning: task.description ?? "Extracted from meeting transcript",
       payload: {
         title: task.title,
-        description: null,
+        description: task.description ?? null,
         dueDate: task.dueDate ?? null,
         assigneeName: null,
-        priority: "medium",
+        priority: task.priority ?? "medium",
       },
     }));
 
-    const summary = `Larry identified ${tasks.length} action item${tasks.length === 1 ? "" : "s"} from "${draft.meetingTitle ?? "the meeting transcript"}".`;
     const transcriptExcerpt = transcript.slice(0, 500);
     const seedMessage = [
       "I just created a project from a meeting transcript.",
@@ -423,6 +424,46 @@ async function buildBootstrapFromDraft(draft: IntakeDraftModel, aiConfig?: Intel
     actions,
     seedMessage: buildIntakeSeedMessage({ answers, summary, projectName }),
   };
+}
+
+/** Fallback: regex-based meeting transcript task extraction (no AI). */
+function fallbackMeetingBootstrap(
+  draft: IntakeDraftModel,
+  projectName: string,
+  transcript: string,
+): { tasks: IntakeBootstrapTask[]; summary: string } {
+  const actionLines: string[] = [];
+  for (const line of transcript.split(/\n/)) {
+    const trimmed = line.trim();
+    const m = /^(?:action(?:\s+item)?s?:?\s*|todo:?\s*|follow[\s-]up:?\s*|-\s*\[\s*\]\s*)/i.exec(trimmed);
+    if (m) {
+      const content = trimmed.slice(m[0].length).trim();
+      if (content.length > 3) actionLines.push(content);
+    }
+  }
+
+  const candidateTitles =
+    actionLines.length > 0
+      ? actionLines.flatMap((line) => tokenizeTaskTitles(line)).slice(0, 6)
+      : tokenizeTaskTitles(transcript.slice(0, 2_000)).slice(0, 6);
+
+  const fallbackTitles = [
+    "Review meeting decisions and outcomes",
+    "Follow up on action items",
+    "Share meeting summary with stakeholders",
+  ];
+  const taskTitles = candidateTitles.length > 0 ? candidateTitles : fallbackTitles;
+
+  const tasks: IntakeBootstrapTask[] = taskTitles.map((title) => ({
+    title: title.slice(0, 200),
+    description: null,
+    dueDate: draft.projectTargetDate,
+    assigneeName: null,
+    priority: "medium" as const,
+  }));
+
+  const summary = `Larry identified ${tasks.length} action item${tasks.length === 1 ? "" : "s"} from "${draft.meetingTitle ?? "the meeting transcript"}".`;
+  return { tasks, summary };
 }
 
 /** Fallback: tokenize deliverables string into task titles (no AI). */
