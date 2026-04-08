@@ -19,6 +19,7 @@ export async function createApp() {
     logger: {
       level: env.LOG_LEVEL,
     },
+    bodyLimit: 10 * 1024 * 1024, // 10 MB — needed for base64-encoded binary file uploads
   });
 
   app.decorate("db", new Db(env.DATABASE_URL));

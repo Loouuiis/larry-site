@@ -6,13 +6,14 @@ import { persistSession, proxyApiRequest } from "@/lib/workspace-proxy";
 const CreateDocumentSchema = z.object({
   projectId: z.string().uuid().optional().nullable(),
   title: z.string().trim().min(1).max(300),
-  content: z.string().trim().min(1).max(50_000),
+  content: z.string().min(1).max(8_000_000),
   docType: z.string().trim().min(1).max(80),
   sourceKind: z.string().trim().min(1).max(64).optional(),
   sourceRecordId: z.string().trim().min(1).max(200).optional(),
   version: z.number().int().min(1).max(10_000).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
   attachTaskId: z.string().uuid().optional(),
+  folderId: z.string().uuid().optional(),
 });
 
 export async function GET(request: NextRequest) {
@@ -24,11 +25,13 @@ export async function GET(request: NextRequest) {
   const projectId = request.nextUrl.searchParams.get("projectId");
   const docType = request.nextUrl.searchParams.get("docType");
   const limit = request.nextUrl.searchParams.get("limit");
+  const noFolder = request.nextUrl.searchParams.get("noFolder");
   const params = new URLSearchParams();
 
   if (projectId?.trim()) params.set("projectId", projectId.trim());
   if (docType?.trim()) params.set("docType", docType.trim());
   if (limit?.trim()) params.set("limit", limit.trim());
+  if (noFolder === "true") params.set("noFolder", "true");
 
   const query = params.toString();
   const result = await proxyApiRequest(

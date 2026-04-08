@@ -20,6 +20,7 @@ import {
   buildDocumentActions,
 } from "./FolderContextMenu";
 import { MoveToModal } from "./MoveToModal";
+import { UploadModal } from "./UploadModal";
 import { MeetingDetailDrawer, type MeetingDetail } from "./MeetingDetailDrawer";
 
 /* ------------------------------------------------------------------ */
@@ -138,8 +139,8 @@ export function DocumentsPageClient() {
     router.push(url);
   };
 
-  /* ---- file upload ---- */
-  const uploadRef = useRef<HTMLInputElement>(null);
+  /* ---- file upload modal ---- */
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
 
   /* ---- meeting drawer (legacy, kept for compat) ---- */
   const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null);
@@ -205,12 +206,26 @@ export function DocumentsPageClient() {
 
         setDocuments([...regularDocs, ...larryDocs]);
       } else {
-        // Root view — show all root folders
-        const res = await fetch("/api/workspace/folders", { cache: "no-store" });
-        const data = await res.json();
+        // Root view — show all root folders + documents not in any folder
+        const [foldersRes, docsRes] = await Promise.all([
+          fetch("/api/workspace/folders", { cache: "no-store" }),
+          fetch("/api/workspace/documents?noFolder=true&limit=100", { cache: "no-store" }),
+        ]);
+        const foldersData = await foldersRes.json();
+        const docsData = await docsRes.json();
         setBreadcrumb([]);
-        setFolders(data.folders ?? []);
-        setDocuments([]);
+        setFolders(foldersData.folders ?? []);
+        setDocuments(
+          (docsData.items ?? []).map((d: any) => ({
+            id: d.id,
+            projectId: d.projectId ?? null,
+            title: d.title ?? "Untitled",
+            docType: d.docType ?? "other",
+            createdAt: d.createdAt,
+            updatedAt: d.updatedAt ?? d.createdAt,
+            isLarryDoc: false,
+          }))
+        );
       }
     } catch {
       // Silently fail — empty state will show
@@ -223,52 +238,6 @@ export function DocumentsPageClient() {
     fetchContents();
   }, [fetchContents]);
 
-  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const MAX_SIZE = 2 * 1024 * 1024; // 2 MB
-    if (file.size > MAX_SIZE) {
-      alert("File must be under 2 MB.");
-      return;
-    }
-
-    try {
-      const text = await file.text();
-      const title = file.name.replace(/\.[^.]+$/, "") || "Untitled";
-      const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
-      const docType = ["pdf", "docx", "xlsx", "pptx"].includes(ext) ? ext : "other";
-
-      const res = await fetch("/api/workspace/documents", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title,
-          content: text.slice(0, 50_000),
-          docType,
-          sourceKind: "upload",
-          folderId: folderId ?? undefined,
-        }),
-      });
-
-      if (res.status === 401) {
-        window.location.href = "/login";
-        return;
-      }
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        alert((data as { error?: string }).error ?? "Upload failed.");
-        return;
-      }
-
-      fetchContents();
-    } catch {
-      alert("Upload failed. Please try again.");
-    } finally {
-      if (uploadRef.current) uploadRef.current.value = "";
-    }
-  }, [folderId, fetchContents]);
 
   // Load projects for legacy meeting drawer
   useEffect(() => {
@@ -547,14 +516,6 @@ export function DocumentsPageClient() {
             <FolderPlus size={13} />
             New folder
           </button>
-          <input
-            ref={uploadRef}
-            type="file"
-            accept=".txt,.md,.csv,.json,.pdf,.docx,.xlsx,.pptx"
-            onChange={handleFileUpload}
-            className="hidden"
-            style={{ display: "none" }}
-          />
           <button
             className="pm-btn pm-btn-primary pm-btn-sm"
             style={{
@@ -562,7 +523,7 @@ export function DocumentsPageClient() {
               alignItems: "center",
               gap: "6px",
             }}
-            onClick={() => uploadRef.current?.click()}
+            onClick={() => setUploadModalOpen(true)}
           >
             <Upload size={13} />
             Upload
@@ -1141,6 +1102,14 @@ export function DocumentsPageClient() {
           onClose={() => setCtxMenu(null)}
         />
       )}
+
+      {/* ---- Upload modal ---- */}
+      <UploadModal
+        open={uploadModalOpen}
+        onClose={() => setUploadModalOpen(false)}
+        onUploaded={fetchContents}
+        initialFolderId={folderId}
+      />
 
       {/* ---- Move-to modal ---- */}
       <MoveToModal

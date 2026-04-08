@@ -16,13 +16,14 @@ const ListDocumentsQuerySchema = z.object({
   projectId: z.string().uuid().optional(),
   docType: z.string().trim().min(1).max(80).optional(),
   folderId: z.string().uuid().optional(),
+  noFolder: z.coerce.boolean().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(30),
 });
 
 const CreateDocumentSchema = z.object({
   projectId: z.string().uuid().optional().nullable(),
   title: z.string().trim().min(1).max(300),
-  content: z.string().trim().min(1).max(50_000),
+  content: z.string().min(1).max(8_000_000), // up to ~6 MB binary as base64
   docType: z.string().trim().min(1).max(80),
   sourceKind: z.string().trim().min(1).max(64).optional().nullable(),
   sourceRecordId: z.string().trim().min(1).max(200).optional().nullable(),
@@ -90,6 +91,7 @@ type MeetingForGenerationRow = {
 };
 
 const MIME_TYPE_BY_FORMAT: Record<string, string> = {
+  pdf: "application/pdf",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -184,6 +186,8 @@ export const documentRoutes: FastifyPluginAsync = async (fastify) => {
       if (query.folderId) {
         values.push(query.folderId);
         sql += ` AND d.folder_id = $${values.length}`;
+      } else if (query.noFolder) {
+        sql += ` AND d.folder_id IS NULL`;
       }
 
       values.push(query.limit);
