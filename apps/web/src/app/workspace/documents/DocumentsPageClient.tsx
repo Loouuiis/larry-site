@@ -851,7 +851,7 @@ export function DocumentsPageClient() {
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop(folder.id)}
                   onDragEnd={handleDragEnd}
-                  onDoubleClick={() => navigateTo(folder.id)}
+                  onClick={() => !isRenaming && navigateTo(folder.id)}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     setCtxMenu({
@@ -921,7 +921,6 @@ export function DocumentsPageClient() {
                         }}
                         onBlur={handleRename}
                         onClick={(e) => e.stopPropagation()}
-                        onDoubleClick={(e) => e.stopPropagation()}
                         style={{
                           flex: 1,
                           background: "none",
@@ -986,7 +985,6 @@ export function DocumentsPageClient() {
                   draggable
                   onDragStart={handleDragStart("document", doc.id)}
                   onDragEnd={handleDragEnd}
-                  onDoubleClick={() => openDocument(doc)}
                   onClick={() => openDocument(doc)}
                   onContextMenu={(e) => {
                     e.preventDefault();
