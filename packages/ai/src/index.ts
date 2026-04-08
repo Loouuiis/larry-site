@@ -649,6 +649,83 @@ export function classifyRiskLevel(score: number): RiskScoreSnapshot["riskLevel"]
   return "low";
 }
 
+// ── Project Intake Bootstrap (AI-powered task generation) ────────────────────
+
+export interface BootstrapInput {
+  projectName: string;
+  outcome: string;
+  milestone: string;
+  deliverables: string;
+  risks: string;
+}
+
+export interface BootstrapTask {
+  title: string;
+  description: string;
+  priority: "low" | "medium" | "high" | "critical";
+  workstream: string | null;
+}
+
+const BootstrapTaskSchema = z.object({
+  title: z.string().min(1).max(200),
+  description: z.string().min(1).max(500),
+  priority: z.enum(["low", "medium", "high", "critical"]),
+  workstream: z.string().nullable(),
+});
+
+const BootstrapResultSchema = z.object({
+  tasks: z.array(BootstrapTaskSchema).min(1).max(10),
+  summary: z.string().min(1).max(500),
+});
+
+export async function generateBootstrapTasks(
+  config: IntelligenceConfig,
+  input: BootstrapInput,
+): Promise<{ tasks: BootstrapTask[]; summary: string }> {
+  if (config.provider === "mock") {
+    return {
+      tasks: [
+        { title: "Define project scope and success metrics", description: "Establish clear goals, KPIs, and what success looks like for this project.", priority: "high", workstream: null },
+        { title: "Create delivery plan with owners and milestones", description: "Break down the work into phases with responsible owners and target dates.", priority: "high", workstream: null },
+        { title: "Prepare first stakeholder update", description: "Draft an initial status update for key stakeholders covering scope, timeline, and risks.", priority: "medium", workstream: null },
+      ],
+      summary: `Larry created 3 starter tasks for ${input.projectName}.`,
+    };
+  }
+
+  const systemPrompt = [
+    "You are Larry, an AI project management assistant. A user just created a new project and answered intake questions.",
+    "Your job is to generate 4-8 actionable starter tasks that a project manager would actually put on their board.",
+    "",
+    "Rules:",
+    "- Each task must be a concrete, actionable work item — NOT a copy of what the user typed.",
+    "- Tasks should have clear titles that start with a verb (e.g. 'Define...', 'Set up...', 'Draft...', 'Research...')",
+    "- Each task MUST have a useful description explaining what needs to be done and why.",
+    "- Set priority based on urgency and impact: critical items that block others are 'high', nice-to-haves are 'low'.",
+    "- Group related tasks under a workstream name when appropriate (e.g. 'MVP Development', 'Growth', 'Fundraising').",
+    "- Think like an experienced PM: what would YOU do first if handed this project?",
+    "- Do NOT just echo back the user's words. Transform their intent into real tasks.",
+    "- Also provide a short summary sentence describing what you set up.",
+  ].join("\n");
+
+  const userPrompt = [
+    `Project: ${input.projectName}`,
+    `Desired outcome: ${input.outcome || "Not specified"}`,
+    `Key milestone/deadline: ${input.milestone || "Not specified"}`,
+    `Deliverables/workstreams: ${input.deliverables || "Not specified"}`,
+    `Risks and constraints: ${input.risks || "Not specified"}`,
+  ].join("\n");
+
+  const { object } = await generateObject({
+    model: createModel(config),
+    schema: BootstrapResultSchema,
+    system: systemPrompt,
+    prompt: userPrompt,
+  });
+
+  return object;
+}
+
 // ── Larry Intelligence (Phase 1) ─────────────────────────────────────────────
 export { runIntelligence } from "./intelligence.js";
 

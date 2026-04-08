@@ -5,7 +5,9 @@ import {
   insertProjectMemoryEntry,
   storeSuggestions,
 } from "@larry/db";
-import type { LarryAction } from "@larry/shared";
+import type { LarryAction, IntelligenceConfig } from "@larry/shared";
+import { generateBootstrapTasks } from "@larry/ai";
+import { getApiEnv } from "@larry/config";
 import { writeAuditLog } from "../../lib/audit.js";
 import { createProjectOwnerMembership } from "../../lib/project-memberships.js";
 import {
@@ -234,6 +236,19 @@ async function getDraftById(
   return normalizeDraftRow(rows[0]);
 }
 
+function buildIntelligenceConfig(config: ReturnType<typeof getApiEnv>): IntelligenceConfig {
+  if (config.MODEL_PROVIDER === "openai") {
+    return { provider: "openai", apiKey: config.OPENAI_API_KEY, model: config.OPENAI_MODEL };
+  }
+  if (config.MODEL_PROVIDER === "anthropic") {
+    return { provider: "anthropic", apiKey: config.ANTHROPIC_API_KEY, model: config.ANTHROPIC_MODEL };
+  }
+  if (config.MODEL_PROVIDER === "gemini") {
+    return { provider: "gemini", apiKey: config.GEMINI_API_KEY, model: config.GEMINI_MODEL };
+  }
+  return { provider: "mock", model: "mock" };
+}
+
 function tokenizeTaskTitles(text: string): string[] {
   return text
     .split(/[\n;,|]+/g)
@@ -260,12 +275,12 @@ function buildIntakeSeedMessage(input: { answers: string[]; summary: string; pro
   ].join("\n\n");
 }
 
-function buildBootstrapFromDraft(draft: IntakeDraftModel): {
+async function buildBootstrapFromDraft(draft: IntakeDraftModel, aiConfig?: IntelligenceConfig): Promise<{
   summary: string;
   tasks: IntakeBootstrapTask[];
   actions: LarryAction[];
   seedMessage: string;
-} {
+}> {
   if (draft.mode === "meeting") {
     const projectName = draft.projectName ?? draft.meetingTitle ?? "New Project";
     const transcript = draft.meetingTranscript ?? "";
@@ -335,26 +350,46 @@ function buildBootstrapFromDraft(draft: IntakeDraftModel): {
   const deliverables = answers[3] ?? "";
   const risks = answers[4] ?? "";
 
-  const candidateTitles = tokenizeTaskTitles(deliverables);
-  const fallbackTitles = [
-    "Define project scope and success metrics",
-    "Build delivery plan and owners",
-    "Prepare first stakeholder update",
-  ];
-  const taskTitles = (candidateTitles.length > 0 ? candidateTitles : fallbackTitles).slice(0, 6);
+  // --- AI-powered task generation ---
+  let tasks: IntakeBootstrapTask[];
+  let summary: string;
 
-  const tasks: IntakeBootstrapTask[] = taskTitles.map((title) => ({
-    title: title.slice(0, 200),
-    description: null,
-    dueDate: draft.projectTargetDate,
-    assigneeName: null,
-    priority: "medium",
-  }));
+  if (aiConfig && aiConfig.provider !== "mock") {
+    try {
+      const aiResult = await generateBootstrapTasks(aiConfig, {
+        projectName,
+        outcome,
+        milestone,
+        deliverables,
+        risks,
+      });
+
+      tasks = aiResult.tasks.map((t) => ({
+        title: t.title.slice(0, 200),
+        description: t.description ?? null,
+        dueDate: draft.projectTargetDate,
+        assigneeName: null,
+        priority: t.priority ?? "medium",
+      }));
+
+      summary = aiResult.summary || `Larry prepared ${tasks.length} starter task${tasks.length === 1 ? "" : "s"} for ${projectName}.`;
+    } catch (err) {
+      // AI call failed — fall back to tokenizer
+      console.error("[bootstrap] AI task generation failed, falling back to tokenizer:", err);
+      const result = fallbackTokenizeBootstrap(draft, projectName, outcome, milestone, deliverables, risks);
+      tasks = result.tasks;
+      summary = result.summary;
+    }
+  } else {
+    const result = fallbackTokenizeBootstrap(draft, projectName, outcome, milestone, deliverables, risks);
+    tasks = result.tasks;
+    summary = result.summary;
+  }
 
   const taskActions: LarryAction[] = tasks.map((task) => ({
     type: "task_create",
     displayText: `Create task "${task.title}"`,
-    reasoning: "Captured during project intake bootstrap",
+    reasoning: task.description ?? "Generated during project intake bootstrap",
     payload: {
       title: task.title,
       description: task.description ?? null,
@@ -382,6 +417,39 @@ function buildBootstrapFromDraft(draft: IntakeDraftModel): {
     });
   }
 
+  return {
+    summary,
+    tasks,
+    actions,
+    seedMessage: buildIntakeSeedMessage({ answers, summary, projectName }),
+  };
+}
+
+/** Fallback: tokenize deliverables string into task titles (no AI). */
+function fallbackTokenizeBootstrap(
+  draft: IntakeDraftModel,
+  projectName: string,
+  outcome: string,
+  milestone: string,
+  deliverables: string,
+  risks: string,
+): { tasks: IntakeBootstrapTask[]; summary: string } {
+  const candidateTitles = tokenizeTaskTitles(deliverables);
+  const fallbackTitles = [
+    "Define project scope and success metrics",
+    "Build delivery plan and owners",
+    "Prepare first stakeholder update",
+  ];
+  const taskTitles = (candidateTitles.length > 0 ? candidateTitles : fallbackTitles).slice(0, 6);
+
+  const tasks: IntakeBootstrapTask[] = taskTitles.map((title) => ({
+    title: title.slice(0, 200),
+    description: null,
+    dueDate: draft.projectTargetDate,
+    assigneeName: null,
+    priority: "medium",
+  }));
+
   const summary = [
     `Larry prepared ${tasks.length} starter task${tasks.length === 1 ? "" : "s"} for ${projectName}.`,
     outcome ? `Outcome focus: ${outcome}` : null,
@@ -391,12 +459,7 @@ function buildBootstrapFromDraft(draft: IntakeDraftModel): {
     .filter((line): line is string => Boolean(line))
     .join(" ");
 
-  return {
-    summary,
-    tasks,
-    actions,
-    seedMessage: buildIntakeSeedMessage({ answers, summary, projectName }),
-  };
+  return { tasks, summary };
 }
 
 function mapIntakeMemorySourceKind(mode: IntakeMode): string {
@@ -571,7 +634,8 @@ export const projectIntakeRoutes: FastifyPluginAsync = async (fastify) => {
         return buildDraftResponse(draft);
       }
 
-      const bootstrap = buildBootstrapFromDraft(draft);
+      const aiConfig = buildIntelligenceConfig(fastify.config);
+      const bootstrap = await buildBootstrapFromDraft(draft, aiConfig);
       await fastify.db.queryTenant(
         tenantId,
         `UPDATE project_intake_drafts
@@ -746,7 +810,8 @@ export const projectIntakeRoutes: FastifyPluginAsync = async (fastify) => {
           let meetingBootstrapSeedMessage = draft.bootstrapSeedMessage;
 
           if (meetingBootstrapTasks.length === 0) {
-            const bootstrap = buildBootstrapFromDraft(draft);
+            const aiConfig = buildIntelligenceConfig(fastify.config);
+            const bootstrap = await buildBootstrapFromDraft(draft, aiConfig);
             meetingBootstrapTasks = bootstrap.tasks;
             meetingBootstrapActions = bootstrap.actions;
             meetingBootstrapSummary = bootstrap.summary;
@@ -828,7 +893,8 @@ export const projectIntakeRoutes: FastifyPluginAsync = async (fastify) => {
         let bootstrapSummary = draft.bootstrapSummary;
         let bootstrapSeedMessage = draft.bootstrapSeedMessage;
         if (draft.mode === "chat" && bootstrapTasks.length === 0) {
-          const bootstrap = buildBootstrapFromDraft(draft);
+          const aiConfig = buildIntelligenceConfig(fastify.config);
+          const bootstrap = await buildBootstrapFromDraft(draft, aiConfig);
           bootstrapTasks = bootstrap.tasks;
           bootstrapActions = bootstrap.actions;
           bootstrapSummary = bootstrap.summary;
