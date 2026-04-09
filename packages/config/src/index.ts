@@ -22,7 +22,7 @@ const ApiSchema = SharedSchema.extend({
   JWT_ACCESS_SECRET: z.string().min(32),
   JWT_REFRESH_SECRET: z.string().min(32),
   ADMIN_SECRET: z.string().min(16).optional(),
-  ACCESS_TOKEN_TTL: z.string().default("15m"),
+  ACCESS_TOKEN_TTL: z.string().default("4h"),
   REFRESH_TOKEN_TTL: z.string().default("7d"),
   CORS_ORIGINS: z.string().default("http://localhost:3000"),
   REQUIRE_TENANT_HEADER: z
