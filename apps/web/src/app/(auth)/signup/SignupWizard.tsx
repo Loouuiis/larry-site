@@ -214,6 +214,14 @@ export function SignupWizard() {
         setError(data.error ?? "Something went wrong.");
         return;
       }
+      // Save avatar in background — don't block the wizard flow
+      if (avatarPreview) {
+        void fetch("/api/auth/update-profile", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ avatarUrl: avatarPreview }),
+        });
+      }
       next();
     } catch {
       setError("Network error. Please check your connection.");

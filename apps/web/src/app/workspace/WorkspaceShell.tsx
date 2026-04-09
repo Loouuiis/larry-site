@@ -28,9 +28,10 @@ type WorkspaceShellProps = {
   children: React.ReactNode;
   userEmail?: string | null;
   emailVerified?: boolean;
+  avatarUrl?: string | null;
 };
 
-export function WorkspaceShell({ children, userEmail, emailVerified }: WorkspaceShellProps) {
+export function WorkspaceShell({ children, userEmail, emailVerified, avatarUrl }: WorkspaceShellProps) {
   const pathname = usePathname();
   const [projects, setProjects] = useState<WorkspaceProject[]>([]);
   const [chatProjectId, setChatProjectId] = useState<string>("");
@@ -152,6 +153,7 @@ export function WorkspaceShell({ children, userEmail, emailVerified }: Workspace
           mobileOpen={mobileOpen}
           onMobileClose={() => setMobileOpen(false)}
           userEmail={userEmail}
+          avatarUrl={avatarUrl}
           notifCount={notifCount}
           collapsed={sidebarCollapsed}
           onToggleCollapsed={() => setSidebarCollapsed((v) => !v)}

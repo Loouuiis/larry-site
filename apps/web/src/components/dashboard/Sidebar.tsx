@@ -42,13 +42,14 @@ interface WorkspaceSidebarInnerProps {
   activeNav: WorkspaceSidebarNav;
   onClose?: () => void;
   userEmail?: string | null;
+  avatarUrl?: string | null;
   notifCount?: number;
   onToggleCollapsed?: () => void;
 }
 
 interface SearchTask { id: string; title: string; status: string; projectId?: string | null; }
 
-function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, onToggleCollapsed }: WorkspaceSidebarInnerProps) {
+function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, avatarUrl, onToggleCollapsed }: WorkspaceSidebarInnerProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -460,12 +461,21 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, onTogg
       {/* Bottom bar — single row: avatar + email + logout */}
       <div className="shrink-0 px-3 py-3" style={{ borderTop: "1px solid var(--border)" }}>
         <div className="flex items-center gap-2 group">
-          <div
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-            style={{ background: "#6c44f6", color: "#fff", fontSize: 11, fontWeight: 600 }}
-          >
-            {(userEmail?.split("@")[0] ?? "?").slice(0, 2).toUpperCase()}
-          </div>
+          {avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={avatarUrl}
+              alt="Profile"
+              className="h-8 w-8 shrink-0 rounded-lg object-cover"
+            />
+          ) : (
+            <div
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+              style={{ background: "#6c44f6", color: "#fff", fontSize: 11, fontWeight: 600 }}
+            >
+              {(userEmail?.split("@")[0] ?? "?").slice(0, 2).toUpperCase()}
+            </div>
+          )}
           <span className="flex-1 truncate text-[12px]" style={{ color: "var(--text-muted)" }}>
             {userEmail ?? "Account"}
           </span>
@@ -507,12 +517,13 @@ interface WorkspaceSidebarProps {
   mobileOpen: boolean;
   onMobileClose: () => void;
   userEmail?: string | null;
+  avatarUrl?: string | null;
   notifCount?: number;
   collapsed?: boolean;
   onToggleCollapsed?: () => void;
 }
 
-export function WorkspaceSidebar({ projects, activeNav, mobileOpen, onMobileClose, userEmail, notifCount, collapsed, onToggleCollapsed }: WorkspaceSidebarProps) {
+export function WorkspaceSidebar({ projects, activeNav, mobileOpen, onMobileClose, userEmail, avatarUrl, notifCount, collapsed, onToggleCollapsed }: WorkspaceSidebarProps) {
   return (
     <>
       {/* Desktop */}
@@ -535,19 +546,29 @@ export function WorkspaceSidebar({ projects, activeNav, mobileOpen, onMobileClos
             >
               <PanelLeftOpen size={16} />
             </button>
-            <div
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-              style={{ background: "#6c44f6", color: "#fff", fontSize: 11, fontWeight: 600 }}
-              title={userEmail ?? "Account"}
-            >
-              {(userEmail?.split("@")[0] ?? "?").slice(0, 2).toUpperCase()}
-            </div>
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt="Avatar"
+                className="h-8 w-8 rounded-lg object-cover"
+                title={userEmail ?? "Account"}
+              />
+            ) : (
+              <div
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                style={{ background: "#6c44f6", color: "#fff", fontSize: 11, fontWeight: 600 }}
+                title={userEmail ?? "Account"}
+              >
+                {(userEmail?.split("@")[0] ?? "?").slice(0, 2).toUpperCase()}
+              </div>
+            )}
           </div>
         ) : (
           <WorkspaceSidebarInner
             projects={projects}
             activeNav={activeNav}
             userEmail={userEmail}
+            avatarUrl={avatarUrl}
             notifCount={notifCount}
             onToggleCollapsed={onToggleCollapsed}
           />
@@ -597,6 +618,7 @@ export function WorkspaceSidebar({ projects, activeNav, mobileOpen, onMobileClos
                 activeNav={activeNav}
                 onClose={onMobileClose}
                 userEmail={userEmail}
+                avatarUrl={avatarUrl}
                 notifCount={notifCount}
               />
             </motion.aside>

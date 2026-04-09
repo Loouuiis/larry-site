@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { SettingsSubnav } from "../SettingsSubnav";
 
@@ -22,7 +22,30 @@ interface MeResponse {
     email: string;
     emailVerifiedAt: string | null;
     displayName: string | null;
+    avatarUrl?: string | null;
   };
+}
+
+function resizeImageToDataUrl(file: File, maxSize = 256): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const scale = Math.min(maxSize / img.width, maxSize / img.height, 1);
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext("2d")!;
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.85));
+      };
+      img.onerror = reject;
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -187,6 +210,12 @@ export default function AccountSettingsPage() {
   const [emailVerified, setEmailVerified] = useState(false);
   const [loadingUser, setLoadingUser] = useState(true);
 
+  // Avatar section
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarLoading, setAvatarLoading] = useState(false);
+  const [avatarMsg, setAvatarMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // Password section
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -224,11 +253,12 @@ export default function AccountSettingsPage() {
   useEffect(() => {
     async function loadUser() {
       try {
-        const res = await fetch("/api/auth/me");
+        const res = await fetch("/api/auth/profile");
         if (!res.ok) return;
         const data = (await res.json()) as MeResponse;
         setUserEmail(data.user.email);
         setEmailVerified(!!data.user.emailVerifiedAt);
+        setAvatarUrl(data.user.avatarUrl ?? null);
         // If user has no password, the API doesn't expose that directly.
         // We'll assume they have one and handle the "no current password" case
         // gracefully from the API response.
@@ -432,6 +462,56 @@ export default function AccountSettingsPage() {
   }
 
   // -----------------------------------------------------------------------
+  // Avatar handlers
+  // -----------------------------------------------------------------------
+  async function handleAvatarFile(file: File) {
+    setAvatarMsg(null);
+    setAvatarLoading(true);
+    try {
+      const dataUrl = await resizeImageToDataUrl(file);
+      const res = await fetch("/api/auth/update-profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avatarUrl: dataUrl }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAvatarMsg({ type: "error", text: data.error ?? "Failed to update photo." });
+        return;
+      }
+      setAvatarUrl(dataUrl);
+      setAvatarMsg({ type: "success", text: "Profile photo updated." });
+    } catch {
+      setAvatarMsg({ type: "error", text: "Network error. Please try again." });
+    } finally {
+      setAvatarLoading(false);
+    }
+  }
+
+  async function handleRemoveAvatar() {
+    setAvatarMsg(null);
+    setAvatarLoading(true);
+    try {
+      const res = await fetch("/api/auth/update-profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avatarUrl: null }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAvatarMsg({ type: "error", text: data.error ?? "Failed to remove photo." });
+        return;
+      }
+      setAvatarUrl(null);
+      setAvatarMsg({ type: "success", text: "Profile photo removed." });
+    } catch {
+      setAvatarMsg({ type: "error", text: "Network error. Please try again." });
+    } finally {
+      setAvatarLoading(false);
+    }
+  }
+
+  // -----------------------------------------------------------------------
   // Render
   // -----------------------------------------------------------------------
   return (
@@ -453,6 +533,91 @@ export default function AccountSettingsPage() {
         </div>
       ) : (
         <div className="mt-8 space-y-8">
+          {/* ============================================================= */}
+          {/* PROFILE PHOTO SECTION                                          */}
+          {/* ============================================================= */}
+          <div
+            className="rounded-lg border p-5"
+            style={{ borderColor: "var(--border)", background: "var(--surface)" }}
+          >
+            <h2 className="text-[16px] font-semibold" style={{ color: "var(--text-1)" }}>
+              Profile photo
+            </h2>
+            <p className="mt-1 text-[13px]" style={{ color: "var(--text-2)" }}>
+              This photo will appear in the sidebar and across the app.
+            </p>
+            <div className="mt-4 flex items-center gap-4">
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt="Profile"
+                  className="h-[72px] w-[72px] rounded-full object-cover"
+                  style={{ border: "2px solid var(--border)" }}
+                />
+              ) : (
+                <div
+                  className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-full text-[24px] font-semibold"
+                  style={{ background: "#6c44f6", color: "#fff" }}
+                >
+                  {(userEmail?.split("@")[0] ?? "?").slice(0, 2).toUpperCase()}
+                </div>
+              )}
+              <div className="flex flex-col gap-2">
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={avatarLoading}
+                    onClick={() => fileInputRef.current?.click()}
+                    className="rounded-lg border px-3 py-1.5 text-[13px] font-medium transition-colors"
+                    style={{
+                      borderColor: "var(--border)",
+                      background: "var(--surface-2)",
+                      color: "var(--text-1)",
+                      opacity: avatarLoading ? 0.6 : 1,
+                    }}
+                  >
+                    {avatarLoading ? "Saving..." : "Change photo"}
+                  </button>
+                  {avatarUrl && (
+                    <button
+                      type="button"
+                      disabled={avatarLoading}
+                      onClick={handleRemoveAvatar}
+                      className="rounded-lg border px-3 py-1.5 text-[13px] font-medium transition-colors"
+                      style={{
+                        borderColor: "var(--border)",
+                        background: "var(--surface-2)",
+                        color: "var(--text-2)",
+                        opacity: avatarLoading ? 0.6 : 1,
+                      }}
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+                {avatarMsg && (
+                  <p
+                    className="text-[12px]"
+                    style={{ color: avatarMsg.type === "success" ? "#22c55e" : "var(--error)" }}
+                  >
+                    {avatarMsg.text}
+                  </p>
+                )}
+              </div>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void handleAvatarFile(file);
+                e.target.value = "";
+              }}
+            />
+          </div>
+
           {/* ============================================================= */}
           {/* PASSWORD SECTION                                               */}
           {/* ============================================================= */}

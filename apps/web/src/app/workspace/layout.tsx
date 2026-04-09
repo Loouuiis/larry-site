@@ -8,6 +8,8 @@ interface MeResponse {
   user: {
     emailVerifiedAt: string | null;
     verificationGraceDeadline: string | null;
+    avatarUrl?: string | null;
+    displayName?: string | null;
   };
 }
 
@@ -15,8 +17,9 @@ export default async function WorkspaceLayout({ children }: { children: React.Re
   const session = await getSession();
   if (!session) redirect("/login");
 
-  // Fetch email verification state from the API
+  // Fetch email verification state + profile from the API
   let emailVerified = true; // default to true for safety (legacy/dev sessions)
+  let avatarUrl: string | null = null;
   const apiBaseUrl = process.env.LARRY_API_BASE_URL;
 
   if (apiBaseUrl && session.apiAccessToken) {
@@ -30,6 +33,7 @@ export default async function WorkspaceLayout({ children }: { children: React.Re
       if (res.ok) {
         const data = (await res.json()) as MeResponse;
         emailVerified = !!data.user.emailVerifiedAt;
+        avatarUrl = data.user.avatarUrl ?? null;
 
         // If past grace deadline and not verified, redirect to locked screen
         if (
@@ -46,7 +50,7 @@ export default async function WorkspaceLayout({ children }: { children: React.Re
   }
 
   return (
-    <WorkspaceShell userEmail={session.email} emailVerified={emailVerified}>
+    <WorkspaceShell userEmail={session.email} emailVerified={emailVerified} avatarUrl={avatarUrl}>
       {children}
     </WorkspaceShell>
   );

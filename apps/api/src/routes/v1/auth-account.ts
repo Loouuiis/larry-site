@@ -15,6 +15,11 @@ import { passwordSchema } from "../../lib/validation.js";
 
 const EMAIL_CHANGE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
+const UpdateProfileSchema = z.object({
+  avatarUrl: z.string().max(400_000).nullable().optional(),
+  displayName: z.string().trim().max(100).nullable().optional(),
+});
+
 const ChangePasswordSchema = z.object({
   currentPassword: z.string().optional(),
   newPassword: passwordSchema,
@@ -30,6 +35,53 @@ const ConfirmEmailChangeSchema = z.object({
 });
 
 export const authAccountRoutes: FastifyPluginAsync = async (fastify) => {
+  // -----------------------------------------------------------------------
+  // PATCH /update-profile  (auth required)
+  // -----------------------------------------------------------------------
+  fastify.patch(
+    "/update-profile",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const body = UpdateProfileSchema.parse(request.body);
+      const userId = request.user.userId;
+      const tenantId = request.user.tenantId;
+
+      if (body.avatarUrl && !body.avatarUrl.startsWith("data:image/")) {
+        return reply.badRequest("avatarUrl must be an image data URL.");
+      }
+
+      const setClauses: string[] = ["updated_at = NOW()"];
+      const values: unknown[] = [userId];
+
+      if (body.avatarUrl !== undefined) {
+        values.push(body.avatarUrl);
+        setClauses.push(`avatar_url = $${values.length}`);
+      }
+      if (body.displayName !== undefined) {
+        values.push(body.displayName);
+        setClauses.push(`display_name = $${values.length}`);
+      }
+
+      if (setClauses.length > 1) {
+        await fastify.db.query(
+          `UPDATE users SET ${setClauses.join(", ")} WHERE id = $1`,
+          values
+        );
+      }
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId: userId,
+        actionType: "auth.profile_updated",
+        objectType: "user",
+        objectId: userId,
+        details: { updatedFields: Object.keys(body) },
+      });
+
+      return reply.send({ success: true });
+    }
+  );
+
   // -----------------------------------------------------------------------
   // POST /change-password  (auth required)
   // -----------------------------------------------------------------------

@@ -389,8 +389,9 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         is_active: boolean;
         email_verified_at: string | null;
         verification_grace_deadline: string | null;
+        avatar_url: string | null;
       }>(
-        `SELECT display_name, is_active, email_verified_at, verification_grace_deadline
+        `SELECT display_name, is_active, email_verified_at, verification_grace_deadline, avatar_url
          FROM users
          WHERE id = $1
          LIMIT 1`,
@@ -407,6 +408,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
           isActive: rows[0]?.is_active ?? true,
           emailVerifiedAt: rows[0]?.email_verified_at ?? null,
           verificationGraceDeadline: rows[0]?.verification_grace_deadline ?? null,
+          avatarUrl: rows[0]?.avatar_url ?? null,
         },
       };
     }
