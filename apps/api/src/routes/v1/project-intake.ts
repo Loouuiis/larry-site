@@ -299,7 +299,7 @@ async function buildBootstrapFromDraft(draft: IntakeDraftModel, aiConfig?: Intel
         tasks = aiResult.tasks.map((t) => ({
           title: t.title.slice(0, 200),
           description: t.description ?? null,
-          dueDate: draft.projectTargetDate,
+          dueDate: t.dueDate ?? draft.projectTargetDate,
           assigneeName: null,
           priority: t.priority ?? "medium",
         }));
@@ -368,7 +368,7 @@ async function buildBootstrapFromDraft(draft: IntakeDraftModel, aiConfig?: Intel
       tasks = aiResult.tasks.map((t) => ({
         title: t.title.slice(0, 200),
         description: t.description ?? null,
-        dueDate: draft.projectTargetDate,
+        dueDate: t.dueDate ?? draft.projectTargetDate,
         assigneeName: null,
         priority: t.priority ?? "medium",
       }));

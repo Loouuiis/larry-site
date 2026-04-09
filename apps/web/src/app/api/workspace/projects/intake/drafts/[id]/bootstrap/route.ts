@@ -16,7 +16,7 @@ export async function POST(
     session,
     `/v1/projects/intake/drafts/${id}/bootstrap`,
     { method: "POST", body: JSON.stringify({}) },
-    { timeoutMs: 60_000 }
+    { timeoutMs: 90_000 }
   );
 
   if (result.session) {

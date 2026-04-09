@@ -664,6 +664,7 @@ export interface BootstrapTask {
   description: string;
   priority: "low" | "medium" | "high" | "critical";
   workstream: string | null;
+  dueDate: string | null;
 }
 
 const BootstrapTaskSchema = z.object({
@@ -671,6 +672,7 @@ const BootstrapTaskSchema = z.object({
   description: z.string().min(1).max(500),
   priority: z.enum(["low", "medium", "high", "critical"]),
   workstream: z.string().nullable(),
+  dueDate: z.string().nullable(),
 });
 
 const BootstrapResultSchema = z.object({
@@ -683,29 +685,43 @@ export async function generateBootstrapTasks(
   input: BootstrapInput,
 ): Promise<{ tasks: BootstrapTask[]; summary: string }> {
   if (config.provider === "mock") {
+    const today = new Date().toISOString().slice(0, 10);
     return {
       tasks: [
-        { title: "Define project scope and success metrics", description: "Establish clear goals, KPIs, and what success looks like for this project.", priority: "high", workstream: null },
-        { title: "Create delivery plan with owners and milestones", description: "Break down the work into phases with responsible owners and target dates.", priority: "high", workstream: null },
-        { title: "Prepare first stakeholder update", description: "Draft an initial status update for key stakeholders covering scope, timeline, and risks.", priority: "medium", workstream: null },
+        { title: "Define project scope and success metrics", description: "Establish clear goals, KPIs, and what success looks like for this project.", priority: "high", workstream: null, dueDate: today },
+        { title: "Create delivery plan with owners and milestones", description: "Break down the work into phases with responsible owners and target dates.", priority: "high", workstream: null, dueDate: today },
+        { title: "Prepare first stakeholder update", description: "Draft an initial status update for key stakeholders covering scope, timeline, and risks.", priority: "medium", workstream: null, dueDate: today },
       ],
       summary: `Larry created 3 starter tasks for ${input.projectName}.`,
     };
   }
 
+  const today = new Date().toISOString().slice(0, 10);
+
   const systemPrompt = [
-    "You are Larry, an AI project management assistant. A user just created a new project and answered intake questions.",
-    "Your job is to generate 4-8 actionable starter tasks that a project manager would actually put on their board.",
+    "You are Larry, a senior AI project management assistant with 15 years of PM experience.",
+    "A user just created a new project and answered intake questions. Your job is to generate 4-8 actionable starter tasks that a real PM would put on their board on day one.",
     "",
-    "Rules:",
+    "CONTEXT INTERPRETATION — this is critical:",
+    '- "ASAP" or "as soon as possible" means within 1 week from today.',
+    '- "Urgent" means within 3 business days.',
+    '- "Critical" means existential risk — 2-3 days, or escalate if blocked.',
+    '- "Everything is ASAP" or "everything is critical" means the user is stressed and overwhelmed. DO NOT mark everything as critical. Instead: force-rank by dependencies, identify what truly blocks other work, and phase the rest into 1-week sprints.',
+    '- If no deadline is given, infer one based on task complexity: simple tasks get 3-5 days, complex ones get 1-2 weeks.',
+    '- NEVER leave dueDate as null. Always calculate a concrete YYYY-MM-DD date from today.',
+    `- Today's date is ${today}. Calculate all due dates relative to today.`,
+    "",
+    "TASK GENERATION RULES:",
     "- Each task must be a concrete, actionable work item — NOT a copy of what the user typed.",
-    "- Tasks should have clear titles that start with a verb (e.g. 'Define...', 'Set up...', 'Draft...', 'Research...')",
-    "- Each task MUST have a useful description explaining what needs to be done and why.",
-    "- Set priority based on urgency and impact: critical items that block others are 'high', nice-to-haves are 'low'.",
-    "- Group related tasks under a workstream name when appropriate (e.g. 'MVP Development', 'Growth', 'Fundraising').",
-    "- Think like an experienced PM: what would YOU do first if handed this project?",
-    "- Do NOT just echo back the user's words. Transform their intent into real tasks.",
-    "- Also provide a short summary sentence describing what you set up.",
+    "- Titles MUST start with a verb (e.g. 'Define...', 'Set up...', 'Draft...', 'Research...', 'Identify...').",
+    "- Each task MUST have a useful description explaining what to do, why it matters, and what 'done' looks like.",
+    "- Set priority based on dependency order: tasks that block others are 'high' or 'critical', independent tasks are 'medium', nice-to-haves are 'low'.",
+    "- Group related tasks under a workstream name (e.g. 'MVP Development', 'Growth Strategy', 'Fundraising', 'Operations').",
+    "- Think like an experienced PM handed this project today: what gets done this week? What's next week? What can wait?",
+    "- For multi-deliverable projects, create at least one task per deliverable/workstream PLUS cross-cutting tasks (kickoff, stakeholder alignment, risk review).",
+    "- Do NOT just echo back the user's words. Transform vague intent into specific, assignable work.",
+    "- Stagger due dates — not everything can be due on the same day. Spread across 1-3 weeks based on priority.",
+    "- Also provide a short summary sentence describing what you set up and the implied timeline.",
   ].join("\n");
 
   const userPrompt = [
@@ -714,6 +730,8 @@ export async function generateBootstrapTasks(
     `Key milestone/deadline: ${input.milestone || "Not specified"}`,
     `Deliverables/workstreams: ${input.deliverables || "Not specified"}`,
     `Risks and constraints: ${input.risks || "Not specified"}`,
+    "",
+    `Today's date: ${today}`,
   ].join("\n");
 
   const { object } = await generateObject({
@@ -721,6 +739,7 @@ export async function generateBootstrapTasks(
     schema: BootstrapResultSchema,
     system: systemPrompt,
     prompt: userPrompt,
+    abortSignal: AbortSignal.timeout(45_000),
   });
 
   return object;
@@ -737,36 +756,47 @@ export async function generateBootstrapFromTranscript(
   input: TranscriptBootstrapInput,
 ): Promise<{ tasks: BootstrapTask[]; summary: string }> {
   if (config.provider === "mock") {
+    const today = new Date().toISOString().slice(0, 10);
     return {
       tasks: [
-        { title: "Review meeting decisions and assign owners", description: "Go through the key decisions made during the meeting and ensure each has a responsible owner.", priority: "high", workstream: null },
-        { title: "Follow up on open action items", description: "Track and follow up on any commitments or next steps mentioned during the meeting.", priority: "high", workstream: null },
-        { title: "Share meeting summary with stakeholders", description: "Prepare and distribute a concise summary of outcomes and action items to all relevant parties.", priority: "medium", workstream: null },
+        { title: "Review meeting decisions and assign owners", description: "Go through the key decisions made during the meeting and ensure each has a responsible owner.", priority: "high", workstream: null, dueDate: today },
+        { title: "Follow up on open action items", description: "Track and follow up on any commitments or next steps mentioned during the meeting.", priority: "high", workstream: null, dueDate: today },
+        { title: "Share meeting summary with stakeholders", description: "Prepare and distribute a concise summary of outcomes and action items to all relevant parties.", priority: "medium", workstream: null, dueDate: today },
       ],
       summary: `Larry identified 3 action items from "${input.meetingTitle ?? "the meeting"}".`,
     };
   }
 
+  const today = new Date().toISOString().slice(0, 10);
+
   const systemPrompt = [
-    "You are Larry, an AI project management assistant. A user uploaded a meeting transcript.",
-    "Your job is to extract 3-8 real, actionable tasks from what was discussed and committed to in the meeting.",
+    "You are Larry, a senior AI project management assistant with 15 years of PM experience.",
+    "A user uploaded a meeting transcript. Your job is to extract 3-8 real, actionable tasks from commitments made in the meeting.",
     "",
-    "Rules:",
+    "CONTEXT INTERPRETATION:",
+    '- "ASAP" means within 1 week. "Urgent" means 2-3 days. "Critical" means 1-2 days.',
+    '- "By end of week" means Friday. "Next week" means the following Monday-Friday.',
+    "- If someone says they'll do something but no deadline is mentioned, infer one based on task complexity (simple: 3 days, medium: 1 week, complex: 2 weeks).",
+    "- NEVER leave dueDate as null. Always calculate a concrete YYYY-MM-DD date.",
+    `- Today's date is ${today}. Calculate all due dates relative to today.`,
+    "",
+    "TASK EXTRACTION RULES:",
     "- Extract only COMMITTED actions — things people agreed to do, not hypotheticals or past work.",
-    "- Each task title must start with a verb and be specific (e.g. 'Send updated proposal to client by Friday', not 'Proposal').",
-    "- Each task MUST have a description explaining context from the meeting.",
-    "- Set priority: 'high' for urgent/blocking items, 'medium' for standard follow-ups, 'low' for nice-to-haves.",
-    "- If someone was assigned the task, mention them in the description.",
+    "- Each task title MUST start with a verb and be specific (e.g. 'Send updated proposal to client by Friday', not 'Proposal').",
+    "- Each task MUST have a description explaining the meeting context and what 'done' looks like.",
+    "- Set priority based on what blocks other work: 'high' for blocking items, 'medium' for standard follow-ups, 'low' for nice-to-haves.",
+    "- If someone was assigned the task, mention them in the description (e.g. 'Assigned to Sarah based on meeting discussion').",
     "- Group related tasks under a workstream when relevant.",
-    "- Do NOT create tasks from casual conversation or off-topic discussion.",
-    "- Also provide a one-sentence summary of the meeting's key outcomes.",
+    "- Do NOT create tasks from casual conversation, jokes, or off-topic discussion.",
+    "- Stagger due dates — not all tasks should have the same deadline.",
+    "- Also provide a one-sentence summary of the meeting's key outcomes and the implied timeline.",
   ].join("\n");
 
-  // Truncate transcript to avoid token limits (keep first 6000 chars)
   const truncated = input.transcript.slice(0, 6_000);
   const userPrompt = [
     `Project: ${input.projectName}`,
     input.meetingTitle ? `Meeting: ${input.meetingTitle}` : null,
+    `Today's date: ${today}`,
     "",
     "Transcript:",
     truncated,
@@ -778,6 +808,7 @@ export async function generateBootstrapFromTranscript(
     schema: BootstrapResultSchema,
     system: systemPrompt,
     prompt: userPrompt,
+    abortSignal: AbortSignal.timeout(45_000),
   });
 
   return object;
