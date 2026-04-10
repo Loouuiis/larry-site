@@ -7,6 +7,7 @@ import { buildWorkerIntelligenceConfig } from "./intelligence-config.js";
 const SCAN_CONCURRENCY = 5;
 
 export async function runLarryScan(): Promise<void> {
+  const startTime = Date.now();
   const config = buildWorkerIntelligenceConfig();
 
   // Load all active projects across all tenants using system bypass identity.
@@ -23,6 +24,7 @@ export async function runLarryScan(): Promise<void> {
   });
 
   let processed = 0;
+  let failed = 0;
   let totalExecuted = 0;
   let totalSuggested = 0;
 
@@ -52,6 +54,7 @@ export async function runLarryScan(): Promise<void> {
         totalExecuted += autoResult.executedCount;
         totalSuggested += suggestResult.suggestedCount + autoResult.suggestedCount;
       } catch (err) {
+        failed++;
         console.error(
           `[larry-scan] project ${projectId} (tenant ${tenantId}) failed`,
           err instanceof Error ? err.message : String(err)
@@ -62,7 +65,8 @@ export async function runLarryScan(): Promise<void> {
 
   await Promise.all(workers);
 
+  const elapsedSeconds = ((Date.now() - startTime) / 1000).toFixed(1);
   console.log(
-    `[larry-scan] Processed ${processed} projects, executed ${totalExecuted} actions, stored ${totalSuggested} suggestions`
+    `[larry-scan] completed in ${elapsedSeconds}s — processed: ${processed}, failed: ${failed}, actions: ${totalExecuted}`
   );
 }
