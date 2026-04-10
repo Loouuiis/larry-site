@@ -854,33 +854,40 @@ export const projectIntakeRoutes: FastifyPluginAsync = async (fastify) => {
           let meetingBootstrapSeedMessage = draft.bootstrapSeedMessage;
 
           if (meetingBootstrapTasks.length === 0) {
-            const aiConfig = buildIntelligenceConfig(fastify.config);
-            const bootstrap = await buildBootstrapFromDraft(draft, aiConfig);
-            meetingBootstrapTasks = bootstrap.tasks;
-            meetingBootstrapActions = bootstrap.actions;
-            meetingBootstrapSummary = bootstrap.summary;
-            meetingBootstrapSeedMessage = bootstrap.seedMessage;
+            try {
+              const aiConfig = buildIntelligenceConfig(fastify.config);
+              const bootstrap = await buildBootstrapFromDraft(draft, aiConfig);
+              meetingBootstrapTasks = bootstrap.tasks;
+              meetingBootstrapActions = bootstrap.actions;
+              meetingBootstrapSummary = bootstrap.summary;
+              meetingBootstrapSeedMessage = bootstrap.seedMessage;
 
-            await fastify.db.queryTenant(
-              tenantId,
-              `UPDATE project_intake_drafts
-                  SET status = 'bootstrapped',
-                      bootstrap_summary = $3,
-                      bootstrap_tasks = $4::jsonb,
-                      bootstrap_actions = $5::jsonb,
-                      bootstrap_seed_message = $6,
-                      updated_at = NOW()
-                WHERE tenant_id = $1
-                  AND id = $2`,
-              [
+              await fastify.db.queryTenant(
                 tenantId,
-                draft.id,
-                meetingBootstrapSummary,
-                JSON.stringify(meetingBootstrapTasks),
-                JSON.stringify(meetingBootstrapActions),
-                meetingBootstrapSeedMessage,
-              ]
-            );
+                `UPDATE project_intake_drafts
+                    SET status = 'bootstrapped',
+                        bootstrap_summary = $3,
+                        bootstrap_tasks = $4::jsonb,
+                        bootstrap_actions = $5::jsonb,
+                        bootstrap_seed_message = $6,
+                        updated_at = NOW()
+                  WHERE tenant_id = $1
+                    AND id = $2`,
+                [
+                  tenantId,
+                  draft.id,
+                  meetingBootstrapSummary,
+                  JSON.stringify(meetingBootstrapTasks),
+                  JSON.stringify(meetingBootstrapActions),
+                  meetingBootstrapSeedMessage,
+                ]
+              );
+            } catch (bootstrapError) {
+              request.log.error(
+                { err: bootstrapError, tenantId, draftId: draft.id },
+                "bootstrap task generation failed during meeting finalize — project will be created without bootstrap tasks"
+              );
+            }
           }
 
           for (const task of meetingBootstrapTasks) {
@@ -918,17 +925,23 @@ export const projectIntakeRoutes: FastifyPluginAsync = async (fastify) => {
               );
             }
 
-            const actionsToProcess = [
-              ...(intelligenceResult.autoActions ?? []),
-              ...(intelligenceResult.suggestedActions ?? []),
-            ];
-            if (actionsToProcess.length > 0) {
+            if ((intelligenceResult.autoActions ?? []).length > 0) {
               await runAutoActions(
                 fastify.db,
                 tenantId,
                 finalizedProjectId,
                 "signal",
-                actionsToProcess
+                intelligenceResult.autoActions!
+              );
+            }
+
+            if ((intelligenceResult.suggestedActions ?? []).length > 0) {
+              await storeSuggestions(
+                fastify.db,
+                tenantId,
+                finalizedProjectId,
+                "chat",
+                intelligenceResult.suggestedActions!
               );
             }
           } catch (intelligenceError) {
@@ -1088,17 +1101,23 @@ export const projectIntakeRoutes: FastifyPluginAsync = async (fastify) => {
             );
           }
 
-          const actionsToProcess = [
-            ...(intelligenceResult.autoActions ?? []),
-            ...(intelligenceResult.suggestedActions ?? []),
-          ];
-          if (actionsToProcess.length > 0) {
+          if ((intelligenceResult.autoActions ?? []).length > 0) {
             await runAutoActions(
               fastify.db,
               tenantId,
               finalizedProjectId,
               "signal",
-              actionsToProcess
+              intelligenceResult.autoActions!
+            );
+          }
+
+          if ((intelligenceResult.suggestedActions ?? []).length > 0) {
+            await storeSuggestions(
+              fastify.db,
+              tenantId,
+              finalizedProjectId,
+              "chat",
+              intelligenceResult.suggestedActions!
             );
           }
         } catch (intelligenceError) {
