@@ -675,15 +675,21 @@ const BootstrapTaskSchema = z.object({
   dueDate: z.string().nullable(),
 });
 
+const BootstrapFollowUpSchema = z.object({
+  field: z.string().min(1).max(200),
+  question: z.string().min(1).max(500),
+});
+
 const BootstrapResultSchema = z.object({
-  tasks: z.array(BootstrapTaskSchema).min(1).max(10),
+  tasks: z.array(BootstrapTaskSchema).max(10).default([]),
   summary: z.string().min(1).max(500),
+  followUpQuestions: z.array(BootstrapFollowUpSchema).max(5).default([]),
 });
 
 export async function generateBootstrapTasks(
   config: IntelligenceConfig,
   input: BootstrapInput,
-): Promise<{ tasks: BootstrapTask[]; summary: string }> {
+): Promise<{ tasks: BootstrapTask[]; summary: string; followUpQuestions: Array<{ field: string; question: string }> }> {
   if (config.provider === "mock") {
     const today = new Date().toISOString().slice(0, 10);
     return {
@@ -693,6 +699,7 @@ export async function generateBootstrapTasks(
         { title: "Prepare first stakeholder update", description: "Draft an initial status update for key stakeholders covering scope, timeline, and risks.", priority: "medium", workstream: null, dueDate: today },
       ],
       summary: `Larry created 3 starter tasks for ${input.projectName}.`,
+      followUpQuestions: [],
     };
   }
 
@@ -701,6 +708,24 @@ export async function generateBootstrapTasks(
   const systemPrompt = [
     "You are Larry, a senior AI project management assistant with 15 years of PM experience.",
     "A user just created a new project and answered intake questions. Your job is to generate 4-8 actionable starter tasks that a real PM would put on their board on day one.",
+    "",
+    "BEFORE GENERATING TASKS — ASK-FIRST GATE:",
+    "Check if the input provides ENOUGH detail to create meaningful tasks. You need at least:",
+    "  1. A clear goal or outcome (what does success look like?)",
+    "  2. Some indication of scope (what's included/excluded?)",
+    "  3. At least one concrete deliverable or workstream",
+    "",
+    "If 2 or more of these are missing or too vague to act on, return followUpQuestions instead of tasks.",
+    "Return 1-3 questions (ONE per missing piece). Each question should help you create better tasks.",
+    "",
+    "Examples of VAGUE input that needs questions:",
+    '  - "Improve onboarding" -> Ask: "What aspects of onboarding? (UX flow, documentation, automation, support training?)"',
+    '  - "Launch a product" -> Ask: "What does launch mean for you? (website live, app store release, beta rollout?)"',
+    '  - "Build the thing" -> Ask: "Can you describe the main deliverables and who needs to be involved?"',
+    "",
+    "Examples of SUFFICIENT input — go ahead and generate tasks:",
+    '  - "Build a customer portal with login, dashboard, and billing integration. Launch by April 30."',
+    '  - "Plan the Q3 marketing campaign: social media, email sequences, and landing pages."',
     "",
     "CONTEXT INTERPRETATION — this is critical:",
     '- "ASAP" or "as soon as possible" means within 1 week from today.',
@@ -719,7 +744,6 @@ export async function generateBootstrapTasks(
     "- Group related tasks under a workstream name (e.g. 'MVP Development', 'Growth Strategy', 'Fundraising', 'Operations').",
     "- Think like an experienced PM handed this project today: what gets done this week? What's next week? What can wait?",
     "- For multi-deliverable projects, create at least one task per deliverable/workstream PLUS cross-cutting tasks (kickoff, stakeholder alignment, risk review).",
-    "- Do NOT just echo back the user's words. Transform vague intent into specific, assignable work.",
     "- Stagger due dates — not everything can be due on the same day. Spread across 1-3 weeks based on priority.",
     "- Also provide a short summary sentence describing what you set up and the implied timeline.",
   ].join("\n");
@@ -754,7 +778,7 @@ export interface TranscriptBootstrapInput {
 export async function generateBootstrapFromTranscript(
   config: IntelligenceConfig,
   input: TranscriptBootstrapInput,
-): Promise<{ tasks: BootstrapTask[]; summary: string }> {
+): Promise<{ tasks: BootstrapTask[]; summary: string; followUpQuestions: Array<{ field: string; question: string }> }> {
   if (config.provider === "mock") {
     const today = new Date().toISOString().slice(0, 10);
     return {
@@ -764,6 +788,7 @@ export async function generateBootstrapFromTranscript(
         { title: "Share meeting summary with stakeholders", description: "Prepare and distribute a concise summary of outcomes and action items to all relevant parties.", priority: "medium", workstream: null, dueDate: today },
       ],
       summary: `Larry identified 3 action items from "${input.meetingTitle ?? "the meeting"}".`,
+      followUpQuestions: [],
     };
   }
 
@@ -772,6 +797,14 @@ export async function generateBootstrapFromTranscript(
   const systemPrompt = [
     "You are Larry, a senior AI project management assistant with 15 years of PM experience.",
     "A user uploaded a meeting transcript. Your job is to extract 3-8 real, actionable tasks from commitments made in the meeting.",
+    "",
+    "BEFORE GENERATING TASKS — TRANSCRIPT QUALITY GATE:",
+    "Check if the transcript contains COMMITTED actions. You need:",
+    "  1. At least one person agreeing to do something specific",
+    "  2. Some context for what the work is about",
+    "",
+    "If the transcript is too short, unclear, or contains no actionable commitments, return followUpQuestions instead of tasks.",
+    'Example: { field: "details", question: "The transcript didn\'t contain clear action items. Can you tell me what was decided?" }',
     "",
     "CONTEXT INTERPRETATION:",
     '- "ASAP" means within 1 week. "Urgent" means 2-3 days. "Critical" means 1-2 days.',

@@ -429,6 +429,13 @@ async function buildBootstrapFromDraft(draft: IntakeDraftModel, aiConfig?: Intel
   };
 }
 
+/** Calculate a YYYY-MM-DD date string N days from now. */
+function calcDate(daysFromNow: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + daysFromNow);
+  return d.toISOString().slice(0, 10);
+}
+
 /** Fallback: regex-based meeting transcript task extraction (no AI). */
 function fallbackMeetingBootstrap(
   draft: IntakeDraftModel,
@@ -457,10 +464,10 @@ function fallbackMeetingBootstrap(
   ];
   const taskTitles = candidateTitles.length > 0 ? candidateTitles : fallbackTitles;
 
-  const tasks: IntakeBootstrapTask[] = taskTitles.map((title) => ({
+  const tasks: IntakeBootstrapTask[] = taskTitles.map((title, i) => ({
     title: title.slice(0, 200),
     description: null,
-    dueDate: draft.projectTargetDate,
+    dueDate: draft.projectTargetDate ?? calcDate(3 + i * 2),
     assigneeName: null,
     priority: "medium" as const,
   }));
@@ -486,10 +493,10 @@ function fallbackTokenizeBootstrap(
   ];
   const taskTitles = (candidateTitles.length > 0 ? candidateTitles : fallbackTitles).slice(0, 6);
 
-  const tasks: IntakeBootstrapTask[] = taskTitles.map((title) => ({
+  const tasks: IntakeBootstrapTask[] = taskTitles.map((title, i) => ({
     title: title.slice(0, 200),
     description: null,
-    dueDate: draft.projectTargetDate,
+    dueDate: draft.projectTargetDate ?? calcDate(3 + i * 2),
     assigneeName: null,
     priority: "medium",
   }));
