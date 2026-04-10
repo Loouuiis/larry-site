@@ -122,19 +122,38 @@ export async function getProjectSnapshot(
 
     db.query<MemberRow>(
       `SELECT
-         m.user_id,
+         candidates.user_id,
          u.display_name,
          u.email,
-         m.role,
+         candidates.role,
          COUNT(t.id) FILTER (
            WHERE t.project_id = $2
-             AND t.status NOT IN ('completed', 'backlog')
+             AND t.status NOT IN ('completed')
          ) AS active_task_count
-       FROM memberships m
-       JOIN users u ON m.user_id = u.id
-       LEFT JOIN tasks t ON t.assignee_user_id = m.user_id AND t.tenant_id = m.tenant_id
-       WHERE m.tenant_id = $1
-       GROUP BY m.user_id, u.display_name, u.email, m.role`,
+       FROM (
+         -- Project members with their project-scoped role
+         SELECT pm.user_id, pm.role
+         FROM project_memberships pm
+         WHERE pm.tenant_id = $1 AND pm.project_id = $2
+
+         UNION
+
+         -- Task assignees who have work on this project but may lack an explicit membership row
+         SELECT DISTINCT t2.assignee_user_id AS user_id, 'member' AS role
+         FROM tasks t2
+         WHERE t2.project_id = $2
+           AND t2.tenant_id = $1
+           AND t2.assignee_user_id IS NOT NULL
+           AND NOT EXISTS (
+             SELECT 1 FROM project_memberships pm2
+             WHERE pm2.tenant_id = $1
+               AND pm2.project_id = $2
+               AND pm2.user_id = t2.assignee_user_id
+           )
+       ) AS candidates
+       JOIN users u ON u.id = candidates.user_id
+       LEFT JOIN tasks t ON t.assignee_user_id = candidates.user_id AND t.tenant_id = $1
+       GROUP BY candidates.user_id, u.display_name, u.email, candidates.role`,
       [tenantId, projectId]
     ),
 
