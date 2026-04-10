@@ -171,7 +171,16 @@ async function reconcileMeetingNote(
 }
 
 function buildTranscriptPrompt(transcript: string): string {
-  return `transcript: "${transcript.slice(0, 500)}"`;
+  const truncated = transcript.slice(0, 6_000);
+  const truncationNote = transcript.length > 6_000 ? "\n[transcript truncated]" : "";
+  return [
+    "A meeting transcript was uploaded. Extract committed action items, assign owners where mentioned, infer deadlines, and flag risks.",
+    "Create task_create actions for each action item. Update existing task statuses if the transcript mentions progress.",
+    "",
+    "TRANSCRIPT:",
+    truncated,
+    truncationNote,
+  ].filter(Boolean).join("\n");
 }
 
 function buildEmailPrompt(payload: EmailCanonicalPayload): string {
