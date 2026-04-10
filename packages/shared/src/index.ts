@@ -355,6 +355,8 @@ export interface ProjectSnapshot {
   memoryEntries?: ProjectMemoryEntry[];
   /** Larry's accumulated understanding of this project, injected from persisted context updates. */
   larryContext?: string | null;
+  /** Aggregated accept/dismiss counts per action type over the last 30 days. */
+  feedbackHistory?: Array<{ actionType: string; state: string; count: number }>;
   generatedAt: string;
 }
 

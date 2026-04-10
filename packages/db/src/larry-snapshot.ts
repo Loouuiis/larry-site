@@ -59,6 +59,12 @@ interface ActivityRow {
   created_at: string;
 }
 
+interface FeedbackRow {
+  action_type: string;
+  state: string;
+  count: number;
+}
+
 // ── Snapshot assembler ────────────────────────────────────────────────────────
 
 /**
@@ -76,8 +82,8 @@ export async function getProjectSnapshot(
   projectId: string,
   signals: ProjectSignal[] = []
 ): Promise<ProjectSnapshot> {
-  // Run project, tasks, members, activity, and memory in parallel
-  const [projectRows, taskRows, dependencyRows, memberRows, activityRows, memoryRows] = await Promise.all([
+  // Run project, tasks, members, activity, memory, and feedback in parallel
+  const [projectRows, taskRows, dependencyRows, memberRows, activityRows, memoryRows, feedbackRows] = await Promise.all([
     db.query<ProjectRow>(
       `SELECT id, tenant_id, name, description, status, risk_score, risk_level,
               start_date::text, target_date::text,
@@ -181,6 +187,17 @@ export async function getProjectSnapshot(
        LIMIT 10`,
       [tenantId, projectId]
     ),
+
+    db.query<FeedbackRow>(
+      `SELECT action_type, state, COUNT(*)::int AS count
+       FROM larry_events
+       WHERE tenant_id = $1 AND project_id = $2
+         AND state IN ('accepted', 'dismissed')
+         AND created_at > NOW() - INTERVAL '30 days'
+       GROUP BY action_type, state
+       ORDER BY count DESC`,
+      [tenantId, projectId]
+    ),
   ]);
 
   if (projectRows.length === 0) {
@@ -256,6 +273,11 @@ export async function getProjectSnapshot(
     signals,
     memoryEntries,
     larryContext: project.larryContext ?? null,
+    feedbackHistory: feedbackRows.map((r) => ({
+      actionType: r.action_type,
+      state: r.state,
+      count: r.count,
+    })),
     generatedAt: new Date().toISOString(),
   };
 }
