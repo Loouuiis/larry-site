@@ -2,11 +2,14 @@ import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import {
   executeTaskCreate,
+  getProjectSnapshot,
   insertProjectMemoryEntry,
+  runAutoActions,
   storeSuggestions,
+  updateProjectLarryContext,
 } from "@larry/db";
 import type { LarryAction, IntelligenceConfig } from "@larry/shared";
-import { generateBootstrapTasks, generateBootstrapFromTranscript } from "@larry/ai";
+import { generateBootstrapTasks, generateBootstrapFromTranscript, runIntelligence } from "@larry/ai";
 import { getApiEnv } from "@larry/config";
 import { writeAuditLog } from "../../lib/audit.js";
 import { createProjectOwnerMembership } from "../../lib/project-memberships.js";
@@ -881,13 +884,58 @@ export const projectIntakeRoutes: FastifyPluginAsync = async (fastify) => {
           }
 
           for (const task of meetingBootstrapTasks) {
-            await executeTaskCreate(fastify.db, tenantId, finalizedProjectId, {
-              title: task.title,
-              description: task.description ?? null,
-              dueDate: task.dueDate ?? null,
-              assigneeName: task.assigneeName ?? null,
-              priority: task.priority ?? "medium",
-            });
+            try {
+              await executeTaskCreate(fastify.db, tenantId, finalizedProjectId, {
+                title: task.title,
+                description: task.description ?? null,
+                dueDate: task.dueDate ?? null,
+                assigneeName: task.assigneeName ?? null,
+                priority: task.priority ?? "medium",
+              });
+            } catch (taskError) {
+              request.log.warn(
+                { err: taskError, tenantId, projectId: finalizedProjectId, taskTitle: task.title },
+                `failed to create bootstrap task "${task.title}"`
+              );
+            }
+          }
+
+          try {
+            const intelligenceConfig = buildIntelligenceConfig(fastify.config);
+            const snapshot = await getProjectSnapshot(fastify.db, tenantId, finalizedProjectId);
+            const intelligenceResult = await runIntelligence(
+              intelligenceConfig,
+              snapshot,
+              "project_intake_finalized — analyze tasks for gaps, risks, missing owners, unrealistic deadlines"
+            );
+
+            if (intelligenceResult.contextUpdate) {
+              await updateProjectLarryContext(
+                fastify.db,
+                tenantId,
+                finalizedProjectId,
+                intelligenceResult.contextUpdate
+              );
+            }
+
+            const actionsToProcess = [
+              ...(intelligenceResult.autoActions ?? []),
+              ...(intelligenceResult.suggestedActions ?? []),
+            ];
+            if (actionsToProcess.length > 0) {
+              await runAutoActions(
+                fastify.db,
+                tenantId,
+                finalizedProjectId,
+                "signal",
+                actionsToProcess
+              );
+            }
+          } catch (intelligenceError) {
+            request.log.warn(
+              { err: intelligenceError, tenantId, projectId: finalizedProjectId, draftId: draft.id },
+              "intelligence analysis failed after meeting intake finalize — project created without analysis"
+            );
           }
 
           const meetingNonTaskActions = normalizeFinalizeActions(
@@ -934,33 +982,40 @@ export const projectIntakeRoutes: FastifyPluginAsync = async (fastify) => {
         let bootstrapSummary = draft.bootstrapSummary;
         let bootstrapSeedMessage = draft.bootstrapSeedMessage;
         if (draft.mode === "chat" && bootstrapTasks.length === 0) {
-          const aiConfig = buildIntelligenceConfig(fastify.config);
-          const bootstrap = await buildBootstrapFromDraft(draft, aiConfig);
-          bootstrapTasks = bootstrap.tasks;
-          bootstrapActions = bootstrap.actions;
-          bootstrapSummary = bootstrap.summary;
-          bootstrapSeedMessage = bootstrap.seedMessage;
+          try {
+            const aiConfig = buildIntelligenceConfig(fastify.config);
+            const bootstrap = await buildBootstrapFromDraft(draft, aiConfig);
+            bootstrapTasks = bootstrap.tasks;
+            bootstrapActions = bootstrap.actions;
+            bootstrapSummary = bootstrap.summary;
+            bootstrapSeedMessage = bootstrap.seedMessage;
 
-          await fastify.db.queryTenant(
-            tenantId,
-            `UPDATE project_intake_drafts
-                SET status = 'bootstrapped',
-                    bootstrap_summary = $3,
-                    bootstrap_tasks = $4::jsonb,
-                    bootstrap_actions = $5::jsonb,
-                    bootstrap_seed_message = $6,
-                    updated_at = NOW()
-              WHERE tenant_id = $1
-                AND id = $2`,
-            [
+            await fastify.db.queryTenant(
               tenantId,
-              draft.id,
-              bootstrapSummary,
-              JSON.stringify(bootstrapTasks),
-              JSON.stringify(bootstrapActions),
-              bootstrapSeedMessage,
-            ]
-          );
+              `UPDATE project_intake_drafts
+                  SET status = 'bootstrapped',
+                      bootstrap_summary = $3,
+                      bootstrap_tasks = $4::jsonb,
+                      bootstrap_actions = $5::jsonb,
+                      bootstrap_seed_message = $6,
+                      updated_at = NOW()
+                WHERE tenant_id = $1
+                  AND id = $2`,
+              [
+                tenantId,
+                draft.id,
+                bootstrapSummary,
+                JSON.stringify(bootstrapTasks),
+                JSON.stringify(bootstrapActions),
+                bootstrapSeedMessage,
+              ]
+            );
+          } catch (bootstrapError) {
+            request.log.error(
+              { err: bootstrapError, tenantId, draftId: draft.id },
+              "bootstrap task generation failed during finalize — project will be created without bootstrap tasks"
+            );
+          }
         }
 
         const projectRows = await fastify.db.queryTenant<{ id: string }>(
@@ -999,13 +1054,58 @@ export const projectIntakeRoutes: FastifyPluginAsync = async (fastify) => {
         });
 
         for (const task of bootstrapTasks) {
-          await executeTaskCreate(fastify.db, tenantId, finalizedProjectId, {
-            title: task.title,
-            description: task.description ?? null,
-            dueDate: task.dueDate ?? null,
-            assigneeName: task.assigneeName ?? null,
-            priority: task.priority ?? "medium",
-          });
+          try {
+            await executeTaskCreate(fastify.db, tenantId, finalizedProjectId, {
+              title: task.title,
+              description: task.description ?? null,
+              dueDate: task.dueDate ?? null,
+              assigneeName: task.assigneeName ?? null,
+              priority: task.priority ?? "medium",
+            });
+          } catch (taskError) {
+            request.log.warn(
+              { err: taskError, tenantId, projectId: finalizedProjectId, taskTitle: task.title },
+              `failed to create bootstrap task "${task.title}"`
+            );
+          }
+        }
+
+        try {
+          const intelligenceConfig = buildIntelligenceConfig(fastify.config);
+          const snapshot = await getProjectSnapshot(fastify.db, tenantId, finalizedProjectId);
+          const intelligenceResult = await runIntelligence(
+            intelligenceConfig,
+            snapshot,
+            "project_intake_finalized — analyze tasks for gaps, risks, missing owners, unrealistic deadlines"
+          );
+
+          if (intelligenceResult.contextUpdate) {
+            await updateProjectLarryContext(
+              fastify.db,
+              tenantId,
+              finalizedProjectId,
+              intelligenceResult.contextUpdate
+            );
+          }
+
+          const actionsToProcess = [
+            ...(intelligenceResult.autoActions ?? []),
+            ...(intelligenceResult.suggestedActions ?? []),
+          ];
+          if (actionsToProcess.length > 0) {
+            await runAutoActions(
+              fastify.db,
+              tenantId,
+              finalizedProjectId,
+              "signal",
+              actionsToProcess
+            );
+          }
+        } catch (intelligenceError) {
+          request.log.warn(
+            { err: intelligenceError, tenantId, projectId: finalizedProjectId, draftId: draft.id },
+            "intelligence analysis failed after chat/manual intake finalize — project created without analysis"
+          );
         }
 
         const nonTaskActions = normalizeFinalizeActions(
