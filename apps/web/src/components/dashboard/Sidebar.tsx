@@ -37,19 +37,27 @@ const WORKSPACE_NAV: { id: WorkspaceSidebarNav; label: string; icon: React.Eleme
 
 /* ─── WorkspaceSidebarInner ───────────────────────────────────────── */
 
+function getUserInitials(displayName?: string | null, email?: string | null): string {
+  if (displayName && displayName.trim()) {
+    return displayName.trim().split(/\s+/).filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+  }
+  return (email?.split("@")[0] ?? "?").slice(0, 2).toUpperCase();
+}
+
 interface WorkspaceSidebarInnerProps {
   projects: WorkspaceProject[];
   activeNav: WorkspaceSidebarNav;
   onClose?: () => void;
   userEmail?: string | null;
   avatarUrl?: string | null;
+  displayName?: string | null;
   notifCount?: number;
   onToggleCollapsed?: () => void;
 }
 
 interface SearchTask { id: string; title: string; status: string; projectId?: string | null; }
 
-function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, avatarUrl, onToggleCollapsed }: WorkspaceSidebarInnerProps) {
+function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, avatarUrl, displayName, onToggleCollapsed }: WorkspaceSidebarInnerProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -473,7 +481,7 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, avatar
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
               style={{ background: "#6c44f6", color: "#fff", fontSize: 11, fontWeight: 600 }}
             >
-              {(userEmail?.split("@")[0] ?? "?").slice(0, 2).toUpperCase()}
+              {getUserInitials(displayName, userEmail)}
             </div>
           )}
           <span className="flex-1 truncate text-[12px]" style={{ color: "var(--text-muted)" }}>
@@ -518,12 +526,13 @@ interface WorkspaceSidebarProps {
   onMobileClose: () => void;
   userEmail?: string | null;
   avatarUrl?: string | null;
+  displayName?: string | null;
   notifCount?: number;
   collapsed?: boolean;
   onToggleCollapsed?: () => void;
 }
 
-export function WorkspaceSidebar({ projects, activeNav, mobileOpen, onMobileClose, userEmail, avatarUrl, notifCount, collapsed, onToggleCollapsed }: WorkspaceSidebarProps) {
+export function WorkspaceSidebar({ projects, activeNav, mobileOpen, onMobileClose, userEmail, avatarUrl, displayName, notifCount, collapsed, onToggleCollapsed }: WorkspaceSidebarProps) {
   return (
     <>
       {/* Desktop */}
@@ -559,7 +568,7 @@ export function WorkspaceSidebar({ projects, activeNav, mobileOpen, onMobileClos
                 style={{ background: "#6c44f6", color: "#fff", fontSize: 11, fontWeight: 600 }}
                 title={userEmail ?? "Account"}
               >
-                {(userEmail?.split("@")[0] ?? "?").slice(0, 2).toUpperCase()}
+                {getUserInitials(displayName, userEmail)}
               </div>
             )}
           </div>
@@ -569,6 +578,7 @@ export function WorkspaceSidebar({ projects, activeNav, mobileOpen, onMobileClos
             activeNav={activeNav}
             userEmail={userEmail}
             avatarUrl={avatarUrl}
+            displayName={displayName}
             notifCount={notifCount}
             onToggleCollapsed={onToggleCollapsed}
           />
@@ -619,6 +629,7 @@ export function WorkspaceSidebar({ projects, activeNav, mobileOpen, onMobileClos
                 onClose={onMobileClose}
                 userEmail={userEmail}
                 avatarUrl={avatarUrl}
+                displayName={displayName}
                 notifCount={notifCount}
               />
             </motion.aside>

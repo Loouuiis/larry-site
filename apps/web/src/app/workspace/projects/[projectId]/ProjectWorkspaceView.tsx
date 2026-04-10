@@ -276,7 +276,7 @@ const PROJECT_TABS: { id: ProjectTab; label: string; icon: React.ElementType }[]
   { id: "calendar",  label: "Calendar",       icon: CalendarDays },
   { id: "dashboard", label: "Dashboard",      icon: Activity },
   { id: "files",     label: "Files",          icon: FileText },
-  { id: "team",      label: "Team",           icon: Users },
+  { id: "team",      label: "Teams",          icon: Users },
   { id: "settings",  label: "Settings",       icon: Settings },
   { id: "extra",     label: "Extra",          icon: Layers },
 ];

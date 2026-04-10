@@ -29,9 +29,10 @@ type WorkspaceShellProps = {
   userEmail?: string | null;
   emailVerified?: boolean;
   avatarUrl?: string | null;
+  displayName?: string | null;
 };
 
-export function WorkspaceShell({ children, userEmail, emailVerified, avatarUrl }: WorkspaceShellProps) {
+export function WorkspaceShell({ children, userEmail, emailVerified, avatarUrl, displayName }: WorkspaceShellProps) {
   const pathname = usePathname();
   const [projects, setProjects] = useState<WorkspaceProject[]>([]);
   const [chatProjectId, setChatProjectId] = useState<string>("");
@@ -154,6 +155,7 @@ export function WorkspaceShell({ children, userEmail, emailVerified, avatarUrl }
           onMobileClose={() => setMobileOpen(false)}
           userEmail={userEmail}
           avatarUrl={avatarUrl}
+          displayName={displayName}
           notifCount={notifCount}
           collapsed={sidebarCollapsed}
           onToggleCollapsed={() => setSidebarCollapsed((v) => !v)}

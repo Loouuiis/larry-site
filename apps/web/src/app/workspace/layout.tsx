@@ -6,10 +6,10 @@ export const dynamic = "force-dynamic";
 
 interface MeResponse {
   user: {
+    displayName: string | null;
     emailVerifiedAt: string | null;
     verificationGraceDeadline: string | null;
     avatarUrl?: string | null;
-    displayName?: string | null;
   };
 }
 
@@ -20,6 +20,7 @@ export default async function WorkspaceLayout({ children }: { children: React.Re
   // Fetch email verification state + profile from the API
   let emailVerified = true; // default to true for safety (legacy/dev sessions)
   let avatarUrl: string | null = null;
+  let displayName: string | null = null;
   const apiBaseUrl = process.env.LARRY_API_BASE_URL;
 
   if (apiBaseUrl && session.apiAccessToken) {
@@ -34,6 +35,7 @@ export default async function WorkspaceLayout({ children }: { children: React.Re
         const data = (await res.json()) as MeResponse;
         emailVerified = !!data.user.emailVerifiedAt;
         avatarUrl = data.user.avatarUrl ?? null;
+        displayName = data.user.displayName ?? null;
 
         // If past grace deadline and not verified, redirect to locked screen
         if (
@@ -50,7 +52,7 @@ export default async function WorkspaceLayout({ children }: { children: React.Re
   }
 
   return (
-    <WorkspaceShell userEmail={session.email} emailVerified={emailVerified} avatarUrl={avatarUrl}>
+    <WorkspaceShell userEmail={session.email} emailVerified={emailVerified} avatarUrl={avatarUrl} displayName={displayName}>
       {children}
     </WorkspaceShell>
   );

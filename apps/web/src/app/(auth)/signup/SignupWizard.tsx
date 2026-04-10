@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { Eye, EyeOff, Check, Upload, ArrowRight, X } from "lucide-react";
@@ -126,11 +126,30 @@ const TOTAL_STEPS = 8;
 
 /* ─── Wizard ──────────────────────────────────────────────────────── */
 
+const STEP_NAME_MAP: Record<string, number> = {
+  role: 3,
+  work: 4,
+  discovery: 5,
+  tools: 6,
+};
+
 export function SignupWizard() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [step, setStep] = useState(0);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // If redirected from Google OAuth with ?step=role, jump to that step
+  useEffect(() => {
+    const stepParam = searchParams.get("step");
+    if (stepParam) {
+      const target = STEP_NAME_MAP[stepParam] ?? parseInt(stepParam, 10);
+      if (!isNaN(target) && target >= 0 && target < TOTAL_STEPS) {
+        setStep(target);
+      }
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Step 1: Account
   const [email, setEmail] = useState("");
@@ -235,7 +254,7 @@ export function SignupWizard() {
   };
 
   return (
-    <div className="w-full max-w-md">
+    <div className={`w-full transition-all duration-300 ${step >= 3 && step <= 6 ? "max-w-xl" : "max-w-md"}`}>
       <div
         className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-8"
         style={{ boxShadow: "var(--shadow-2)" }}
@@ -248,7 +267,7 @@ export function SignupWizard() {
               alt="Larry"
               width={180}
               height={72}
-              className="mx-auto object-contain"
+              className="mx-auto block object-contain"
             />
             <h1 className="text-2xl font-bold tracking-tight text-[var(--text-1)]">
               Welcome to Larry
@@ -277,7 +296,7 @@ export function SignupWizard() {
         {step === 1 && (
           <div className="space-y-4">
             <div className="text-center mb-6">
-              <Image src="/Larryfulllogo.png" alt="Larry" width={125} height={50} className="mx-auto object-contain mb-3" />
+              <Image src="/Larryfulllogo.png" alt="Larry" width={125} height={50} className="mx-auto block object-contain mb-3" />
               <h2 className="text-lg font-bold text-[var(--text-1)]">Create your account</h2>
             </div>
 
@@ -541,6 +560,16 @@ export function SignupWizard() {
         {/* ── Step 3: Role ────────────────────────────────────── */}
         {step === 3 && (
           <div className="space-y-4">
+            {/* Show verification notice right after account creation (email signup only) */}
+            {email && (
+              <div
+                className="flex items-start gap-2.5 rounded-lg px-3.5 py-3 text-[13px] leading-5"
+                style={{ background: "rgba(108, 68, 246, 0.08)", color: "var(--text-2)" }}
+              >
+                <span className="shrink-0 mt-0.5">✉️</span>
+                <span>We sent a verification email to <strong className="text-[var(--text-1)]">{email}</strong>. Check your inbox to verify your account.</span>
+              </div>
+            )}
             <h2 className="text-lg font-bold text-[var(--text-1)]">Tell Larry more about your work</h2>
             <p className="text-[13px] text-[var(--text-2)]">What&apos;s your role?</p>
             <TileSelector

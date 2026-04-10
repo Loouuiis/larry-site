@@ -131,7 +131,7 @@ export const authGoogleRoutes: FastifyPluginAsync = async (fastify) => {
       scope: "openid email profile",
       state,
       access_type: "offline",
-      prompt: "consent",
+      prompt: "select_account",
     });
 
     return reply.redirect(

@@ -1,5 +1,10 @@
+import { Suspense } from "react";
 import { SignupWizard } from "./SignupWizard";
 
 export default function SignupPage() {
-  return <SignupWizard />;
+  return (
+    <Suspense>
+      <SignupWizard />
+    </Suspense>
+  );
 }
