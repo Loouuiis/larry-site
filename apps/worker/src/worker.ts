@@ -14,14 +14,16 @@ const queueEvents = new QueueEvents(EVENT_QUEUE_NAME, { connection });
 
 const queue = new Queue(EVENT_QUEUE_NAME, { connection });
 
-// Run Larry's intelligence scan across all active projects every 4 hours.
+// Run Larry's intelligence scan across all active projects every 30 minutes.
 // Stable jobId prevents duplicate repeatable entries on restart.
 await queue.add(
   "larry.scan",
   {},
   {
-    repeat: { every: 4 * 60 * 60 * 1000 },
+    repeat: { every: 30 * 60 * 1000 },
     jobId: "larry-scan",
+    attempts: 3,
+    backoff: { type: "exponential", delay: 10_000 },
   }
 );
 
@@ -33,6 +35,8 @@ await queue.add(
   {
     repeat: { every: 60 * 60 * 1000 },
     jobId: "escalation-scan",
+    attempts: 3,
+    backoff: { type: "exponential", delay: 10_000 },
   }
 );
 
@@ -43,6 +47,8 @@ await queue.add(
   {
     repeat: { every: 5 * 24 * 60 * 60 * 1000 },
     jobId: "calendar-webhook-renew",
+    attempts: 3,
+    backoff: { type: "exponential", delay: 30_000 },
   }
 );
 
