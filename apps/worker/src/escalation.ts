@@ -25,11 +25,12 @@ export async function runEscalationScan(): Promise<void> {
         progress_percent: number;
         updated_at: string;
         assignee_user_id: string | null;
+        project_id: string;
       };
 
       const tasks = await db.queryTenant<TaskRow>(
         tenantId,
-        `SELECT id, title, status, due_date, start_date, progress_percent, updated_at, assignee_user_id
+        `SELECT id, title, status, due_date, start_date, progress_percent, updated_at, assignee_user_id, project_id
          FROM tasks
          WHERE tenant_id = $1
            AND status NOT IN ('completed', 'backlog')`,
@@ -59,7 +60,7 @@ export async function runEscalationScan(): Promise<void> {
               channel: "system",
               subject: `Task starting today: ${task.title}`,
               body: `Your task "${task.title}" is scheduled to start today.`,
-              metadata: JSON.stringify({ taskId: task.id, type: "start_reminder" }),
+              metadata: JSON.stringify({ taskId: task.id, type: "start_reminder", projectId: task.project_id }),
             });
           }
         }
@@ -71,7 +72,7 @@ export async function runEscalationScan(): Promise<void> {
             channel: "system",
             subject: `Inactivity warning: ${task.title}`,
             body: `Task "${task.title}" has had no activity for 5+ days.`,
-            metadata: JSON.stringify({ taskId: task.id, type: "inactivity_warning" }),
+            metadata: JSON.stringify({ taskId: task.id, type: "inactivity_warning", projectId: task.project_id }),
           });
         }
 
@@ -82,7 +83,7 @@ export async function runEscalationScan(): Promise<void> {
             channel: "system",
             subject: `Deadline approaching: ${task.title}`,
             body: `Task "${task.title}" is due within 48 hours but is only ${task.progress_percent}% complete.`,
-            metadata: JSON.stringify({ taskId: task.id, type: "pre_deadline_alert" }),
+            metadata: JSON.stringify({ taskId: task.id, type: "pre_deadline_alert", projectId: task.project_id }),
           });
         }
 
@@ -93,16 +94,63 @@ export async function runEscalationScan(): Promise<void> {
             channel: "system",
             subject: `Deadline breached: ${task.title}`,
             body: `Task "${task.title}" passed its due date of ${task.due_date} and is not yet complete.`,
-            metadata: JSON.stringify({ taskId: task.id, type: "deadline_breach" }),
+            metadata: JSON.stringify({ taskId: task.id, type: "deadline_breach", projectId: task.project_id }),
           });
         }
       }
 
-      if (notifications.length === 0) continue;
+      // --- Fallback: for unassigned tasks, resolve the project owner and notify them instead ---
+
+      const unassignedNotifs = notifications.filter((n) => n.userId === null);
+      if (unassignedNotifs.length > 0) {
+        // Collect unique project IDs that need an owner lookup
+        const unassignedByProject = new Map<string, typeof unassignedNotifs>();
+        for (const notif of unassignedNotifs) {
+          const meta = JSON.parse(notif.metadata) as { taskId: string; type: string; projectId?: string };
+          const projectId = meta.projectId;
+          if (!projectId) continue;
+          if (!unassignedByProject.has(projectId)) unassignedByProject.set(projectId, []);
+          unassignedByProject.get(projectId)!.push(notif);
+        }
+
+        type OwnerRow = { user_id: string; project_id: string };
+        const projectIds = [...unassignedByProject.keys()];
+        if (projectIds.length > 0) {
+          try {
+            const ownerRows = await db.queryTenant<OwnerRow>(
+              tenantId,
+              `SELECT user_id, project_id
+               FROM project_memberships
+               WHERE tenant_id = $1
+                 AND project_id = ANY($2::uuid[])
+                 AND role = 'owner'`,
+              [tenantId, projectIds]
+            );
+            const ownerMap = new Map(ownerRows.map((r) => [r.project_id, r.user_id]));
+
+            for (const [projectId, projectNotifs] of unassignedByProject) {
+              const ownerId = ownerMap.get(projectId);
+              if (!ownerId) continue;
+              for (const notif of projectNotifs) {
+                notif.userId = ownerId;
+                notif.subject = `Unassigned task needs attention: ${notif.subject.replace(/^[^:]+:\s*/, "")}`;
+                notif.body = `Unassigned task needs attention: ${notif.body}`;
+              }
+            }
+          } catch (err) {
+            console.warn("[escalation-scan] failed to look up project owners for unassigned tasks", err);
+          }
+        }
+      }
+
+      // Drop any notifications that still have no userId after the fallback (no owner found)
+      const deliverableNotifications = notifications.filter((n) => n.userId !== null);
+
+      if (deliverableNotifications.length === 0) continue;
 
       // --- Delivery setup: look up user emails and Slack bot token once per tenant ---
 
-      const notifiedUserIds = [...new Set(notifications.map((n) => n.userId).filter(Boolean))] as string[];
+      const notifiedUserIds = [...new Set(deliverableNotifications.map((n) => n.userId).filter(Boolean))] as string[];
 
       // Users table has no tenant_id — query at system level
       const userEmailMap: Record<string, string> = {};
@@ -137,7 +185,7 @@ export async function runEscalationScan(): Promise<void> {
 
       // --- Insert notification records and deliver ---
 
-      for (const notif of notifications) {
+      for (const notif of deliverableNotifications) {
         try {
           await db.queryTenant(
             tenantId,
