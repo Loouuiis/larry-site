@@ -535,20 +535,35 @@ async function resolveTaskByTitle(
     if (normalizedFuzzy[0]) return normalizedFuzzy[0].id;
   }
 
-  // Strategy 5: Reverse substring — task title contains in the search term
-  // Handles cases where DB title is shorter (e.g., "Hire CTO" matches search "Hire a CTO for the company")
-  const reverseSubstring = await db.queryTenant<{ id: string }>(
+  // Strategy 5: Word overlap fuzzy match
+  // Fetch recent active tasks and score by word overlap to avoid false matches
+  // from reverse substring (e.g., "User" matching "Implement User Authentication")
+  const candidates = await db.queryTenant<{ id: string; title: string }>(
     tenantId,
-    `SELECT id
-     FROM tasks
-     WHERE tenant_id = $1
-       AND project_id = $2
-       AND $3 ILIKE '%' || title || '%'
-     ORDER BY updated_at DESC
-     LIMIT 1`,
-    [tenantId, projectId, normalized]
+    `SELECT id, title FROM tasks
+     WHERE project_id = $2 AND tenant_id = $1
+       AND status NOT IN ('completed')
+     ORDER BY created_at DESC
+     LIMIT 50`,
+    [tenantId, projectId]
   );
-  if (reverseSubstring[0]) return reverseSubstring[0].id;
+
+  if (candidates.length > 0) {
+    const searchWords = new Set(normalized.toLowerCase().split(/\s+/).filter(w => w.length > 2));
+    let bestMatch: { id: string; score: number } | null = null;
+
+    for (const c of candidates) {
+      const titleWords = c.title.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+      const overlap = titleWords.filter(w => searchWords.has(w)).length;
+      const score = titleWords.length > 0 ? overlap / titleWords.length : 0;
+
+      if (score > 0.4 && (!bestMatch || score > bestMatch.score)) {
+        bestMatch = { id: c.id, score };
+      }
+    }
+
+    if (bestMatch) return bestMatch.id;
+  }
 
   return null;
 }
@@ -1083,6 +1098,8 @@ async function executeCollaboratorAdd(
     throw new Error(`Collaborator add failed — could not resolve user "${name}". Check the name and try again.`);
   }
 
+  await assertTenantMembership(db, tenantId, userId);
+
   const existingRole = await getProjectMembershipRoleForUser(db, tenantId, projectId, userId);
   if (existingRole === "owner" && role !== "owner") {
     const ownerCount = await countProjectOwnerMemberships(db, tenantId, projectId);
@@ -1090,8 +1107,6 @@ async function executeCollaboratorAdd(
       throw new Error("Cannot demote the last project owner.");
     }
   }
-
-  await assertTenantMembership(db, tenantId, userId);
 
   await db.queryTenant(
     tenantId,
@@ -1462,13 +1477,10 @@ export async function executeAction(
       );
 
     case "calendar_event_create":
-      throw new Error(
-        "calendar_event_create is approval-governed and must execute via the API accept flow."
-      );
-
     case "calendar_event_update":
       throw new Error(
-        "calendar_event_update is approval-governed and must execute via the API accept flow."
+        `Calendar actions require approval in the Action Centre. ` +
+        `Go to Actions, find this event, and click Accept to create the calendar entry.`
       );
 
     case "slack_message_draft":
