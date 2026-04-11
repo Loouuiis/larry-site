@@ -2304,7 +2304,10 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         snapshot = await getProjectSnapshot(fastify.db, tenantId, projectId);
       } catch (error) {
         const messageText = error instanceof Error ? error.message : String(error);
-        throw fastify.httpErrors.notFound(messageText);
+        if (messageText.includes("not found")) {
+          throw fastify.httpErrors.notFound(messageText);
+        }
+        throw fastify.httpErrors.internalServerError(`Failed to load project snapshot: ${messageText}`);
       }
 
       const clarificationNeed = detectClarificationNeed({
