@@ -376,7 +376,15 @@ async function buildBootstrapFromDraft(draft: IntakeDraftModel, aiConfig?: Intel
         priority: t.priority ?? "medium",
       }));
 
-      summary = aiResult.summary || `Larry prepared ${tasks.length} starter task${tasks.length === 1 ? "" : "s"} for ${projectName}.`;
+      // AI returned followUpQuestions instead of tasks — fall back to tokenizer so
+      // the project is never created empty without explanation.
+      if (tasks.length === 0) {
+        const result = fallbackTokenizeBootstrap(draft, projectName, outcome, milestone, deliverables, risks);
+        tasks = result.tasks;
+        summary = result.summary;
+      } else {
+        summary = aiResult.summary || `Larry prepared ${tasks.length} starter task${tasks.length === 1 ? "" : "s"} for ${projectName}.`;
+      }
     } catch (err) {
       // AI call failed — fall back to tokenizer
       console.error("[bootstrap] AI task generation failed, falling back to tokenizer:", err);

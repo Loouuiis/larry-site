@@ -17,7 +17,7 @@ export async function POST(
   const result = await proxyApiRequest(
     session,
     `/v1/larry/events/${id}/dismiss`,
-    { method: "POST", body: JSON.stringify({ reason: body.reason ?? null }) }
+    { method: "POST", body: JSON.stringify(body.reason != null ? { reason: body.reason } : {}) }
   );
 
   if (result.session) {
