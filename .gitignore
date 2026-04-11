@@ -59,3 +59,10 @@ next-env.d.ts
 *.db-shm
 *.db-wal
 *.sqlite
+
+# graphify (generated)
+graphify-out/
+.graphify_uncached.txt
+
+# superpowers session artifacts
+.superpowers/brainstorm/
