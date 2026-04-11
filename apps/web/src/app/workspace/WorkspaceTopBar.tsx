@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NotificationBell } from "./NotificationBell";
 import { useWorkspaceChrome } from "./WorkspaceChromeContext";
-import { Menu } from "lucide-react";
+import { Menu, Search } from "lucide-react";
 
 type WorkspaceTopBarProps = {
   userEmail?: string | null;
@@ -93,6 +93,30 @@ export function WorkspaceTopBar({ userEmail: _userEmail, workspaceName = "Larry 
         aria-label="Open menu"
       >
         <Menu size={18} />
+      </button>
+
+      {/* Search bar */}
+      <button
+        type="button"
+        onClick={() => window.dispatchEvent(new CustomEvent("larry:search-open"))}
+        className="hidden md:flex items-center gap-2 rounded-lg px-3 h-8 text-[13px] transition-colors ml-4"
+        style={{
+          background: "var(--surface-2)",
+          border: "1px solid var(--border)",
+          color: "var(--text-muted)",
+          minWidth: 200,
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#6c44f6")}
+        onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
+      >
+        <Search size={13} />
+        <span className="flex-1 text-left">Search...</span>
+        <kbd
+          className="flex items-center rounded px-1 py-0.5 text-[10px]"
+          style={{ background: "var(--surface)", border: "1px solid var(--border)", lineHeight: 1.4 }}
+        >
+          ⌘K
+        </kbd>
       </button>
 
       {/* Right: bell */}

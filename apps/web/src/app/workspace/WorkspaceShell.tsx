@@ -13,6 +13,7 @@ import { ToastProvider } from "@/components/toast/ToastContext";
 import { ToastContainer } from "@/components/toast/ToastContainer";
 import { triggerBoundedWorkspaceRefresh } from "./refresh";
 import { VerificationBanner } from "@/components/auth/VerificationBanner";
+import { GlobalSearch } from "@/components/GlobalSearch";
 
 async function readJson<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -210,6 +211,7 @@ export function WorkspaceShell({ children, userEmail, emailVerified, avatarUrl, 
       )}
     </WorkspaceChromeProvider>
     <ToastContainer />
+    <GlobalSearch />
     </ToastProvider>
   );
 }
