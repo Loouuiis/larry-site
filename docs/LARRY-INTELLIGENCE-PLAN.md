@@ -184,7 +184,7 @@ Larry's intelligence runs in exactly four situations:
 
 ```
 TRIGGER 1: SCHEDULE
-  → Worker cron: every 4 hours
+  → Worker cron: every 30 minutes
   → For each active project in each tenant:
       getProjectSnapshot()
       runIntelligence(snapshot, "scheduled scan")
@@ -390,7 +390,7 @@ Frontend changes: `useLarryChat.ts` updates its send endpoint from `/api/workspa
 **Location:** `apps/worker/src/larry-scan.ts`
 
 Add a new recurring job to the worker:
-1. `larry.scan` — runs every 4 hours
+1. `larry.scan` — runs every 30 minutes
 2. Loads all active projects across all tenants
 3. For each: `getProjectSnapshot()` → `runIntelligence()` → `runAutoActions()` → `storeSuggestions()`
 4. Remove the old `handleAgentRunIngested` and `processAgentRunLifecycle` from the worker

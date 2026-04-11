@@ -73,6 +73,10 @@ See `docs/AI-AGENT.md` for the full policy matrix.
 | Auth, sessions & security | `docs/AUTH-SECURITY.md` |
 | Database schema & migrations | `docs/DATABASE.md` |
 | V1 scope decisions | `docs/V1-SCOPE.md` |
-| Active sprint plan | `docs/SPRINT-4DAY.md` |
+| Larry Intelligence engine plan | `docs/LARRY-INTELLIGENCE-PLAN.md` |
+| Frontend vs product spec alignment | `docs/FRONTEND-PRODUCT-ALIGNMENT-REPORT.md` |
+| Product sheet gap closure | `docs/PRODUCT-SHEET-GAP-CLOSURE.md` |
+| Phase 5: Calendar implementation | `docs/PHASE-5-CALENDAR-PLAN.md` |
+| Phase 6: Content import, export & more | `docs/PHASE-6-CONTENT-AND-EXPORT-PLAN.md` |
 | Deployment (Vercel + Railway) | `DEPLOYMENT.md` |
 | Running locally | `running_locally.md` |

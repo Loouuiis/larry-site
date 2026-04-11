@@ -51,8 +51,18 @@ larry-site/
 
 | Service | File |
 |---------|------|
-| Web | `apps/web/.env.local` |
+| Web | `apps/web/.env` |
 | API | `apps/api/.env` |
 | Worker | `apps/worker/.env` |
+
+## Scheduled Jobs
+
+| Job Name | Interval | Description |
+|----------|----------|-------------|
+| `larry.scan` | Every 30 minutes | Intelligence scan across all active projects |
+| `escalation.scan` | Every 60 minutes | Escalation notification sweep |
+| `calendar.webhook.renew` | Every 5 days | Renew Google Calendar watch channels before expiry |
+
+All repeatable jobs use stable `jobId` values to prevent duplicate schedule entries on worker restart.
 
 Critical invariant: API and Worker must share the same `DATABASE_URL` or action-centre data will drift.

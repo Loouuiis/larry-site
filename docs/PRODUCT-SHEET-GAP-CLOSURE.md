@@ -19,7 +19,7 @@ After comparing the product sheet against the deployed codebase, most features a
 | Per-project + global chat | ✅ Working (global fans out across 5 projects) |
 | Login briefing | ✅ Working (4-hour cache) |
 | Inline project actions (action centre) | ✅ Working |
-| Scheduled scan (every 4 hours) | ✅ Working |
+| Scheduled scan (every 30 minutes) | ✅ Working |
 | Action log with attribution | ✅ Working (larry_events full audit trail) |
 | Calendar sync (Google + Outlook) | ✅ Connectors exist |
 | Read emails/messages/calendar → update project | ✅ Canonical event pipeline |

@@ -15,11 +15,14 @@ Connectors ingest signals from external channels into `canonical_events`, which 
 | `GET /callback` | Slack OAuth redirect handler — stores installation |
 | `POST /events` | Signature-verified Slack Events webhook |
 | `GET /status` | Returns connector install status for tenant |
+| `GET /channels` | List Slack channels accessible to the bot |
+| `GET /channel-mapping` | Get all channel-to-project mappings for the tenant |
+| `PUT /channel-mapping` | Upsert or delete a channel-to-project mapping (requires `admin\|pm` role) |
 
 ### Key Files
 - Route: `apps/api/src/routes/v1/connectors-slack.ts`
 - Service: `apps/api/src/services/connectors/slack.ts`
-- DB table: `slack_installations`
+- DB tables: `slack_installations`, `slack_channel_project_mappings`
 
 ### Required Env Vars
 ```
@@ -87,25 +90,70 @@ GOOGLE_CALENDAR_WEBHOOK_URL
 
 ---
 
+## Outlook Calendar
+
+**Status: Live (OAuth + webhook ingestion working)**
+
+### Endpoints (`/v1/connectors/outlook-calendar/`)
+| Route | Purpose |
+|-------|---------|
+| `GET /install-url` | Generate Microsoft OAuth URL (requires `admin\|pm` role) |
+| `GET /callback` | OAuth token exchange + installation upsert, redirects to settings page |
+| `GET /status` | Returns connector status (auto-refreshes token if about to expire) |
+| `GET /project-link` | Read default project linkage for an Outlook calendar installation |
+| `PUT /project-link` | Set or clear default project linkage (`projectId: null` clears; requires `admin\|pm` role) |
+| `POST /webhook` | Receive Microsoft Graph change notifications (subscription validation + event ingestion) |
+
+### Key Files
+- Route: `apps/api/src/routes/v1/connectors-outlook-calendar.ts`
+- Service: `apps/api/src/services/connectors/outlook-calendar.ts`
+- DB table: `outlook_calendar_installations`
+
+### Required Env Vars
+```
+OUTLOOK_CLIENT_ID
+OUTLOOK_CLIENT_SECRET
+OUTLOOK_REDIRECT_URI
+OUTLOOK_CALENDAR_SCOPES           (default: "offline_access openid profile User.Read Calendars.ReadWrite")
+OUTLOOK_OAUTH_STATE_TTL_SECONDS   (default: 3600)
+```
+
+### Known Behaviour
+- OAuth flow uses Microsoft identity platform (`login.microsoftonline.com/common/oauth2/v2.0`), so works with both personal and org accounts.
+- Webhook handles Microsoft Graph subscription validation (returns `validationToken` as plain text) and change notification ingestion in a single endpoint.
+- Subscription lookup is by `outlook_subscription_id` column. Additional columns `outlook_subscription_client_state` and `outlook_subscription_expiration` track subscription security and renewal.
+- Client state validation: if the installation has `outlook_subscription_client_state` set, incoming webhooks must match or they are rejected.
+- Webhook project scope resolution mirrors Google Calendar: the installation's `project_id` is attached as a hint when ingesting the canonical event.
+- Calendar write mutations (`calendar_event_create`, `calendar_event_update`) are supported via the Larry Action Centre accept flow, same as Google Calendar. The `larry.ts` route resolves the project-linked installation and falls back across providers (Google first, then Outlook).
+- Token refresh: `ensureFreshOutlookAccessToken` proactively refreshes tokens within 60 seconds of expiry. Missing refresh token triggers a reconnect error.
+- No worker renewal job exists yet (unlike Google Calendar). Microsoft Graph subscriptions expire after 3 days; renewal is a planned improvement.
+
+---
+
 ## Email
 
-**Status: Outbound drafts only. Inbound OAuth not implemented — do not claim live inbound email.**
+**Status: Gmail OAuth live. Mock fallback for non-Gmail. Inbound webhook + outbound send both functional.**
 
-### What exists
-- `apps/api/src/routes/v1/connectors-email.ts` — route scaffold
-- `apps/api/src/routes/v1/actions.ts` — `email_draft` action type executes outbound send
+### Endpoints (`/v1/connectors/email/`)
+| Route | Purpose |
+|-------|---------|
+| `GET /status` | Returns connector install status |
+| `GET /install-url` | Generate Gmail OAuth URL (or mock URL for non-Gmail providers; requires `admin\|pm` role) |
+| `GET /callback` | OAuth token exchange + installation upsert, redirects to settings page |
+| `POST /inbound` | Secret-verified inbound email webhook — ingests to canonical events |
+| `POST /draft/send` | Create outbound draft and optionally send immediately (requires `admin\|pm` role) |
+| `GET /drafts` | List outbound drafts for the tenant (filterable by state) |
+
+### Key Files
+- Route: `apps/api/src/routes/v1/connectors-email.ts`
 - `apps/web/src/app/api/workspace/...` — email draft proxy routes
 - DB table: `email_installations`, `email_outbound_drafts`
 
-### What does NOT exist yet
-- Real Gmail/IMAP OAuth flow (install-url returns a mock callback code)
-- Inbound email ingestion to canonical events
-- Email response monitoring loop
-
-### UI Guidance
-- Email "Connect" button on settings and landing page must show **"Coming soon"** (disabled state)
-- Do not promise live inbound email until the real connector is built (post-v1)
+### Known Behaviour
+- When `EMAIL_CONNECTOR_PROVIDER=gmail`, real Gmail OAuth and send via Gmail API are active. Otherwise falls back to mock OAuth and Resend for delivery.
+- Inbound webhook validates `x-larry-email-secret` header with timing-safe comparison against the installation's `webhook_secret`.
+- Draft send creates a `documents` record (type `email_draft`) alongside the `email_outbound_drafts` row.
+- Gmail send failure does not block draft creation — the draft is saved and a warning is logged.
 
 ### Post-v1 backlog
-- Issue #14: Real Gmail OAuth connector
 - Issue #15: Email response monitoring loop

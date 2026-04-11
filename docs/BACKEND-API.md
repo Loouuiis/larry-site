@@ -6,23 +6,35 @@ Fastify v5 REST API at `apps/api/`. Product routes are registered in `apps/api/s
 
 ## Route Files
 
-| File | Primary Routes |
-|------|----------------|
-| `auth.ts` | `POST /v1/auth/login`, `POST /v1/auth/refresh`, `GET /v1/auth/me` |
-| `projects.ts` | CRUD `/v1/projects`, archive/delete lifecycle routes (`POST /v1/projects/:id/archive`, `POST /v1/projects/:id/unarchive`, `POST /v1/projects/:id/delete`), project timeline/health utilities, project collaborator routes (`GET/POST/PATCH/DELETE /v1/projects/:id/members...`), and project notes routes (`GET/POST /v1/projects/:id/notes`) |
-| `project-intake.ts` | `POST /v1/projects/intake/drafts`, `POST /v1/projects/intake/drafts/:id/bootstrap`, `POST /v1/projects/intake/drafts/:id/finalize` |
-| `documents.ts` | `GET /v1/documents`, `POST /v1/documents` (optional create+attach via `attachTaskId`) |
-| `tasks.ts` | CRUD `/v1/tasks`, task status/dependency helpers, and task document attachments (`GET/POST /v1/tasks/:id/attachments`) |
-| `ingest.ts` | `POST /v1/ingest/slack`, `/email`, `/calendar`, `/transcript` (transcript shim) |
-| `larry.ts` | `POST /v1/larry/chat`, `GET /v1/larry/briefing`, `GET /v1/larry/action-centre`, `GET /v1/larry/memory`, runtime reliability routes (`GET /v1/larry/runtime/canonical-events`, `POST /v1/larry/runtime/canonical-events/:id/retry`, `POST /v1/larry/runtime/canonical-events/retry-bulk`), `POST /v1/larry/events/:id/accept`, `POST /v1/larry/events/:id/dismiss`, `POST /v1/larry/transcript` |
-| `meetings.ts` | Meeting read surfaces and meeting data contracts |
-| `notifications.ts` | Workspace notification reads/mutations |
-| `activity.ts` | `GET /v1/activity` |
-| `reporting.ts` | Project reporting routes |
-| `orgs.ts` | Organization access request/admin approval routes |
-| `connectors-slack.ts` | Slack connector install/status/events |
-| `connectors-google-calendar.ts` | Google Calendar connector install/status/watch/webhook + project-link mapping |
-| `connectors-email.ts` | Email connector status/install/inbound/send; draft send mirrors `email_draft` assets into `documents` |
+Routes are registered in `apps/api/src/routes/v1/index.ts`. The health routes in `apps/api/src/routes/health.ts` are registered at the root (no `/v1` prefix).
+
+| File | Prefix | Primary Routes |
+|------|--------|----------------|
+| `health.ts` (root) | `/` | `GET /health`, `GET /ready` |
+| `auth.ts` | `/auth` | `POST /v1/auth/signup`, `POST /v1/auth/login`, `POST /v1/auth/refresh`, `GET /v1/auth/me`, `GET /v1/auth/members`, `POST /v1/auth/members/invite`, `PATCH /v1/auth/members/:userId`, `DELETE /v1/auth/members/:userId`, `POST /v1/auth/logout` |
+| `auth-account.ts` | `/auth` (sub-plugin of `auth.ts`) | `PATCH /v1/auth/update-profile`, `POST /v1/auth/change-password`, `POST /v1/auth/change-email`, `POST /v1/auth/confirm-email-change`, `GET /v1/auth/sessions`, `DELETE /v1/auth/sessions/:id`, `DELETE /v1/auth/sessions` |
+| `auth-google.ts` | `/auth` (sub-plugin of `auth.ts`) | `GET /v1/auth/google` (OAuth redirect), `GET /v1/auth/google/callback`, `POST /v1/auth/google/link`, `POST /v1/auth/google/unlink` |
+| `auth-password-reset.ts` | `/auth` (sub-plugin of `auth.ts`) | `POST /v1/auth/forgot-password`, `POST /v1/auth/reset-password` |
+| `auth-verification.ts` | `/auth` (sub-plugin of `auth.ts`) | `POST /v1/auth/send-verification`, `POST /v1/auth/verify-email` |
+| `projects.ts` | `/projects` | CRUD `/v1/projects`, archive/delete lifecycle routes (`POST /v1/projects/:id/archive`, `POST /v1/projects/:id/unarchive`, `POST /v1/projects/:id/delete`), project timeline/health utilities, project collaborator routes (`GET/POST/PATCH/DELETE /v1/projects/:id/members...`), and project notes routes (`GET/POST /v1/projects/:id/notes`) |
+| `project-intake.ts` | `/projects` | `POST /v1/projects/intake/drafts`, `POST /v1/projects/intake/drafts/:id/bootstrap`, `POST /v1/projects/intake/drafts/:id/finalize` |
+| `documents.ts` | `/documents` | `GET /v1/documents`, `POST /v1/documents` (optional create+attach via `attachTaskId`) |
+| `folders.ts` | `/folders` | `GET /v1/folders`, `GET /v1/folders/:id`, `POST /v1/folders`, `PATCH /v1/folders/:id` (rename), `PATCH /v1/folders/:id/move`, `DELETE /v1/folders/:id`, `GET /v1/folders/:id/contents` |
+| `tasks.ts` | `/tasks` | CRUD `/v1/tasks`, task status/dependency helpers, and task document attachments (`GET/POST /v1/tasks/:id/attachments`) |
+| `ingest.ts` | `/ingest` | `POST /v1/ingest/slack`, `/email`, `/calendar`, `/transcript` (transcript shim) |
+| `larry.ts` | `/larry` | `POST /v1/larry/chat`, `GET /v1/larry/briefing`, `GET /v1/larry/action-centre`, `GET /v1/larry/memory`, runtime reliability routes (`GET /v1/larry/runtime/canonical-events`, `POST /v1/larry/runtime/canonical-events/:id/retry`, `POST /v1/larry/runtime/canonical-events/retry-bulk`), `POST /v1/larry/events/:id/accept`, `POST /v1/larry/events/:id/dismiss`, `POST /v1/larry/transcript` |
+| `larry-documents.ts` | `/larry/documents` | `GET /v1/larry/documents`, `GET /v1/larry/documents/:id`, `PATCH /v1/larry/documents/:id`, `DELETE /v1/larry/documents/:id` |
+| `meetings.ts` | (none) | `GET /v1/meetings`, `GET /v1/meetings/:id` |
+| `notifications.ts` | (none) | `GET /v1/notifications`, `POST /v1/notifications/:id/read` |
+| `activity.ts` | (none) | `GET /v1/activity` |
+| `reporting.ts` | (none) | `GET /v1/projects/:id/health`, `GET /v1/projects/:id/outcomes`, `GET /v1/projects/:id/weekly-summary`, `GET /v1/projects/:id/task-breakdown`, `GET /v1/projects/:id/status-history` |
+| `orgs.ts` | (none) | `POST /v1/orgs/request`, `GET /v1/admin/orgs/requests`, `POST /v1/admin/orgs/:id/approve` |
+| `search.ts` | (none) | `GET /v1/search` |
+| `settings.ts` | `/settings` | `GET /v1/settings/policy`, `PATCH /v1/settings/policy`, `GET /v1/settings/rules`, `POST /v1/settings/rules`, `PATCH /v1/settings/rules/:id`, `DELETE /v1/settings/rules/:id` |
+| `connectors-slack.ts` | `/connectors/slack` | Slack connector install/status/events |
+| `connectors-google-calendar.ts` | `/connectors/google-calendar` | Google Calendar connector install/status/watch/webhook + project-link mapping |
+| `connectors-outlook-calendar.ts` | `/connectors/outlook-calendar` | `GET /v1/connectors/outlook-calendar/install-url`, `GET /v1/connectors/outlook-calendar/callback`, `GET /v1/connectors/outlook-calendar/status`, `GET /v1/connectors/outlook-calendar/project-link`, `PUT /v1/connectors/outlook-calendar/project-link`, `POST /v1/connectors/outlook-calendar/webhook` |
+| `connectors-email.ts` | `/connectors/email` | Email connector status/install/inbound/send; draft send mirrors `email_draft` assets into `documents` |
 
 ## Canonical Larry Contracts
 
