@@ -1128,6 +1128,7 @@ export async function runIntelligence(
     system: systemPrompt,
     prompt: userPrompt,
     temperature: 0.2,
+    abortSignal: AbortSignal.timeout(45_000),
   });
 
   return object as IntelligenceResult;

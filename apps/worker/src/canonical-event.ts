@@ -387,9 +387,22 @@ async function handleTranscriptCanonicalEvent(
     return;
   }
 
-  const snapshot = await getProjectSnapshot(db, tenantId, resolvedProjectId);
-  const config = buildWorkerIntelligenceConfig();
-  const intelligenceResult = await runIntelligence(config, snapshot, buildTranscriptPrompt(transcript));
+  let intelligenceResult;
+  try {
+    const snapshot = await getProjectSnapshot(db, tenantId, resolvedProjectId);
+    const config = buildWorkerIntelligenceConfig();
+    intelligenceResult = await runIntelligence(config, snapshot, buildTranscriptPrompt(transcript));
+  } catch (aiError) {
+    const reason = aiError instanceof Error ? aiError.message : String(aiError);
+    console.error(
+      `[canonical-event] transcript ${canonicalEvent.id} intelligence failed (${reason}); saving meeting note without analysis`
+    );
+    await reconcileMeetingNote(tenantId, meetingNoteId, 0, {
+      projectId: resolvedProjectId,
+      summary: "Transcript received — analysis pending (AI temporarily unavailable).",
+    });
+    return;
+  }
 
   await reconcileMeetingNote(tenantId, meetingNoteId, 0, {
     projectId: resolvedProjectId,
