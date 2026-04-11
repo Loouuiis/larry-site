@@ -189,12 +189,12 @@ export async function getProjectSnapshot(
     ),
 
     db.query<FeedbackRow>(
-      `SELECT action_type, state, COUNT(*)::int AS count
+      `SELECT action_type, event_type AS state, COUNT(*)::int AS count
        FROM larry_events
        WHERE tenant_id = $1 AND project_id = $2
-         AND state IN ('accepted', 'dismissed')
+         AND event_type IN ('accepted', 'dismissed')
          AND created_at > NOW() - INTERVAL '30 days'
-       GROUP BY action_type, state
+       GROUP BY action_type, event_type
        ORDER BY count DESC`,
       [tenantId, projectId]
     ),
