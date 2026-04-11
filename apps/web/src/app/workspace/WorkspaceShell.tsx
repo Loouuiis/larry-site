@@ -69,7 +69,7 @@ export function WorkspaceShell({ children, userEmail, emailVerified, avatarUrl, 
     try {
       const [projectsRes, notifRes] = await Promise.all([
         fetch("/api/workspace/projects", { cache: "no-store" }),
-        fetch("/api/workspace/notifications?unread=true&limit=1", { cache: "no-store" }),
+        fetch("/api/workspace/notifications?unread=false&limit=50", { cache: "no-store" }),
       ]);
       const payload = await readJson<{ items?: WorkspaceProject[] }>(projectsRes);
       if (projectsRes.ok) {

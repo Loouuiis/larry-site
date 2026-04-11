@@ -207,3 +207,36 @@ export async function sendNewDeviceAlert(to: string, deviceInfo: DeviceInfo): Pr
     throw new Error(`Failed to send new device alert: ${error.message}`);
   }
 }
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+export async function sendMemberInviteEmail(to: string, displayName: string): Promise<void> {
+  if (!isResendConfigured()) {
+    console.log("[email] RESEND_API_KEY not configured. Invite email for %s skipped.", to);
+    return;
+  }
+  const resend = getResend();
+  const frontendUrl = getFrontendUrl();
+  const safeName = escapeHtml(displayName);
+  const { error } = await resend.emails.send({
+    from: FROM,
+    to,
+    subject: "You've been invited to Larry",
+    html: wrapHtml(`
+      <h1 style="font-size: 22px; font-weight: 700; letter-spacing: -0.03em; margin: 0 0 12px;">You're invited!</h1>
+      <p style="font-size: 15px; color: #555; line-height: 1.6; margin: 0 0 28px;">
+        Hi ${safeName}, you've been invited to join a workspace on Larry — the AI-powered project management tool. Sign in to get started.
+      </p>
+      ${ctaButton(`${frontendUrl}/login`, "Sign in to Larry")}
+      <p style="margin-top: 28px; font-size: 13px; color: #888; line-height: 1.5;">
+        If you don't have a password yet, use the "Forgot password" link on the sign-in page to set one up.
+      </p>
+    `),
+  });
+  if (error) {
+    console.error("[email] sendMemberInviteEmail failed:", error);
+    throw new Error(`Failed to send member invite email: ${error.message}`);
+  }
+}

@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { Plus, X } from "lucide-react";
+import { Plus, X, Mail, UserPlus } from "lucide-react";
+import Link from "next/link";
 import type {
   ProjectMembershipRole,
   WorkspaceProjectMembers,
@@ -42,6 +43,11 @@ export function CollaboratorsPanel({ projectId }: { projectId: string }) {
   const [addUserId, setAddUserId] = useState("");
   const [addRole, setAddRole] = useState<ProjectMembershipRole>("viewer");
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showEmailInvite, setShowEmailInvite] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<ProjectMembershipRole>("viewer");
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteSuccess, setInviteSuccess] = useState("");
   const [viewMode, setViewMode] = useState<"list" | "tree">("list");
 
   const canManage = membersPayload?.canManage ?? false;
@@ -287,83 +293,197 @@ export function CollaboratorsPanel({ projectId }: { projectId: string }) {
           </p>
 
           {canManage && (
-            <div>
-              {!showAddForm ? (
-                <button
-                  type="button"
-                  onClick={() => setShowAddForm(true)}
-                  className="inline-flex items-center gap-1.5 text-[13px] font-semibold"
-                  style={{ color: "var(--cta)", background: "transparent", border: "none", cursor: "pointer", padding: 0 }}
-                >
-                  <Plus size={14} />
-                  Add member
-                </button>
-              ) : availableTenantMembers.length === 0 ? (
-                <div className="flex items-center justify-between rounded-[16px] border px-4 py-3" style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}>
-                  <p className="text-[12px]" style={{ color: "var(--text-muted)" }}>
-                    All workspace members are already in this project.
-                  </p>
+            <div className="space-y-3">
+              {/* Action buttons */}
+              {!showAddForm && !showEmailInvite && (
+                <div className="flex items-center gap-3">
                   <button
                     type="button"
-                    onClick={() => setShowAddForm(false)}
-                    className="flex items-center justify-center"
-                    style={{ color: "var(--text-muted)", background: "transparent", border: "none", cursor: "pointer" }}
+                    onClick={() => setShowAddForm(true)}
+                    className="inline-flex items-center gap-1.5 text-[13px] font-semibold"
+                    style={{ color: "var(--cta)", background: "transparent", border: "none", cursor: "pointer", padding: 0 }}
                   >
-                    <X size={14} />
+                    <Plus size={14} />
+                    Add existing member
                   </button>
+                  <span style={{ color: "var(--text-disabled)", fontSize: 12 }}>or</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowEmailInvite(true)}
+                    className="inline-flex items-center gap-1.5 text-[13px] font-semibold"
+                    style={{ color: "var(--cta)", background: "transparent", border: "none", cursor: "pointer", padding: 0 }}
+                  >
+                    <Mail size={14} />
+                    Invite by email
+                  </button>
+                  <Link
+                    href="/workspace/settings/members"
+                    className="ml-auto text-[11px] font-medium"
+                    style={{ color: "var(--text-muted)" }}
+                  >
+                    Manage workspace members →
+                  </Link>
                 </div>
-              ) : (
+              )}
+
+              {/* Add from existing workspace members */}
+              {showAddForm && (
+                availableTenantMembers.length === 0 ? (
+                  <div className="flex items-center justify-between rounded-[16px] border px-4 py-3" style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}>
+                    <p className="text-[12px]" style={{ color: "var(--text-muted)" }}>
+                      All workspace members are already in this project. <button type="button" onClick={() => { setShowAddForm(false); setShowEmailInvite(true); }} className="font-semibold" style={{ color: "var(--cta)", background: "none", border: "none", cursor: "pointer" }}>Invite someone new</button>
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddForm(false)}
+                      className="flex items-center justify-center"
+                      style={{ color: "var(--text-muted)", background: "transparent", border: "none", cursor: "pointer" }}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <form
+                    onSubmit={(e) => void addMember(e)}
+                    className="flex items-end gap-2 rounded-[16px] border px-4 py-3"
+                    style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
+                  >
+                    <label className="flex-1 text-[12px] font-semibold" style={{ color: "var(--text-muted)" }}>
+                      Member
+                      <select
+                        value={addUserId}
+                        onChange={(e) => setAddUserId(e.target.value)}
+                        className="mt-1 w-full rounded-[12px] border px-3 py-2 text-[13px]"
+                        style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-1)" }}
+                      >
+                        {availableTenantMembers.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name || m.email}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="w-[130px] shrink-0 text-[12px] font-semibold" style={{ color: "var(--text-muted)" }}>
+                      Role
+                      <select
+                        value={addRole}
+                        onChange={(e) => setAddRole(e.target.value as ProjectMembershipRole)}
+                        className="mt-1 w-full rounded-full border px-3 py-1.5 text-[12px] font-semibold"
+                        style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-1)" }}
+                      >
+                        {ROLE_OPTIONS.map((role) => (
+                          <option key={role} value={role}>
+                            {formatRole(role)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      type="submit"
+                      disabled={busyAction === "add" || !addUserId}
+                      className="h-[40px] shrink-0 rounded-full px-4 text-[12px] font-semibold text-white"
+                      style={{ background: "var(--cta)" }}
+                    >
+                      {busyAction === "add" ? "Adding..." : "Add"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddForm(false)}
+                      className="h-[40px] shrink-0 flex items-center justify-center"
+                      style={{ color: "var(--text-muted)", background: "transparent", border: "none", cursor: "pointer" }}
+                    >
+                      <X size={14} />
+                    </button>
+                  </form>
+                )
+              )}
+
+              {/* Email invite form */}
+              {showEmailInvite && (
                 <form
-                  onSubmit={(e) => void addMember(e)}
-                  className="flex items-end gap-2 rounded-[16px] border px-4 py-3"
-                  style={{ borderColor: "var(--border)", background: "var(--surface-2)" }}
+                  onSubmit={async (e: FormEvent) => {
+                    e.preventDefault();
+                    if (!inviteEmail.trim()) return;
+                    setInviteBusy(true);
+                    setInlineError(null);
+                    setInviteSuccess("");
+                    try {
+                      const res = await fetch("/api/workspace/members/invite", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ email: inviteEmail.trim(), role: inviteRole === "owner" ? "admin" : inviteRole === "editor" ? "member" : "viewer" }),
+                      });
+                      const data = await readJson<{ error?: string }>(res);
+                      if (!res.ok) {
+                        setInlineError(data.error ?? "Failed to send invite.");
+                        return;
+                      }
+                      setInviteSuccess(`Invited ${inviteEmail.trim()}`);
+                      setInviteEmail("");
+                      setTimeout(() => setInviteSuccess(""), 3000);
+                      void refresh();
+                    } catch {
+                      setInlineError("Network error sending invite.");
+                    } finally {
+                      setInviteBusy(false);
+                    }
+                  }}
+                  className="rounded-[16px] border px-4 py-3"
+                  style={{ borderColor: "#ddd6fe", background: "#faf8ff" }}
                 >
-                  <label className="flex-1 text-[12px] font-semibold" style={{ color: "var(--text-muted)" }}>
-                    Member
-                    <select
-                      value={addUserId}
-                      onChange={(e) => setAddUserId(e.target.value)}
-                      className="mt-1 w-full rounded-[12px] border px-3 py-2 text-[13px]"
-                      style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-1)" }}
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <UserPlus size={14} style={{ color: "#6c44f6" }} />
+                      <span className="text-[13px] font-semibold" style={{ color: "var(--text-1)" }}>Invite by email</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setShowEmailInvite(false); setInviteEmail(""); }}
+                      style={{ color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
                     >
-                      {availableTenantMembers.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.name || m.email}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="w-[130px] shrink-0 text-[12px] font-semibold" style={{ color: "var(--text-muted)" }}>
-                    Role
-                    <select
-                      value={addRole}
-                      onChange={(e) => setAddRole(e.target.value as ProjectMembershipRole)}
-                      className="mt-1 w-full rounded-full border px-3 py-1.5 text-[12px] font-semibold"
-                      style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-1)" }}
+                      <X size={14} />
+                    </button>
+                  </div>
+                  <div className="flex items-end gap-2">
+                    <label className="flex-1 text-[12px] font-semibold" style={{ color: "var(--text-muted)" }}>
+                      Email
+                      <input
+                        type="email"
+                        value={inviteEmail}
+                        onChange={(e) => setInviteEmail(e.target.value)}
+                        placeholder="colleague@company.com"
+                        required
+                        className="mt-1 w-full rounded-[12px] border px-3 py-2 text-[13px]"
+                        style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-1)", outline: "none" }}
+                        onFocus={(e) => (e.currentTarget.style.borderColor = "#6c44f6")}
+                        onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
+                      />
+                    </label>
+                    <label className="w-[130px] shrink-0 text-[12px] font-semibold" style={{ color: "var(--text-muted)" }}>
+                      Role
+                      <select
+                        value={inviteRole}
+                        onChange={(e) => setInviteRole(e.target.value as ProjectMembershipRole)}
+                        className="mt-1 w-full rounded-full border px-3 py-1.5 text-[12px] font-semibold"
+                        style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-1)" }}
+                      >
+                        {ROLE_OPTIONS.map((role) => (
+                          <option key={role} value={role}>{formatRole(role)}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      type="submit"
+                      disabled={inviteBusy || !inviteEmail.trim()}
+                      className="h-[40px] shrink-0 rounded-full px-4 text-[12px] font-semibold text-white"
+                      style={{ background: "#6c44f6", opacity: inviteBusy ? 0.6 : 1 }}
                     >
-                      {ROLE_OPTIONS.map((role) => (
-                        <option key={role} value={role}>
-                          {formatRole(role)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <button
-                    type="submit"
-                    disabled={busyAction === "add" || !addUserId}
-                    className="h-[40px] shrink-0 rounded-full px-4 text-[12px] font-semibold text-white"
-                    style={{ background: "var(--cta)" }}
-                  >
-                    {busyAction === "add" ? "Adding..." : "Add"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowAddForm(false)}
-                    className="h-[40px] shrink-0 flex items-center justify-center"
-                    style={{ color: "var(--text-muted)", background: "transparent", border: "none", cursor: "pointer" }}
-                  >
-                    <X size={14} />
-                  </button>
+                      {inviteBusy ? "Inviting..." : "Invite"}
+                    </button>
+                  </div>
+                  {inviteSuccess && (
+                    <p className="mt-2 text-[12px] font-medium" style={{ color: "#15803d" }}>{inviteSuccess}</p>
+                  )}
                 </form>
               )}
             </div>

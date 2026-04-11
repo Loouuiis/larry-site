@@ -1,9 +1,10 @@
+import { randomBytes } from "node:crypto";
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { generateSecureToken, hashPassword, hashToken, issueAccessToken, issueRefreshToken, verifyPassword } from "../../lib/auth.js";
 import { writeAuditLog } from "../../lib/audit.js";
 import { emailSchema, passwordSchema } from "../../lib/validation.js";
-import { sendVerificationEmail } from "../../lib/email.js";
+import { sendVerificationEmail, sendMemberInviteEmail } from "../../lib/email.js";
 import { authPasswordResetRoutes } from "./auth-password-reset.js";
 import { authVerificationRoutes } from "./auth-verification.js";
 import { authGoogleRoutes } from "./auth-google.js";
@@ -434,6 +435,186 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
          JOIN memberships m ON m.user_id = u.id
          WHERE m.tenant_id = $1
          ORDER BY name`,
+        [tenantId]
+      );
+      return { members: rows };
+    }
+  );
+
+  // ── Invite a new member by email ──────────────────────────────────
+  const InviteSchema = z.object({
+    email: emailSchema,
+    role: z.enum(["admin", "member", "viewer"]).default("member"),
+    displayName: z.string().max(200).optional(),
+  });
+
+  fastify.post(
+    "/members/invite",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const tenantId = request.user.tenantId;
+      const body = InviteSchema.parse(request.body);
+
+      // Check caller is admin
+      const callerRole = request.user.role;
+      if (callerRole !== "admin") {
+        throw fastify.httpErrors.forbidden("Only admins can invite members.");
+      }
+
+      // Check if user already exists in this tenant
+      const existing = await fastify.db.queryTenant<{ id: string }>(
+        tenantId,
+        `SELECT u.id FROM users u
+         JOIN memberships m ON m.user_id = u.id
+         WHERE u.email = $1 AND m.tenant_id = $2
+         LIMIT 1`,
+        [body.email, tenantId]
+      );
+
+      if (existing.length > 0) {
+        throw fastify.httpErrors.conflict("This email is already a member of this workspace.");
+      }
+
+      // Check if user exists globally (add them to tenant)
+      const existingUser = await fastify.db.query<{ id: string; display_name: string | null }>(
+        "SELECT id, display_name FROM users WHERE email = $1 LIMIT 1",
+        [body.email]
+      );
+
+      let userId: string;
+
+      if (existingUser.length > 0) {
+        userId = existingUser[0].id;
+        // Add membership
+        await fastify.db.query(
+          `INSERT INTO memberships (tenant_id, user_id, role) VALUES ($1, $2, $3)
+           ON CONFLICT (tenant_id, user_id) DO NOTHING`,
+          [tenantId, userId, body.role]
+        );
+      } else {
+        // Create new user with temp password
+        const tempPassword = randomBytes(10).toString("base64url");
+        const passwordHash = await hashPassword(tempPassword);
+        const displayName = body.displayName?.trim() || body.email.split("@")[0];
+
+        const userRows = await fastify.db.query<{ id: string }>(
+          `INSERT INTO users (email, password_hash, display_name, verification_grace_deadline)
+           VALUES ($1, $2, $3, NOW() + INTERVAL '7 days') RETURNING id`,
+          [body.email, passwordHash, displayName]
+        );
+        userId = userRows[0].id;
+
+        await fastify.db.query(
+          `INSERT INTO memberships (tenant_id, user_id, role) VALUES ($1, $2, $3)`,
+          [tenantId, userId, body.role]
+        );
+
+        // Send invite email (graceful — don't fail the invite if email fails)
+        try {
+          await sendMemberInviteEmail(body.email, displayName);
+        } catch (emailErr) {
+          console.error("[invite] Failed to send invite email:", emailErr);
+        }
+      }
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId: request.user.userId,
+        actionType: "member.invited",
+        objectType: "user",
+        objectId: userId,
+        details: { email: body.email, role: body.role },
+      });
+
+      // Return updated member list
+      const rows = await fastify.db.queryTenant<{ id: string; name: string; email: string; role: string }>(
+        tenantId,
+        `SELECT u.id, COALESCE(NULLIF(u.display_name, ''), split_part(u.email, '@', 1)) AS name, u.email, m.role
+         FROM users u JOIN memberships m ON m.user_id = u.id WHERE m.tenant_id = $1 ORDER BY name`,
+        [tenantId]
+      );
+      return reply.code(201).send({ members: rows });
+    }
+  );
+
+  // ── Update member role ────────────────────────────────────────────
+  const UpdateMemberSchema = z.object({
+    role: z.enum(["admin", "member", "viewer"]),
+  });
+
+  fastify.patch(
+    "/members/:userId",
+    { preHandler: [fastify.authenticate] },
+    async (request) => {
+      const tenantId = request.user.tenantId;
+      const { userId } = z.object({ userId: z.string().uuid() }).parse(request.params);
+      const body = UpdateMemberSchema.parse(request.body);
+
+      if (request.user.role !== "admin") {
+        throw fastify.httpErrors.forbidden("Only admins can update member roles.");
+      }
+
+      if (userId === request.user.userId) {
+        throw fastify.httpErrors.badRequest("You cannot change your own role.");
+      }
+
+      await fastify.db.query(
+        `UPDATE memberships SET role = $1, updated_at = NOW() WHERE tenant_id = $2 AND user_id = $3`,
+        [body.role, tenantId, userId]
+      );
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId: request.user.userId,
+        actionType: "member.role_updated",
+        objectType: "user",
+        objectId: userId,
+        details: { newRole: body.role },
+      });
+
+      const rows = await fastify.db.queryTenant<{ id: string; name: string; email: string; role: string }>(
+        tenantId,
+        `SELECT u.id, COALESCE(NULLIF(u.display_name, ''), split_part(u.email, '@', 1)) AS name, u.email, m.role
+         FROM users u JOIN memberships m ON m.user_id = u.id WHERE m.tenant_id = $1 ORDER BY name`,
+        [tenantId]
+      );
+      return { members: rows };
+    }
+  );
+
+  // ── Remove member ─────────────────────────────────────────────────
+  fastify.delete(
+    "/members/:userId",
+    { preHandler: [fastify.authenticate] },
+    async (request) => {
+      const tenantId = request.user.tenantId;
+      const { userId } = z.object({ userId: z.string().uuid() }).parse(request.params);
+
+      if (request.user.role !== "admin") {
+        throw fastify.httpErrors.forbidden("Only admins can remove members.");
+      }
+
+      if (userId === request.user.userId) {
+        throw fastify.httpErrors.badRequest("You cannot remove yourself.");
+      }
+
+      await fastify.db.query(
+        `DELETE FROM memberships WHERE tenant_id = $1 AND user_id = $2`,
+        [tenantId, userId]
+      );
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId: request.user.userId,
+        actionType: "member.removed",
+        objectType: "user",
+        objectId: userId,
+      });
+
+      const rows = await fastify.db.queryTenant<{ id: string; name: string; email: string; role: string }>(
+        tenantId,
+        `SELECT u.id, COALESCE(NULLIF(u.display_name, ''), split_part(u.email, '@', 1)) AS name, u.email, m.role
+         FROM users u JOIN memberships m ON m.user_id = u.id WHERE m.tenant_id = $1 ORDER BY name`,
         [tenantId]
       );
       return { members: rows };

@@ -3,9 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { NotificationBell } from "./NotificationBell";
-import { useWorkspaceChrome } from "./WorkspaceChromeContext";
-import { Menu, Search } from "lucide-react";
+import { Menu } from "lucide-react";
 
 type WorkspaceTopBarProps = {
   userEmail?: string | null;
@@ -46,6 +44,9 @@ function Breadcrumb({ workspaceName }: { workspaceName: string }) {
   } else if (pathname?.startsWith("/workspace/actions")) {
     parts.push({ label: workspaceName || "Home", href: "/workspace" });
     parts.push({ label: "Actions" });
+  } else if (pathname?.startsWith("/workspace/notifications")) {
+    parts.push({ label: workspaceName || "Home", href: "/workspace" });
+    parts.push({ label: "Notifications" });
   } else if (pathname === "/workspace") {
     parts.push({ label: "Home" });
   }
@@ -92,38 +93,6 @@ export function WorkspaceTopBar({ userEmail: _userEmail, workspaceName = "Larry 
       >
         <Menu size={18} />
       </button>
-<<<<<<< Updated upstream
-
-      {/* Search bar */}
-      <button
-        type="button"
-        onClick={() => window.dispatchEvent(new CustomEvent("larry:search-open"))}
-        className="hidden md:flex items-center gap-2 rounded-lg px-3 h-8 text-[13px] transition-colors ml-4"
-        style={{
-          background: "var(--surface-2)",
-          border: "1px solid var(--border)",
-          color: "var(--text-muted)",
-          minWidth: 200,
-        }}
-        onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#6c44f6")}
-        onMouseLeave={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
-      >
-        <Search size={13} />
-        <span className="flex-1 text-left">Search...</span>
-        <kbd
-          className="flex items-center rounded px-1 py-0.5 text-[10px]"
-          style={{ background: "var(--surface)", border: "1px solid var(--border)", lineHeight: 1.4 }}
-        >
-          ⌘K
-        </kbd>
-      </button>
-
-      {/* Right: bell */}
-      <div className="flex items-center shrink-0 ml-auto">
-        <NotificationBell count={chrome?.notifCount ?? 0} onCountChange={() => undefined} />
-      </div>
-=======
->>>>>>> Stashed changes
     </header>
   );
 }

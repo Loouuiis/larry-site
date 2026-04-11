@@ -863,7 +863,7 @@ export function MeetingsPage() {
                             {expandedData[meeting.id].transcript}
                           </div>
                         </div>
-                      ) : expandedData[meeting.id] && !expandedData[meeting.id]?.summary ? (
+                      ) : expandedData[meeting.id] && !expandedData[meeting.id]?.summary && !expandedData[meeting.id]?.transcript ? (
                         <p style={{ fontSize: "13px", color: "var(--text-disabled)", fontStyle: "italic" }}>
                           No transcript or summary available yet. Larry may still be processing.
                         </p>
