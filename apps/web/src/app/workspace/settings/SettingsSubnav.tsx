@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-type SettingsTab = "connectors" | "reliability" | "larry" | "account";
+type SettingsTab = "connectors" | "reliability" | "larry" | "members" | "account";
 
 interface SettingsSubnavProps {
   active: SettingsTab;
@@ -10,6 +10,7 @@ interface SettingsSubnavProps {
 
 const tabs: Array<{ id: SettingsTab; label: string; href: string }> = [
   { id: "connectors", label: "Connectors", href: "/workspace/settings/connectors" },
+  { id: "members", label: "Members", href: "/workspace/settings/members" },
   { id: "reliability", label: "Reliability", href: "/workspace/settings/reliability" },
   { id: "larry", label: "Larry", href: "/workspace/settings/larry" },
   { id: "account", label: "Account", href: "/workspace/settings/account" },

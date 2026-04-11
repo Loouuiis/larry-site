@@ -208,6 +208,7 @@ export interface WorkspaceMeeting {
   id: string;
   title: string | null;
   summary: string | null;
+  transcript?: string | null;
   actionCount: number;
   meetingDate: string | null;
   createdAt: string;

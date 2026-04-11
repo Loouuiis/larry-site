@@ -40,7 +40,7 @@ export function WorkspaceShell({ children, userEmail, emailVerified, avatarUrl, 
   const [meetingOpen, setMeetingOpen] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [meetingBusy, setMeetingBusy] = useState(false);
-  const [notifCount] = useState(0);
+  const [notifCount, setNotifCount] = useState(0);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
 
@@ -54,6 +54,7 @@ export function WorkspaceShell({ children, userEmail, emailVerified, avatarUrl, 
     if (pathname === "/workspace") return "home";
     if (pathname?.startsWith("/workspace/my-work")) return "my-work";
     if (pathname?.startsWith("/workspace/actions")) return "actions";
+    if (pathname?.startsWith("/workspace/notifications")) return "notifications";
     if (pathname?.startsWith("/workspace/meetings")) return "meetings";
     if (pathname?.startsWith("/workspace/calendar")) return "calendar";
     if (pathname?.startsWith("/workspace/documents")) return "documents";
@@ -66,13 +67,20 @@ export function WorkspaceShell({ children, userEmail, emailVerified, avatarUrl, 
 
   const loadShell = useCallback(async () => {
     try {
-      const response = await fetch("/api/workspace/projects", { cache: "no-store" });
-      const payload = await readJson<{ items?: WorkspaceProject[] }>(response);
-      if (response.ok) {
+      const [projectsRes, notifRes] = await Promise.all([
+        fetch("/api/workspace/projects", { cache: "no-store" }),
+        fetch("/api/workspace/notifications?unread=true&limit=1", { cache: "no-store" }),
+      ]);
+      const payload = await readJson<{ items?: WorkspaceProject[] }>(projectsRes);
+      if (projectsRes.ok) {
         setProjects(Array.isArray(payload.items) ? payload.items : []);
       }
+      const notifPayload = await readJson<{ unreadCount?: number }>(notifRes);
+      if (notifRes.ok) {
+        setNotifCount(notifPayload.unreadCount ?? 0);
+      }
     } catch {
-      // Keep the shell mounted even if project list refresh fails.
+      // Keep the shell mounted even if refresh fails.
     }
   }, []);
 

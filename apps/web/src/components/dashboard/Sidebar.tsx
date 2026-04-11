@@ -8,7 +8,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   FileText, MessageSquare, ClipboardList, Calendar,
   X, FolderOpen, Home, ListTodo, Settings,
-  Search, LogOut, FolderKanban, CheckSquare,
+  Search, LogOut, FolderKanban, CheckSquare, Bell,
   Plus, BarChart2, Sparkles, PanelLeftClose, PanelLeftOpen, Star, Mail,
   ChevronDown,
 } from "lucide-react";
@@ -20,12 +20,13 @@ const DRAWER_EASE = [0.22, 1, 0.36, 1] as const;
 /* ─── Types ────────────────────────────────────────────────────────── */
 
 export type NavSection = "projects" | "documents" | "chats" | "meetings" | "analytics";
-export type WorkspaceSidebarNav = "home" | "my-work" | "actions" | "project" | "meetings" | "calendar" | "documents" | "email-drafts" | "chats" | "larry" | "settings";
+export type WorkspaceSidebarNav = "home" | "my-work" | "actions" | "notifications" | "project" | "meetings" | "calendar" | "documents" | "email-drafts" | "chats" | "larry" | "settings";
 
 const WORKSPACE_NAV: { id: WorkspaceSidebarNav; label: string; icon: React.ElementType; href: string }[] = [
   { id: "home",      label: "Home",       icon: Home,          href: "/workspace"           },
   { id: "my-work",   label: "My tasks",   icon: ListTodo,      href: "/workspace/my-work"   },
   { id: "actions",   label: "Actions",    icon: CheckSquare,   href: "/workspace/actions"   },
+  { id: "notifications", label: "Notifications", icon: Bell, href: "/workspace/notifications" },
   { id: "meetings",  label: "Meetings",   icon: ClipboardList, href: "/workspace/meetings"  },
   { id: "calendar",  label: "Calendar",   icon: Calendar,      href: "/workspace/calendar"  },
   { id: "documents",    label: "Documents",    icon: FileText,      href: "/workspace/documents"    },
@@ -57,7 +58,7 @@ interface WorkspaceSidebarInnerProps {
 
 interface SearchTask { id: string; title: string; status: string; projectId?: string | null; }
 
-function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, avatarUrl, displayName, onToggleCollapsed }: WorkspaceSidebarInnerProps) {
+function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, avatarUrl, displayName, notifCount, onToggleCollapsed }: WorkspaceSidebarInnerProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [search, setSearch] = useState("");
@@ -294,6 +295,7 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, avatar
       <nav className="shrink-0 px-2 space-y-0.5" aria-label="Main navigation">
         {WORKSPACE_NAV.map(({ id, label, icon: Icon, href }) => {
           const isActive = activeNav === id;
+          const showBadge = id === "notifications" && (notifCount ?? 0) > 0;
           return (
             <Link
               key={id}
@@ -302,7 +304,15 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, avatar
               className={`pm-nav-item${isActive ? " active" : ""}`}
             >
               <Icon size={18} className="shrink-0 icon-md" style={{ color: isActive ? "var(--brand)" : "var(--text-disabled)" }} />
-              <span style={{ color: isActive ? "var(--text-1)" : "var(--text-2)" }}>{label}</span>
+              <span className="flex-1" style={{ color: isActive ? "var(--text-1)" : "var(--text-2)" }}>{label}</span>
+              {showBadge && (
+                <span
+                  className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-bold text-white"
+                  style={{ background: "#6c44f6" }}
+                >
+                  {(notifCount ?? 0) > 99 ? "99+" : notifCount}
+                </span>
+              )}
             </Link>
           );
         })}

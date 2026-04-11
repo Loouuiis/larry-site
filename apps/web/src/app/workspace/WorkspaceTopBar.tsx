@@ -81,10 +81,8 @@ function Breadcrumb({ workspaceName }: { workspaceName: string }) {
 }
 
 export function WorkspaceTopBar({ userEmail: _userEmail, workspaceName = "Larry Workspace", onMobileMenuOpen }: WorkspaceTopBarProps) {
-  const chrome = useWorkspaceChrome();
-
   return (
-    <header className="flex h-12 shrink-0 items-center justify-between px-6 gap-4" style={{ height: 48 }}>
+    <header className="flex h-12 shrink-0 items-center px-6 gap-4" style={{ height: 48 }}>
       {/* Mobile: hamburger */}
       <button
         className="flex h-8 w-8 items-center justify-center rounded-lg md:hidden"
@@ -94,6 +92,7 @@ export function WorkspaceTopBar({ userEmail: _userEmail, workspaceName = "Larry 
       >
         <Menu size={18} />
       </button>
+<<<<<<< Updated upstream
 
       {/* Search bar */}
       <button
@@ -123,6 +122,8 @@ export function WorkspaceTopBar({ userEmail: _userEmail, workspaceName = "Larry 
       <div className="flex items-center shrink-0 ml-auto">
         <NotificationBell count={chrome?.notifCount ?? 0} onCountChange={() => undefined} />
       </div>
+=======
+>>>>>>> Stashed changes
     </header>
   );
 }

@@ -286,7 +286,7 @@ export function LarryChat({ projectId, projectName, onVoiceInput }: LarryChatPro
           <div className="min-w-0">
             <span className="text-[14px] font-semibold text-white">Larry</span>
             <div style={{ fontSize: 10, color: "#bdb7d0" }}>
-              Project assistant{projectName ? ` · ${projectName}` : ""}
+              {projectName ? `Project assistant · ${projectName}` : "Workspace assistant"}
             </div>
           </div>
         </div>
@@ -352,7 +352,7 @@ export function LarryChat({ projectId, projectName, onVoiceInput }: LarryChatPro
             <p className="text-[13px] text-[var(--pm-text-muted)]">
               {projectId
                 ? "Tell Larry what to do and it will persist the conversation and any linked actions here."
-                : "Open a project first, or use the Larry section inside any project tab to talk to me in context."}
+                : "Ask Larry anything — tasks due across projects, general questions, or start a conversation without a specific project."}
             </p>
           </div>
         )}
@@ -381,9 +381,9 @@ export function LarryChat({ projectId, projectName, onVoiceInput }: LarryChatPro
         value={chat.input}
         onChange={chat.setInput}
         onSubmit={chat.handleSubmit}
-        disabled={chat.busy || !projectId}
+        disabled={chat.busy}
         busy={chat.busy}
-        placeholder={projectId ? "Tell Larry what to do..." : "Open a project first"}
+        placeholder={projectId ? "Tell Larry what to do..." : "Ask Larry anything across your workspace..."}
         onVoiceInput={onVoiceInput}
         files={files}
         onFilesChange={setFiles}

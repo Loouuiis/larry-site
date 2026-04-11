@@ -392,7 +392,10 @@ export function MeetingsPage() {
   const filteredMeetings = meetings.filter((meeting) => {
     if (!search.trim()) return true;
     const query = search.toLowerCase();
-    return (meeting.title ?? "Meeting transcript").toLowerCase().includes(query);
+    const title = (meeting.title ?? "Meeting transcript").toLowerCase();
+    const project = projects.find((p) => p.id === meeting.projectId);
+    const projectName = (project?.name ?? "").toLowerCase();
+    return title.includes(query) || projectName.includes(query);
   });
 
   return (
@@ -706,8 +709,9 @@ export function MeetingsPage() {
                 background: "var(--surface)",
               }}
             >
-              <div className="pm-table-header" style={{ gridTemplateColumns: "minmax(0,1fr) 120px 80px 100px" }}>
+              <div className="pm-table-header" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,140px) 120px 80px 100px" }}>
                 <span>Title</span>
+                <span>Project</span>
                 <span>Date</span>
                 <span>Actions</span>
                 <span>Status</span>
@@ -723,7 +727,7 @@ export function MeetingsPage() {
                 <div key={meeting.id}>
                   <div
                     className="pm-table-row"
-                    style={{ gridTemplateColumns: "minmax(0,1fr) 120px 80px 100px", cursor: "pointer" }}
+                    style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,140px) 120px 80px 100px", cursor: "pointer" }}
                     onClick={() => {
                       if (expandedId === meeting.id) {
                         setExpandedId(null);
@@ -750,6 +754,20 @@ export function MeetingsPage() {
                       <span className="text-h3" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {meeting.title ?? "Meeting transcript"}
                       </span>
+                    </span>
+
+                    <span className="text-body-sm" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {(() => {
+                        const project = projects.find((p) => p.id === meeting.projectId);
+                        return project ? (
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#6c44f6", flexShrink: 0 }} />
+                            {project.name}
+                          </span>
+                        ) : (
+                          <span style={{ color: "var(--text-disabled)" }}>Unassigned</span>
+                        );
+                      })()}
                     </span>
 
                     <span className="text-body-sm" style={{ display: "flex", alignItems: "center", gap: "4px" }}>
@@ -779,9 +797,20 @@ export function MeetingsPage() {
                         background: "var(--surface-2)",
                         display: "flex",
                         flexDirection: "column",
-                        gap: "10px",
+                        gap: "14px",
                       }}
                     >
+                      {/* Project label */}
+                      {(() => {
+                        const project = projects.find((p) => p.id === meeting.projectId);
+                        return project ? (
+                          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#6c44f6", flexShrink: 0 }} />
+                            <span style={{ fontSize: "12px", fontWeight: 600, color: "#6c44f6" }}>{project.name}</span>
+                          </div>
+                        ) : null;
+                      })()}
+
                       {expandedData[meeting.id]?.summary && (
                         <div>
                           <p
@@ -801,6 +830,44 @@ export function MeetingsPage() {
                           </p>
                         </div>
                       )}
+
+                      {/* Full transcript */}
+                      {expandedData[meeting.id]?.transcript ? (
+                        <div>
+                          <p
+                            style={{
+                              fontSize: "11px",
+                              fontWeight: 600,
+                              textTransform: "uppercase",
+                              letterSpacing: "0.1em",
+                              color: "var(--text-muted)",
+                              marginBottom: "4px",
+                            }}
+                          >
+                            Transcript
+                          </p>
+                          <div
+                            style={{
+                              fontSize: "13px",
+                              color: "var(--text-2)",
+                              lineHeight: "1.6",
+                              whiteSpace: "pre-line",
+                              maxHeight: "300px",
+                              overflowY: "auto",
+                              borderRadius: "var(--radius-btn)",
+                              border: "1px solid var(--border)",
+                              background: "var(--surface)",
+                              padding: "12px 14px",
+                            }}
+                          >
+                            {expandedData[meeting.id].transcript}
+                          </div>
+                        </div>
+                      ) : expandedData[meeting.id] && !expandedData[meeting.id]?.summary ? (
+                        <p style={{ fontSize: "13px", color: "var(--text-disabled)", fontStyle: "italic" }}>
+                          No transcript or summary available yet. Larry may still be processing.
+                        </p>
+                      ) : null}
                     </div>
                   )}
                 </div>

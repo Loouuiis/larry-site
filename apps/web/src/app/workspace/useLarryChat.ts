@@ -101,7 +101,7 @@ export function useLarryChat(projectId?: string) {
 
   // Load conversations list + latest conversation when widget opens
   useEffect(() => {
-    if (!isOpen || !projectId) return;
+    if (!isOpen) return;
 
     void (async () => {
       setConversationsLoading(true);
@@ -148,7 +148,6 @@ export function useLarryChat(projectId?: string) {
   }, []);
 
   const refreshConversations = useCallback(async () => {
-    if (!projectId) return;
     try {
       const convos = await listLarryConversations(projectId);
       setConversations(convos);
@@ -159,19 +158,6 @@ export function useLarryChat(projectId?: string) {
 
   const sendMessage = useCallback(
     async (text: string) => {
-      if (!projectId) {
-        setMessages((previous) =>
-          previous.concat(
-            createLocalMessage({
-              role: "larry",
-              content:
-                "I need a project to work with. Open a project and use the Larry section inside it to chat with me, or select a project from the sidebar first.",
-            })
-          )
-        );
-        return;
-      }
-
       const optimisticUserId = `user-${crypto.randomUUID()}`;
       const processingId = "processing";
 
