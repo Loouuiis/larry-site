@@ -130,7 +130,7 @@ export function WorkspaceShell({ children, userEmail, emailVerified, avatarUrl, 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           transcript: trimmedTranscript,
-          projectId: projectIdFromPath || undefined,
+          projectId: chatProjectId || undefined,
         }),
       });
 
@@ -143,7 +143,7 @@ export function WorkspaceShell({ children, userEmail, emailVerified, avatarUrl, 
     } finally {
       setMeetingBusy(false);
     }
-  }, [loadShell, projectIdFromPath, transcript]);
+  }, [loadShell, chatProjectId, transcript]);
 
   return (
     <ToastProvider>
