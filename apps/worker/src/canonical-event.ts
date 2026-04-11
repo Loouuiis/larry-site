@@ -1,4 +1,4 @@
-import { runIntelligence } from "@larry/ai";
+import { runIntelligence, generateBootstrapFromTranscript } from "@larry/ai";
 import {
   getProjectSnapshot,
   insertProjectMemoryEntry,
@@ -10,6 +10,7 @@ import type {
   CanonicalEventCreatedPayload,
   CanonicalEvent,
   TranscriptCanonicalPayload,
+  LarryAction,
 } from "@larry/shared";
 import { db } from "./context.js";
 import { buildWorkerIntelligenceConfig } from "./intelligence-config.js";
@@ -23,6 +24,7 @@ interface CanonicalEventRow {
 interface MeetingNoteRow {
   id: string;
   project_id: string | null;
+  title: string | null;
 }
 
 type ProjectRuntimeStatus = "active" | "archived";
@@ -103,7 +105,7 @@ async function loadMeetingNote(
 ): Promise<MeetingNoteRow | null> {
   const rows = await db.queryTenant<MeetingNoteRow>(
     tenantId,
-    `SELECT id, project_id
+    `SELECT id, project_id, title
      FROM meeting_notes
      WHERE tenant_id = $1
        AND id = $2
@@ -387,26 +389,49 @@ async function handleTranscriptCanonicalEvent(
     return;
   }
 
-  let intelligenceResult;
+  // Use the focused transcript extraction prompt (lightweight, fast) instead of
+  // the full intelligence engine (massive prompt, slow, prone to timeout).
+  const config = buildWorkerIntelligenceConfig();
+  let extractedTasks: Array<{ title: string; description: string; priority: string; workstream: string | null; dueDate: string | null }> = [];
+  let summary = "";
+
   try {
-    const snapshot = await getProjectSnapshot(db, tenantId, resolvedProjectId);
-    const config = buildWorkerIntelligenceConfig();
-    intelligenceResult = await runIntelligence(config, snapshot, buildTranscriptPrompt(transcript));
+    const projectName = meetingNote?.title ?? "Project";
+    const result = await generateBootstrapFromTranscript(config, {
+      projectName,
+      meetingTitle: meetingNote?.title ?? null,
+      transcript,
+    });
+    extractedTasks = result.tasks;
+    summary = result.summary;
   } catch (aiError) {
     const reason = aiError instanceof Error ? aiError.message : String(aiError);
     console.error(
-      `[canonical-event] transcript ${canonicalEvent.id} intelligence failed (${reason}); saving meeting note without analysis`
+      `[canonical-event] transcript ${canonicalEvent.id} extraction failed (${reason}); saving meeting note without tasks`
     );
     await reconcileMeetingNote(tenantId, meetingNoteId, 0, {
       projectId: resolvedProjectId,
-      summary: "Transcript received — analysis pending (AI temporarily unavailable).",
+      summary: `Transcript saved. Task extraction failed: ${reason.slice(0, 100)}`,
     });
     return;
   }
 
-  await reconcileMeetingNote(tenantId, meetingNoteId, 0, {
+  // Convert extracted tasks into suggested task_create actions
+  const suggestedActions: LarryAction[] = extractedTasks.map((task) => ({
+    type: "task_create" as const,
+    displayText: `Create task: "${task.title}"`,
+    reasoning: task.description,
+    payload: {
+      title: task.title,
+      description: task.description,
+      priority: task.priority,
+      dueDate: task.dueDate,
+    },
+  }));
+
+  await reconcileMeetingNote(tenantId, meetingNoteId, suggestedActions.length, {
     projectId: resolvedProjectId,
-    summary: intelligenceResult.briefing,
+    summary,
   });
 
   const ledgerContext = {
@@ -416,30 +441,23 @@ async function handleTranscriptCanonicalEvent(
   } as const;
 
   await Promise.all([
-    runAutoActions(
-      db,
-      tenantId,
-      resolvedProjectId,
-      "signal",
-      intelligenceResult.autoActions,
-      undefined,
-      ledgerContext
-    ),
-    storeSuggestions(
-      db,
-      tenantId,
-      resolvedProjectId,
-      "signal",
-      intelligenceResult.suggestedActions,
-      undefined,
-      ledgerContext
-    ),
+    suggestedActions.length > 0
+      ? storeSuggestions(
+          db,
+          tenantId,
+          resolvedProjectId,
+          "signal",
+          suggestedActions,
+          undefined,
+          ledgerContext
+        )
+      : Promise.resolve(),
     Promise.resolve(
       insertProjectMemoryEntry(db, tenantId, resolvedProjectId, {
         source: "Meeting transcript",
         sourceKind: "meeting",
         sourceRecordId: meetingNoteId,
-        content: buildMemorySummary("Meeting", intelligenceResult.briefing),
+        content: buildMemorySummary("Meeting", summary),
       })
     ).catch((error) => {
       const reason = error instanceof Error ? error.message : String(error);
@@ -452,7 +470,7 @@ async function handleTranscriptCanonicalEvent(
   const finalEventIds = await listLarryEventIdsBySource(db, tenantId, "meeting", meetingNoteId);
   await reconcileMeetingNote(tenantId, meetingNoteId, finalEventIds.length, {
     projectId: resolvedProjectId,
-    summary: intelligenceResult.briefing,
+    summary,
   });
 }
 
