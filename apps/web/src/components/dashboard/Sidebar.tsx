@@ -10,10 +10,11 @@ import {
   X, FolderOpen, Home, ListTodo, Settings,
   Search, LogOut, FolderKanban, CheckSquare, Bell,
   Plus, BarChart2, Sparkles, PanelLeftClose, PanelLeftOpen, Star, Mail,
-  ChevronDown,
+  ChevronDown, Camera,
 } from "lucide-react";
 import { WorkspaceProject } from "@/app/dashboard/types";
 import { StartProjectFlow } from "./StartProjectFlow";
+import { resizeImageToDataUrl } from "@/lib/image";
 
 const DRAWER_EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -68,6 +69,13 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, avatar
   const [showNewProject, setShowNewProject] = useState(false);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const searchContainerRef = useRef<HTMLDivElement>(null);
+
+  // Avatar popover
+  const [localAvatarUrl, setLocalAvatarUrl] = useState<string | null>(avatarUrl ?? null);
+  const [popoverOpen, setPopoverOpen] = useState(false);
+  const [avatarSaving, setAvatarSaving] = useState(false);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const avatarFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     try {
@@ -163,6 +171,55 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, avatar
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
     router.push("/");
+  };
+
+  // Close popover on outside click
+  useEffect(() => {
+    if (!popoverOpen) return;
+    function onMouseDown(e: MouseEvent) {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setPopoverOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
+  }, [popoverOpen]);
+
+  const handleAvatarFile = async (file: File) => {
+    setAvatarSaving(true);
+    try {
+      const dataUrl = await resizeImageToDataUrl(file);
+      const res = await fetch("/api/auth/update-profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avatarUrl: dataUrl }),
+      });
+      if (res.ok) {
+        setLocalAvatarUrl(dataUrl);
+        window.dispatchEvent(new CustomEvent("larry:avatar-updated", { detail: dataUrl }));
+        setPopoverOpen(false);
+      }
+    } finally {
+      setAvatarSaving(false);
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    setAvatarSaving(true);
+    try {
+      const res = await fetch("/api/auth/update-profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avatarUrl: null }),
+      });
+      if (res.ok) {
+        setLocalAvatarUrl(null);
+        window.dispatchEvent(new CustomEvent("larry:avatar-updated", { detail: null }));
+        setPopoverOpen(false);
+      }
+    } finally {
+      setAvatarSaving(false);
+    }
   };
 
   const isProjectActive = (id: string) => pathname?.startsWith(`/workspace/projects/${id}`) ?? false;
@@ -476,38 +533,143 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, avatar
         </>
       )}
 
-      {/* Bottom bar — single row: avatar + email + logout */}
-      <div className="shrink-0 px-3 py-3" style={{ borderTop: "1px solid var(--border)" }}>
-        <div className="flex items-center gap-2 group">
-          {avatarUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={avatarUrl}
-              alt="Profile"
-              className="h-8 w-8 shrink-0 rounded-lg object-cover"
-            />
-          ) : (
-            <div
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-              style={{ background: "#6c44f6", color: "#fff", fontSize: 11, fontWeight: 600 }}
-            >
-              {getUserInitials(displayName, userEmail)}
+      {/* Bottom bar — avatar button + email */}
+      <div className="relative shrink-0 px-3 py-3" style={{ borderTop: "1px solid var(--border)" }} ref={popoverRef}>
+        {/* Avatar popover */}
+        {popoverOpen && (
+          <div
+            className="absolute bottom-full left-0 right-0 mx-3 mb-2 overflow-hidden rounded-xl"
+            style={{
+              background: "var(--surface)",
+              border: "1px solid var(--border)",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
+              zIndex: 50,
+            }}
+          >
+            {/* Header */}
+            <div className="flex items-center gap-3 px-4 py-3" style={{ borderBottom: "1px solid var(--border)" }}>
+              {localAvatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={localAvatarUrl} alt="Profile" className="h-10 w-10 rounded-lg object-cover shrink-0" />
+              ) : (
+                <div
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-[14px] font-semibold"
+                  style={{ background: "#6c44f6", color: "#fff" }}
+                >
+                  {getUserInitials(displayName, userEmail)}
+                </div>
+              )}
+              <div className="min-w-0">
+                {displayName && <p className="truncate text-[13px] font-medium" style={{ color: "var(--text-1)" }}>{displayName}</p>}
+                <p className="truncate text-[12px]" style={{ color: "var(--text-muted)" }}>{userEmail ?? "Account"}</p>
+              </div>
             </div>
-          )}
-          <span className="flex-1 truncate text-[12px]" style={{ color: "var(--text-muted)" }}>
+
+            {/* Photo actions */}
+            <div className="py-1">
+              <button
+                type="button"
+                disabled={avatarSaving}
+                onClick={() => avatarFileRef.current?.click()}
+                className="flex w-full items-center gap-3 px-4 py-2 text-[13px] transition-colors"
+                style={{ color: "var(--text-1)" }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+              >
+                <Camera size={14} style={{ color: "var(--text-muted)" }} />
+                {avatarSaving ? "Saving…" : "Change photo"}
+              </button>
+              {localAvatarUrl && (
+                <button
+                  type="button"
+                  disabled={avatarSaving}
+                  onClick={handleRemoveAvatar}
+                  className="flex w-full items-center gap-3 px-4 py-2 text-[13px] transition-colors"
+                  style={{ color: "var(--text-1)" }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+                >
+                  <X size={14} style={{ color: "var(--text-muted)" }} />
+                  Remove photo
+                </button>
+              )}
+            </div>
+
+            <div style={{ borderTop: "1px solid var(--border)" }} />
+
+            {/* Account nav */}
+            <div className="py-1">
+              <Link
+                href="/workspace/settings/account"
+                onClick={() => setPopoverOpen(false)}
+                className="flex w-full items-center gap-3 px-4 py-2 text-[13px] transition-colors"
+                style={{ color: "var(--text-1)" }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+              >
+                <Settings size={14} style={{ color: "var(--text-muted)" }} />
+                Account settings
+              </Link>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="flex w-full items-center gap-3 px-4 py-2 text-[13px] transition-colors"
+                style={{ color: "var(--text-1)" }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+              >
+                <LogOut size={14} style={{ color: "var(--text-muted)" }} />
+                Log out
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Hidden file input */}
+        <input
+          ref={avatarFileRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void handleAvatarFile(file);
+            e.target.value = "";
+          }}
+        />
+
+        {/* Bottom row */}
+        <button
+          type="button"
+          onClick={() => setPopoverOpen((v) => !v)}
+          className="flex w-full items-center gap-2 rounded-lg p-1 transition-colors"
+          onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
+          onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+        >
+          <span className="relative shrink-0">
+            {localAvatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={localAvatarUrl} alt="Profile" className="h-8 w-8 rounded-lg object-cover" />
+            ) : (
+              <span
+                className="flex h-8 w-8 items-center justify-center rounded-lg"
+                style={{ background: "#6c44f6", color: "#fff", fontSize: 11, fontWeight: 600 }}
+              >
+                {getUserInitials(displayName, userEmail)}
+              </span>
+            )}
+            <span
+              className="absolute inset-0 flex items-center justify-center rounded-lg opacity-0 transition-opacity group-hover:opacity-100"
+              style={{ background: "rgba(0,0,0,0.4)" }}
+              aria-hidden
+            >
+              <Camera size={11} color="#fff" />
+            </span>
+          </span>
+          <span className="flex-1 truncate text-left text-[12px]" style={{ color: "var(--text-muted)" }}>
             {userEmail ?? "Account"}
           </span>
-          <button
-            onClick={handleLogout}
-            title="Log out"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
-            style={{ color: "var(--text-muted)" }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "")}
-          >
-            <LogOut size={16} />
-          </button>
-        </div>
+        </button>
       </div>
 
       {/* New project modal */}
@@ -565,22 +727,23 @@ export function WorkspaceSidebar({ projects, activeNav, mobileOpen, onMobileClos
             >
               <PanelLeftOpen size={16} />
             </button>
-            {avatarUrl ? (
-              <img
-                src={avatarUrl}
-                alt="Avatar"
-                className="h-8 w-8 rounded-lg object-cover"
-                title={userEmail ?? "Account"}
-              />
-            ) : (
-              <div
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-                style={{ background: "#6c44f6", color: "#fff", fontSize: 11, fontWeight: 600 }}
-                title={userEmail ?? "Account"}
-              >
-                {getUserInitials(displayName, userEmail)}
-              </div>
-            )}
+            <Link href="/workspace/settings/account" title={userEmail ?? "Account settings"}>
+              {avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={avatarUrl}
+                  alt="Avatar"
+                  className="h-8 w-8 rounded-lg object-cover"
+                />
+              ) : (
+                <div
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                  style={{ background: "#6c44f6", color: "#fff", fontSize: 11, fontWeight: 600 }}
+                >
+                  {getUserInitials(displayName, userEmail)}
+                </div>
+              )}
+            </Link>
           </div>
         ) : (
           <WorkspaceSidebarInner
