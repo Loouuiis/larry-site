@@ -128,6 +128,53 @@ async function createTestApp(params?: {
 }
 
 describe("Larry runtime reliability routes", () => {
+  it("returns a single canonical runtime entry by id", async () => {
+    vi.mocked(getCanonicalEventRuntimeEntryById).mockResolvedValue({
+      canonicalEventId: CANONICAL_EVENT_ID,
+      source: "transcript",
+      eventType: "other",
+      actor: "pm@example.com",
+      occurredAt: "2026-03-31T10:00:00.000Z",
+      canonicalCreatedAt: "2026-03-31T10:00:01.000Z",
+      rawEventId: null,
+      idempotencyKey: "idem-1",
+      canonicalSiblingCount: 1,
+      latestAttemptId: "55555555-5555-4555-8555-555555555555",
+      latestStatus: "running",
+      latestAttemptNumber: 1,
+      latestMaxAttempts: 5,
+      latestQueueJobId: "job-1",
+      latestQueueJobName: "canonical_event.created",
+      latestErrorMessage: null,
+      latestStartedAt: "2026-03-31T10:00:01.000Z",
+      latestFinishedAt: null,
+      latestDurationMs: null,
+      latestUpdatedAt: "2026-03-31T10:00:02.000Z",
+    });
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/larry/runtime/canonical-events/${CANONICAL_EVENT_ID}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      item: {
+        canonicalEventId: CANONICAL_EVENT_ID,
+        source: "transcript",
+        latestStatus: "running",
+      },
+    });
+    expect(getCanonicalEventRuntimeEntryById).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT_ID,
+      CANONICAL_EVENT_ID
+    );
+  });
+
   it("lists canonical runtime entries with filters and summary", async () => {
     vi.mocked(listCanonicalEventRuntimeEntries).mockResolvedValue([
       {
@@ -209,10 +256,14 @@ describe("Larry runtime reliability routes", () => {
     const app = await createTestApp({ role: "member" });
     appsToClose.push(app);
 
-    const [listResponse, singleRetryResponse, bulkRetryResponse] = await Promise.all([
+    const [listResponse, singleGetResponse, singleRetryResponse, bulkRetryResponse] = await Promise.all([
       app.inject({
         method: "GET",
         url: "/larry/runtime/canonical-events",
+      }),
+      app.inject({
+        method: "GET",
+        url: `/larry/runtime/canonical-events/${CANONICAL_EVENT_ID}`,
       }),
       app.inject({
         method: "POST",
@@ -227,6 +278,7 @@ describe("Larry runtime reliability routes", () => {
     ]);
 
     expect(listResponse.statusCode).toBe(403);
+    expect(singleGetResponse.statusCode).toBe(403);
     expect(singleRetryResponse.statusCode).toBe(403);
     expect(bulkRetryResponse.statusCode).toBe(403);
   });

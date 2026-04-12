@@ -1,73 +1,51 @@
 ﻿"use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarCheck2, Clock, FileText, Upload, CheckCircle2, XCircle, Plus, X, Loader2, Sparkles } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { WorkspaceMeetingsOverview, WorkspaceMeeting, WorkspaceProject } from "@/app/dashboard/types";
 import { triggerBoundedWorkspaceRefresh } from "@/app/workspace/refresh";
+import {
+  useTranscriptProcessing,
+  type TranscriptProcessingState,
+} from "@/app/workspace/useTranscriptProcessing";
 
-type AgentRunState =
-  | "INGESTED"
-  | "NORMALIZED"
-  | "EXTRACTED"
-  | "PROPOSED"
-  | "APPROVAL_PENDING"
-  | "EXECUTED"
-  | "VERIFIED"
-  | "FAILED";
-
-const STATE_PROGRESS: Record<AgentRunState, number> = {
-  INGESTED: 14,
-  NORMALIZED: 38,
-  EXTRACTED: 62,
-  PROPOSED: 82,
-  APPROVAL_PENDING: 92,
-  EXECUTED: 96,
-  VERIFIED: 100,
-  FAILED: 100,
-};
-
-const STATE_LABEL: Record<AgentRunState, string> = {
-  INGESTED: "Saving transcript...",
-  NORMALIZED: "Queueing Larry...",
-  EXTRACTED: "Preparing project context...",
-  PROPOSED: "Action Centre will refresh shortly...",
-  APPROVAL_PENDING: "Background review running...",
-  EXECUTED: "Writing actions...",
-  VERIFIED: "Queued",
-  FAILED: "Failed",
-};
-
-function ProcessingProgress({ state }: { state: AgentRunState }) {
-  const pct = STATE_PROGRESS[state] ?? 10;
-  const isExtracting = state === "EXTRACTED";
+function ProcessingProgress({ state }: { state: TranscriptProcessingState }) {
+  const pct = state.progress;
+  const tone =
+    state.phase === "failed"
+      ? { text: "#b91c1c", background: "#fecaca", fill: "#dc2626" }
+      : state.phase === "succeeded"
+        ? { text: "#15803d", background: "#bbf7d0", fill: "#16a34a" }
+        : { text: "var(--text-2)", background: "var(--border)", fill: "var(--cta)" };
   return (
     <div style={{ marginTop: "12px", display: "flex", flexDirection: "column", gap: "6px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: "12px" }}>
-        <span style={{ color: "var(--text-2)", fontWeight: 500 }}>{STATE_LABEL[state]}</span>
-        <span style={{ color: "var(--text-muted)", fontVariantNumeric: "tabular-nums" }}>{pct}%</span>
+        <span style={{ color: tone.text, fontWeight: 500 }}>{state.statusLabel}</span>
+        <span style={{ color: tone.text, fontVariantNumeric: "tabular-nums" }}>{pct}%</span>
       </div>
       <div
         style={{
           height: "6px",
           width: "100%",
           borderRadius: "3px",
-          background: "var(--border)",
+          background: tone.background,
           overflow: "hidden",
         }}
       >
         <div
-          className={isExtracting ? "pm-shimmer" : ""}
+          className={state.phase === "processing" ? "pm-shimmer" : ""}
           style={{
             height: "100%",
             borderRadius: "3px",
-            background: "var(--cta)",
+            background: tone.fill,
             transition: "width 0.7s ease",
             width: `${pct}%`,
           }}
         />
       </div>
+      <p style={{ margin: 0, fontSize: "12px", color: tone.text }}>{state.detail}</p>
     </div>
   );
 }
@@ -101,7 +79,7 @@ function getMeetingStatus(meeting: WorkspaceMeeting) {
   }
 
   return {
-    label: "Queued",
+    label: "Processing",
     style: { background: "#eff6ff", color: "#1d4ed8" },
   };
 }
@@ -273,9 +251,6 @@ export function MeetingsPage() {
   const [meetings, setMeetings] = useState<WorkspaceMeeting[]>([]);
   const [loading, setLoading] = useState(true);
   const [transcript, setTranscript] = useState("");
-  const [processing, setProcessing] = useState(false);
-  const [processingState, setProcessingState] = useState<AgentRunState | null>(null);
-  const [successState, setSuccessState] = useState<"complete" | "failed" | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedData, setExpandedData] = useState<Record<string, WorkspaceMeeting>>({});
   const [projects, setProjects] = useState<WorkspaceProject[]>([]);
@@ -283,7 +258,6 @@ export function MeetingsPage() {
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
   const [showNewProject, setShowNewProject] = useState(false);
-  const simTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const loadOverview = useCallback(async () => {
     setLoading(true);
@@ -308,6 +282,17 @@ export function MeetingsPage() {
     }
   }, []);
 
+  const {
+    state: processingState,
+    startProcessing,
+    isProcessing: processing,
+  } = useTranscriptProcessing({
+    onSuccess: async () => {
+      await loadOverview();
+      triggerBoundedWorkspaceRefresh();
+    },
+  });
+
   useEffect(() => {
     void loadOverview();
   }, [loadOverview]);
@@ -321,56 +306,16 @@ export function MeetingsPage() {
     return () => window.removeEventListener("larry:refresh-snapshot", onRefresh);
   }, [loadOverview]);
 
-  useEffect(() => {
-    simTimersRef.current.forEach(clearTimeout);
-    simTimersRef.current = [];
-    if (!processing) return;
-    const steps: [AgentRunState, number][] = [
-      ["NORMALIZED", 300],
-      ["EXTRACTED", 1200],
-      ["PROPOSED", 3200],
-    ];
-    simTimersRef.current = steps.map(([state, delay]) =>
-      setTimeout(
-        () =>
-          setProcessingState((prev) => {
-            const order = ["INGESTED", "NORMALIZED", "EXTRACTED", "PROPOSED", "APPROVAL_PENDING", "EXECUTED", "VERIFIED", "FAILED"];
-            const prevIndex = prev ? order.indexOf(prev) : -1;
-            const nextIndex = order.indexOf(state);
-            return nextIndex > prevIndex ? state : prev;
-          }),
-        delay,
-      ),
-    );
-    return () => {
-      simTimersRef.current.forEach(clearTimeout);
-    };
-  }, [processing]);
-
   const handleProcess = async (e: React.FormEvent) => {
     e.preventDefault();
     const trimmedTranscript = transcript.trim();
     if (trimmedTranscript.length < 20) return;
-    setProcessing(true);
-    setProcessingState("INGESTED");
-    setSuccessState(null);
-    try {
-      const res = await fetch("/api/workspace/meetings/transcript", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript: trimmedTranscript, projectId: selectedProjectId || undefined }),
-      });
-      if (res.ok) {
-        setTranscript("");
-        setSuccessState("complete");
-        triggerBoundedWorkspaceRefresh();
-      } else {
-        setSuccessState("failed");
-      }
-    } catch {
-      setSuccessState("failed");
-    } finally {
-      setProcessing(false);
+    const succeeded = await startProcessing({
+      transcript: trimmedTranscript,
+      projectId: selectedProjectId || undefined,
+    });
+    if (succeeded) {
+      setTranscript("");
     }
   };
 
@@ -409,8 +354,8 @@ export function MeetingsPage() {
       >
         <h1 className="text-h1">Meetings</h1>
         <p className="text-body-sm" style={{ marginTop: "4px" }}>
-          Upload a transcript and Larry will queue a background review that updates the meeting summary and project
-          Action Centre.
+          Upload a transcript and Larry will analyze it, update the meeting summary, and save the transcript analysis
+          into the correct project documents.
         </p>
       </div>
 
@@ -573,91 +518,100 @@ export function MeetingsPage() {
                 }}
               >
                 <Upload size={13} />
-                {processing ? "Queueing..." : "Queue transcript"}
+                {processing ? "Processing..." : "Process transcript"}
               </button>
             </div>
           </form>
 
-          {processing && processingState && (
+          {processingState.phase !== "idle" && (
             <div
               style={{
                 marginTop: "16px",
                 borderRadius: "var(--radius-btn)",
-                border: "1px solid var(--border)",
-                background: "var(--surface-2)",
+                border:
+                  processingState.phase === "failed"
+                    ? "1px solid #fecaca"
+                    : processingState.phase === "succeeded"
+                      ? "1px solid #bbf7d0"
+                      : "1px solid var(--border)",
+                background:
+                  processingState.phase === "failed"
+                    ? "#fef2f2"
+                    : processingState.phase === "succeeded"
+                      ? "#f0fdf4"
+                      : "var(--surface-2)",
                 padding: "14px 16px",
               }}
             >
-              <p style={{ fontSize: "13px", fontWeight: 500, color: "var(--text-2)" }}>
-                Larry is saving the transcript and queueing background review...
-              </p>
-              <ProcessingProgress state={processingState} />
-            </div>
-          )}
-
-          {!processing && successState === "complete" && (
-            <div
-              style={{
-                marginTop: "16px",
-                borderRadius: "var(--radius-btn)",
-                border: "1px solid #bbf7d0",
-                background: "#f0fdf4",
-                padding: "14px 16px",
-                display: "flex",
-                alignItems: "flex-start",
-                justifyContent: "space-between",
-                gap: "12px",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
-                <CheckCircle2 size={16} style={{ marginTop: "2px", flexShrink: 0, color: "#16a34a" }} />
-                <div>
-                  <p style={{ fontSize: "13px", fontWeight: 500, color: "#15803d" }}>Transcript queued</p>
-                  <p style={{ marginTop: "2px", fontSize: "12px", color: "#166534" }}>
-                    Larry saved the meeting and queued background processing. The meeting summary and project actions
-                    will refresh shortly.
-                  </p>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px" }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: "10px", minWidth: 0 }}>
+                  {processingState.phase === "failed" ? (
+                    <XCircle size={16} style={{ marginTop: "2px", flexShrink: 0, color: "#dc2626" }} />
+                  ) : (
+                    <CheckCircle2
+                      size={16}
+                      style={{
+                        marginTop: "2px",
+                        flexShrink: 0,
+                        color: processingState.phase === "succeeded" ? "#16a34a" : "var(--cta)",
+                      }}
+                    />
+                  )}
+                  <div style={{ minWidth: 0 }}>
+                    <p
+                      style={{
+                        fontSize: "13px",
+                        fontWeight: 500,
+                        color:
+                          processingState.phase === "failed"
+                            ? "#b91c1c"
+                            : processingState.phase === "succeeded"
+                              ? "#15803d"
+                              : "var(--text-2)",
+                      }}
+                    >
+                      {processingState.statusLabel}
+                    </p>
+                    <ProcessingProgress state={processingState} />
+                  </div>
                 </div>
+                {processingState.phase === "succeeded" && selectedProjectId && (
+                  <div style={{ display: "flex", gap: "8px", flexShrink: 0 }}>
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/workspace/projects/${selectedProjectId}`)}
+                      style={{
+                        borderRadius: "var(--radius-btn)",
+                        background: "#16a34a",
+                        border: "none",
+                        padding: "4px 12px",
+                        fontSize: "12px",
+                        fontWeight: 500,
+                        color: "#fff",
+                        cursor: "pointer",
+                      }}
+                    >
+                      View project
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/workspace/documents?projectId=${encodeURIComponent(selectedProjectId)}`)}
+                      style={{
+                        borderRadius: "var(--radius-btn)",
+                        border: "1px solid #86efac",
+                        background: "#fff",
+                        padding: "4px 12px",
+                        fontSize: "12px",
+                        fontWeight: 500,
+                        color: "#15803d",
+                        cursor: "pointer",
+                      }}
+                    >
+                      View documents
+                    </button>
+                  </div>
+                )}
               </div>
-              {selectedProjectId && (
-                <button
-                  type="button"
-                  onClick={() => router.push(`/workspace/projects/${selectedProjectId}`)}
-                  style={{
-                    flexShrink: 0,
-                    borderRadius: "var(--radius-btn)",
-                    background: "#16a34a",
-                    border: "none",
-                    padding: "4px 12px",
-                    fontSize: "12px",
-                    fontWeight: 500,
-                    color: "#fff",
-                    cursor: "pointer",
-                  }}
-                >
-                  View project {"->"}
-                </button>
-              )}
-            </div>
-          )}
-
-          {!processing && successState === "failed" && (
-            <div
-              style={{
-                marginTop: "16px",
-                borderRadius: "var(--radius-btn)",
-                border: "1px solid #fecaca",
-                background: "#fef2f2",
-                padding: "14px 16px",
-                display: "flex",
-                alignItems: "center",
-                gap: "10px",
-              }}
-            >
-              <XCircle size={16} style={{ flexShrink: 0, color: "#dc2626" }} />
-              <p style={{ fontSize: "13px", fontWeight: 500, color: "#b91c1c" }}>
-                Processing failed - please try again.
-              </p>
             </div>
           )}
         </section>

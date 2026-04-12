@@ -191,6 +191,11 @@ export interface WorkspaceCanonicalEventRuntimeResponse {
   error?: string;
 }
 
+export interface WorkspaceCanonicalEventRuntimeDetailResponse {
+  item?: WorkspaceCanonicalEventRuntimeEntry | null;
+  error?: string;
+}
+
 export interface EmailDraft {
   id: string;
   projectId?: string | null;
@@ -395,4 +400,3 @@ export interface FolderBreadcrumbItem {
   id: string;
   name: string;
 }
-

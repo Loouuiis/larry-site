@@ -1,4 +1,4 @@
-import { runIntelligence } from "@larry/ai";
+import { runIntelligence, generateBootstrapFromTranscript } from "@larry/ai";
 import { getProjectSnapshot, insertProjectMemoryEntry, listLarryEventIdsBySource, runAutoActions, storeSuggestions, } from "@larry/db";
 import { db } from "./context.js";
 import { buildWorkerIntelligenceConfig } from "./intelligence-config.js";
@@ -23,12 +23,95 @@ async function loadCanonicalEvent(tenantId, canonicalEventId) {
     return rows[0] ?? null;
 }
 async function loadMeetingNote(tenantId, meetingNoteId) {
-    const rows = await db.queryTenant(tenantId, `SELECT id, project_id
+    const rows = await db.queryTenant(tenantId, `SELECT id, project_id, title, summary
      FROM meeting_notes
      WHERE tenant_id = $1
        AND id = $2
      LIMIT 1`, [tenantId, meetingNoteId]);
     return rows[0] ?? null;
+}
+async function loadMeetingAnalysisFolderId(tenantId, projectId) {
+    if (projectId) {
+        const projectFolderRows = await db.queryTenant(tenantId, `SELECT id
+         FROM folders
+        WHERE tenant_id = $1
+          AND project_id = $2
+          AND parent_id IS NULL
+        LIMIT 1`, [tenantId, projectId]);
+        if (projectFolderRows[0]?.id) {
+            return projectFolderRows[0].id;
+        }
+    }
+    const generalFolderRows = await db.queryTenant(tenantId, `SELECT id
+       FROM folders
+      WHERE tenant_id = $1
+        AND folder_type = 'general'
+      ORDER BY created_at ASC
+      LIMIT 1`, [tenantId]);
+    return generalFolderRows[0]?.id ?? null;
+}
+async function upsertMeetingAnalysisDocument(input) {
+    const folderId = await loadMeetingAnalysisFolderId(input.tenantId, input.projectId);
+    const documentTitleBase = readOptionalString(input.title) ?? "Meeting transcript";
+    const documentTitle = `${documentTitleBase} analysis`;
+    const metadata = JSON.stringify({
+        canonicalEventId: input.canonicalEventId,
+        generatedFrom: "meeting_transcript",
+        meetingNoteId: input.meetingNoteId,
+    });
+    const existingRows = await db.queryTenant(input.tenantId, `SELECT id
+       FROM documents
+      WHERE tenant_id = $1
+        AND source_kind = 'meeting'
+        AND source_record_id = $2
+      ORDER BY updated_at DESC
+      LIMIT 1`, [input.tenantId, input.meetingNoteId]);
+    if (existingRows[0]?.id) {
+        await db.queryTenant(input.tenantId, `UPDATE documents
+          SET project_id = $3,
+              folder_id = $4,
+              title = $5,
+              content = $6,
+              doc_type = 'transcript',
+              metadata = COALESCE(metadata, '{}'::jsonb) || $7::jsonb,
+              updated_at = NOW()
+        WHERE tenant_id = $1
+          AND id = $2`, [
+            input.tenantId,
+            existingRows[0].id,
+            input.projectId,
+            folderId,
+            documentTitle,
+            input.summary,
+            metadata,
+        ]);
+        return;
+    }
+    await db.queryTenant(input.tenantId, `INSERT INTO documents
+      (
+        tenant_id,
+        project_id,
+        folder_id,
+        title,
+        content,
+        doc_type,
+        source_kind,
+        source_record_id,
+        version,
+        metadata,
+        created_by_user_id
+      )
+     VALUES
+      ($1, $2, $3, $4, $5, 'transcript', 'meeting', $6, 1, $7::jsonb, $8)`, [
+        input.tenantId,
+        input.projectId,
+        folderId,
+        documentTitle,
+        input.summary,
+        input.meetingNoteId,
+        metadata,
+        input.createdByUserId,
+    ]);
 }
 async function loadProjectRuntimeStatus(tenantId, projectId) {
     const rows = await db.queryTenant(tenantId, `SELECT CASE
@@ -200,6 +283,17 @@ async function handleTranscriptCanonicalEvent(tenantId, canonicalEvent) {
         await reconcileMeetingNote(tenantId, meetingNoteId, existingEventIds.length, {
             projectId: resolvedProjectId,
         });
+        if (meetingNote?.summary?.trim()) {
+            await upsertMeetingAnalysisDocument({
+                tenantId,
+                meetingNoteId,
+                projectId: resolvedProjectId,
+                title: meetingNote?.title ?? null,
+                summary: meetingNote.summary,
+                canonicalEventId: canonicalEvent.id,
+                createdByUserId: submittedByUserId,
+            });
+        }
         return;
     }
     if (!resolvedProjectId) {
@@ -216,12 +310,51 @@ async function handleTranscriptCanonicalEvent(tenantId, canonicalEvent) {
         });
         return;
     }
-    const snapshot = await getProjectSnapshot(db, tenantId, resolvedProjectId);
     const config = buildWorkerIntelligenceConfig();
-    const intelligenceResult = await runIntelligence(config, snapshot, buildTranscriptPrompt(transcript));
-    await reconcileMeetingNote(tenantId, meetingNoteId, 0, {
+    let extractedTasks = [];
+    let summary = "";
+    try {
+        const projectName = meetingNote?.title ?? "Project";
+        const result = await generateBootstrapFromTranscript(config, {
+            projectName,
+            meetingTitle: meetingNote?.title ?? null,
+            transcript,
+        });
+        extractedTasks = result.tasks;
+        summary = result.summary;
+    }
+    catch (aiError) {
+        const reason = aiError instanceof Error ? aiError.message : String(aiError);
+        console.error(`[canonical-event] transcript ${canonicalEvent.id} extraction failed (${reason}); saving meeting note without tasks`);
+        await reconcileMeetingNote(tenantId, meetingNoteId, 0, {
+            projectId: resolvedProjectId,
+            summary: `Transcript saved. Task extraction failed: ${reason.slice(0, 100)}`,
+        });
+        return;
+    }
+    const suggestedActions = extractedTasks.map((task) => ({
+        type: "task_create",
+        displayText: `Create task: "${task.title}"`,
+        reasoning: task.description,
+        payload: {
+            title: task.title,
+            description: task.description,
+            priority: task.priority,
+            dueDate: task.dueDate,
+        },
+    }));
+    await reconcileMeetingNote(tenantId, meetingNoteId, suggestedActions.length, {
         projectId: resolvedProjectId,
-        summary: intelligenceResult.briefing,
+        summary,
+    });
+    await upsertMeetingAnalysisDocument({
+        tenantId,
+        meetingNoteId,
+        projectId: resolvedProjectId,
+        title: meetingNote?.title ?? null,
+        summary,
+        canonicalEventId: canonicalEvent.id,
+        createdByUserId: submittedByUserId,
     });
     const ledgerContext = {
         requesterUserId: submittedByUserId,
@@ -229,13 +362,14 @@ async function handleTranscriptCanonicalEvent(tenantId, canonicalEvent) {
         sourceRecordId: meetingNoteId,
     };
     await Promise.all([
-        runAutoActions(db, tenantId, resolvedProjectId, "signal", intelligenceResult.autoActions, undefined, ledgerContext),
-        storeSuggestions(db, tenantId, resolvedProjectId, "signal", intelligenceResult.suggestedActions, undefined, ledgerContext),
+        suggestedActions.length > 0
+            ? storeSuggestions(db, tenantId, resolvedProjectId, "signal", suggestedActions, undefined, ledgerContext)
+            : Promise.resolve(),
         Promise.resolve(insertProjectMemoryEntry(db, tenantId, resolvedProjectId, {
             source: "Meeting transcript",
             sourceKind: "meeting",
             sourceRecordId: meetingNoteId,
-            content: buildMemorySummary("Meeting", intelligenceResult.briefing),
+            content: buildMemorySummary("Meeting", summary),
         })).catch((error) => {
             const reason = error instanceof Error ? error.message : String(error);
             console.warn(`[canonical-event] transcript event ${canonicalEvent.id} failed to write project memory; continuing (${reason})`);
@@ -244,7 +378,7 @@ async function handleTranscriptCanonicalEvent(tenantId, canonicalEvent) {
     const finalEventIds = await listLarryEventIdsBySource(db, tenantId, "meeting", meetingNoteId);
     await reconcileMeetingNote(tenantId, meetingNoteId, finalEventIds.length, {
         projectId: resolvedProjectId,
-        summary: intelligenceResult.briefing,
+        summary,
     });
 }
 async function handleEmailCanonicalEvent(tenantId, canonicalEvent) {

@@ -20,7 +20,11 @@ vi.mock("../src/calendar-renewal.js", () => ({
 
 vi.mock("@larry/ai", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@larry/ai")>();
-  return { ...actual, runIntelligence: vi.fn() };
+  return {
+    ...actual,
+    generateBootstrapFromTranscript: vi.fn(),
+    runIntelligence: vi.fn(),
+  };
 });
 
 vi.mock("@larry/db", async (importOriginal) => {
@@ -35,7 +39,7 @@ vi.mock("@larry/db", async (importOriginal) => {
   };
 });
 
-import { runIntelligence } from "@larry/ai";
+import { generateBootstrapFromTranscript, runIntelligence } from "@larry/ai";
 import {
   getProjectSnapshot,
   insertProjectMemoryEntry,
@@ -60,6 +64,8 @@ afterEach(() => {
   vi.clearAllMocks();
   contextMocks.queryTenant.mockReset();
   contextMocks.tx.mockReset();
+  contextMocks.queryTenant.mockResolvedValue([]);
+  contextMocks.tx.mockResolvedValue(undefined);
 });
 
 function createCanonicalEventJob(payload: Record<string, unknown>) {
@@ -96,50 +102,48 @@ function createSnapshot(projectId = PROJECT_ID) {
 
 describe("processQueueJob canonical_event.created", () => {
   it("processes transcript events once and reconciles meeting note metadata from source-linked events", async () => {
-    contextMocks.queryTenant
-      .mockResolvedValueOnce([
-        {
-          id: CANONICAL_EVENT_ID,
-          source: "transcript",
-          payload: {
-            transcript: "Transcript body with enough context to produce actions.",
-            meetingNoteId: MEETING_NOTE_ID,
-            projectId: PROJECT_ID,
-            submittedByUserId: USER_ID,
+    contextMocks.queryTenant.mockImplementation(async (_tenantId, sql) => {
+      const statement = String(sql);
+      if (statement.includes("FROM canonical_events")) {
+        return [
+          {
+            id: CANONICAL_EVENT_ID,
+            source: "transcript",
+            payload: {
+              transcript: "Transcript body with enough context to produce actions.",
+              meetingNoteId: MEETING_NOTE_ID,
+              projectId: PROJECT_ID,
+              submittedByUserId: USER_ID,
+            },
           },
-        },
-      ])
-      .mockResolvedValueOnce([{ id: MEETING_NOTE_ID, project_id: PROJECT_ID }])
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([]);
+        ];
+      }
+      if (statement.includes("FROM meeting_notes")) {
+        return [{ id: MEETING_NOTE_ID, project_id: PROJECT_ID, title: "Weekly sync", summary: null }];
+      }
+      if (statement.includes("FROM folders")) {
+        return [{ id: "folder-1" }];
+      }
+      if (statement.includes("FROM documents")) {
+        return [];
+      }
+      return [];
+    });
 
     vi.mocked(listLarryEventIdsBySource)
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce(["ev-auto-1", "ev-suggest-1"]);
-    vi.mocked(getProjectSnapshot).mockResolvedValue(createSnapshot());
-    vi.mocked(runIntelligence).mockResolvedValue({
-      briefing: "The meeting surfaced one urgent follow-up.",
-      autoActions: [
+      .mockResolvedValueOnce(["ev-suggest-1"]);
+    vi.mocked(generateBootstrapFromTranscript).mockResolvedValue({
+      summary: "The meeting surfaced one urgent follow-up.",
+      tasks: [
         {
-          type: "risk_flag",
-          displayText: "Flag the launch prep work as at risk",
-          reasoning: "A key dependency slipped in the meeting.",
-          payload: { taskId: "task-1", taskTitle: "Launch prep", riskLevel: "high" },
+          title: "Meeting follow-up",
+          description: "The team committed to a new deliverable.",
+          priority: "high",
+          workstream: null,
+          dueDate: null,
         },
       ],
-      suggestedActions: [
-        {
-          type: "task_create",
-          displayText: "Create the meeting follow-up task",
-          reasoning: "The team committed to a new deliverable.",
-          payload: { title: "Meeting follow-up" },
-        },
-      ],
-    });
-    vi.mocked(runAutoActions).mockResolvedValue({
-      executedCount: 1,
-      suggestedCount: 0,
-      eventIds: ["ev-auto-1"],
     });
     vi.mocked(storeSuggestions).mockResolvedValue({
       executedCount: 0,
@@ -149,26 +153,23 @@ describe("processQueueJob canonical_event.created", () => {
 
     await processQueueJob(createCanonicalEventJob({ canonicalEventId: CANONICAL_EVENT_ID }) as never);
 
-    expect(getProjectSnapshot).toHaveBeenCalledWith(expect.anything(), TENANT_ID, PROJECT_ID);
-    expect(runAutoActions).toHaveBeenCalledWith(
-      expect.anything(),
-      TENANT_ID,
-      PROJECT_ID,
-      "signal",
-      expect.any(Array),
-      undefined,
-      {
-        requesterUserId: USER_ID,
-        sourceKind: "meeting",
-        sourceRecordId: MEETING_NOTE_ID,
-      }
-    );
+    expect(generateBootstrapFromTranscript).toHaveBeenCalledWith(expect.anything(), {
+      projectName: "Weekly sync",
+      meetingTitle: "Weekly sync",
+      transcript: "Transcript body with enough context to produce actions.",
+    });
+    expect(runAutoActions).not.toHaveBeenCalled();
     expect(storeSuggestions).toHaveBeenCalledWith(
       expect.anything(),
       TENANT_ID,
       PROJECT_ID,
       "signal",
-      expect.any(Array),
+      [
+        expect.objectContaining({
+          type: "task_create",
+          displayText: 'Create task: "Meeting follow-up"',
+        }),
+      ],
       undefined,
       {
         requesterUserId: USER_ID,
@@ -192,32 +193,124 @@ describe("processQueueJob canonical_event.created", () => {
       MEETING_NOTE_ID,
       PROJECT_ID,
       "The meeting surfaced one urgent follow-up.",
-      0,
+      1,
     ]);
     expect(updateCalls[1]?.[2]).toEqual([
       TENANT_ID,
       MEETING_NOTE_ID,
       PROJECT_ID,
       "The meeting surfaced one urgent follow-up.",
-      2,
+      1,
+    ]);
+
+    const insertDocumentCall = contextMocks.queryTenant.mock.calls.find(([, sql]) =>
+      String(sql).includes("INSERT INTO documents")
+    );
+    expect(insertDocumentCall?.[2]).toEqual([
+      TENANT_ID,
+      PROJECT_ID,
+      "folder-1",
+      "Weekly sync analysis",
+      "The meeting surfaced one urgent follow-up.",
+      MEETING_NOTE_ID,
+      expect.any(String),
+      USER_ID,
     ]);
   });
 
-  it("skips replayed transcript jobs when source-linked meeting events already exist", async () => {
-    contextMocks.queryTenant
-      .mockResolvedValueOnce([
-        {
-          id: CANONICAL_EVENT_ID,
-          source: "transcript",
-          payload: {
-            transcript: "Transcript body with enough context to produce actions.",
-            meetingNoteId: MEETING_NOTE_ID,
-            projectId: PROJECT_ID,
+  it("updates the existing transcript analysis document on replay without duplicating suggestions", async () => {
+    contextMocks.queryTenant.mockImplementation(async (_tenantId, sql) => {
+      const statement = String(sql);
+      if (statement.includes("FROM canonical_events")) {
+        return [
+          {
+            id: CANONICAL_EVENT_ID,
+            source: "transcript",
+            payload: {
+              transcript: "Transcript body with enough context to produce actions.",
+              meetingNoteId: MEETING_NOTE_ID,
+              projectId: PROJECT_ID,
+              submittedByUserId: USER_ID,
+            },
           },
-        },
-      ])
-      .mockResolvedValueOnce([{ id: MEETING_NOTE_ID, project_id: PROJECT_ID }])
-      .mockResolvedValueOnce([]);
+        ];
+      }
+      if (statement.includes("FROM meeting_notes")) {
+        return [
+          {
+            id: MEETING_NOTE_ID,
+            project_id: PROJECT_ID,
+            title: "Weekly sync",
+            summary: "Existing transcript analysis",
+          },
+        ];
+      }
+      if (statement.includes("FROM folders")) {
+        return [{ id: "folder-1" }];
+      }
+      if (statement.includes("FROM documents")) {
+        return [{ id: "doc-1" }];
+      }
+      return [];
+    });
+
+    vi.mocked(listLarryEventIdsBySource).mockResolvedValueOnce(["existing-event-1"]);
+
+    await processQueueJob(createCanonicalEventJob({ canonicalEventId: CANONICAL_EVENT_ID }) as never);
+
+    expect(generateBootstrapFromTranscript).not.toHaveBeenCalled();
+    expect(getProjectSnapshot).not.toHaveBeenCalled();
+    expect(runIntelligence).not.toHaveBeenCalled();
+    expect(runAutoActions).not.toHaveBeenCalled();
+    expect(storeSuggestions).not.toHaveBeenCalled();
+    expect(insertProjectMemoryEntry).not.toHaveBeenCalled();
+
+    const updateCall = contextMocks.queryTenant.mock.calls.find(([, sql]) =>
+      String(sql).includes("UPDATE meeting_notes")
+    );
+    expect(updateCall?.[2]).toEqual([
+      TENANT_ID,
+      MEETING_NOTE_ID,
+      PROJECT_ID,
+      null,
+      1,
+    ]);
+
+    const updateDocumentCall = contextMocks.queryTenant.mock.calls.find(([, sql]) =>
+      String(sql).includes("UPDATE documents")
+    );
+    expect(updateDocumentCall?.[2]).toEqual([
+      TENANT_ID,
+      "doc-1",
+      PROJECT_ID,
+      "folder-1",
+      "Weekly sync analysis",
+      "Existing transcript analysis",
+      expect.any(String),
+    ]);
+  });
+
+  it("skips replayed transcript jobs without an existing summary document payload", async () => {
+    contextMocks.queryTenant.mockImplementation(async (_tenantId, sql) => {
+      const statement = String(sql);
+      if (statement.includes("FROM canonical_events")) {
+        return [
+          {
+            id: CANONICAL_EVENT_ID,
+            source: "transcript",
+            payload: {
+              transcript: "Transcript body with enough context to produce actions.",
+              meetingNoteId: MEETING_NOTE_ID,
+              projectId: PROJECT_ID,
+            },
+          },
+        ];
+      }
+      if (statement.includes("FROM meeting_notes")) {
+        return [{ id: MEETING_NOTE_ID, project_id: PROJECT_ID, title: "Weekly sync", summary: null }];
+      }
+      return [];
+    });
 
     vi.mocked(listLarryEventIdsBySource).mockResolvedValueOnce(["existing-event-1"]);
 
