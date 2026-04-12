@@ -42,7 +42,7 @@ export async function createApp() {
   await app.register(requestContextPlugin);
 
   // Return human-readable messages for Zod validation errors
-  app.setErrorHandler((error: Error & { statusCode?: number }, _request, reply) => {
+  app.setErrorHandler((error: Error & { statusCode?: number }, request, reply) => {
     if (error instanceof ZodError) {
       const messages = error.issues.map((issue) => issue.message);
       return reply.status(400).send({
@@ -59,6 +59,15 @@ export async function createApp() {
         message: error.message,
       });
     }
+    // Unhandled 500 — always log stack so production failures are diagnosable.
+    request.log.error(
+      {
+        err: { message: error.message, name: error.name, stack: error.stack },
+        url: request.url,
+        method: request.method,
+      },
+      "unhandled 500"
+    );
     reply.status(500).send({
       statusCode: 500,
       error: "Internal Server Error",

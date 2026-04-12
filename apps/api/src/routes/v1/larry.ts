@@ -2088,40 +2088,84 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const tenantId = request.user.tenantId;
       const userId = request.user.userId;
+      const hour = new Date().getHours();
+      const timeOfDay = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
 
-      const userRows = await fastify.db.queryTenant<{ display_name: string | null; email: string }>(
-        tenantId,
-        `SELECT u.display_name, u.email
-           FROM users u
-          WHERE u.id = $2
-            AND u.tenant_id = $1
-          LIMIT 1`,
-        [tenantId, userId]
-      );
-
-      const user = userRows[0];
-      const displayName = user
-        ? (user.display_name?.trim() || user.email.split("@")[0] || "there")
-        : "there";
-
-      const config = buildIntelligenceConfig(fastify.config);
-
-      let briefingResult;
+      // Always return 200 — briefing is a best-effort surface, never a login blocker.
+      // Any failure below falls back to a neutral greeting with no projects.
       try {
-        briefingResult = await getOrGenerateBriefing(
-          fastify.db,
-          config,
-          userId,
+        const userRows = await fastify.db.queryTenant<{ display_name: string | null; email: string }>(
           tenantId,
-          displayName
+          `SELECT u.display_name, u.email
+             FROM users u
+            WHERE u.id = $2
+              AND u.tenant_id = $1
+            LIMIT 1`,
+          [tenantId, userId]
         );
-      } catch (error) {
-        request.log.error({ err: error, tenantId, userId }, "generateBriefing failed");
-        const hour = new Date().getHours();
-        const timeOfDay = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
+
+        const user = userRows[0];
+        const displayName = user
+          ? (user.display_name?.trim() || user.email.split("@")[0] || "there")
+          : "there";
+
+        const config = buildIntelligenceConfig(fastify.config);
+
+        let briefingResult;
+        try {
+          briefingResult = await getOrGenerateBriefing(
+            fastify.db,
+            config,
+            userId,
+            tenantId,
+            displayName
+          );
+        } catch (error) {
+          request.log.error(
+            { err: error instanceof Error ? { message: error.message, stack: error.stack } : error, tenantId, userId },
+            "generateBriefing failed"
+          );
+          return reply.code(200).send({
+            briefing: {
+              greeting: `Good ${timeOfDay}, ${displayName}.`,
+              projects: [],
+              totalNeedsYou: 0,
+            },
+            cached: false,
+            degraded: true,
+          });
+        }
+
+        if (briefingResult.briefingId) {
+          await fastify.db.queryTenant(
+            tenantId,
+            `UPDATE larry_briefings
+                SET seen_at = NOW()
+              WHERE tenant_id = $1
+                AND id = $2
+                AND seen_at IS NULL`,
+            [tenantId, briefingResult.briefingId]
+          ).catch(() => undefined);
+        }
+
+        return reply.code(200).send({
+          briefing: briefingResult.content,
+          cached: !briefingResult.fresh,
+        });
+      } catch (outerError) {
+        request.log.error(
+          {
+            err: outerError instanceof Error
+              ? { message: outerError.message, stack: outerError.stack, name: outerError.name }
+              : outerError,
+            tenantId,
+            userId,
+          },
+          "briefing outer handler failed"
+        );
         return reply.code(200).send({
           briefing: {
-            greeting: `Good ${timeOfDay}, ${displayName}.`,
+            greeting: `Good ${timeOfDay}, there.`,
             projects: [],
             totalNeedsYou: 0,
           },
@@ -2129,23 +2173,6 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           degraded: true,
         });
       }
-
-      if (briefingResult.briefingId) {
-        await fastify.db.queryTenant(
-          tenantId,
-          `UPDATE larry_briefings
-              SET seen_at = NOW()
-            WHERE tenant_id = $1
-              AND id = $2
-              AND seen_at IS NULL`,
-          [tenantId, briefingResult.briefingId]
-        ).catch(() => undefined);
-      }
-
-      return reply.code(200).send({
-        briefing: briefingResult.content,
-        cached: !briefingResult.fresh,
-      });
     }
   );
 
