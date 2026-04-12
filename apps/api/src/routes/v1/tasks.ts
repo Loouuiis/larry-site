@@ -377,8 +377,10 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
         title: z.string().min(1).max(300).optional(),
         description: z.string().max(4000).optional(),
         status: z.enum(["backlog", "not_started", "in_progress", "waiting", "completed", "blocked"]).optional(),
+        priority: z.enum(["low", "medium", "high", "critical"]).optional(),
         progressPercent: z.number().int().min(0).max(100).optional(),
-        dueDate: z.string().date().optional(),
+        dueDate: z.string().date().optional().nullable(),
+        startDate: z.string().date().optional().nullable(),
         assigneeUserId: z.string().uuid().optional().nullable(),
       }).parse(request.body);
       const tenantId = request.user.tenantId;
@@ -394,8 +396,10 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
       if (body.title !== undefined) { setClauses.push(`title = $${idx++}`); values.push(body.title); }
       if (body.description !== undefined) { setClauses.push(`description = $${idx++}`); values.push(body.description); }
       if (body.status !== undefined) { setClauses.push(`status = $${idx++}`); values.push(body.status); }
+      if (body.priority !== undefined) { setClauses.push(`priority = $${idx++}`); values.push(body.priority); }
       if (body.progressPercent !== undefined) { setClauses.push(`progress_percent = $${idx++}`); values.push(body.progressPercent); }
       if (body.dueDate !== undefined) { setClauses.push(`due_date = $${idx++}`); values.push(body.dueDate); }
+      if (body.startDate !== undefined) { setClauses.push(`start_date = $${idx++}`); values.push(body.startDate); }
       if (body.assigneeUserId !== undefined) { setClauses.push(`assignee_user_id = $${idx++}`); values.push(body.assigneeUserId); }
 
       if (setClauses.length === 1) return { success: true };
@@ -555,6 +559,36 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
       });
 
       return reply.code(201).send({ success: true });
+    }
+  );
+
+  fastify.delete(
+    "/:id",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
+    async (request, reply) => {
+      const params = TaskIdParamSchema.parse(request.params);
+      const tenantId = request.user.tenantId;
+      const taskProjectState = await loadTaskProjectWriteState(fastify.db, tenantId, params.id);
+      if (taskProjectState) {
+        assertProjectWritableOrThrow(taskProjectState.projectStatus);
+      }
+
+      await fastify.db.queryTenant(
+        tenantId,
+        `DELETE FROM tasks WHERE tenant_id = $1 AND id = $2`,
+        [tenantId, params.id]
+      );
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId: request.user.userId,
+        actionType: "task.delete",
+        objectType: "task",
+        objectId: params.id,
+        details: {},
+      });
+
+      return reply.code(204).send();
     }
   );
 

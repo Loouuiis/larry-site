@@ -232,6 +232,16 @@ export function TaskCenter({ projectId, tasks, refresh, openTaskId }: TaskCenter
     setNewDescription("");
   };
 
+  /* ── dropdown vertical positioning ────────────────────── */
+
+  function dropdownVertical(rect: DOMRect, estimatedHeight: number): React.CSSProperties {
+    const spaceBelow = window.innerHeight - rect.bottom - 8;
+    if (spaceBelow >= estimatedHeight) {
+      return { top: rect.bottom + 4 };
+    }
+    return { bottom: window.innerHeight - rect.top + 4 };
+  }
+
   const patchTask = async (taskId: string, patch: Record<string, unknown>) => {
     try {
       const res = await fetch(`/api/workspace/tasks/${encodeURIComponent(taskId)}`, {
@@ -536,7 +546,7 @@ export function TaskCenter({ projectId, tasks, refresh, openTaskId }: TaskCenter
                               <div
                                 className="fixed z-[9999] overflow-hidden"
                                 style={{
-                                  top: openDropdown.rect.bottom + 4,
+                                  ...dropdownVertical(openDropdown.rect, 210),
                                   left: openDropdown.rect.left,
                                   minWidth: 160,
                                   borderRadius: 4,
@@ -668,7 +678,7 @@ export function TaskCenter({ projectId, tasks, refresh, openTaskId }: TaskCenter
                               <div
                                 className="fixed z-[9999] overflow-hidden"
                                 style={{
-                                  top: openDropdown.rect.bottom + 4,
+                                  ...dropdownVertical(openDropdown.rect, 140),
                                   left: openDropdown.rect.right,
                                   transform: "translateX(-100%)",
                                   minWidth: 130,
@@ -797,7 +807,7 @@ export function TaskCenter({ projectId, tasks, refresh, openTaskId }: TaskCenter
                               <div
                                 className="fixed z-[9999] overflow-hidden"
                                 style={{
-                                  top: openDropdown.rect.bottom + 4,
+                                  ...dropdownVertical(openDropdown.rect, 240),
                                   left: openDropdown.rect.right,
                                   transform: "translateX(-100%)",
                                   minWidth: 180,
@@ -907,13 +917,41 @@ export function TaskCenter({ projectId, tasks, refresh, openTaskId }: TaskCenter
                             onFocus={(e) => { e.currentTarget.style.borderColor = "var(--brand)"; e.currentTarget.style.borderStyle = "solid"; }}
                             onBlurCapture={(e) => { e.currentTarget.style.borderColor = "var(--border-2)"; e.currentTarget.style.borderStyle = "dashed"; }}
                           />
-                          {/* Due date field in expanded view */}
+                          {/* Date fields in expanded view */}
                           <div className="flex items-center gap-2 mt-3">
+                            <span className="text-[11px] font-medium" style={{ color: "var(--text-muted)", width: 70, flexShrink: 0 }}>
+                              Start date
+                            </span>
+                            <input
+                              key={task.id + "start" + (task.startDate ?? "")}
+                              type="date"
+                              defaultValue={toDateInputValue(task.startDate ?? null)}
+                              onBlur={(e) => {
+                                const val = e.target.value;
+                                if (val !== toDateInputValue(task.startDate ?? null)) {
+                                  void patchTask(task.id, { startDate: val || null });
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                              }}
+                              className="text-[12px] outline-none rounded"
+                              style={{
+                                border: "1px solid var(--border)",
+                                background: "var(--surface)",
+                                color: "var(--text-1)",
+                                padding: "3px 6px",
+                              }}
+                              onFocus={(e) => { e.currentTarget.style.borderColor = "var(--brand)"; }}
+                              onBlurCapture={(e) => { e.currentTarget.style.borderColor = "var(--border)"; }}
+                            />
+                          </div>
+                          <div className="flex items-center gap-2 mt-2">
                             <span className="text-[11px] font-medium" style={{ color: "var(--text-muted)", width: 70, flexShrink: 0 }}>
                               Due date
                             </span>
                             <input
-                              key={task.id + (task.dueDate ?? "")}
+                              key={task.id + "due" + (task.dueDate ?? "")}
                               type="date"
                               defaultValue={toDateInputValue(task.dueDate)}
                               onBlur={(e) => {

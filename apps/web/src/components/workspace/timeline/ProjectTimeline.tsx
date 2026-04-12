@@ -286,10 +286,20 @@ export function ProjectTimeline({
     const nameById = new Map(allTasksTyped.map((t) => [t.id, t.assigneeName ?? null]));
 
     function enrich(t: WorkspaceTimelineTask): WorkspaceTimelineTask {
+      const effectiveEnd = t.endDate ?? t.dueDate ?? null;
+      let effectiveStart = t.startDate ?? (t.dueDate ? today : null);
+
+      // If task spans a single day (start === end), push start back 1 day so the bar is visible
+      if (effectiveStart && effectiveEnd && effectiveStart >= effectiveEnd) {
+        const d = new Date(effectiveEnd + "T00:00:00");
+        d.setDate(d.getDate() - 1);
+        effectiveStart = d.toISOString().split("T")[0];
+      }
+
       return {
         ...t,
         assigneeName: t.assigneeName ?? nameById.get(t.id) ?? null,
-        startDate: t.startDate ?? (t.dueDate ? today : null),
+        startDate: effectiveStart,
       };
     }
 
@@ -555,6 +565,11 @@ export function ProjectTimeline({
               onClose={() => setSelectedTaskId(null)}
               projectId={projectId}
               onSave={async () => { await refresh(); }}
+              onDelete={async () => {
+                await fetch(`/api/workspace/tasks/${encodeURIComponent(selectedTask.id)}`, { method: "DELETE" });
+                setSelectedTaskId(null);
+                await refresh();
+              }}
             />
           )}
         </AnimatePresence>

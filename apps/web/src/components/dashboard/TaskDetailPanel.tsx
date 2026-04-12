@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X, ChevronDown, Calendar, User, Paperclip,
-  Send, Smile, MoreHorizontal, Check, Layers,
+  Send, Smile, MoreHorizontal, Check, Layers, Trash2,
 } from "lucide-react";
 import { SourceBadge, type TaskSource } from "@/components/ui/SourceBadge";
 
@@ -74,9 +74,9 @@ function mapApiComment(c: ApiComment): Comment {
 
 const PANEL_TO_API_STATUS: Record<TaskStatus, string> = {
   done:       "completed",
-  "on-track": "on_track",
-  "at-risk":  "at_risk",
-  overdue:    "overdue",
+  "on-track": "in_progress",
+  "at-risk":  "in_progress",
+  overdue:    "in_progress",
   upcoming:   "not_started",
 };
 
@@ -272,6 +272,7 @@ interface TaskDetailPanelProps {
   onClose: () => void;
   projectId?: string;
   onSave?: () => Promise<void>;
+  onDelete?: () => Promise<void>;
 }
 
 const panelVariants = {
@@ -289,12 +290,13 @@ const sectionItem = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: EASE } },
 };
 
-export function TaskDetailPanel({ task, onClose, projectId, onSave }: TaskDetailPanelProps) {
+export function TaskDetailPanel({ task, onClose, projectId, onSave, onDelete }: TaskDetailPanelProps) {
   const [status,   setStatus]   = useState<TaskStatus>(task.status);
   const [priority, setPriority] = useState<TaskPriority>(task.priority);
   const [progress, setProgress] = useState(task.progress);
   const [comment,  setComment]  = useState("");
   const [comments, setComments] = useState<Comment[]>([]);
+  const [deleting, setDeleting] = useState(false);
 
   // Editable fields
   const [titleDraft, setTitleDraft]       = useState(task.name);
@@ -307,6 +309,8 @@ export function TaskDetailPanel({ task, onClose, projectId, onSave }: TaskDetail
   const [members, setMembers]             = useState<Member[]>([]);
   const assigneeButtonRef = useRef<HTMLButtonElement>(null);
   const assigneeMenuRef = useRef<HTMLDivElement>(null);
+  const onSaveRef = useRef(onSave);
+  useEffect(() => { onSaveRef.current = onSave; });
 
   const currentStatus = STATUS_OPTIONS.find((s) => s.value === status)!;
   const patchTimeout = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -395,7 +399,10 @@ export function TaskDetailPanel({ task, onClose, projectId, onSave }: TaskDetail
           progressPercent: progress,
         }),
       })
-        .then(() => window.dispatchEvent(new CustomEvent("larry:refresh-snapshot")))
+        .then(() => {
+          window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
+          onSaveRef.current?.().catch(() => {});
+        })
         .catch(() => {});
     }, 800);
     return () => clearTimeout(patchTimeout.current);
@@ -455,9 +462,20 @@ export function TaskDetailPanel({ task, onClose, projectId, onSave }: TaskDetail
           />
         </div>
         <div className="flex shrink-0 items-center gap-1 mt-0.5">
-          <button className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-disabled)] hover:bg-[var(--surface-2)] hover:text-[var(--text-2)] transition-colors">
-            <MoreHorizontal size={14} />
-          </button>
+          {onDelete && (
+            <button
+              onClick={async () => {
+                if (!confirm("Delete this task?")) return;
+                setDeleting(true);
+                try { await onDelete(); } finally { setDeleting(false); }
+              }}
+              disabled={deleting}
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-disabled)] hover:bg-red-50 hover:text-red-500 transition-colors disabled:opacity-50"
+              title="Delete task"
+            >
+              <Trash2 size={13} />
+            </button>
+          )}
           <button onClick={onClose} className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-disabled)] hover:bg-[var(--surface-2)] hover:text-[var(--text-2)] transition-colors">
             <X size={14} />
           </button>
