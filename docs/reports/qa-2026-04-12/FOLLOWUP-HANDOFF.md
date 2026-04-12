@@ -1,7 +1,7 @@
 # Follow-up Handoff — 2026-04-12 (after QA fixes session)
 
 **Previous pass:** `docs/reports/qa-2026-04-12/QA-REPORT.md` (Fergus's Playwright run).
-**This session's commits:** `f1167c4..5c827d0` on `master`.
+**This session's commits:** `f1167c4..be78cc9` on `master`.
 **Read this before starting.** The original QA report describes the failures as tested. This document describes *what was fixed, what was partially fixed, and what was left on the floor*. Everything below is unfinished work the next agent owns.
 
 ---
@@ -14,6 +14,7 @@ But several fixes are incomplete, brittle, or rely on LLM compliance rather than
 
 | Priority | Item | Why it's unfinished |
 |---|---|---|
+| P0 | **Timeline page crashes on production** — `RangeError: Invalid time value` | Fergus hit this live 2026-04-12 18:48; page is unusable |
 | P1 | C-5 briefing has no Fastify-level regression test | Can regress silently; I verified with curl only |
 | P1 | Worker test already red on master (`larry-scan.test.ts`) | CI is noisy; next real regression can hide in it |
 | P1 | C-7 assignee guard is prompt-level only | LLM non-compliance still creates unassigned tasks |
@@ -26,6 +27,85 @@ But several fixes are incomplete, brittle, or rely on LLM compliance rather than
 | P3 | Pre-existing TS errors in `apps/web` untouched | `react-markdown` missing module, implicit-any |
 | P3 | I-5/I-6 assumes `apps/api/railway.toml` is the deploy command | If worker toml wins, migrations skip and heartbeat vanishes |
 | P3 | Railway CLI service lookup is still flaky | I-5 root cause not actually fixed, only documented |
+
+---
+
+## Priority 0 — timeline page is broken on production, fix before anything else
+
+### 0. `RangeError: Invalid time value` crashes the Project timeline
+
+**Live repro (2026-04-12 18:48):** open any project on `www.larry-pm.com`, click **Timeline**. The page renders blank with a red overlay: `Application error: a client-side exception has occurred while loading www.larry-pm.com (see the browser console for more information).`
+
+**Stack trace from Fergus's Chromium console:**
+```
+Uncaught RangeError: Invalid time value
+  at Date.toISOString (<anonymous>)
+  at r (c5378e6c267305ee.js:1:94644)          ← minified; same file as the Timeline memo
+  at Array.map (<anonymous>)
+  at c5378e6c267305ee.js:1:94865
+  at Object.useMemo (4af27f77bd5de33b.js:1:75941)
+```
+
+The only `.toISOString()` call inside an `Array.map` inside a `useMemo` in the timeline feature is **`apps/web/src/components/workspace/timeline/ProjectTimeline.tsx:296`**:
+
+```ts
+// line 283
+const timelineTasks = useMemo(() => {
+  const today = new Date().toISOString().split("T")[0];
+  // ...
+  function enrich(t: WorkspaceTimelineTask): WorkspaceTimelineTask {
+    const effectiveEnd = t.endDate ?? t.dueDate ?? null;
+    let effectiveStart = t.startDate ?? (t.dueDate ? today : null);
+
+    // If task spans a single day (start === end), push start back 1 day so the bar is visible
+    if (effectiveStart && effectiveEnd && effectiveStart >= effectiveEnd) {
+      const d = new Date(effectiveEnd + "T00:00:00");          // ← 294
+      d.setDate(d.getDate() - 1);
+      effectiveStart = d.toISOString().split("T")[0];          // ← 296 THROWS
+    }
+    // ...
+  }
+  // ...allTasksTyped.map(enrich)                              // ← Array.map in the stack
+}, [timeline, allTasks]);
+```
+
+**Root cause (likely):** `effectiveEnd` is assumed to be a `YYYY-MM-DD` string. If the DB returns a full ISO timestamp (e.g. `"2026-04-18T00:00:00.000Z"`) or a whitespace-padded / PG-text-coerced value, `effectiveEnd + "T00:00:00"` becomes `"2026-04-18T00:00:00.000ZT00:00:00"` → `new Date(...)` is `Invalid Date` → `.toISOString()` throws `RangeError`.
+
+**It is also possible** the issue is `t.dueDate` coming through as the string `""` (empty) rather than `null`, in which case `effectiveEnd = ""` and `new Date("" + "T00:00:00")` is Invalid. QA-REPORT.md Test 1.3 noted one task had `due_date = 2026-04-13` written for a "Schedule checkpoint" that the transcript pinned to April 18 — there is clearly some inconsistency in how dates round-trip.
+
+**What to do:**
+1. **Reproduce locally first.** Write a vitest against `enrich()` (extract it if needed) with three payloads: `{endDate: "2026-04-18"}`, `{endDate: "2026-04-18T00:00:00.000Z"}`, `{endDate: ""}`. Prove which one throws. The test is the diagnosis.
+2. **Harden the function.** Use a safe parser that returns `null` on invalid:
+   ```ts
+   function safeISODate(input: string): string | null {
+     if (!input) return null;
+     const base = input.length > 10 ? input.slice(0, 10) : input;
+     const d = new Date(base + "T00:00:00Z");
+     return isNaN(d.getTime()) ? null : d.toISOString().split("T")[0];
+   }
+   ```
+   Then the day-shift logic becomes:
+   ```ts
+   if (effectiveStart && effectiveEnd && effectiveStart >= effectiveEnd) {
+     const endSafe = safeISODate(effectiveEnd);
+     if (endSafe) {
+       const d = new Date(endSafe + "T00:00:00Z");
+       d.setUTCDate(d.getUTCDate() - 1);
+       effectiveStart = d.toISOString().split("T")[0];
+     }
+     // if endSafe is null, leave effectiveStart alone — bar just won't render shifted
+   }
+   ```
+3. **Grep for the sibling mistake.** Every `.toISOString()` in `apps/web/src/components/workspace/timeline/` should be wrapped in a `isFinite(d.getTime())` check. The same crash will recur anywhere raw date strings are round-tripped through `new Date()`.
+4. **Check the DB source.** The gantt endpoint serving `timeline.gantt` lives in `apps/api/src/routes/v1/projects.ts` or similar (grep for `/timeline`). If it emits non-date-shaped strings, fix it there too so the fallback above becomes defense-in-depth rather than the only thing keeping the page alive.
+5. **Regression test.** Once fixed, add `apps/web/src/components/workspace/timeline/__tests__/ProjectTimeline.dates.test.ts` that covers the three payload shapes above and the one-day-span edge case.
+
+**Files touched (expected):**
+- `apps/web/src/components/workspace/timeline/ProjectTimeline.tsx:283-304` (the main fix).
+- `apps/web/src/components/workspace/timeline/timeline-utils.ts:87-91` (the `parseDate()` helper — consider exporting a safer `toIsoDateString()` alongside).
+- Potentially `apps/api/src/routes/v1/projects.ts` if the API is emitting bad date shapes.
+
+**Do not** ship any other fix in this session before this one. A blank timeline is demo-blocking.
 
 ---
 
