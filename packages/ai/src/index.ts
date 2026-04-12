@@ -673,7 +673,7 @@ export interface BootstrapTask {
 
 const BootstrapTaskSchema = z.object({
   title: z.string().min(1).max(200),
-  description: z.string().min(1).max(500),
+  description: z.string().min(1).max(1200),
   priority: z.enum(["low", "medium", "high", "critical"]),
   workstream: z.string().nullable(),
   dueDate: z.string().nullable(),
@@ -851,16 +851,23 @@ export async function generateBootstrapFromTranscript(
     "- For structured lists: convert each row directly to a task. Use the task name/title column as the title (rewrite to start with a verb if needed), use description verbatim, map the owner column to the description (e.g. 'Assigned to Sarah'), and use the deadline column as dueDate.",
     "- For natural language: extract only COMMITTED actions — things people agreed to do, not hypotheticals or past work.",
     "- Each task title MUST start with a verb and be specific (e.g. 'Send updated proposal to client by Friday', not 'Proposal').",
-    "- If the input already provides an explicit description for a task, use it verbatim (you may lightly clean formatting). Only write your own description when none is provided.",
     "- Set priority based on what blocks other work: 'high' for blocking items, 'medium' for standard follow-ups, 'low' for nice-to-haves.",
-    "- If someone was assigned the task, mention them in the description (e.g. 'Assigned to Sarah based on meeting discussion').",
+    "- If someone was assigned the task, mention them explicitly in the description (e.g. 'Assigned to Sarah based on meeting discussion').",
     "- Group related tasks under a workstream when relevant.",
     "- Do NOT create tasks from casual conversation, jokes, or off-topic discussion.",
     "- Stagger due dates — not all tasks should have the same deadline.",
     "- Also provide a one-sentence summary of the meeting's key outcomes and the implied timeline.",
+    "",
+    "DESCRIPTION QUALITY — THIS IS IMPORTANT:",
+    "Write 3-5 sentences per task. Include:",
+    "  1. What the task is and why it matters in the context of this meeting/project.",
+    "  2. Who was assigned or who raised it (if mentioned). Quote them if it's helpful context.",
+    "  3. What success looks like — what does 'done' mean for this task?",
+    "  4. Any dependencies, blockers, or related work mentioned.",
+    "Bad description: 'Update the deck.' Good description: 'Sarah agreed to update the investor deck with the revised pricing model discussed in the meeting. This is blocking the board presentation scheduled for next Thursday. The update should include the new SaaS tier breakdown and remove the enterprise-only pricing table. Coordinate with Joel on the financial projections section.'",
   ].join("\n");
 
-  const truncated = input.transcript.slice(0, 6_000);
+  const truncated = input.transcript.slice(0, 20_000);
   const userPrompt = [
     `Project: ${input.projectName}`,
     input.meetingTitle ? `Meeting: ${input.meetingTitle}` : null,
@@ -868,7 +875,7 @@ export async function generateBootstrapFromTranscript(
     "",
     "Transcript:",
     truncated,
-    input.transcript.length > 6_000 ? "\n[transcript truncated]" : "",
+    input.transcript.length > 20_000 ? "\n[transcript truncated]" : "",
   ].filter(Boolean).join("\n");
 
   const { object } = await generateObject({

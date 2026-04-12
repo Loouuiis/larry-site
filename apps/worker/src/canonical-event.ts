@@ -528,6 +528,14 @@ async function handleTranscriptCanonicalEvent(
   let extractedTasks: Array<{ title: string; description: string; priority: string; workstream: string | null; dueDate: string | null }> = [];
   let summary = "";
 
+  // Fallback due dates when the model returns null (by priority)
+  function inferDueDate(priority: string): string {
+    const days = priority === "critical" ? 2 : priority === "high" ? 5 : priority === "medium" ? 10 : 21;
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    return d.toISOString().slice(0, 10);
+  }
+
   try {
     const projectName = meetingNote?.title ?? "Project";
     const result = await generateBootstrapFromTranscript(config, {
@@ -535,7 +543,10 @@ async function handleTranscriptCanonicalEvent(
       meetingTitle: meetingNote?.title ?? null,
       transcript,
     });
-    extractedTasks = result.tasks;
+    extractedTasks = result.tasks.map((task) => ({
+      ...task,
+      dueDate: task.dueDate ?? inferDueDate(task.priority),
+    }));
     summary = result.summary;
   } catch (aiError) {
     const reason = aiError instanceof Error ? aiError.message : String(aiError);
