@@ -2093,6 +2093,9 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
 
       // Always return 200 — briefing is a best-effort surface, never a login blocker.
       // Any failure below falls back to a neutral greeting with no projects.
+      // `degraded` carries the failing stage so production failures are diagnosable
+      // without Railway logs (which our current setup makes hard to read).
+      let stage: "load-user" | "build-config" | "generate" | "post-seen" | "serialize" = "load-user";
       try {
         const userRows = await fastify.db.queryTenant<{ display_name: string | null; email: string }>(
           tenantId,
@@ -2109,8 +2112,10 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           ? (user.display_name?.trim() || user.email.split("@")[0] || "there")
           : "there";
 
+        stage = "build-config";
         const config = buildIntelligenceConfig(fastify.config);
 
+        stage = "generate";
         let briefingResult;
         try {
           briefingResult = await getOrGenerateBriefing(
@@ -2122,8 +2127,8 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           );
         } catch (error) {
           request.log.error(
-            { err: error instanceof Error ? { message: error.message, stack: error.stack } : error, tenantId, userId },
-            "generateBriefing failed"
+            { err: error instanceof Error ? { message: error.message, stack: error.stack } : error, tenantId, userId, stage: "generate" },
+            "briefing generate failed"
           );
           return reply.code(200).send({
             briefing: {
@@ -2132,10 +2137,11 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
               totalNeedsYou: 0,
             },
             cached: false,
-            degraded: true,
+            degraded: "generate",
           });
         }
 
+        stage = "post-seen";
         if (briefingResult.briefingId) {
           await fastify.db.queryTenant(
             tenantId,
@@ -2148,6 +2154,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           ).catch(() => undefined);
         }
 
+        stage = "serialize";
         return reply.code(200).send({
           briefing: briefingResult.content,
           cached: !briefingResult.fresh,
@@ -2160,6 +2167,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
               : outerError,
             tenantId,
             userId,
+            stage,
           },
           "briefing outer handler failed"
         );
@@ -2170,7 +2178,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
             totalNeedsYou: 0,
           },
           cached: false,
-          degraded: true,
+          degraded: stage,
         });
       }
     }
