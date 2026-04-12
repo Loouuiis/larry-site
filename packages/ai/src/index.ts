@@ -851,6 +851,10 @@ export async function generateBootstrapFromTranscript(
 // ── Larry Intelligence (Phase 1) ─────────────────────────────────────────────
 export { runIntelligence } from "./intelligence.js";
 
+// ── Larry Streaming Chat ──────────────────────────────────────────────────────
+export { streamLarryChat } from "./chat.js";
+export type { ChatStreamEvent, ToolCallResult } from "./chat.js";
+
 // Re-export new shared intelligence types for convenience
 export type {
   IntelligenceConfig,

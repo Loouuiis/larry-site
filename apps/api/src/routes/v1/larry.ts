@@ -1,7 +1,8 @@
 import { FastifyPluginAsync } from "fastify";
 import type { FastifyRequest } from "fastify";
 import { z } from "zod";
-import { runIntelligence } from "@larry/ai";
+import { runIntelligence, streamLarryChat } from "@larry/ai";
+import type { ToolCallResult } from "@larry/ai";
 import {
   getCanonicalEventRuntimeEntryById,
   getCanonicalEventRuntimeSummary,
@@ -20,6 +21,7 @@ import { getApiEnv } from "@larry/config";
 import type {
   CanonicalEvent,
   IntelligenceConfig,
+  LarryAction,
   LarryActionType,
   LarryClarification,
   LarryChatResponse,
@@ -2699,6 +2701,334 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       ]);
 
       return reply.code(200).send(responsePayload);
+    }
+  );
+
+  // ── POST /chat/stream — streaming chat with real-time tool execution ────────
+
+  const ChatStreamSchema = z.object({
+    projectId: z.string().uuid(),
+    message: z.string().trim().min(1).max(8_000),
+    conversationId: z.string().uuid().optional(),
+  });
+
+  function sseData(obj: object): string {
+    return `data: ${JSON.stringify(obj)}\n\n`;
+  }
+
+  const CHAT_STREAM_ACTION_TYPE_MAP: Record<string, string> = {
+    create_task:        "task_create",
+    update_task_status: "status_update",
+    flag_task_risk:     "risk_flag",
+    send_reminder:      "reminder_send",
+    change_deadline:    "deadline_change",
+    change_task_owner:  "owner_change",
+    draft_email:        "email_draft",
+  };
+
+  fastify.post(
+    "/chat/stream",
+    {
+      config: {
+        rateLimit: {
+          max: 20,
+          timeWindow: "1 minute",
+          keyGenerator: (req: FastifyRequest) =>
+            (req.user as { tenantId?: string } | undefined)?.tenantId ?? req.ip,
+        },
+      },
+      preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])],
+    },
+    async (request, reply) => {
+      const parseResult = ChatStreamSchema.safeParse(request.body ?? {});
+      if (!parseResult.success) {
+        throw fastify.httpErrors.badRequest(
+          parseResult.error.issues[0]?.message ?? "Invalid request body"
+        );
+      }
+
+      const { message, conversationId: incomingConversationId } = parseResult.data;
+      const projectId = parseResult.data.projectId;
+      const tenantId = request.user.tenantId;
+      const actorUserId = request.user.userId;
+
+      // ── Access check ─────────────────────────────────────────────────────
+      await assertProjectAccessOrThrow({
+        tenantId,
+        userId: actorUserId,
+        tenantRole: request.user.role,
+        projectId,
+        mode: "read",
+        requireWritable: true,
+      });
+
+      // ── Resolve existing conversation ─────────────────────────────────────
+      let existingConversation = null;
+      if (incomingConversationId) {
+        existingConversation = await getLarryConversationForUser(
+          fastify.db,
+          tenantId,
+          actorUserId,
+          incomingConversationId
+        );
+        if (!existingConversation) {
+          throw fastify.httpErrors.notFound("Conversation not found.");
+        }
+      }
+
+      // ── Load project snapshot ─────────────────────────────────────────────
+      let snapshot: Awaited<ReturnType<typeof getProjectSnapshot>>;
+      try {
+        snapshot = await getProjectSnapshot(fastify.db, tenantId, projectId);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.toLowerCase().includes("not found")) {
+          throw fastify.httpErrors.notFound(msg);
+        }
+        throw fastify.httpErrors.internalServerError(`Failed to load project snapshot: ${msg}`);
+      }
+
+      // ── Load conversation history ──────────────────────────────────────────
+      let priorMessages: Array<{ role: "user" | "larry"; content: string }> = [];
+      const resolvedConversationId = existingConversation?.id ?? incomingConversationId ?? null;
+      if (resolvedConversationId) {
+        try {
+          priorMessages = await listLarryMessagesForConversation(
+            fastify.db,
+            tenantId,
+            resolvedConversationId
+          );
+        } catch {
+          // non-fatal — continue without history
+        }
+      }
+
+      // ── Create/get conversation and insert user message ───────────────────
+      const conversation =
+        existingConversation ??
+        (await createLarryConversation(fastify.db, tenantId, actorUserId, {
+          projectId,
+          title: message.slice(0, 80),
+        }));
+
+      const userMessageInsert = await insertLarryMessage(fastify.db, tenantId, conversation.id, {
+        role: "user",
+        content: message,
+        actorUserId,
+      });
+
+      // Insert placeholder Larry message now so tool events can reference its ID
+      const larryMessageInsert = await insertLarryMessage(fastify.db, tenantId, conversation.id, {
+        role: "larry",
+        content: "",
+      });
+      const larryMessageId = larryMessageInsert.id;
+
+      // ── SSE headers — must be set before any body writes ─────────────────
+      reply.raw.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+        "Transfer-Encoding": "chunked",
+      });
+
+      const write = (obj: object): void => {
+        if (!reply.raw.destroyed) {
+          reply.raw.write(sseData(obj));
+        }
+      };
+
+      // ── Build messages array from conversation history ────────────────────
+      const sdkMessages: Array<{ role: "user" | "assistant"; content: string }> = [
+        ...priorMessages.slice(-10).map((m) => ({
+          role: (m.role === "user" ? "user" : "assistant") as "user" | "assistant",
+          content: m.content,
+        })),
+        { role: "user", content: message },
+      ];
+
+      // ── Intelligence config ───────────────────────────────────────────────
+      const config = buildIntelligenceConfig(fastify.config);
+      const projectContext = snapshot.larryContext ?? null;
+
+      // ── Accumulated state for post-stream writes ──────────────────────────
+      let fullContent = "";
+      let actionsExecuted = 0;
+      let suggestionCount = 0;
+
+      // ── Action context for executor functions ─────────────────────────────
+      const actionContext = {
+        conversationId: conversation.id,
+        requestMessageId: userMessageInsert.id,
+        responseMessageId: larryMessageId,
+        requesterUserId: actorUserId,
+        sourceKind: "chat",
+        sourceRecordId: userMessageInsert.id,
+      };
+
+      // ── onTool callback — handles governance + DB writes ──────────────────
+      const onTool = async (
+        toolName: string,
+        params: Record<string, unknown>
+      ): Promise<ToolCallResult> => {
+        // Read-only lookup — return task list from snapshot, no DB write
+        if (toolName === "get_task_list") {
+          const filter = typeof params.filter === "string" ? params.filter : "all";
+          const tasks = snapshot.tasks
+            .filter((t) => {
+              if (filter === "overdue")
+                return t.dueDate && new Date(t.dueDate) < new Date() && t.status !== "completed";
+              if (filter === "at_risk") return t.riskLevel === "high";
+              if (filter === "blocked") return t.status === "blocked";
+              return true;
+            })
+            .slice(0, 30)
+            .map((t) => `${t.id}: ${t.title} [${t.status}] [risk:${t.riskLevel ?? "low"}] [due:${t.dueDate ?? "none"}]`)
+            .join("\n");
+          return {
+            actionId: null,
+            eventType: "auto_executed",
+            displayText: "Retrieved task list",
+            data: tasks || "(no tasks match filter)",
+          };
+        }
+
+        const actionType = CHAT_STREAM_ACTION_TYPE_MAP[toolName];
+        if (!actionType) {
+          return {
+            actionId: null,
+            eventType: "error",
+            displayText: String(params.displayText ?? toolName),
+            error: `Unknown tool: ${toolName}`,
+          };
+        }
+
+        const displayText = typeof params.displayText === "string" ? params.displayText : toolName;
+        const reasoning = typeof params.reasoning === "string" ? params.reasoning : `Called via streaming chat`;
+
+        const action: LarryAction = {
+          type: actionType as LarryActionType,
+          displayText,
+          reasoning,
+          payload: {
+            ...params,
+            description: reasoning, // required by all action payloads
+          },
+          selfExecutable: false,
+          offerExecution: false,
+        };
+
+        try {
+          const result = await runAutoActions(
+            fastify.db,
+            tenantId,
+            projectId,
+            "chat",
+            [action],
+            message,
+            actionContext
+          );
+
+          actionsExecuted += result.executedCount;
+          suggestionCount += result.suggestedCount;
+
+          const wasExecuted = result.executedCount > 0;
+          const eventId = result.eventIds[0] ?? null;
+
+          return {
+            actionId: eventId,
+            eventType: wasExecuted ? "auto_executed" : "suggested",
+            displayText,
+          };
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          request.log.warn(
+            { err, tenantId, projectId, toolName },
+            "Streaming chat tool execution failed"
+          );
+          return {
+            actionId: null,
+            eventType: "error",
+            displayText,
+            error: msg,
+          };
+        }
+      };
+
+      // ── Stream ────────────────────────────────────────────────────────────
+      try {
+        for await (const event of streamLarryChat({
+          config,
+          messages: sdkMessages,
+          projectContext,
+          onTool,
+        })) {
+          if (event.type === "token") {
+            fullContent += event.delta;
+            write({ type: "token", delta: event.delta });
+          } else if (event.type === "tool_start") {
+            write(event);
+          } else if (event.type === "tool_done") {
+            write(event);
+          } else if (event.type === "error") {
+            write(event);
+            // Don't abort — let the stream finish naturally
+          }
+        }
+
+        // ── Post-stream DB writes ─────────────────────────────────────────
+        // Update the placeholder Larry message with the actual content
+        await fastify.db.queryTenant<Record<string, unknown>>(
+          tenantId,
+          `UPDATE larry_messages SET content = $3 WHERE tenant_id = $1 AND id = $2`,
+          [tenantId, larryMessageId, fullContent || "(no response)"]
+        );
+
+        await touchLarryConversation(fastify.db, tenantId, conversation.id, message.slice(0, 80));
+
+        // Best-effort memory entry
+        insertProjectMemoryEntry(fastify.db, tenantId, projectId, {
+          source: "Larry chat",
+          sourceKind: "direct_chat",
+          sourceRecordId: userMessageInsert.id,
+          content: buildChatMemoryEntry(message, fullContent.slice(0, 500)),
+        }).catch((err: unknown) => {
+          request.log.warn({ err, tenantId, projectId }, "Stream chat memory write failed");
+        });
+
+        // Best-effort audit log
+        writeAuditLog(fastify.db, {
+          tenantId,
+          actorUserId,
+          actionType: "larry.chat.stream",
+          objectType: "project",
+          objectId: projectId,
+          details: {
+            conversationId: conversation.id,
+            actionsExecuted,
+            suggestionCount,
+          },
+        }).catch((err: unknown) => {
+          request.log.warn({ err, tenantId }, "Stream chat audit log failed");
+        });
+
+        write({
+          type: "done",
+          conversationId: conversation.id,
+          messageId: larryMessageId,
+          actionsExecuted,
+          suggestionCount,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Streaming error";
+        request.log.error({ err, tenantId, projectId }, "streamLarryChat generator failed");
+        write({ type: "error", message: msg });
+      } finally {
+        if (!reply.raw.destroyed) {
+          reply.raw.end();
+        }
+      }
     }
   );
 };

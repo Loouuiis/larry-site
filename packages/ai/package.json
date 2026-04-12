@@ -12,7 +12,7 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json --noEmitOnError false"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.66",

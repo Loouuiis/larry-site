@@ -38,7 +38,10 @@ function getConversationTitle(conversation: LarryConversation): string {
 
 /* ─── Action Helpers ─────────────────────────────────────────────── */
 
-function getActionTone(event: WorkspaceLarryEvent) {
+function getActionTone(event: WorkspaceLarryEvent & { _streaming?: boolean }) {
+  if ((event as { _streaming?: boolean })._streaming) {
+    return { badge: "bg-[#f3f0ff] text-[#6c44f6]", border: "border-[#ddd6fe]", label: "Running…" };
+  }
   if (event.eventType === "suggested") {
     return { badge: "bg-[#fff7ed] text-[#c2410c]", border: "border-[#fed7aa]", label: "Pending approval" };
   }
@@ -107,7 +110,23 @@ function MessageBubble({ msg, projectId }: { msg: LarryMessage; projectId?: stri
             <span className="text-[12px] text-[#8b7fc7]">Larry is thinking…</span>
           </span>
         ) : (
-          <p style={{ whiteSpace: "pre-line" }}>{msg.content}</p>
+          <p style={{ whiteSpace: "pre-line" }}>
+            {msg.content || (msg.streaming ? "\u00A0" : "")}
+            {msg.streaming && (
+              <span
+                aria-hidden="true"
+                style={{
+                  display: "inline-block",
+                  width: "2px",
+                  height: "1em",
+                  backgroundColor: "#6c44f6",
+                  marginLeft: "1px",
+                  verticalAlign: "text-bottom",
+                  animation: "larry-blink 1s step-end infinite",
+                }}
+              />
+            )}
+          </p>
         )}
         {isLarry && !isProcessing && (msg.clarifications?.length ?? 0) > 0 && (
           <div className="mt-2 rounded-lg border border-[#ddd6fe] bg-[#faf5ff] p-2">
@@ -276,6 +295,10 @@ export function LarryChat({ projectId, projectName, onVoiceInput }: LarryChatPro
         @keyframes larry-widget-enter {
           from { opacity: 0; transform: scale(0.95) translateY(8px); }
           to   { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        @keyframes larry-blink {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0; }
         }
       `}</style>
 
