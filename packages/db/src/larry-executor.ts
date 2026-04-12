@@ -166,8 +166,15 @@ interface AutoExecutionDecision {
   rule: string;
 }
 
+// Actions that ALWAYS require human approval, regardless of trigger source.
+// risk_flag and status_update were moved here after QA-2026-04-12 observed them
+// auto-executing silently on read-only chat queries. A risk flag is a
+// project-visible state change; a query is not a command. The scheduled scan
+// will enqueue these as suggestions instead of firing them automatically.
 const APPROVAL_ONLY_ACTION_TYPES = new Set<LarryActionType>([
   "task_create",
+  "status_update",
+  "risk_flag",
   "deadline_change",
   "owner_change",
   "scope_change",

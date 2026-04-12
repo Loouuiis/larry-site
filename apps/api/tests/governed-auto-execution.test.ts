@@ -32,6 +32,30 @@ const RISK_FLAG_ACTION: LarryAction = {
   },
 };
 
+const REMINDER_ACTION: LarryAction = {
+  type: "reminder_send",
+  displayText: "Send reminder to Alex about checkout QA",
+  reasoning: "7 days inactive, deadline Friday",
+  payload: {
+    taskId: "task-qa",
+    taskTitle: "Checkout QA",
+    assigneeName: "Alex",
+    message: "Checkout QA is 7 days inactive with Friday's deadline approaching.",
+  },
+};
+
+const STATUS_UPDATE_ACTION: LarryAction = {
+  type: "status_update",
+  displayText: "Mark checkout QA as blocked",
+  reasoning: "Depends on API spec which is 3 days overdue",
+  payload: {
+    taskId: "task-qa",
+    taskTitle: "Checkout QA",
+    newStatus: "blocked",
+    newRiskLevel: "high",
+  },
+};
+
 const CALENDAR_CREATE_ACTION: LarryAction = {
   type: "calendar_event_create",
   displayText: "Create project kickoff calendar event",
@@ -156,7 +180,7 @@ describe("runAutoActions governance routing", () => {
     expect(insertValues[2]).toBe("suggested");
   });
 
-  it("keeps low-risk actions auto-executed when policy and authority allow", async () => {
+  it("keeps low-risk actions (reminder_send) auto-executed when policy and authority allow", async () => {
     const { db, queryTenant } = createMockDb({ autoExecuteLowImpact: true, role: "pm" });
 
     const result = await runAutoActions(
@@ -164,8 +188,8 @@ describe("runAutoActions governance routing", () => {
       TENANT_ID,
       PROJECT_ID,
       "chat",
-      [RISK_FLAG_ACTION],
-      "Flag checkout QA if needed",
+      [REMINDER_ACTION],
+      "Send the reminder",
       CHAT_CONTEXT
     );
 
@@ -180,11 +204,67 @@ describe("runAutoActions governance routing", () => {
     );
     const insertValues = (insertCalls[0]?.[2] ?? []) as unknown[];
     expect(insertValues[2]).toBe("auto_executed");
+  });
+
+  // Regression for QA-2026-04-12 C-6: a read-only chat query ("What's the status?")
+  // was auto-executing risk_flag actions on real tasks. risk_flag is project-visible
+  // state; every risk_flag must land in Pending review so the user approves it.
+  it("routes risk_flag to approval for ALL trigger sources, even with pm role", async () => {
+    for (const triggeredBy of ["chat", "schedule", "login"] as const) {
+      const { db, queryTenant } = createMockDb({ autoExecuteLowImpact: true, role: "pm" });
+      // login and chat both have requesterUserId; schedule does not require one.
+      const context = triggeredBy === "schedule" ? SCHEDULE_CONTEXT : CHAT_CONTEXT;
+
+      const result = await runAutoActions(
+        db,
+        TENANT_ID,
+        PROJECT_ID,
+        triggeredBy,
+        [RISK_FLAG_ACTION],
+        triggeredBy === "chat" ? "Flag checkout QA if needed" : undefined,
+        context
+      );
+
+      expect(result, `triggeredBy=${triggeredBy}`).toMatchObject({
+        executedCount: 0,
+        suggestedCount: 1,
+      });
+
+      const insertCalls = queryTenant.mock.calls.filter(
+        (call) => typeof call[1] === "string" && (call[1] as string).includes("INSERT INTO larry_events")
+      );
+      const insertValues = (insertCalls[0]?.[2] ?? []) as unknown[];
+      expect(insertValues[2], `triggeredBy=${triggeredBy}`).toBe("suggested");
+
+      const taskMutations = queryTenant.mock.calls.filter(
+        (call) => typeof call[1] === "string" && (call[1] as string).includes("UPDATE tasks")
+      );
+      expect(taskMutations, `triggeredBy=${triggeredBy}`).toHaveLength(0);
+    }
+  });
+
+  it("routes status_update to approval for ALL trigger sources (QA-2026-04-12 C-6)", async () => {
+    const { db, queryTenant } = createMockDb({ autoExecuteLowImpact: true, role: "pm" });
+
+    const result = await runAutoActions(
+      db,
+      TENANT_ID,
+      PROJECT_ID,
+      "chat",
+      [STATUS_UPDATE_ACTION],
+      "Mark it as blocked",
+      CHAT_CONTEXT
+    );
+
+    expect(result).toMatchObject({
+      executedCount: 0,
+      suggestedCount: 1,
+    });
 
     const taskMutations = queryTenant.mock.calls.filter(
       (call) => typeof call[1] === "string" && (call[1] as string).includes("UPDATE tasks")
     );
-    expect(taskMutations).toHaveLength(1);
+    expect(taskMutations).toHaveLength(0);
   });
 
   it("routes calendar actions to approval-only suggestions even when policy allows auto execution", async () => {

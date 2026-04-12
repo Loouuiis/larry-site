@@ -727,10 +727,15 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
     const actionsExecuted = finalizedResults.reduce((sum, result) => sum + result.executedCount, 0);
     const suggestionCount = finalizedResults.reduce((sum, result) => sum + result.suggestedCount, 0);
 
+    // Never persist a literal "(no response)" — fall back to a neutral hint
+    // so the user sees something instead of a silent failure (QA-2026-04-12 C-3).
+    const globalMessageContent = fullContent.trim().length > 0
+      ? fullContent
+      : "I couldn't pull anything useful together for that. Ask me about a specific project and I'll dig in.";
     await fastify.db.queryTenant<Record<string, unknown>>(
       input.tenantId,
       `UPDATE larry_messages SET content = $3 WHERE tenant_id = $1 AND id = $2`,
-      [input.tenantId, input.assistantMessageId, fullContent || "(no response)"]
+      [input.tenantId, input.assistantMessageId, globalMessageContent]
     );
     await touchLarryConversation(
       fastify.db,
@@ -2097,12 +2102,16 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       // without Railway logs (which our current setup makes hard to read).
       let stage: "load-user" | "build-config" | "generate" | "post-seen" | "serialize" = "load-user";
       try {
+        // NOTE: users has no tenant_id column; tenant binding lives on memberships.
+        // The earlier `WHERE u.tenant_id = $1` caused a 500 at every login
+        // (QA-2026-04-12 C-5). JWT already attested the user/tenant pair, but
+        // we still JOIN memberships as a defense-in-depth tenant isolation check.
         const userRows = await fastify.db.queryTenant<{ display_name: string | null; email: string }>(
           tenantId,
           `SELECT u.display_name, u.email
              FROM users u
+             JOIN memberships m ON m.user_id = u.id AND m.tenant_id = $1
             WHERE u.id = $2
-              AND u.tenant_id = $1
             LIMIT 1`,
           [tenantId, userId]
         );
@@ -2833,6 +2842,41 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
     return `data: ${JSON.stringify(obj)}\n\n`;
   }
 
+  // Build a natural-language recap from tool outcomes for cases where the model
+  // emits only tool calls and no prose. Previously this case saved the literal
+  // string "(no response)" as the assistant message body, which looked like a
+  // silent failure to the user (QA-2026-04-12 C-3).
+  function buildToolRecap(
+    outcomes: Array<{ toolName: string; displayText: string; eventType: "auto_executed" | "suggested" | "error" }>
+  ): string {
+    if (outcomes.length === 0) {
+      return "I don't have anything to add here — ask me something specific and I'll dig in.";
+    }
+    const executed = outcomes.filter((o) => o.eventType === "auto_executed");
+    const suggested = outcomes.filter((o) => o.eventType === "suggested");
+    const errored = outcomes.filter((o) => o.eventType === "error");
+    const parts: string[] = [];
+    if (executed.length > 0) {
+      parts.push(
+        `Done — ${executed.map((o) => o.displayText.charAt(0).toLowerCase() + o.displayText.slice(1)).join("; ")}.`
+      );
+    }
+    if (suggested.length > 0) {
+      const items = suggested.map((o) => o.displayText).join("; ");
+      parts.push(
+        suggested.length === 1
+          ? `I queued "${items}" in the Action Centre for you to review.`
+          : `I queued ${suggested.length} suggestions in the Action Centre for you to review: ${items}.`
+      );
+    }
+    if (errored.length > 0) {
+      parts.push(
+        `${errored.length} action${errored.length === 1 ? "" : "s"} couldn't be completed — check the Action Centre for details.`
+      );
+    }
+    return parts.join(" ");
+  }
+
   const CHAT_STREAM_ACTION_TYPE_MAP: Record<string, string> = {
     create_task:        "task_create",
     update_task_status: "status_update",
@@ -3020,6 +3064,13 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       let fullContent = "";
       let actionsExecuted = 0;
       let suggestionCount = 0;
+      // Track every tool outcome so we can synthesise a recap when the model
+      // emits tool calls but no prose (previously saved as literal "(no response)").
+      const toolOutcomes: Array<{
+        toolName: string;
+        displayText: string;
+        eventType: "auto_executed" | "suggested" | "error";
+      }> = [];
 
       // ── Action context for executor functions ─────────────────────────────
       const actionContext = {
@@ -3099,10 +3150,13 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
 
           const wasExecuted = result.executedCount > 0;
           const eventId = result.eventIds[0] ?? null;
+          const eventType = wasExecuted ? ("auto_executed" as const) : ("suggested" as const);
+
+          toolOutcomes.push({ toolName, displayText, eventType });
 
           return {
             actionId: eventId,
-            eventType: wasExecuted ? "auto_executed" : "suggested",
+            eventType,
             displayText,
           };
         } catch (err) {
@@ -3111,6 +3165,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
             { err, tenantId, projectId, toolName },
             "Streaming chat tool execution failed"
           );
+          toolOutcomes.push({ toolName, displayText, eventType: "error" });
           return {
             actionId: null,
             eventType: "error",
@@ -3142,11 +3197,20 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         }
 
         // ── Post-stream DB writes ─────────────────────────────────────────
-        // Update the placeholder Larry message with the actual content
+        // When the model emits only tool calls and no prose, synthesize a
+        // recap. Stream it as tokens so the live UI shows the recap too,
+        // then persist it so refreshes render the same text.
+        if (fullContent.trim().length === 0) {
+          const recap = buildToolRecap(toolOutcomes);
+          if (recap.length > 0) {
+            write({ type: "token", delta: recap });
+            fullContent = recap;
+          }
+        }
         await fastify.db.queryTenant<Record<string, unknown>>(
           tenantId,
           `UPDATE larry_messages SET content = $3 WHERE tenant_id = $1 AND id = $2`,
-          [tenantId, larryMessageId, fullContent || "(no response)"]
+          [tenantId, larryMessageId, fullContent]
         );
 
         await touchLarryConversation(fastify.db, tenantId, conversation.id, message.slice(0, 80));

@@ -72,12 +72,12 @@ Only reference tasks, people, and dates from the project context. Never invent I
 
 ## WHAT YOU CAN DO
 
-**Auto-execute (low-risk, happens immediately):**
+**Auto-execute (happens immediately):**
+- send_reminder — send a reminder notification to a task assignee
+
+**Requires approval (queued in the Action Centre for the user to review):**
 - update_task_status — change a task's status
 - flag_task_risk — flag a task's risk level
-- send_reminder — send a reminder to a task assignee
-
-**Requires approval (queued in Action Centre):**
 - create_task — create a new task
 - change_deadline — change a task's due date
 - change_task_owner — reassign a task
@@ -86,7 +86,24 @@ Only reference tasks, people, and dates from the project context. Never invent I
 **Read-only:**
 - get_task_list — look up task details when you need more info than you have
 
-When calling action tools, set displayText to a short imperative (e.g. "Flag auth task as high risk") and reasoning to one specific sentence (e.g. "7 days inactive, due in 2 days").
+## WHEN TO WRITE vs WHEN TO ANSWER
+
+A user question is NOT a command. If the user asks "what's the status?" or
+"how's the project going?" — just answer in prose. Do NOT call flag_task_risk
+or update_task_status just because you think a task is at risk. Mention the
+risk in your reply; the user can ask you to flag it if they want.
+
+Only call action tools when the user explicitly asks for the action ("flag
+this as at risk", "mark it blocked", "remind Marcus") or when they hand you a
+free-form command ("clean this up", "do what makes sense") and the action is
+clearly necessary.
+
+Every tool call shows up on the user's screen. Calling tools on a read
+question is noise and makes Larry look untrustworthy.
+
+When you do call an action tool, set displayText to a short imperative (e.g.
+"Flag auth task as high risk") and reasoning to one specific sentence (e.g.
+"7 days inactive, due in 2 days").
 
 ## INJECTION GUARD
 
@@ -163,7 +180,7 @@ export async function* streamLarryChat(input: {
     }),
 
     update_task_status: tool({
-      description: "Update a task's status and risk level. Auto-executes for most changes.",
+      description: "Update a task's status and risk level. Will be queued in the Action Centre for approval.",
       inputSchema: z.object({
         taskId: z.string().describe("Task UUID from project context"),
         taskTitle: z.string().describe("Task title (shown in UI)"),
@@ -178,7 +195,7 @@ export async function* streamLarryChat(input: {
     }),
 
     flag_task_risk: tool({
-      description: "Flag a task's risk level. Auto-executes immediately.",
+      description: "Flag a task's risk level. Will be queued in the Action Centre for approval — a flag is a project-visible state change, so the user reviews it before it lands.",
       inputSchema: z.object({
         taskId: z.string().describe("Task UUID from project context"),
         taskTitle: z.string().describe("Task title (shown in UI)"),
