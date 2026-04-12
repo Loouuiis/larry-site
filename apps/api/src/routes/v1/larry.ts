@@ -1929,18 +1929,43 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         conversationId = conversation.id;
       }
 
-      const contextMessage = [
-        `The user wants to modify this action: ${fullEvent?.displayText ?? "Unknown action"}.`,
-        `Original reasoning: ${fullEvent?.reasoning ?? "No reasoning provided"}.`,
-        `Action type: ${event.actionType}.`,
-      ].join(" ");
+      // QA-2026-04-12 M-1: previously this handler wrote a raw internal
+      // template ("The user wants to modify this action: ... Original
+      // reasoning: ... Action type: task_create.") straight to the user's
+      // chat history. That string rendered as Larry's first visible bubble
+      // and looked like a leaked system prompt.
+      //
+      // The user-facing opener below is plain prose Larry would say; the
+      // action being modified is already communicated by the launch URL
+      // (launch=modify&sourceKind=...&eventType=suggested) and is visible
+      // in the chat header above this conversation.
+      const openerDisplay = (fullEvent?.displayText ?? "this action").slice(0, 160);
+      const openerMessage =
+        `Let's refine "${openerDisplay}". Tell me what to change — assignee, deadline, priority, wording — ` +
+        `and I'll queue an updated version in the Action Centre.`;
 
       await insertLarryMessage(fastify.db, tenantId, conversationId, {
         role: "larry",
-        content: contextMessage,
+        content: openerMessage,
       });
 
       await touchLarryConversation(fastify.db, tenantId, conversationId);
+
+      // QA-2026-04-12 M-4: dismiss the source suggestion immediately. The
+      // user has chosen to rework it — keeping it pending means Action
+      // Centre shows both the original and the later "with updates" card,
+      // and accepting both duplicates the task.
+      //
+      // If the user abandons the modify chat without sending a message,
+      // this still reflects intent: they clicked Modify, which is a
+      // "don't accept as-is" signal. Safer than leaving a stale pending.
+      await markLarryEventDismissed(
+        fastify.db,
+        tenantId,
+        id,
+        actorUserId,
+        "modify-superseded"
+      );
 
       return reply.code(200).send({ conversationId, eventId: id });
     }

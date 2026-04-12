@@ -66,10 +66,12 @@ import {
 import {
   createLarryConversation,
   getLarryConversationForUser,
+  getLarryEventForMutation,
   insertLarryMessage,
   listLarryConversationPreviews,
   listLarryEventSummaries,
   listLarryMessagesByIds,
+  markLarryEventDismissed,
   touchLarryConversation,
 } from "../src/lib/larry-ledger.js";
 import {
@@ -1630,5 +1632,103 @@ describe("POST /larry/chat/stream", () => {
 
     expect(response.statusCode).toBe(409);
     expect(response.body).toContain("Global chat cannot reuse a project conversation.");
+  });
+});
+
+// QA-2026-04-12 Step 3 regression guards — M-1 (system-prompt leak) and M-4
+// (original suggestion not dismissed). The Modify flow used to:
+//   1. Write the raw "The user wants to modify this action: ..." template
+//      as Larry's first visible chat bubble (M-1).
+//   2. Leave the source suggestion pending so Action Centre showed both
+//      the original AND the later "with updates" card (M-4).
+// After the fix the modify endpoint:
+//   - Inserts a user-facing opener as Larry's first message — the raw
+//     template does not appear in chat history.
+//   - Calls markLarryEventDismissed(source_event) so the original
+//     suggestion is removed from Action Centre immediately on click.
+describe("POST /larry/events/:id/modify", () => {
+  const EVENT_ID = "88888888-8888-4888-8888-888888888888";
+  const MODIFY_CONVERSATION_ID = "99999999-9999-4999-8999-999999999999";
+
+  beforeEach(() => {
+    vi.mocked(getLarryEventForMutation).mockResolvedValue({
+      id: EVENT_ID,
+      tenantId: TENANT_ID,
+      projectId: PROJECT_ID,
+      conversationId: null,
+      actionType: "task_create",
+      eventType: "suggested",
+      payload: { title: "Audit pen-test scope" },
+    } as Awaited<ReturnType<typeof getLarryEventForMutation>>);
+    vi.mocked(getProjectMembershipAccess).mockResolvedValue({
+      projectExists: true,
+      canRead: true,
+      canManage: true,
+      isMember: true,
+      role: "editor",
+      projectStatus: "active",
+    });
+    vi.mocked(createLarryConversation).mockResolvedValue({
+      id: MODIFY_CONVERSATION_ID,
+      tenantId: TENANT_ID,
+      projectId: PROJECT_ID,
+      createdByUserId: USER_ID,
+      title: "Modify: Create task",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    vi.mocked(insertLarryMessage).mockResolvedValue({
+      id: "m-1",
+      conversationId: MODIFY_CONVERSATION_ID,
+      role: "larry",
+      content: "",
+      createdAt: new Date().toISOString(),
+      linkedActionIds: [],
+      actorUserId: null,
+    });
+  });
+
+  it("does not leak the raw system-prompt template as Larry's first chat bubble (M-1)", async () => {
+    const app = await createV1PrefixedTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/v1/larry/events/${EVENT_ID}/modify`,
+    });
+
+    expect(response.statusCode).toBe(200);
+
+    // insertLarryMessage may be called once (for the opener). The stored
+    // content MUST NOT echo the pre-fix leak pattern. Pre-fix, content
+    // was: "The user wants to modify this action: ... Original reasoning:
+    // ... Action type: task_create.".
+    const openerInserts = vi.mocked(insertLarryMessage).mock.calls;
+    expect(openerInserts.length).toBeGreaterThan(0);
+    for (const call of openerInserts) {
+      const content = (call[3] as { content: string } | undefined)?.content ?? "";
+      expect(content).not.toMatch(/The user wants to modify this action:/i);
+      expect(content).not.toMatch(/Original reasoning:/i);
+      expect(content).not.toMatch(/Action type: task_create/i);
+    }
+  });
+
+  it("atomically dismisses the source suggestion so the Action Centre no longer shows a duplicate (M-4)", async () => {
+    const app = await createV1PrefixedTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/v1/larry/events/${EVENT_ID}/modify`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(markLarryEventDismissed).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT_ID,
+      EVENT_ID,
+      USER_ID,
+      expect.stringMatching(/modif/i)
+    );
   });
 });
