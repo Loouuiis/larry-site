@@ -893,7 +893,11 @@ export async function generateBootstrapFromTranscript(
 export { runIntelligence } from "./intelligence.js";
 
 // ── Larry Streaming Chat ──────────────────────────────────────────────────────
-export { streamLarryChat, computeDateContext } from "./chat.js";
+export {
+  streamLarryChat,
+  computeDateContext,
+  translateFullStreamChunkToChatEvent,
+} from "./chat.js";
 export type { ChatStreamEvent, ToolCallResult } from "./chat.js";
 
 // Re-export new shared intelligence types for convenience

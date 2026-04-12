@@ -208,6 +208,76 @@ function fallbackDisplayText(toolName: string, input: Record<string, unknown>): 
   }
 }
 
+// ── Chunk → event translator (exported for unit testing) ─────────────────────
+
+// Translate a single AI SDK v6 fullStream chunk into at most one ChatStreamEvent.
+// Mutates `pendingDisplayTexts` on tool-input-start / tool-result to thread the
+// displayText across those two events. Returns null for chunks we ignore.
+//
+// This lives as a pure helper so the stream-handling bug that dropped text
+// tokens (reading `.delta` instead of `.text` in v6) is reproducible in a
+// unit test without a real language model. See larry-chat-stream-translate
+// test for the QA-2026-04-12 regression guard.
+export function translateFullStreamChunkToChatEvent(
+  chunk: unknown,
+  pendingDisplayTexts: Map<string, string>
+): ChatStreamEvent | null {
+  const c = chunk as { type?: string } & Record<string, unknown>;
+  switch (c.type) {
+    case "text-delta": {
+      // AI SDK v6 TextStreamPart: text-delta carries `text`, not `delta`.
+      // Pre-2026-04-12 code read `.delta` (v5 shape) so every token was
+      // dropped → chat always fell back to buildToolRecap's empty-outcomes
+      // string. Guarded by larry-chat-stream-translate.test.ts.
+      const text = (c as unknown as { text?: string }).text;
+      if (typeof text === "string" && text.length > 0) {
+        return { type: "token", delta: text };
+      }
+      return null;
+    }
+
+    case "tool-input-start": {
+      const t = c as unknown as { id: string; toolName: string };
+      const displayText = fallbackDisplayText(t.toolName, {});
+      if (t.id) pendingDisplayTexts.set(t.id, displayText);
+      return { type: "tool_start", id: t.id, name: t.toolName, displayText };
+    }
+
+    case "tool-result": {
+      const t = c as unknown as {
+        toolCallId: string;
+        toolName: string;
+        output: ToolCallResult | undefined;
+      };
+      const savedDisplayText =
+        pendingDisplayTexts.get(t.toolCallId) ?? fallbackDisplayText(t.toolName, {});
+      if (t.toolCallId) pendingDisplayTexts.delete(t.toolCallId);
+      return {
+        type: "tool_done",
+        id: t.toolCallId,
+        name: t.toolName,
+        success: t.output?.eventType !== "error",
+        actionId: t.output?.actionId ?? null,
+        eventType: t.output?.eventType ?? "error",
+        displayText: t.output?.displayText ?? savedDisplayText,
+        ...(t.output?.error ? { error: t.output.error } : {}),
+      };
+    }
+
+    case "error": {
+      const e = c as unknown as { error: unknown };
+      return {
+        type: "error",
+        message:
+          typeof e.error === "string" ? e.error : String(e.error ?? "Unknown streaming error"),
+      };
+    }
+
+    default:
+      return null;
+  }
+}
+
 // ── Main export ───────────────────────────────────────────────────────────────
 
 /**
@@ -359,61 +429,7 @@ export async function* streamLarryChat(input: {
   });
 
   for await (const chunk of result.fullStream) {
-    switch (chunk.type) {
-      case "text-delta": {
-        // In AI SDK v6 fullStream, text-delta has `delta` field
-        const delta = (chunk as unknown as { delta: string }).delta;
-        if (delta) {
-          yield { type: "token", delta };
-        }
-        break;
-      }
-
-      case "tool-input-start": {
-        // Fires as soon as model starts the tool call — show chip immediately
-        // In fullStream TextStreamPart, this event has `id` (not `toolCallId`)
-        const c = chunk as unknown as { id: string; toolName: string };
-        const displayText = fallbackDisplayText(c.toolName, {});
-        if (c.id) pendingDisplayTexts.set(c.id, displayText);
-        yield { type: "tool_start", id: c.id, name: c.toolName, displayText };
-        break;
-      }
-
-      case "tool-result": {
-        // Fires after execute() resolves
-        const c = chunk as unknown as {
-          toolCallId: string;
-          toolName: string;
-          output: ToolCallResult | undefined;
-        };
-        const savedDisplayText = pendingDisplayTexts.get(c.toolCallId) ?? fallbackDisplayText(c.toolName, {});
-        if (c.toolCallId) pendingDisplayTexts.delete(c.toolCallId);
-        yield {
-          type: "tool_done",
-          id: c.toolCallId,
-          name: c.toolName,
-          success: c.output?.eventType !== "error",
-          actionId: c.output?.actionId ?? null,
-          eventType: c.output?.eventType ?? "error",
-          displayText: c.output?.displayText ?? savedDisplayText,
-          ...(c.output?.error ? { error: c.output.error } : {}),
-        };
-        break;
-      }
-
-      case "error": {
-        const c = chunk as unknown as { error: unknown };
-        yield {
-          type: "error",
-          message: typeof c.error === "string" ? c.error : String(c.error ?? "Unknown streaming error"),
-        };
-        break;
-      }
-
-      default:
-        // Ignore: start, finish, step-start, step-finish, reasoning-delta,
-        // tool-input-delta, tool-input-available, source, text-start, text-end, etc.
-        break;
-    }
+    const event = translateFullStreamChunkToChatEvent(chunk, pendingDisplayTexts);
+    if (event) yield event;
   }
 }
