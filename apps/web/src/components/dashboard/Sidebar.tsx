@@ -701,12 +701,38 @@ interface WorkspaceSidebarProps {
   displayName?: string | null;
   notifCount?: number;
   collapsed?: boolean;
+  autoOpened?: boolean;
   onToggleCollapsed?: () => void;
+  onAutoOpenStart?: () => void;
+  onAutoOpenEnd?: () => void;
 }
 
-export function WorkspaceSidebar({ projects, activeNav, mobileOpen, onMobileClose, userEmail, avatarUrl, displayName, notifCount, collapsed, onToggleCollapsed }: WorkspaceSidebarProps) {
+export function WorkspaceSidebar({
+  projects,
+  activeNav,
+  mobileOpen,
+  onMobileClose,
+  userEmail,
+  avatarUrl,
+  displayName,
+  notifCount,
+  collapsed,
+  autoOpened,
+  onToggleCollapsed,
+  onAutoOpenStart,
+  onAutoOpenEnd,
+}: WorkspaceSidebarProps) {
   return (
     <>
+      {collapsed && (
+        <div
+          className="fixed inset-y-0 left-0 z-30 hidden md:block"
+          style={{ width: 18 }}
+          onMouseEnter={onAutoOpenStart}
+          aria-hidden="true"
+        />
+      )}
+
       {/* Desktop */}
       <motion.aside
         className="hidden md:flex shrink-0 flex-col overflow-hidden"
@@ -714,6 +740,11 @@ export function WorkspaceSidebar({ projects, activeNav, mobileOpen, onMobileClos
         animate={{ width: collapsed ? 56 : 240 }}
         transition={{ duration: 0.22, ease: DRAWER_EASE }}
         style={{ borderRight: "1px solid var(--border)", background: "#ffffff" }}
+        onMouseLeave={() => {
+          if (autoOpened) {
+            onAutoOpenEnd?.();
+          }
+        }}
       >
         {collapsed ? (
           <div className="flex h-full flex-col items-center justify-between pt-4 pb-3">

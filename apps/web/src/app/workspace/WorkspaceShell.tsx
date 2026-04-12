@@ -43,12 +43,14 @@ export function WorkspaceShell({ children, userEmail, emailVerified, avatarUrl, 
   const [notifCount, setNotifCount] = useState(0);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const [sidebarAutoOpen, setSidebarAutoOpen] = useState(false);
 
   const projectIdFromPath = pathname?.match(
     /^\/workspace\/projects\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i
   )?.[1] ?? "";
 
   const isLarryPage = pathname?.startsWith("/workspace/larry") ?? false;
+  const sidebarVisibleCollapsed = sidebarCollapsed && !sidebarAutoOpen;
 
   const activeNav: WorkspaceSidebarNav = useMemo(() => {
     if (pathname === "/workspace") return "home";
@@ -166,8 +168,22 @@ export function WorkspaceShell({ children, userEmail, emailVerified, avatarUrl, 
           avatarUrl={avatarUrl}
           displayName={displayName}
           notifCount={notifCount}
-          collapsed={sidebarCollapsed}
-          onToggleCollapsed={() => setSidebarCollapsed((v) => !v)}
+          collapsed={sidebarVisibleCollapsed}
+          autoOpened={sidebarAutoOpen}
+          onToggleCollapsed={() => {
+            setSidebarCollapsed((v) => !v);
+            setSidebarAutoOpen(false);
+          }}
+          onAutoOpenStart={() => {
+            if (sidebarCollapsed) {
+              setSidebarAutoOpen(true);
+            }
+          }}
+          onAutoOpenEnd={() => {
+            if (sidebarCollapsed) {
+              setSidebarAutoOpen(false);
+            }
+          }}
         />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <WorkspaceTopBar userEmail={userEmail} onMobileMenuOpen={() => setMobileOpen(true)} />
