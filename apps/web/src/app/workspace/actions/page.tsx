@@ -336,7 +336,12 @@ export default function WorkspaceActionsPage() {
           {[
             { label: "Pending review", value: String(suggested.length), detail: "Awaiting approval" },
             { label: "Recent activity", value: String(activity.length), detail: "Accepted or auto executed" },
-            { label: "Projects touched", value: String(projectsTouched), detail: "Cross-project visibility" },
+            // QA-2026-04-12 Polish #12: "Projects touched" reads as "broken"
+            // when it's 0 alongside live projects. Hide the tile when the
+            // underlying action arrays are empty rather than rendering 0.
+            ...(projectsTouched > 0
+              ? [{ label: "Projects touched", value: String(projectsTouched), detail: "Cross-project visibility" }]
+              : []),
             { label: "Linked chats", value: String(linkedConversationCount || conversations.length), detail: "Jump back into context" },
           ].map((stat) => (
             <div

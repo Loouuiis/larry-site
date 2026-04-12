@@ -628,14 +628,26 @@ export function TaskCenter({ projectId, tasks, refresh, openTaskId }: TaskCenter
                             }}
                           />
                         ) : (
+                          // QA-2026-04-12 Polish #10: clicking the title used
+                          // to enter inline rename, so users had no way to see
+                          // a task's description, assignee history, or AI
+                          // provenance without discovering the small chevron.
+                          // Now: single click toggles the detail panel.
+                          // Rename lives behind a double-click (still quick
+                          // for power users, not accidental for everyone else).
                           <span
                             className="flex-1 truncate text-[13px]"
+                            title="Click to open details, double-click to rename"
                             style={{
                               color: "var(--text-1)",
-                              cursor: "text",
+                              cursor: "pointer",
                               padding: "2px 0",
                             }}
                             onClick={(e) => {
+                              e.stopPropagation();
+                              toggleExpand(task.id);
+                            }}
+                            onDoubleClick={(e) => {
                               e.stopPropagation();
                               setEditingTitle(task.id);
                               setEditTitleValue(task.title);
