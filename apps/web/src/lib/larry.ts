@@ -65,6 +65,26 @@ export async function listLarryMessages(conversationId: string): Promise<LarryMe
   return data.messages ?? [];
 }
 
+/**
+ * Stream Larry's chat response via SSE. Returns the raw Response —
+ * the caller reads `.body` as a ReadableStream of SSE events.
+ */
+export async function streamLarryChat(input: {
+  projectId?: string;
+  message: string;
+  conversationId?: string;
+}): Promise<Response> {
+  return fetch("/api/workspace/larry/chat/stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      projectId: input.projectId,
+      message: input.message,
+      conversationId: input.conversationId,
+    }),
+  });
+}
+
 export async function sendLarryChat(input: {
   projectId?: string;
   message: string;

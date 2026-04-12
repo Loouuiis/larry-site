@@ -1,17 +1,14 @@
-import { AppSession, createSessionToken, sessionCookieOptions } from "@/lib/auth";
+import type { AppSession } from "@/lib/auth";
+import { createSessionToken, sessionCookieOptions } from "@/lib/auth";
 import { cookies } from "next/headers";
-
-interface ApiRefreshResponse {
-  accessToken: string;
-  refreshToken?: string;
-}
+import {
+  getApiBaseUrl,
+  isTokenExpiredOrExpiringSoon,
+  refreshApiSession,
+} from "@/lib/api-session";
 
 interface ProxyApiRequestOptions {
   timeoutMs?: number;
-}
-
-function getApiBaseUrl(): string {
-  return (process.env.LARRY_API_BASE_URL ?? "http://localhost:8080").replace(/\/+$/, "");
 }
 
 async function parseApiBody(response: Response): Promise<unknown> {
@@ -25,87 +22,6 @@ async function parseApiBody(response: Response): Promise<unknown> {
   }
   const text = await response.text();
   return text.length > 0 ? { message: text } : {};
-}
-
-// ── Proactive token refresh ─────────────────────────────────────────────────
-// Decode the JWT payload (without verification — the API will verify) to check
-// expiration. If the token expires within REFRESH_BUFFER_SECS, refresh it
-// BEFORE sending the request, so we never hit a 401 on the first try.
-
-const REFRESH_BUFFER_SECS = 120; // refresh if token expires within 2 minutes
-
-function decodeJwtExpiry(token: string): number | null {
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
-    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString());
-    return typeof payload.exp === "number" ? payload.exp : null;
-  } catch {
-    return null;
-  }
-}
-
-function isTokenExpiredOrExpiringSoon(token: string): boolean {
-  const exp = decodeJwtExpiry(token);
-  if (!exp) return true; // can't determine — treat as expired to be safe
-  return exp - Math.floor(Date.now() / 1000) < REFRESH_BUFFER_SECS;
-}
-
-// ── Refresh with concurrency guard ──────────────────────────────────────────
-// Prevents multiple concurrent requests from all trying to refresh the token
-// at the same time (which would revoke each other's refresh tokens).
-
-let activeRefreshPromise: Promise<AppSession | null> | null = null;
-
-async function refreshApiSession(
-  baseUrl: string,
-  session: AppSession,
-): Promise<AppSession | null> {
-  if (!session.apiRefreshToken || !session.tenantId) return null;
-
-  // If a refresh is already in progress, wait for it instead of starting another
-  if (activeRefreshPromise) {
-    return activeRefreshPromise;
-  }
-
-  activeRefreshPromise = (async () => {
-    try {
-      const response = await fetch(`${baseUrl}/v1/auth/refresh`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          refreshToken: session.apiRefreshToken,
-          tenantId: session.tenantId,
-        }),
-        cache: "no-store",
-        signal: AbortSignal.timeout(12_000),
-      });
-
-      if (!response.ok) {
-        console.error("[proxy] Token refresh failed:", response.status);
-        return null;
-      }
-
-      const payload = (await response.json()) as ApiRefreshResponse;
-      if (!payload.accessToken) return null;
-
-      return {
-        ...session,
-        apiAccessToken: payload.accessToken,
-        apiRefreshToken: payload.refreshToken ?? session.apiRefreshToken,
-        authMode: "api",
-      };
-    } catch (err) {
-      console.error("[proxy] Token refresh error:", err instanceof Error ? err.message : err);
-      return null;
-    }
-  })();
-
-  try {
-    return await activeRefreshPromise;
-  } finally {
-    activeRefreshPromise = null;
-  }
 }
 
 // ── Session helpers ─────────────────────────────────────────────────────────
