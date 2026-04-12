@@ -259,8 +259,8 @@ export function MeetingsPage() {
   const [error, setError] = useState("");
   const [showNewProject, setShowNewProject] = useState(false);
 
-  const loadOverview = useCallback(async () => {
-    setLoading(true);
+  const loadOverview = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError("");
     try {
       const res = await fetch("/api/workspace/meetings/overview", { cache: "no-store" });
@@ -288,7 +288,7 @@ export function MeetingsPage() {
     isProcessing: processing,
   } = useTranscriptProcessing({
     onSuccess: async () => {
-      await loadOverview();
+      await loadOverview(true);
       triggerBoundedWorkspaceRefresh();
     },
   });
