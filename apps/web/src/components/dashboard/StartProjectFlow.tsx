@@ -58,16 +58,6 @@ const CHAT_QUESTIONS = [
   "What risks, constraints, or dependencies should Larry keep in view?",
 ] as const;
 
-function buildProjectIntake(answers: string[]) {
-  const [name = "", outcome = "", milestone = "", deliverables = "", risks = ""] = answers;
-  return [
-    `Project name: ${name}`,
-    `Outcome: ${outcome}`,
-    `Milestone: ${milestone}`,
-    `Deliverables or workstreams: ${deliverables}`,
-    `Risks, constraints, and dependencies: ${risks}`,
-  ].join("\n");
-}
 
 function StepIndicator({ step }: { step: FlowStep }) {
   return (
@@ -327,10 +317,10 @@ function ManualPane({
 }
 
 function ChatPane({
-  onReviewActions,
+  onSuccess,
   showToast,
 }: {
-  onReviewActions: () => void;
+  onSuccess: (projectId: string) => void;
   showToast: (toast: ToastState) => void;
 }) {
   const [messages, setMessages] = useState<Array<{ id: string; role: "larry" | "user"; text: string }>>([
@@ -341,7 +331,7 @@ function ChatPane({
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<{ projectName: string } | null>(null);
+  const [success, setSuccess] = useState<{ projectName: string; projectId: string } | null>(null);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -367,40 +357,47 @@ function ChatPane({
 
       setMessages((current) => current.concat({ id: "processing", role: "larry", text: "Creating the project..." }));
       const projectName = nextAnswers[0]?.trim() || "New Project";
-      const description = buildProjectIntake(nextAnswers);
 
-      const response = await fetch("/api/workspace/projects", {
+      // Step 1: create intake draft with all chat answers
+      const draftResponse = await fetch("/api/workspace/projects/intake/drafts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: projectName, description }),
+        body: JSON.stringify({
+          mode: "chat",
+          project: { name: projectName },
+          chat: { answers: nextAnswers },
+        }),
       });
-      const data = await response.json() as { id?: string; error?: string };
-
-      if (!response.ok || !data.id) {
-        const replyText = data.error ?? "Failed to create project.";
-        setMessages((current) =>
-          current.filter((message) => message.id !== "processing").concat({ id: crypto.randomUUID(), role: "larry", text: replyText })
-        );
-        setError(replyText);
-        return;
+      const draftData = await draftResponse.json() as { draft?: { id: string }; error?: string };
+      if (!draftResponse.ok || !draftData.draft?.id) {
+        throw new Error(draftData.error ?? "Failed to create project.");
       }
 
-      const replyText = `Done — "${projectName}" is created. Open the project when you're ready.`;
+      // Step 2: finalize — runs AI bootstrap (generateBootstrapTasks) and creates the project
+      const finalizeResponse = await fetch(`/api/workspace/projects/intake/drafts/${draftData.draft.id}/finalize`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const finalizeData = await finalizeResponse.json() as { draft?: { finalized?: { projectId?: string } }; error?: string };
+      if (!finalizeResponse.ok || !finalizeData.draft?.finalized?.projectId) {
+        throw new Error(finalizeData.error ?? "Failed to finalize project.");
+      }
+
+      const projectId = finalizeData.draft.finalized.projectId;
+
       setMessages((current) =>
-        current.filter((message) => message.id !== "processing").concat({ id: crypto.randomUUID(), role: "larry", text: replyText })
+        current.filter((message) => message.id !== "processing").concat({ id: crypto.randomUUID(), role: "larry", text: `Done — "${projectName}" is created. Open the project when you're ready.` })
       );
 
-      setSuccess({ projectName });
-      showToast({
-        tone: "success",
-        message: `"${projectName}" created.`,
-      });
+      setSuccess({ projectName, projectId });
+      showToast({ tone: "success", message: `"${projectName}" created.` });
       window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
-    } catch {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Network error. Please try again.";
       setMessages((current) =>
-        current.filter((message) => message.id !== "processing").concat({ id: crypto.randomUUID(), role: "larry", text: "Network error. Please try again." })
+        current.filter((message) => message.id !== "processing").concat({ id: crypto.randomUUID(), role: "larry", text: message })
       );
-      setError("Network error while creating the project.");
+      setError(message);
     } finally {
       setBusy(false);
     }
@@ -419,7 +416,7 @@ function ChatPane({
           </p>
           <button
             type="button"
-            onClick={onReviewActions}
+            onClick={() => onSuccess(success.projectId)}
             className="pm-btn pm-btn-primary mt-5 gap-2"
           >
             Open Project
@@ -684,7 +681,7 @@ export function StartProjectFlow({ onClose, onCreated }: StartProjectFlowProps) 
       return <ManualPane onSuccess={handleProjectCreated} showToast={setToast} />;
     }
     if (selectedMode === "chat") {
-      return <ChatPane onReviewActions={() => { onClose(); router.push("/workspace"); }} showToast={setToast} />;
+      return <ChatPane onSuccess={handleProjectCreated} showToast={setToast} />;
     }
     if (selectedMode === "transcript") {
       return <TranscriptPane onSuccess={handleProjectCreated} showToast={setToast} />;
