@@ -8,7 +8,7 @@ const SharedSchema = z.object({
   LOG_LEVEL: LogLevel,
   DATABASE_URL: z.string().min(1),
   REDIS_URL: z.string().min(1),
-  MODEL_PROVIDER: z.enum(["openai", "anthropic", "gemini"]).default("openai"),
+  MODEL_PROVIDER: z.enum(["openai", "anthropic", "gemini"]).default("gemini"),
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_MODEL: z.string().default("gpt-4o-mini"),
   ANTHROPIC_API_KEY: z.string().optional(),
