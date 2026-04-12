@@ -68,6 +68,7 @@ import {
   getLarryConversationForUser,
   insertLarryMessage,
   listLarryConversationPreviews,
+  listLarryEventSummaries,
   listLarryMessagesByIds,
   touchLarryConversation,
 } from "../src/lib/larry-ledger.js";
@@ -217,6 +218,15 @@ async function createV1PrefixedTestApp() {
   await app.ready();
 
   return app;
+}
+
+function parseSseEvents(body: string): Array<Record<string, unknown>> {
+  return body
+    .split("\n\n")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => part.replace(/^data:\s*/, ""))
+    .map((json) => JSON.parse(json) as Record<string, unknown>);
 }
 
 const appsToClose: Array<ReturnType<typeof Fastify>> = [];
@@ -1376,5 +1386,249 @@ describe("POST /ingest/transcript compatibility shim", () => {
     expect(runIntelligence).not.toHaveBeenCalled();
     expect(runAutoActions).not.toHaveBeenCalled();
     expect(storeSuggestions).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /larry/chat/stream", () => {
+  it("streams global chat fan-out results and returns final linked actions", async () => {
+    vi.mocked(getLarryConversationForUser).mockResolvedValue(null);
+    vi.mocked(createLarryConversation).mockResolvedValue({
+      id: CONVERSATION_ID,
+      projectId: null,
+      title: "Give me a global update",
+      createdAt: "2026-03-31T09:00:00.000Z",
+      updatedAt: "2026-03-31T09:00:00.000Z",
+      lastMessagePreview: null,
+      lastMessageAt: null,
+    });
+    vi.mocked(insertLarryMessage)
+      .mockResolvedValueOnce({ id: "global-stream-user", createdAt: "2026-03-31T09:00:00.000Z" })
+      .mockResolvedValueOnce({ id: "global-stream-assistant", createdAt: "2026-03-31T09:00:01.000Z" });
+    vi.mocked(getProjectSnapshot).mockImplementation(async (_db, _tenantId, projectId) => {
+      if (projectId === PROJECT_ID) {
+        return {
+          ...MOCK_SNAPSHOT,
+          project: { ...MOCK_SNAPSHOT.project, id: PROJECT_ID, name: "Alpha Launch" },
+        };
+      }
+      if (projectId === PROJECT_ID_TWO) {
+        return {
+          ...MOCK_SNAPSHOT,
+          project: { ...MOCK_SNAPSHOT.project, id: PROJECT_ID_TWO, name: "Beta Expansion" },
+        };
+      }
+      throw new Error(`Unexpected projectId ${projectId}`);
+    });
+    vi.mocked(getPendingSuggestionTexts).mockResolvedValue([]);
+    vi.mocked(runIntelligence)
+      .mockResolvedValueOnce({
+        briefing: "Alpha has one blocker in checkout QA.",
+        autoActions: [],
+        suggestedActions: [],
+      })
+      .mockResolvedValueOnce({
+        briefing: "Beta is stable with one upcoming deadline.",
+        autoActions: [],
+        suggestedActions: [],
+      });
+    vi.mocked(runAutoActions)
+      .mockResolvedValueOnce({ executedCount: 1, suggestedCount: 0, eventIds: ["ev-auto-1"] })
+      .mockResolvedValueOnce({ executedCount: 0, suggestedCount: 1, eventIds: [] });
+    vi.mocked(storeSuggestions)
+      .mockResolvedValueOnce({ executedCount: 0, suggestedCount: 1, eventIds: ["ev-sug-1"] })
+      .mockResolvedValueOnce({ executedCount: 0, suggestedCount: 0, eventIds: [] });
+    vi.mocked(listLarryEventSummaries).mockResolvedValue([
+      {
+        id: "ev-auto-1",
+        projectId: PROJECT_ID,
+        projectName: "Alpha Launch",
+        eventType: "auto_executed",
+        actionType: "risk_flag",
+        displayText: "Flag checkout QA",
+        reasoning: "Checkout is blocked",
+        payload: {},
+        executedAt: "2026-03-31T09:00:02.000Z",
+        triggeredBy: "chat",
+        chatMessage: null,
+        createdAt: "2026-03-31T09:00:02.000Z",
+        conversationId: CONVERSATION_ID,
+        requestMessageId: "global-stream-user",
+        responseMessageId: "global-stream-assistant",
+        requestedByUserId: USER_ID,
+        requestedByName: "pm",
+        approvedByUserId: null,
+        approvedByName: null,
+        approvedAt: null,
+        dismissedByUserId: null,
+        dismissedByName: null,
+        dismissedAt: null,
+        executedByKind: "larry",
+        executedByUserId: null,
+        executedByName: null,
+        executionMode: "auto",
+        sourceKind: "chat",
+        sourceRecordId: "global-stream-user",
+        conversationTitle: "Give me a global update",
+        requestMessagePreview: "Give me a global update",
+        responseMessagePreview: "Project: Alpha Launch",
+      },
+      {
+        id: "ev-sug-1",
+        projectId: PROJECT_ID,
+        projectName: "Alpha Launch",
+        eventType: "suggested",
+        actionType: "deadline_change",
+        displayText: "Extend checkout QA deadline",
+        reasoning: "Checkout slipped",
+        payload: {},
+        executedAt: null,
+        triggeredBy: "chat",
+        chatMessage: null,
+        createdAt: "2026-03-31T09:00:03.000Z",
+        conversationId: CONVERSATION_ID,
+        requestMessageId: "global-stream-user",
+        responseMessageId: "global-stream-assistant",
+        requestedByUserId: USER_ID,
+        requestedByName: "pm",
+        approvedByUserId: null,
+        approvedByName: null,
+        approvedAt: null,
+        dismissedByUserId: null,
+        dismissedByName: null,
+        dismissedAt: null,
+        executedByKind: null,
+        executedByUserId: null,
+        executedByName: null,
+        executionMode: "approval",
+        sourceKind: "chat",
+        sourceRecordId: "global-stream-user",
+        conversationTitle: "Give me a global update",
+        requestMessagePreview: "Give me a global update",
+        responseMessagePreview: "Project: Alpha Launch",
+      },
+    ]);
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+    const queryTenant = (app.db as unknown as { queryTenant: ReturnType<typeof vi.fn> }).queryTenant;
+    queryTenant.mockImplementation(async (_tenantId: string, sql: string, values?: unknown[]) => {
+      if (sql.includes("FROM project_memberships pm")) {
+        return [
+          { id: PROJECT_ID, name: "Alpha Launch" },
+          { id: PROJECT_ID_TWO, name: "Beta Expansion" },
+        ];
+      }
+      if (sql.includes("UPDATE larry_messages SET content")) {
+        expect(values).toEqual([
+          TENANT_ID,
+          "global-stream-assistant",
+          expect.stringContaining("Project: Alpha Launch"),
+        ]);
+        return [];
+      }
+      return [];
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/larry/chat/stream",
+      payload: { message: "Give me a global update" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const events = parseSseEvents(response.body);
+    expect(events[0]).toMatchObject({
+      type: "token",
+      delta: expect.stringContaining("Project: Alpha Launch"),
+    });
+    expect(events[1]).toMatchObject({
+      type: "token",
+      delta: expect.stringContaining("Project: Beta Expansion"),
+    });
+    expect(events[2]).toMatchObject({
+      type: "done",
+      conversationId: CONVERSATION_ID,
+      messageId: "global-stream-assistant",
+      actionsExecuted: 1,
+      suggestionCount: 2,
+      linkedActions: expect.arrayContaining([
+        expect.objectContaining({ id: "ev-auto-1" }),
+        expect.objectContaining({ id: "ev-sug-1" }),
+      ]),
+    });
+  });
+
+  it("streams the no-project fallback for global chat", async () => {
+    vi.mocked(getLarryConversationForUser).mockResolvedValue(null);
+    vi.mocked(createLarryConversation).mockResolvedValue({
+      id: CONVERSATION_ID,
+      projectId: null,
+      title: "What should I focus on?",
+      createdAt: "2026-03-31T09:10:00.000Z",
+      updatedAt: "2026-03-31T09:10:00.000Z",
+      lastMessagePreview: null,
+      lastMessageAt: null,
+    });
+    vi.mocked(insertLarryMessage)
+      .mockResolvedValueOnce({ id: "global-empty-user", createdAt: "2026-03-31T09:10:00.000Z" })
+      .mockResolvedValueOnce({ id: "global-empty-assistant", createdAt: "2026-03-31T09:10:01.000Z" });
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+    const queryTenant = (app.db as unknown as { queryTenant: ReturnType<typeof vi.fn> }).queryTenant;
+    queryTenant.mockImplementation(async (_tenantId: string, sql: string) => {
+      if (sql.includes("FROM project_memberships pm")) {
+        return [];
+      }
+      return [];
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/larry/chat/stream",
+      payload: { message: "What should I focus on?" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const events = parseSseEvents(response.body);
+    expect(events[0]).toMatchObject({
+      type: "token",
+      delta: expect.stringContaining("couldn't find any accessible projects"),
+    });
+    expect(events[1]).toMatchObject({
+      type: "done",
+      actionsExecuted: 0,
+      suggestionCount: 0,
+      linkedActions: [],
+    });
+    expect(getProjectSnapshot).not.toHaveBeenCalled();
+    expect(runIntelligence).not.toHaveBeenCalled();
+  });
+
+  it("prevents global streaming from reusing a project conversation", async () => {
+    vi.mocked(getLarryConversationForUser).mockResolvedValue({
+      id: CONVERSATION_ID,
+      projectId: PROJECT_ID,
+      title: "Project thread",
+      createdAt: "2026-03-31T09:20:00.000Z",
+      updatedAt: "2026-03-31T09:20:00.000Z",
+      lastMessagePreview: null,
+      lastMessageAt: null,
+    });
+
+    const app = await createTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/larry/chat/stream",
+      payload: {
+        conversationId: CONVERSATION_ID,
+        message: "Use this in global mode",
+      },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.body).toContain("Global chat cannot reuse a project conversation.");
   });
 });

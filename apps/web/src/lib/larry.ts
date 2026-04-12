@@ -11,6 +11,10 @@ export interface LarryMessage {
   actorUserId: string | null;
   actorDisplayName: string | null;
   linkedActions: WorkspaceLarryEvent[];
+  actionsExecuted?: number;
+  suggestionCount?: number;
+  clarifications?: LarryClarification[];
+  streaming?: boolean;
 }
 
 export interface LarryClarification {

@@ -314,6 +314,14 @@ interface GlobalProjectIntelligenceResult {
   error?: string;
 }
 
+interface GlobalChatRunResult {
+  fullContent: string;
+  results: GlobalProjectIntelligenceResult[];
+  linkedActions: LarryMessageRecord["linkedActions"];
+  actionsExecuted: number;
+  suggestionCount: number;
+}
+
 interface LarryRulePromptRow {
   title: string;
   description: string;
@@ -330,21 +338,39 @@ function buildGlobalNoProjectMessage(): string {
   return "I couldn't find any accessible projects to run this global chat request against. Select a project or ask an admin to grant project access.";
 }
 
-function buildGlobalGroupedMessage(results: GlobalProjectIntelligenceResult[]): string {
-  const sections = results.map((result) => {
-    const header = `Project: ${result.projectName}`;
-    if (result.error) {
-      return `${header}\nI couldn't process this project right now: ${result.error}`;
-    }
+function buildGlobalGroupedSection(result: GlobalProjectIntelligenceResult): string {
+  const header = `Project: ${result.projectName}`;
+  if (result.error) {
+    return `${header}\nI couldn't process this project right now: ${result.error}`;
+  }
 
-    const suffix =
-      result.executedCount > 0 || result.suggestedCount > 0
-        ? `\nActions: ${result.executedCount} executed, ${result.suggestedCount} pending approval.`
-        : "";
-    return `${header}\n${result.briefing}${suffix}`;
-  });
+  const suffix =
+    result.executedCount > 0 || result.suggestedCount > 0
+      ? `\nActions: ${result.executedCount} executed, ${result.suggestedCount} pending approval.`
+      : "";
+  return `${header}\n${result.briefing}${suffix}`;
+}
+
+function buildGlobalGroupedMessage(results: GlobalProjectIntelligenceResult[]): string {
+  const sections = results.map((result) => buildGlobalGroupedSection(result));
 
   return sections.join("\n\n").slice(0, 8_000);
+}
+
+function buildConversationHistoryHint(
+  messages: Array<{ role: "user" | "larry"; content: string }>
+): string {
+  const relevantMessages = messages.slice(-10);
+  if (relevantMessages.length === 0) {
+    return "";
+  }
+
+  const historyLines = relevantMessages.map((message) => {
+    const speaker = message.role === "user" ? "User" : "Larry";
+    return `${speaker}: ${message.content.slice(0, 500)}`;
+  });
+
+  return `\n\nCONVERSATION HISTORY (most recent messages in this thread — use this to understand what the user is referring to):\n${historyLines.join("\n")}`;
 }
 
 function buildRulesAndCorrectionsHint(input: {
@@ -451,6 +477,291 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
        LIMIT $3`,
       [input.tenantId, input.userId, input.limit]
     );
+  }
+
+  async function loadGlobalConversationHistoryHint(input: {
+    tenantId: string;
+    conversationId: string | null;
+    currentMessage?: string | null;
+  }): Promise<string> {
+    if (!input.conversationId) {
+      return "";
+    }
+
+    try {
+      const priorMessages = await listLarryMessagesForConversation(
+        fastify.db,
+        input.tenantId,
+        input.conversationId
+      );
+      const trimmedMessages =
+        input.currentMessage &&
+        priorMessages[priorMessages.length - 1]?.role === "user" &&
+        priorMessages[priorMessages.length - 1]?.content === input.currentMessage
+          ? priorMessages.slice(0, -1)
+          : priorMessages;
+      return buildConversationHistoryHint(trimmedMessages);
+    } catch (err) {
+      fastify.log.warn(
+        { err, tenantId: input.tenantId, conversationId: input.conversationId },
+        "Failed to load conversation history for global chat intelligence"
+      );
+      return "";
+    }
+  }
+
+  async function runGlobalChatFlow(input: {
+    tenantId: string;
+    actorUserId: string;
+    tenantRole: string;
+    message: string;
+    conversation: { id: string };
+    userMessageInsert: { id: string; createdAt: string };
+    assistantMessageId: string;
+    existingConversationId: string | null;
+    onChunk?: (text: string) => void | Promise<void>;
+  }): Promise<GlobalChatRunResult> {
+    const globalProjects = await listAccessibleProjectsForGlobalChat({
+      tenantId: input.tenantId,
+      userId: input.actorUserId,
+      tenantRole: input.tenantRole,
+      limit: GLOBAL_CHAT_PROJECT_LIMIT,
+    });
+
+    if (globalProjects.length === 0) {
+      const fallback = buildGlobalNoProjectMessage();
+
+      await fastify.db.queryTenant<Record<string, unknown>>(
+        input.tenantId,
+        `UPDATE larry_messages SET content = $3 WHERE tenant_id = $1 AND id = $2`,
+        [input.tenantId, input.assistantMessageId, fallback]
+      );
+      await touchLarryConversation(
+        fastify.db,
+        input.tenantId,
+        input.conversation.id,
+        input.message.slice(0, 80)
+      );
+
+      await writeAuditLog(fastify.db, {
+        tenantId: input.tenantId,
+        actorUserId: input.actorUserId,
+        actionType: "larry.chat.global",
+        objectType: "workspace",
+        objectId: input.tenantId,
+        details: {
+          conversationId: input.conversation.id,
+          projectCount: 0,
+          fanoutLimit: GLOBAL_CHAT_PROJECT_LIMIT,
+          linkedActionCount: 0,
+        },
+      });
+
+      if (input.onChunk) {
+        await input.onChunk(fallback);
+      }
+
+      return {
+        fullContent: fallback,
+        results: [],
+        linkedActions: [],
+        actionsExecuted: 0,
+        suggestionCount: 0,
+      };
+    }
+
+    const config = buildIntelligenceConfig(fastify.config);
+    const [activeRules, recentCorrections, conversationHistoryHint] = await Promise.all([
+      listActiveLarryRules(input.tenantId).catch(() => [] as LarryRulePromptRow[]),
+      listRecentCorrectionFeedback(input.tenantId).catch(() => [] as CorrectionPromptRow[]),
+      loadGlobalConversationHistoryHint({
+        tenantId: input.tenantId,
+        conversationId: input.existingConversationId,
+        currentMessage: input.message,
+      }),
+    ]);
+    const guidanceHint = buildRulesAndCorrectionsHint({
+      rules: activeRules,
+      corrections: recentCorrections,
+    });
+
+    const actionContext = {
+      conversationId: input.conversation.id,
+      requestMessageId: input.userMessageInsert.id,
+      responseMessageId: input.assistantMessageId,
+      requesterUserId: input.actorUserId,
+      sourceKind: "direct_chat",
+      sourceRecordId: input.userMessageInsert.id,
+    } as const;
+
+    const resultPromises = globalProjects.map(async (project): Promise<GlobalProjectIntelligenceResult> => {
+      try {
+        const snapshot = await getProjectSnapshot(fastify.db, input.tenantId, project.id);
+        const pendingTexts = await getPendingSuggestionTexts(fastify.db, input.tenantId, project.id).catch(
+          () => [] as string[]
+        );
+        const pendingClause = buildPendingClause(pendingTexts);
+        const result = await runIntelligence(
+          config,
+          snapshot,
+          `user said: "${input.message}"${conversationHistoryHint}${pendingClause}${guidanceHint ? `\n\n${guidanceHint}` : ""}`
+        );
+
+        if (result.contextUpdate) {
+          await updateProjectLarryContext(fastify.db, input.tenantId, project.id, result.contextUpdate);
+        }
+
+        try {
+          const [autoResult, suggestResult] = await Promise.all([
+            runAutoActions(
+              fastify.db,
+              input.tenantId,
+              project.id,
+              "chat",
+              result.autoActions,
+              input.message,
+              actionContext
+            ),
+            storeSuggestions(
+              fastify.db,
+              input.tenantId,
+              project.id,
+              "chat",
+              result.suggestedActions,
+              input.message,
+              actionContext
+            ),
+          ]);
+
+          await Promise.resolve(
+            insertProjectMemoryEntry(fastify.db, input.tenantId, project.id, {
+              source: "Larry chat",
+              sourceKind: "direct_chat",
+              sourceRecordId: input.userMessageInsert.id,
+              content: buildChatMemoryEntry(input.message, result.briefing),
+            })
+          ).catch((error) => {
+            fastify.log.warn(
+              { err: error, tenantId: input.tenantId, projectId: project.id, conversationId: input.conversation.id },
+              "project memory write failed for global chat turn"
+            );
+          });
+
+          return {
+            projectId: project.id,
+            projectName: project.name,
+            briefing: result.briefing,
+            executedCount: autoResult.executedCount,
+            suggestedCount: suggestResult.suggestedCount + autoResult.suggestedCount,
+            eventIds: [...autoResult.eventIds, ...suggestResult.eventIds],
+          };
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          fastify.log.warn(
+            { err: error, tenantId: input.tenantId, projectId: project.id, conversationId: input.conversation.id },
+            "global chat action execution failed for project"
+          );
+          return {
+            projectId: project.id,
+            projectName: project.name,
+            briefing: result.briefing,
+            executedCount: 0,
+            suggestedCount: 0,
+            eventIds: [],
+            error: reason,
+          };
+        }
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        fastify.log.warn(
+          { err: error, tenantId: input.tenantId, projectId: project.id, userId: input.actorUserId },
+          "global chat intelligence failed for project"
+        );
+        return {
+          projectId: project.id,
+          projectName: project.name,
+          briefing: "",
+          executedCount: 0,
+          suggestedCount: 0,
+          eventIds: [],
+          error: reason,
+        };
+      }
+    });
+
+    const finalizedResults: GlobalProjectIntelligenceResult[] = [];
+    let fullContent = "";
+    let remainingChars = 8_000;
+
+    for (const resultPromise of resultPromises) {
+      const result = await resultPromise;
+      finalizedResults.push(result);
+
+      const section = buildGlobalGroupedSection(result);
+      const chunk = fullContent.length > 0 ? `\n\n${section}` : section;
+      if (remainingChars <= 0) {
+        continue;
+      }
+
+      const nextChunk = chunk.slice(0, remainingChars);
+      if (!nextChunk) {
+        continue;
+      }
+
+      fullContent += nextChunk;
+      remainingChars -= nextChunk.length;
+
+      if (input.onChunk) {
+        await input.onChunk(nextChunk);
+      }
+    }
+
+    const linkedActionIds = finalizedResults.flatMap((result) => result.eventIds);
+    const linkedActions =
+      linkedActionIds.length === 0
+        ? []
+        : await listLarryEventSummaries(fastify.db, input.tenantId, {
+            ids: linkedActionIds,
+            sort: "chronological",
+          });
+    const actionsExecuted = finalizedResults.reduce((sum, result) => sum + result.executedCount, 0);
+    const suggestionCount = finalizedResults.reduce((sum, result) => sum + result.suggestedCount, 0);
+
+    await fastify.db.queryTenant<Record<string, unknown>>(
+      input.tenantId,
+      `UPDATE larry_messages SET content = $3 WHERE tenant_id = $1 AND id = $2`,
+      [input.tenantId, input.assistantMessageId, fullContent || "(no response)"]
+    );
+    await touchLarryConversation(
+      fastify.db,
+      input.tenantId,
+      input.conversation.id,
+      input.message.slice(0, 80)
+    );
+
+    await writeAuditLog(fastify.db, {
+      tenantId: input.tenantId,
+      actorUserId: input.actorUserId,
+      actionType: "larry.chat.global",
+      objectType: "workspace",
+      objectId: input.tenantId,
+      details: {
+        conversationId: input.conversation.id,
+        fanoutLimit: GLOBAL_CHAT_PROJECT_LIMIT,
+        touchedProjectIds: finalizedResults.map((result) => result.projectId),
+        actionsExecuted,
+        suggestionCount,
+        linkedActionCount: linkedActions.length,
+      },
+    });
+
+    return {
+      fullContent,
+      results: finalizedResults,
+      linkedActions,
+      actionsExecuted,
+      suggestionCount,
+    };
   }
 
   async function loadProjectLinkedCalendarInstallation(input: {
@@ -1979,13 +2290,6 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       if (!projectId) {
-        const globalProjects = await listAccessibleProjectsForGlobalChat({
-          tenantId,
-          userId: actorUserId,
-          tenantRole: request.user.role,
-          limit: GLOBAL_CHAT_PROJECT_LIMIT,
-        });
-
         const conversation =
           existingConversation ??
           await createLarryConversation(fastify.db, tenantId, actorUserId, {
@@ -1999,244 +2303,22 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           actorUserId,
         });
 
-        if (globalProjects.length === 0) {
-          const fallback = buildGlobalNoProjectMessage();
-          const assistantMessageInsert = await insertLarryMessage(fastify.db, tenantId, conversation.id, {
-            role: "larry",
-            content: fallback,
-          });
-          await touchLarryConversation(fastify.db, tenantId, conversation.id, message.slice(0, 80));
-
-          const persistedMessages = await listLarryMessagesByIds(fastify.db, tenantId, [
-            userMessageInsert.id,
-            assistantMessageInsert.id,
-          ]);
-          const userMessage =
-            persistedMessages.find((entry) => entry.id === userMessageInsert.id) ??
-            fallbackMessage({
-              id: userMessageInsert.id,
-              role: "user",
-              content: message,
-              createdAt: userMessageInsert.createdAt,
-              actorUserId,
-            });
-          const assistantMessage =
-            persistedMessages.find((entry) => entry.id === assistantMessageInsert.id) ??
-            fallbackMessage({
-              id: assistantMessageInsert.id,
-              role: "larry",
-              content: fallback,
-              createdAt: assistantMessageInsert.createdAt,
-            });
-
-          await writeAuditLog(fastify.db, {
-            tenantId,
-            actorUserId,
-            actionType: "larry.chat.global",
-            objectType: "workspace",
-            objectId: tenantId,
-            details: {
-              conversationId: conversation.id,
-              projectCount: 0,
-              fanoutLimit: GLOBAL_CHAT_PROJECT_LIMIT,
-              linkedActionCount: 0,
-            },
-          });
-
-          const responsePayload: LarryChatResponse = {
-            conversationId: conversation.id,
-            message: fallback,
-            userMessage,
-            assistantMessage: {
-              ...assistantMessage,
-              linkedActions: [],
-            },
-            linkedActions: [],
-            actionsExecuted: 0,
-            suggestionCount: 0,
-          };
-
-          return reply.code(200).send(responsePayload);
-        }
-
-        const config = buildIntelligenceConfig(fastify.config);
-        const [activeRules, recentCorrections] = await Promise.all([
-          listActiveLarryRules(tenantId).catch(() => [] as LarryRulePromptRow[]),
-          listRecentCorrectionFeedback(tenantId).catch(() => [] as CorrectionPromptRow[]),
-        ]);
-        const guidanceHint = buildRulesAndCorrectionsHint({
-          rules: activeRules,
-          corrections: recentCorrections,
-        });
-
-        // Load conversation history for multi-turn context (global chat)
-        let conversationHistoryHint = "";
-        if (existingConversation) {
-          try {
-            const priorMessages = await listLarryMessagesForConversation(
-              fastify.db,
-              tenantId,
-              existingConversation.id
-            );
-            const relevantMessages = priorMessages.slice(-10);
-            if (relevantMessages.length > 0) {
-              const historyLines = relevantMessages.map((m) => {
-                const speaker = m.role === "user" ? "User" : "Larry";
-                return `${speaker}: ${m.content.slice(0, 500)}`;
-              });
-              conversationHistoryHint = `\n\nCONVERSATION HISTORY (most recent messages in this thread — use this to understand what the user is referring to):\n${historyLines.join("\n")}`;
-            }
-          } catch (err) {
-            request.log.warn({ err, tenantId }, "Failed to load conversation history for global chat intelligence");
-          }
-        }
-
-        const draftRuns: Array<{
-          projectId: string;
-          projectName: string;
-          result: Awaited<ReturnType<typeof runIntelligence>> | null;
-          error?: string;
-        }> = [];
-
-        for (const project of globalProjects) {
-          try {
-            const snapshot = await getProjectSnapshot(fastify.db, tenantId, project.id);
-            const pendingTexts = await getPendingSuggestionTexts(fastify.db, tenantId, project.id).catch(
-              () => [] as string[]
-            );
-            const pendingClause = buildPendingClause(pendingTexts);
-            const result = await runIntelligence(
-              config,
-              snapshot,
-              `user said: "${message}"${conversationHistoryHint}${pendingClause}${guidanceHint ? `\n\n${guidanceHint}` : ""}`
-            );
-            if (result.contextUpdate) {
-              await updateProjectLarryContext(fastify.db, tenantId, project.id, result.contextUpdate);
-            }
-            draftRuns.push({
-              projectId: project.id,
-              projectName: project.name,
-              result,
-            });
-          } catch (error) {
-            const reason = error instanceof Error ? error.message : String(error);
-            request.log.warn(
-              { err: error, tenantId, projectId: project.id, userId: actorUserId },
-              "global chat intelligence failed for project"
-            );
-            draftRuns.push({
-              projectId: project.id,
-              projectName: project.name,
-              result: null,
-              error: reason,
-            });
-          }
-        }
-
-        const assistantText = buildGlobalGroupedMessage(
-          draftRuns.map((entry) => ({
-            projectId: entry.projectId,
-            projectName: entry.projectName,
-            briefing: entry.result?.briefing ?? "",
-            executedCount: 0,
-            suggestedCount: 0,
-            eventIds: [],
-            error: entry.error,
-          }))
-        );
         const assistantMessageInsert = await insertLarryMessage(fastify.db, tenantId, conversation.id, {
           role: "larry",
-          content: assistantText,
+          content: "",
         });
 
-        await touchLarryConversation(fastify.db, tenantId, conversation.id, message.slice(0, 80));
+        const globalResult = await runGlobalChatFlow({
+          tenantId,
+          actorUserId,
+          tenantRole: request.user.role,
+          message,
+          conversation,
+          userMessageInsert,
+          assistantMessageId: assistantMessageInsert.id,
+          existingConversationId: existingConversation?.id ?? null,
+        });
 
-        const actionContext = {
-          conversationId: conversation.id,
-          requestMessageId: userMessageInsert.id,
-          responseMessageId: assistantMessageInsert.id,
-          requesterUserId: actorUserId,
-          sourceKind: "direct_chat",
-          sourceRecordId: userMessageInsert.id,
-        };
-
-        const finalizedResults: GlobalProjectIntelligenceResult[] = [];
-        for (const draft of draftRuns) {
-          if (draft.error || !draft.result) {
-            finalizedResults.push({
-              projectId: draft.projectId,
-              projectName: draft.projectName,
-              briefing: "",
-              executedCount: 0,
-              suggestedCount: 0,
-              eventIds: [],
-              error: draft.error ?? "No intelligence result was produced for this project.",
-            });
-            continue;
-          }
-          try {
-            const [autoResult, suggestResult] = await Promise.all([
-              runAutoActions(
-                fastify.db,
-                tenantId,
-                draft.projectId,
-                "chat",
-                draft.result.autoActions,
-                message,
-                actionContext
-              ),
-              storeSuggestions(
-                fastify.db,
-                tenantId,
-                draft.projectId,
-                "chat",
-                draft.result.suggestedActions,
-                message,
-                actionContext
-              ),
-            ]);
-
-            finalizedResults.push({
-              projectId: draft.projectId,
-              projectName: draft.projectName,
-              briefing: draft.result.briefing,
-              executedCount: autoResult.executedCount,
-              suggestedCount: suggestResult.suggestedCount + autoResult.suggestedCount,
-              eventIds: [...autoResult.eventIds, ...suggestResult.eventIds],
-            });
-
-            await Promise.resolve(
-              insertProjectMemoryEntry(fastify.db, tenantId, draft.projectId, {
-                source: "Larry chat",
-                sourceKind: "direct_chat",
-                sourceRecordId: userMessageInsert.id,
-                content: buildChatMemoryEntry(message, draft.result.briefing),
-              })
-            ).catch((error) => {
-              request.log.warn(
-                { err: error, tenantId, projectId: draft.projectId, conversationId: conversation.id },
-                "project memory write failed for global chat turn"
-              );
-            });
-          } catch (error) {
-            const reason = error instanceof Error ? error.message : String(error);
-            request.log.warn(
-              { err: error, tenantId, projectId: draft.projectId, conversationId: conversation.id },
-              "global chat action execution failed for project"
-            );
-            finalizedResults.push({
-              projectId: draft.projectId,
-              projectName: draft.projectName,
-              briefing: draft.result.briefing,
-              executedCount: 0,
-              suggestedCount: 0,
-              eventIds: [],
-              error: reason,
-            });
-          }
-        }
-
-        const linkedActionIds = finalizedResults.flatMap((result) => result.eventIds);
         const persistedMessages = await listLarryMessagesByIds(fastify.db, tenantId, [
           userMessageInsert.id,
           assistantMessageInsert.id,
@@ -2255,47 +2337,25 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           fallbackMessage({
             id: assistantMessageInsert.id,
             role: "larry",
-            content: assistantText,
+            content: globalResult.fullContent,
             createdAt: assistantMessageInsert.createdAt,
           });
 
-        const linkedActions =
-          assistantMessage.linkedActions.length > 0 || linkedActionIds.length === 0
-            ? assistantMessage.linkedActions
-            : await listLarryEventSummaries(fastify.db, tenantId, {
-                ids: linkedActionIds,
-                sort: "chronological",
-              });
-        const actionsExecuted = finalizedResults.reduce((sum, result) => sum + result.executedCount, 0);
-        const suggestionCount = finalizedResults.reduce((sum, result) => sum + result.suggestedCount, 0);
-
-        await writeAuditLog(fastify.db, {
-          tenantId,
-          actorUserId,
-          actionType: "larry.chat.global",
-          objectType: "workspace",
-          objectId: tenantId,
-          details: {
-            conversationId: conversation.id,
-            fanoutLimit: GLOBAL_CHAT_PROJECT_LIMIT,
-            touchedProjectIds: finalizedResults.map((result) => result.projectId),
-            actionsExecuted,
-            suggestionCount,
-            linkedActionCount: linkedActions.length,
-          },
-        });
+        const linkedActions = assistantMessage.linkedActions.length > 0
+          ? assistantMessage.linkedActions
+          : globalResult.linkedActions;
 
         const responsePayload: LarryChatResponse = {
           conversationId: conversation.id,
-          message: assistantText,
+          message: globalResult.fullContent,
           userMessage,
           assistantMessage: {
             ...assistantMessage,
             linkedActions,
           },
           linkedActions,
-          actionsExecuted,
-          suggestionCount,
+          actionsExecuted: globalResult.actionsExecuted,
+          suggestionCount: globalResult.suggestionCount,
         };
 
         return reply.code(200).send(responsePayload);
@@ -2707,7 +2767,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
   // ── POST /chat/stream — streaming chat with real-time tool execution ────────
 
   const ChatStreamSchema = z.object({
-    projectId: z.string().uuid(),
+    projectId: z.string().uuid().optional(),
     message: z.string().trim().min(1).max(8_000),
     conversationId: z.string().uuid().optional(),
   });
@@ -2748,19 +2808,21 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const { message, conversationId: incomingConversationId } = parseResult.data;
-      const projectId = parseResult.data.projectId;
+      const projectId = parseResult.data.projectId ?? null;
       const tenantId = request.user.tenantId;
       const actorUserId = request.user.userId;
 
       // ── Access check ─────────────────────────────────────────────────────
-      await assertProjectAccessOrThrow({
-        tenantId,
-        userId: actorUserId,
-        tenantRole: request.user.role,
-        projectId,
-        mode: "read",
-        requireWritable: true,
-      });
+      if (projectId) {
+        await assertProjectAccessOrThrow({
+          tenantId,
+          userId: actorUserId,
+          tenantRole: request.user.role,
+          projectId,
+          mode: "read",
+          requireWritable: true,
+        });
+      }
 
       // ── Resolve existing conversation ─────────────────────────────────────
       let existingConversation = null;
@@ -2774,32 +2836,14 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         if (!existingConversation) {
           throw fastify.httpErrors.notFound("Conversation not found.");
         }
-      }
-
-      // ── Load project snapshot ─────────────────────────────────────────────
-      let snapshot: Awaited<ReturnType<typeof getProjectSnapshot>>;
-      try {
-        snapshot = await getProjectSnapshot(fastify.db, tenantId, projectId);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.toLowerCase().includes("not found")) {
-          throw fastify.httpErrors.notFound(msg);
-        }
-        throw fastify.httpErrors.internalServerError(`Failed to load project snapshot: ${msg}`);
-      }
-
-      // ── Load conversation history ──────────────────────────────────────────
-      let priorMessages: Array<{ role: "user" | "larry"; content: string }> = [];
-      const resolvedConversationId = existingConversation?.id ?? incomingConversationId ?? null;
-      if (resolvedConversationId) {
-        try {
-          priorMessages = await listLarryMessagesForConversation(
-            fastify.db,
-            tenantId,
-            resolvedConversationId
-          );
-        } catch {
-          // non-fatal — continue without history
+        if (existingConversation.projectId !== projectId) {
+          if (!projectId) {
+            throw fastify.httpErrors.conflict("Global chat cannot reuse a project conversation.");
+          }
+          if (!existingConversation.projectId) {
+            throw fastify.httpErrors.conflict("Project chat cannot reuse a global conversation.");
+          }
+          throw fastify.httpErrors.conflict("Conversation does not belong to this project.");
         }
       }
 
@@ -2838,6 +2882,69 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           reply.raw.write(sseData(obj));
         }
       };
+
+      if (!projectId) {
+        try {
+          const globalResult = await runGlobalChatFlow({
+            tenantId,
+            actorUserId,
+            tenantRole: request.user.role,
+            message,
+            conversation,
+            userMessageInsert,
+            assistantMessageId: larryMessageId,
+            existingConversationId: existingConversation?.id ?? null,
+            onChunk: async (text) => {
+              write({ type: "token", delta: text });
+            },
+          });
+
+          write({
+            type: "done",
+            conversationId: conversation.id,
+            messageId: larryMessageId,
+            actionsExecuted: globalResult.actionsExecuted,
+            suggestionCount: globalResult.suggestionCount,
+            linkedActions: globalResult.linkedActions,
+          });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Streaming error";
+          request.log.error({ err, tenantId, projectId }, "global stream chat flow failed");
+          write({ type: "error", message: msg });
+        } finally {
+          if (!reply.raw.destroyed) {
+            reply.raw.end();
+          }
+        }
+        return reply;
+      }
+
+      // ── Load project snapshot ─────────────────────────────────────────────
+      let snapshot: Awaited<ReturnType<typeof getProjectSnapshot>>;
+      try {
+        snapshot = await getProjectSnapshot(fastify.db, tenantId, projectId);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.toLowerCase().includes("not found")) {
+          throw fastify.httpErrors.notFound(msg);
+        }
+        throw fastify.httpErrors.internalServerError(`Failed to load project snapshot: ${msg}`);
+      }
+
+      // ── Load conversation history ──────────────────────────────────────────
+      let priorMessages: Array<{ role: "user" | "larry"; content: string }> = [];
+      const resolvedConversationId = existingConversation?.id ?? incomingConversationId ?? null;
+      if (resolvedConversationId) {
+        try {
+          priorMessages = await listLarryMessagesForConversation(
+            fastify.db,
+            tenantId,
+            resolvedConversationId
+          );
+        } catch {
+          // non-fatal — continue without history
+        }
+      }
 
       // ── Build messages array from conversation history ────────────────────
       const sdkMessages: Array<{ role: "user" | "assistant"; content: string }> = [
@@ -3019,6 +3126,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           messageId: larryMessageId,
           actionsExecuted,
           suggestionCount,
+          linkedActions: [],
         });
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Streaming error";

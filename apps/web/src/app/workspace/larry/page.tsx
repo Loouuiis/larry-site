@@ -18,7 +18,9 @@ import {
   listLarryMessages,
   readJson,
   sendLarryChat,
+  streamLarryChat,
 } from "@/lib/larry";
+import { parseLarrySseStream } from "@/lib/larry-stream";
 import { ChatInput, type AttachedFile } from "@/components/larry/ChatInput";
 import { useSmartScroll } from "@/hooks/useSmartScroll";
 
@@ -160,12 +162,17 @@ function MessageBubble({
 }) {
   const isLarry = message.role === "larry";
   const isProcessing = message.id === "processing";
+  const isStreaming = message.streaming === true;
   const actorLabel =
     typeof message.actorDisplayName === "string" && message.actorDisplayName.trim().length > 0
       ? message.actorDisplayName.trim()
       : isLarry ? "Larry" : "You";
-  const executedCount = message.linkedActions.filter((a) => a.eventType === "auto_executed" || a.eventType === "accepted").length;
-  const suggestionCount = message.linkedActions.filter((a) => a.eventType === "suggested").length;
+  const executedCount =
+    message.actionsExecuted ??
+    message.linkedActions.filter((a) => a.eventType === "auto_executed" || a.eventType === "accepted").length;
+  const suggestionCount =
+    message.suggestionCount ??
+    message.linkedActions.filter((a) => a.eventType === "suggested").length;
 
   return (
     <div className={`flex ${isLarry ? "justify-start" : "justify-end"}`}>
@@ -193,16 +200,32 @@ function MessageBubble({
         ) : (
           <>
             <p style={{ marginBottom: "6px", fontSize: "11px", fontWeight: 600, color: isLarry ? "var(--text-muted)" : "rgba(255,255,255,0.85)" }}>{actorLabel}</p>
-            <p style={{ whiteSpace: "pre-line" }}>{message.content}</p>
+            <p style={{ whiteSpace: "pre-line" }}>
+              {message.content}
+              {isLarry && isStreaming && (
+                <span
+                  aria-hidden="true"
+                  style={{
+                    display: "inline-block",
+                    width: "2px",
+                    height: "1em",
+                    backgroundColor: "#6c44f6",
+                    marginLeft: "1px",
+                    verticalAlign: "text-bottom",
+                    animation: "larry-blink 1s step-end infinite",
+                  }}
+                />
+              )}
+            </p>
           </>
         )}
-        {isLarry && !isProcessing && (executedCount > 0 || suggestionCount > 0) && (
+        {isLarry && !isProcessing && !isStreaming && (executedCount > 0 || suggestionCount > 0) && (
           <p style={{ marginTop: "8px", fontSize: "11px", color: "#6c44f6" }}>
             {executedCount} action{executedCount !== 1 ? "s" : ""} taken
             {suggestionCount > 0 ? ` · ${suggestionCount} suggestion${suggestionCount !== 1 ? "s" : ""} pending` : ""}
           </p>
         )}
-        {isLarry && !isProcessing && <LinkedActionChips actions={message.linkedActions ?? []} projectNameById={projectNameById} />}
+        {isLarry && !isProcessing && !isStreaming && <LinkedActionChips actions={message.linkedActions ?? []} projectNameById={projectNameById} />}
       </div>
     </div>
   );
@@ -389,7 +412,7 @@ export default function AskLarryPage() {
     setError(null);
     setInput("");
     const optimisticUserId = `user-${crypto.randomUUID()}`;
-    const processingId = "processing";
+    const streamingLarryId = `streaming-${crypto.randomUUID()}`;
 
     try {
       const userMessage: LarryMessage = {
@@ -397,45 +420,123 @@ export default function AskLarryPage() {
         reasoning: null, actorUserId: null, actorDisplayName: null, linkedActions: [],
       };
       setMessages((current) => [
-        ...current.filter((m) => m.id !== processingId),
+        ...current.filter((m) => m.id !== "processing"),
         userMessage,
-        { id: processingId, role: "larry", content: "Processing...", createdAt: new Date().toISOString(), reasoning: null, actorUserId: null, actorDisplayName: null, linkedActions: [] },
+        {
+          id: streamingLarryId,
+          role: "larry",
+          content: "",
+          createdAt: new Date().toISOString(),
+          reasoning: null,
+          actorUserId: null,
+          actorDisplayName: null,
+          linkedActions: [],
+          streaming: true,
+        },
       ]);
 
-      const { response, data } = await sendLarryChat({
-        projectId: activeProjectId ?? undefined,
-        message: text,
-        conversationId: selectedConversationId ?? undefined,
-      });
+      let didStream = false;
+      let finalConversationId: string | null = null;
+      let hadActions = false;
 
-      if (!response.ok) {
+      const updateStreamingMessage = (
+        updater: (previous: LarryMessage) => Partial<LarryMessage>
+      ) => {
         setMessages((current) =>
-          current.filter((m) => m.id !== processingId).concat({
-            id: crypto.randomUUID(), role: "larry", content: data.error ?? "Something went wrong.",
-            createdAt: new Date().toISOString(), reasoning: null, actorUserId: null, actorDisplayName: null, linkedActions: [],
-          })
+          current.map((message) => (message.id === streamingLarryId ? { ...message, ...updater(message) } : message))
         );
-        return;
+      };
+
+      try {
+        const response = await streamLarryChat({
+          projectId: activeProjectId ?? undefined,
+          message: text,
+          conversationId: selectedConversationId ?? undefined,
+        });
+
+        if (response.ok && response.body) {
+          didStream = true;
+
+          for await (const streamEvent of parseLarrySseStream(response.body)) {
+            switch (streamEvent.type) {
+              case "token":
+                updateStreamingMessage((previous) => ({ content: previous.content + streamEvent.delta }));
+                break;
+              case "done":
+                finalConversationId = streamEvent.conversationId;
+                setSelectedConversationId(streamEvent.conversationId);
+                updateStreamingMessage((previous) => ({
+                  id: streamEvent.messageId,
+                  streaming: false,
+                  actionsExecuted: streamEvent.actionsExecuted,
+                  suggestionCount: streamEvent.suggestionCount,
+                  linkedActions:
+                    (streamEvent.linkedActions?.length ?? 0) > 0
+                      ? streamEvent.linkedActions
+                      : previous.linkedActions,
+                }));
+                setMessages((current) => current.filter((message) => message.id !== optimisticUserId));
+                if ((streamEvent.actionsExecuted ?? 0) > 0 || (streamEvent.suggestionCount ?? 0) > 0) {
+                  hadActions = true;
+                }
+                break;
+              case "error":
+                updateStreamingMessage((previous) => ({
+                  content: previous.content || streamEvent.message,
+                  streaming: false,
+                }));
+                break;
+              default:
+                break;
+            }
+          }
+        }
+      } catch {
+        didStream = false;
       }
 
-      setSelectedConversationId(data.conversationId);
-      setMessages((current) =>
-        current
-          .filter((m) => m.id !== optimisticUserId && m.id !== processingId)
-          .concat(data.userMessage, {
-            ...data.assistantMessage,
-            linkedActions: data.assistantMessage.linkedActions?.length > 0 ? data.assistantMessage.linkedActions : data.linkedActions,
-          })
-      );
+      if (!didStream) {
+        const { response, data } = await sendLarryChat({
+          projectId: activeProjectId ?? undefined,
+          message: text,
+          conversationId: selectedConversationId ?? undefined,
+        });
 
-      await refreshConversations(data.conversationId);
+        if (!response.ok) {
+          setMessages((current) =>
+            current.filter((m) => m.id !== streamingLarryId).concat({
+              id: crypto.randomUUID(), role: "larry", content: data.error ?? "Something went wrong.",
+              createdAt: new Date().toISOString(), reasoning: null, actorUserId: null, actorDisplayName: null, linkedActions: [],
+            })
+          );
+          return;
+        }
 
-      if ((data.actionsExecuted ?? 0) > 0 || (data.suggestionCount ?? 0) > 0 || (data.linkedActions?.length ?? 0) > 0) {
+        finalConversationId = data.conversationId;
+        setSelectedConversationId(data.conversationId);
+        setMessages((current) =>
+          current
+            .filter((m) => m.id !== optimisticUserId && m.id !== streamingLarryId)
+            .concat(data.userMessage, {
+              ...data.assistantMessage,
+              linkedActions: data.assistantMessage.linkedActions?.length > 0 ? data.assistantMessage.linkedActions : data.linkedActions,
+            })
+        );
+        if ((data.actionsExecuted ?? 0) > 0 || (data.suggestionCount ?? 0) > 0 || (data.linkedActions?.length ?? 0) > 0) {
+          hadActions = true;
+        }
+      }
+
+      if (finalConversationId) {
+        await refreshConversations(finalConversationId);
+      }
+
+      if (hadActions) {
         window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
       }
     } catch (err) {
       setMessages((current) =>
-        current.filter((m) => m.id !== processingId).concat({
+        current.filter((m) => m.id !== streamingLarryId).concat({
           id: crypto.randomUUID(), role: "larry", content: "Network error. Please try again.",
           createdAt: new Date().toISOString(), reasoning: null, actorUserId: null, actorDisplayName: null, linkedActions: [],
         })
@@ -448,6 +549,12 @@ export default function AskLarryPage() {
 
   return (
     <div className="min-h-0 overflow-hidden" style={{ background: "var(--page-bg)", padding: "24px", height: "100%" }}>
+      <style>{`
+        @keyframes larry-blink {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0; }
+        }
+      `}</style>
       <div style={{ display: "flex", height: "100%", width: "100%", maxWidth: "1440px", margin: "0 auto", flexDirection: "column", gap: "20px" }}>
         {error && (
           <div style={{ borderRadius: "var(--radius-card)", border: "1px solid #fecaca", background: "#fef2f2", padding: "12px 16px", fontSize: "13px", color: "#b91c1c" }}>

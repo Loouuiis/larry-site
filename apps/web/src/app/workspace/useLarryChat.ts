@@ -11,6 +11,7 @@ import {
   type LarryConversation,
   type LarryMessage as PersistedLarryMessage,
 } from "@/lib/larry";
+import { parseLarrySseStream } from "@/lib/larry-stream";
 
 export interface LarryMessage {
   id: string;
@@ -30,66 +31,6 @@ export interface LarryMessage {
 interface ProactiveItem {
   id: string;
   message: string;
-}
-
-// ── SSE event types mirroring packages/ai/src/chat.ts ───────────────────────
-
-type ChatStreamEvent =
-  | { type: "token"; delta: string }
-  | { type: "tool_start"; id: string; name: string; displayText: string }
-  | {
-      type: "tool_done";
-      id: string;
-      name: string;
-      success: boolean;
-      actionId: string | null;
-      eventType: "auto_executed" | "suggested" | "error";
-      displayText: string;
-      error?: string;
-    }
-  | {
-      type: "done";
-      conversationId: string;
-      messageId: string;
-      actionsExecuted: number;
-      suggestionCount: number;
-    }
-  | { type: "error"; message: string };
-
-// ── SSE stream parser ────────────────────────────────────────────────────────
-
-async function* parseSseStream(
-  body: ReadableStream<Uint8Array>
-): AsyncGenerator<ChatStreamEvent> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-
-      // SSE events are separated by double newlines
-      const parts = buffer.split("\n\n");
-      buffer = parts.pop() ?? "";
-
-      for (const part of parts) {
-        const dataLine = part.split("\n").find((l) => l.startsWith("data: "));
-        if (!dataLine) continue;
-        const jsonStr = dataLine.slice(6).trim();
-        if (!jsonStr) continue;
-        try {
-          yield JSON.parse(jsonStr) as ChatStreamEvent;
-        } catch {
-          // Skip malformed events
-        }
-      }
-    }
-  } finally {
-    reader.releaseLock();
-  }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -297,93 +238,92 @@ export function useLarryChat(projectId?: string) {
       let finalConversationId: string | null = null;
       let hadActions = false;
 
-      // ── Attempt streaming path (project-scoped only) ─────────────────────
-      if (projectId) {
-        try {
-          const response = await streamLarryChat({
-            projectId,
-            message: text,
-            conversationId: conversationId ?? undefined,
-          });
+      // ── Attempt streaming path first for both project and global chat ─────
+      try {
+        const response = await streamLarryChat({
+          projectId,
+          message: text,
+          conversationId: conversationId ?? undefined,
+        });
 
-          if (response.ok && response.body) {
-            didStream = true;
+        if (response.ok && response.body) {
+          didStream = true;
 
-            for await (const event of parseSseStream(response.body)) {
-              switch (event.type) {
-                case "token":
-                  updateStreamingMessage((prev) => ({ content: prev.content + event.delta }));
-                  break;
+          for await (const event of parseLarrySseStream(response.body)) {
+            switch (event.type) {
+              case "token":
+                updateStreamingMessage((prev) => ({ content: prev.content + event.delta }));
+                break;
 
-                case "tool_start": {
-                  const chip = toolEventToChip(
-                    event.id,
-                    event.name,
-                    event.displayText,
-                    "suggested", // pending — will update on tool_done
-                    true         // _streaming: true = "Running…" badge
-                  );
-                  pendingChips.set(event.id, chip);
-                  updateStreamingMessage((prev) => ({
-                    linkedActions: [...prev.linkedActions, chip],
-                  }));
-                  break;
-                }
-
-                case "tool_done": {
-                  const updatedChip = toolEventToChip(
-                    event.id,
-                    event.name,
-                    event.displayText,
-                    event.success
-                      ? event.eventType === "auto_executed"
-                        ? "auto_executed"
-                        : "suggested"
-                      : "suggested",
-                    false // done streaming
-                  );
-                  pendingChips.set(event.id, updatedChip);
-                  updateStreamingMessage((prev) => ({
-                    linkedActions: prev.linkedActions.map((a) =>
-                      a.id === event.id ? updatedChip : a
-                    ),
-                  }));
-                  if (event.success) hadActions = true;
-                  break;
-                }
-
-                case "done":
-                  finalConversationId = event.conversationId;
-                  setConversationId(event.conversationId);
-                  updateStreamingMessage((prev) => ({
-                    id: event.messageId,
-                    streaming: false,
-                    actionsExecuted: event.actionsExecuted,
-                    suggestionCount: event.suggestionCount,
-                  }));
-                  // Remove the optimistic user message (real one is now in DB)
-                  setMessages((prev) =>
-                    prev.filter((m) => m.id !== optimisticUserId)
-                  );
-                  break;
-
-                case "error":
-                  // Show error inline if we haven't received any content yet
-                  updateStreamingMessage((prev) => ({
-                    content: prev.content || event.message,
-                    streaming: false,
-                  }));
-                  break;
+              case "tool_start": {
+                const chip = toolEventToChip(
+                  event.id,
+                  event.name,
+                  event.displayText,
+                  "suggested",
+                  true
+                );
+                pendingChips.set(event.id, chip);
+                updateStreamingMessage((prev) => ({
+                  linkedActions: [...prev.linkedActions, chip],
+                }));
+                break;
               }
+
+              case "tool_done": {
+                const updatedChip = toolEventToChip(
+                  event.id,
+                  event.name,
+                  event.displayText,
+                  event.success
+                    ? event.eventType === "auto_executed"
+                      ? "auto_executed"
+                      : "suggested"
+                    : "suggested",
+                  false
+                );
+                pendingChips.set(event.id, updatedChip);
+                updateStreamingMessage((prev) => ({
+                  linkedActions: prev.linkedActions.map((a) =>
+                    a.id === event.id ? updatedChip : a
+                  ),
+                }));
+                if (event.success) hadActions = true;
+                break;
+              }
+
+              case "done":
+                finalConversationId = event.conversationId;
+                setConversationId(event.conversationId);
+                updateStreamingMessage((prev) => ({
+                  id: event.messageId,
+                  streaming: false,
+                  actionsExecuted: event.actionsExecuted,
+                  suggestionCount: event.suggestionCount,
+                  linkedActions:
+                    (event.linkedActions?.length ?? 0) > 0
+                      ? event.linkedActions
+                      : prev.linkedActions,
+                }));
+                setMessages((prev) => prev.filter((m) => m.id !== optimisticUserId));
+                if ((event.actionsExecuted ?? 0) > 0 || (event.suggestionCount ?? 0) > 0) {
+                  hadActions = true;
+                }
+                break;
+
+              case "error":
+                updateStreamingMessage((prev) => ({
+                  content: prev.content || event.message,
+                  streaming: false,
+                }));
+                break;
             }
-          } else {
-            // Non-200 from stream endpoint — fall back below
-            didStream = false;
           }
-        } catch {
-          // Network error on streaming path — fall back below
+        } else {
           didStream = false;
         }
+      } catch {
+        didStream = false;
       }
 
       // ── Fallback: non-streaming path (global chat or stream failure) ──────
