@@ -544,9 +544,10 @@ async function handleTranscriptCanonicalEvent(
     );
     await reconcileMeetingNote(tenantId, meetingNoteId, 0, {
       projectId: resolvedProjectId,
-      summary: `Transcript saved. Task extraction failed: ${reason.slice(0, 100)}`,
     });
-    return;
+    throw aiError instanceof Error
+      ? aiError
+      : new Error(`Transcript extraction failed: ${reason}`);
   }
 
   // Convert extracted tasks into suggested task_create actions

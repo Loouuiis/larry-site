@@ -333,6 +333,57 @@ describe("processQueueJob canonical_event.created", () => {
     ]);
   });
 
+  it("fails transcript processing without writing the extraction error into the meeting summary", async () => {
+    contextMocks.queryTenant.mockImplementation(async (_tenantId, sql) => {
+      const statement = String(sql);
+      if (statement.includes("FROM canonical_events")) {
+        return [
+          {
+            id: CANONICAL_EVENT_ID,
+            source: "transcript",
+            payload: {
+              transcript: "Transcript body with enough context to produce actions.",
+              meetingNoteId: MEETING_NOTE_ID,
+              projectId: PROJECT_ID,
+              submittedByUserId: USER_ID,
+            },
+          },
+        ];
+      }
+      if (statement.includes("FROM meeting_notes")) {
+        return [{ id: MEETING_NOTE_ID, project_id: PROJECT_ID, title: "Weekly sync", summary: null }];
+      }
+      return [];
+    });
+
+    vi.mocked(listLarryEventIdsBySource).mockResolvedValueOnce([]);
+    vi.mocked(generateBootstrapFromTranscript).mockRejectedValueOnce(
+      new Error("Your project has exceeded its monthly spending cap.")
+    );
+
+    await expect(
+      processQueueJob(createCanonicalEventJob({ canonicalEventId: CANONICAL_EVENT_ID }) as never)
+    ).rejects.toThrow("Your project has exceeded its monthly spending cap.");
+
+    const updateCalls = contextMocks.queryTenant.mock.calls.filter(([, sql]) =>
+      String(sql).includes("UPDATE meeting_notes")
+    );
+    expect(updateCalls).toHaveLength(1);
+    expect(updateCalls[0]?.[2]).toEqual([
+      TENANT_ID,
+      MEETING_NOTE_ID,
+      PROJECT_ID,
+      null,
+      0,
+    ]);
+
+    expect(
+      contextMocks.queryTenant.mock.calls.some(([, sql]) => String(sql).includes("INSERT INTO documents"))
+    ).toBe(false);
+    expect(storeSuggestions).not.toHaveBeenCalled();
+    expect(insertProjectMemoryEntry).not.toHaveBeenCalled();
+  });
+
   it("processes email canonical events with project scope into the Larry ledger", async () => {
     contextMocks.queryTenant.mockResolvedValueOnce([
       {

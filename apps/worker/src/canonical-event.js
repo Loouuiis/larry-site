@@ -328,9 +328,10 @@ async function handleTranscriptCanonicalEvent(tenantId, canonicalEvent) {
         console.error(`[canonical-event] transcript ${canonicalEvent.id} extraction failed (${reason}); saving meeting note without tasks`);
         await reconcileMeetingNote(tenantId, meetingNoteId, 0, {
             projectId: resolvedProjectId,
-            summary: `Transcript saved. Task extraction failed: ${reason.slice(0, 100)}`,
         });
-        return;
+        throw aiError instanceof Error
+            ? aiError
+            : new Error(`Transcript extraction failed: ${reason}`);
     }
     const suggestedActions = extractedTasks.map((task) => ({
         type: "task_create",
