@@ -141,3 +141,66 @@ passes; full api suite: 248/248.
   Started, 0 In Progress, 0 At Risk, 0 Overdue, 0 Completed.**
 - Ratio: 3 transcript action items → 3 tasks. No duplicates.
 - Screenshot: `.playwright-mcp/step2-no-duplicate-tasks-verified-prod-2026-04-12.png`.
+
+### Step 3 — Modify flow — M-1, M-4 — **FIXED** (M-2 / M-3 deferred)
+
+**Commit:** `9ae721c` *fix(modify): hide system prompt + dismiss source suggestion (M-1, M-4)*
+
+**M-1 root cause:** `POST /v1/larry/events/:id/modify` wrote
+`"The user wants to modify this action: {displayText}. Original
+reasoning: {reasoning}. Action type: {actionType}."` directly into
+`larry_messages` with `role: 'larry'`. Rendered as Larry's first
+visible bubble — looked like a leaked system prompt.
+
+**M-1 fix:** replaced with a user-facing opener
+`Let's refine "{displayText}". Tell me what to change — assignee,
+deadline, priority, wording — and I'll queue an updated version in the
+Action Centre.` The action being modified is already communicated by
+the `launch=modify` URL parameters and the conversation title, so no
+context is lost.
+
+**M-4 root cause:** the modify endpoint did nothing to the source
+suggestion. When the user's subsequent chat message produced a
+`Create task: X with updates` card, the original remained pending
+alongside it; accepting both duplicated the task.
+
+**M-4 fix:** the modify endpoint now atomically calls
+`markLarryEventDismissed(source_event_id, actorUserId,
+"modify-superseded")` before responding. The user's intent in clicking
+Modify is "don't accept this as-is" — so dismissal is safe even if
+they abandon the refinement chat.
+
+**Regression guard:** two tests in `apps/api/tests/larry-chat.test.ts`
+under `describe("POST /larry/events/:id/modify", ...)` — pre-fix both
+failed (inserted-content matched the leaked-template regex; `markLarryEventDismissed` called 0 times).
+Post-fix both pass; full api suite: 250/250.
+
+**Production verification (post-deploy, hostname `fe9f5e1aae20`):**
+- Clicked Modify on the *Implement Server-Side Session Revocation
+  List...* suggestion on project
+  `c88a69db-9a93-4f8f-a5b8-f1f05d86497a`.
+- `POST /api/workspace/larry/events/…/modify → 200`; frontend opened
+  `/workspace/larry?…&launch=modify&sourceKind=meeting&eventType=suggested`.
+- Larry's first (and only) bubble text: *"Let's refine 'Create task:
+  \"Implement Server-Side Session Revocation List, JWT TTL Shrink, and
+  Password Reset Revocation\"'. Tell me what to change — assignee,
+  deadline, priority, wording — and I'll queue an updated version in
+  the Action Centre."* — no "The user wants to modify this action:"
+  template.
+- Returning to `/workspace/actions`: Pending review dropped from **2 →
+  1**; the Session Revocation card is no longer in Pending. Only a
+  stale Rate-Limiting card from a pre-deploy test click remains.
+- Screenshot: `.playwright-mcp/step3-m1-m4-verified-prod-2026-04-12.png`.
+
+**Deferred to follow-up ticket:**
+- **M-2** (user's typed message not rendered in FAB / inline project
+  chat panels — `/workspace/larry` already has optimistic insert at
+  `apps/web/src/app/workspace/larry/page.tsx:455`): lives in separate
+  chat-panel components and needs their `handleSend` to add an
+  optimistic user-message insert before the fetch.
+- **M-3** (generic modify confirmation — "I queued 'Create task: X
+  with updates' in the Action Centre for you to review." — doesn't
+  echo the fields the user actually changed): requires threading the
+  original action context into the chat system prompt when
+  `conversation.sourceEventId` is set, plus prompt-engineering to ask
+  Larry to echo the diff. Non-trivial; filed as a standalone ticket.
