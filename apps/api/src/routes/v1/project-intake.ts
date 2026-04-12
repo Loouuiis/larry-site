@@ -262,6 +262,107 @@ function tokenizeTaskTitles(text: string): string[] {
     .filter((chunk) => chunk.length > 0);
 }
 
+// QA-2026-04-12 C-4 / Polish #9: answers like "not sure yet", "tbd", "idk",
+// blanks, or very short fragments are placeholders, not content. Bootstrapping
+// from them produces tasks literally titled "Not sure yet" and summaries that
+// echo the user's non-answer back at them. Detect placeholders explicitly so
+// we can route to a follow-up question instead.
+export const PLACEHOLDER_ANSWER_PATTERN =
+  /^\s*(n\/?a|na|tbd|idk|i\s*don'?t\s*know|not\s*sure(?:\s*yet)?|dunno|unsure|nothing|none|make\s+it\s+better|improve\s+it|do\s+it|.{0,3})\s*$/i;
+
+export function isPlaceholderAnswer(text: string | null | undefined): boolean {
+  if (!text) return true;
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return true;
+  return PLACEHOLDER_ANSWER_PATTERN.test(trimmed);
+}
+
+// I-1: extract explicit dates from milestone + deliverables strings so the
+// bootstrap prompt can mandate a task per stated milestone. "landing page by
+// May 15, webinars in June, wrap-up end of July" must produce tasks due in
+// May, June and July — not six tasks clustered into the first two weeks.
+const MONTH_NAMES = [
+  "january","february","march","april","may","june",
+  "july","august","september","october","november","december",
+];
+const MONTH_ABBRS = ["jan","feb","mar","apr","may","jun","jul","aug","sep","sept","oct","nov","dec"];
+
+function monthIndex(name: string): number {
+  const lower = name.toLowerCase();
+  const full = MONTH_NAMES.indexOf(lower);
+  if (full >= 0) return full;
+  const abbr = MONTH_ABBRS.indexOf(lower);
+  if (abbr === -1) return -1;
+  return abbr === 3 && lower === "sept" ? 8 : abbr; // "sept" → Sep
+}
+
+function chooseYear(month: number, today: Date): number {
+  const y = today.getUTCFullYear();
+  const todayMonth = today.getUTCMonth();
+  const todayDay = today.getUTCDate();
+  if (month < todayMonth || (month === todayMonth && todayDay > 28)) {
+    return y + 1;
+  }
+  return y;
+}
+
+function lastDayOfMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+}
+
+export function extractMilestoneDates(
+  text: string,
+  today: Date = new Date()
+): string[] {
+  if (!text) return [];
+  const iso = (y: number, m: number, d: number) =>
+    `${y.toString().padStart(4, "0")}-${(m + 1).toString().padStart(2, "0")}-${d.toString().padStart(2, "0")}`;
+  const found = new Set<string>();
+
+  const monthAlt = [...MONTH_NAMES, ...MONTH_ABBRS].join("|");
+
+  // "May 15", "May 15th", "May 15, 2026"
+  const re1 = new RegExp(`\\b(${monthAlt})\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:\\s*,?\\s*(\\d{4}))?\\b`, "gi");
+  let m: RegExpExecArray | null;
+  while ((m = re1.exec(text)) !== null) {
+    const mi = monthIndex(m[1]);
+    const day = parseInt(m[2], 10);
+    if (mi < 0 || day < 1 || day > 31) continue;
+    const year = m[3] ? parseInt(m[3], 10) : chooseYear(mi, today);
+    found.add(iso(year, mi, Math.min(day, lastDayOfMonth(year, mi))));
+  }
+
+  // "end of July", "end of July 2026", "late July"
+  const re2 = new RegExp(`\\b(?:end\\s+of|late)\\s+(${monthAlt})(?:\\s+(\\d{4}))?\\b`, "gi");
+  while ((m = re2.exec(text)) !== null) {
+    const mi = monthIndex(m[1]);
+    if (mi < 0) continue;
+    const year = m[2] ? parseInt(m[2], 10) : chooseYear(mi, today);
+    found.add(iso(year, mi, lastDayOfMonth(year, mi)));
+  }
+
+  // "in June", "in June 2026", "by July" — anchor to mid-month since no day
+  const re3 = new RegExp(`\\b(?:in|by|during)\\s+(${monthAlt})(?:\\s+(\\d{4}))?\\b`, "gi");
+  while ((m = re3.exec(text)) !== null) {
+    const mi = monthIndex(m[1]);
+    if (mi < 0) continue;
+    const year = m[2] ? parseInt(m[2], 10) : chooseYear(mi, today);
+    found.add(iso(year, mi, 15));
+  }
+
+  // "YYYY-MM-DD" / "MM/DD/YYYY" / "DD/MM/YYYY" — accept ISO and slash forms
+  const re4 = /\b(\d{4})-(\d{1,2})-(\d{1,2})\b/g;
+  while ((m = re4.exec(text)) !== null) {
+    const y = parseInt(m[1], 10);
+    const mo = parseInt(m[2], 10) - 1;
+    const d = parseInt(m[3], 10);
+    if (mo < 0 || mo > 11 || d < 1 || d > 31) continue;
+    found.add(iso(y, mo, Math.min(d, lastDayOfMonth(y, mo))));
+  }
+
+  return Array.from(found).sort();
+}
+
 function buildIntakeSeedMessage(input: { answers: string[]; summary: string; projectName: string }): string {
   const [name = "", outcome = "", milestone = "", deliverables = "", risks = ""] = input.answers;
   return [
@@ -354,9 +455,43 @@ async function buildBootstrapFromDraft(draft: IntakeDraftModel, aiConfig?: Intel
   const deliverables = answers[3] ?? "";
   const risks = answers[4] ?? "";
 
+  // C-4 guard: if the user's outcome, deliverables, AND milestone answers are
+  // all placeholders ("not sure yet" / blank / <= 3 chars), refuse to bootstrap
+  // and return a follow-up question instead. Prevents tasks like
+  // "Not sure yet" and summaries that echo the user's non-answers.
+  const placeholderCount = [outcome, deliverables, milestone].filter(isPlaceholderAnswer).length;
+  if (placeholderCount >= 2) {
+    const summary = `I need a bit more to set this up — ${projectName} doesn't have enough detail yet to propose useful tasks.`;
+    const followUp = [
+      outcome.trim().length === 0 || isPlaceholderAnswer(outcome)
+        ? "What would success look like for this project? Be concrete — what gets shipped or decided?"
+        : null,
+      deliverables.trim().length === 0 || isPlaceholderAnswer(deliverables)
+        ? "What are the main deliverables or workstreams? Even a rough list helps."
+        : null,
+      milestone.trim().length === 0 || isPlaceholderAnswer(milestone)
+        ? "Is there a hard deadline or a milestone date I should anchor to?"
+        : null,
+    ].filter((q): q is string => Boolean(q));
+    return {
+      summary,
+      tasks: [],
+      actions: [],
+      seedMessage: [
+        `I couldn't bootstrap ${projectName} from the intake answers — they looked like placeholders rather than content.`,
+        "Ask the user these follow-up questions and then rerun the intake:",
+        followUp.map((q, i) => `${i + 1}. ${q}`).join("\n"),
+      ].join("\n\n"),
+    };
+  }
+
   // --- AI-powered task generation ---
   let tasks: IntakeBootstrapTask[];
   let summary: string;
+
+  const explicitMilestoneDates = extractMilestoneDates(
+    [milestone, deliverables, outcome].join("\n")
+  );
 
   if (aiConfig && aiConfig.provider !== "mock") {
     try {
@@ -366,6 +501,7 @@ async function buildBootstrapFromDraft(draft: IntakeDraftModel, aiConfig?: Intel
         milestone,
         deliverables,
         risks,
+        explicitMilestoneDates,
       });
 
       tasks = aiResult.tasks.map((t) => ({
@@ -375,6 +511,25 @@ async function buildBootstrapFromDraft(draft: IntakeDraftModel, aiConfig?: Intel
         assigneeName: null,
         priority: t.priority ?? "medium",
       }));
+
+      // I-1 safety net: if the user stated explicit milestone dates but the AI
+      // clustered all tasks into a single week (ignoring those dates), inject a
+      // milestone task per missing date so the user's schedule is preserved.
+      if (tasks.length > 0 && explicitMilestoneDates.length > 0) {
+        const coveredDates = new Set(
+          tasks.map((t) => t.dueDate).filter((d): d is string => typeof d === "string")
+        );
+        for (const date of explicitMilestoneDates) {
+          if (coveredDates.has(date)) continue;
+          tasks.push({
+            title: `Milestone deliverable due ${date}`,
+            description: `User-stated milestone date from intake. Confirm scope and owner before the date.`,
+            dueDate: date,
+            assigneeName: null,
+            priority: "high",
+          });
+        }
+      }
 
       // AI returned followUpQuestions instead of tasks — fall back to tokenizer so
       // the project is never created empty without explanation.
@@ -509,11 +664,12 @@ function fallbackTokenizeBootstrap(
     priority: "medium",
   }));
 
+  // Polish #9: never echo the user's placeholder answers back as content.
   const summary = [
     `Larry prepared ${tasks.length} starter task${tasks.length === 1 ? "" : "s"} for ${projectName}.`,
-    outcome ? `Outcome focus: ${outcome}` : null,
-    milestone ? `Milestone: ${milestone}` : null,
-    risks ? `Watchouts: ${risks}` : null,
+    outcome && !isPlaceholderAnswer(outcome) ? `Outcome focus: ${outcome}` : null,
+    milestone && !isPlaceholderAnswer(milestone) ? `Milestone: ${milestone}` : null,
+    risks && !isPlaceholderAnswer(risks) ? `Watchouts: ${risks}` : null,
   ]
     .filter((line): line is string => Boolean(line))
     .join(" ");

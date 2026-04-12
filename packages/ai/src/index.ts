@@ -657,6 +657,10 @@ export interface BootstrapInput {
   milestone: string;
   deliverables: string;
   risks: string;
+  // QA-2026-04-12 I-1: explicit dates parsed from milestone/deliverables text.
+  // When present, the generator MUST emit at least one task per date so
+  // user-stated milestones never get silently clustered into the first week.
+  explicitMilestoneDates?: string[];
 }
 
 export interface BootstrapTask {
@@ -758,6 +762,7 @@ export async function generateBootstrapTasks(
     "- Also provide a short summary sentence describing what you set up and the implied timeline.",
   ].join("\n");
 
+  const explicitDates = input.explicitMilestoneDates ?? [];
   const userPrompt = [
     `Project: ${input.projectName}`,
     `Desired outcome: ${input.outcome || "Not specified"}`,
@@ -766,7 +771,17 @@ export async function generateBootstrapTasks(
     `Risks and constraints: ${input.risks || "Not specified"}`,
     "",
     `Today's date: ${today}`,
-  ].join("\n");
+    explicitDates.length > 0
+      ? [
+          "",
+          "HARD MILESTONE DATES — THE USER STATED THESE EXPLICITLY:",
+          ...explicitDates.map((d) => `  - ${d}`),
+          "You MUST emit at least one task with dueDate set to EACH of these dates.",
+          "These represent the user's actual schedule. Clustering all tasks before the first date is a critical failure.",
+          "Create preparation tasks in the lead-up to each milestone AND the milestone deliverable itself on the date.",
+        ].join("\n")
+      : "",
+  ].filter((line) => line !== "").join("\n");
 
   const { object } = await generateObject({
     model: createModel(config),
