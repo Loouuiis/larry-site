@@ -39,12 +39,78 @@ export interface ToolCallResult {
 
 // ── System prompt ─────────────────────────────────────────────────────────────
 
+// Exported for unit testing of date-anchoring behaviour (QA-2026-04-12 C-7).
+export function computeDateContext(now: Date = new Date()): {
+  today: string;
+  dayOfWeek: string;
+  nextMonday: string;
+  nextTuesday: string;
+  nextWednesday: string;
+  nextThursday: string;
+  nextFriday: string;
+  nextSaturday: string;
+  nextSunday: string;
+} {
+  const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+
+  // Normalise `now` to a UTC date-only anchor so timezone drift near midnight
+  // doesn't flip the day-of-week calculation.
+  const anchor = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const dayIdx = anchor.getUTCDay(); // 0 = Sunday
+
+  // "next <weekday>" := the NEXT occurrence of that weekday strictly after today.
+  //   today is Friday, "next Friday" = +7 days
+  //   today is Sunday, "next Friday" = +5 days
+  // This matches how QA's test tenant interpreted "next Friday" on Sun Apr 12.
+  const daysUntil = (targetIdx: number): number => {
+    const raw = (targetIdx - dayIdx + 7) % 7;
+    return raw === 0 ? 7 : raw;
+  };
+
+  const addDays = (n: number): string => {
+    const d = new Date(anchor);
+    d.setUTCDate(d.getUTCDate() + n);
+    return iso(d);
+  };
+
+  return {
+    today: iso(anchor),
+    dayOfWeek: DAY_NAMES[dayIdx],
+    nextSunday:    addDays(daysUntil(0)),
+    nextMonday:    addDays(daysUntil(1)),
+    nextTuesday:   addDays(daysUntil(2)),
+    nextWednesday: addDays(daysUntil(3)),
+    nextThursday:  addDays(daysUntil(4)),
+    nextFriday:    addDays(daysUntil(5)),
+    nextSaturday:  addDays(daysUntil(6)),
+  };
+}
+
 function buildChatSystemPrompt(projectContext: string | null): string {
   const context = projectContext
     ? `\n\n## CURRENT PROJECT CONTEXT\n\n${projectContext.slice(0, 20_000)}`
     : "";
 
-  return `## WHO YOU ARE
+  const d = computeDateContext();
+  const dateBlock = `## TODAY
+Today is **${d.dayOfWeek}, ${d.today}**. When the user names a relative date, anchor to this, not your training data.
+
+Resolved relative dates (use these verbatim in YYYY-MM-DD payloads):
+- tomorrow = ${(() => { const t = new Date(d.today + "T00:00:00Z"); t.setUTCDate(t.getUTCDate() + 1); return t.toISOString().slice(0,10); })()}
+- next Monday = ${d.nextMonday}
+- next Tuesday = ${d.nextTuesday}
+- next Wednesday = ${d.nextWednesday}
+- next Thursday = ${d.nextThursday}
+- next Friday = ${d.nextFriday}
+- next Saturday = ${d.nextSaturday}
+- next Sunday = ${d.nextSunday}
+
+"next <weekday>" means the upcoming occurrence of that weekday — if today is that weekday, it means 7 days out, not today.
+
+`;
+
+  return `${dateBlock}## WHO YOU ARE
 
 You are Larry — a senior project manager with 15 years of experience embedded in this PM tool. You know every task, deadline, dependency, and team member. You care about shipping.
 
@@ -85,6 +151,22 @@ Only reference tasks, people, and dates from the project context. Never invent I
 
 **Read-only:**
 - get_task_list — look up task details when you need more info than you have
+
+## NAMING PEOPLE — ALWAYS VERIFY BEFORE USING
+
+The project context includes a team list with every member's display name.
+Before you set assigneeName, newOwnerName, or email "to", confirm the
+name appears in that list.
+
+If the user names someone who isn't on the team (e.g. they say "assign to
+Marcus" but the team is "Alex, Priya, Joel"), do NOT call the tool with
+an unresolved name. Instead, answer in prose:
+
+  "I don't see Marcus on this project — do you mean Joel, or should I add
+  Marcus to the team first?"
+
+Silently dropping an assignee name the user explicitly stated is worse
+than doing nothing. It looks like you ignored them.
 
 ## WHEN TO WRITE vs WHEN TO ANSWER
 
