@@ -201,6 +201,52 @@ export async function startCanonicalEventProcessingAttempt(
   return row;
 }
 
+/**
+ * QA-2026-04-12 I-3/I-4: sweeper for stalled "running" attempts.
+ *
+ * When the worker process crashes mid-job (OOM, pod restart, Gemini timeout
+ * without a catch path), the attempt row keeps status='running' and the UI
+ * shows the meeting note as "Processing" forever. This marks any attempt
+ * whose started_at is older than `staleAfterMinutes` as dead_lettered with
+ * a consistent reason, so the UI can render a FAILED/retry state.
+ *
+ * Runs tenant-agnostic (no tenant RLS) because the worker process is the
+ * only caller and reaping is system-level maintenance. Returns the rows
+ * transitioned so callers can log a summary.
+ */
+export async function reapStalledProcessingAttempts(
+  db: Db,
+  options: { staleAfterMinutes?: number } = {}
+): Promise<Array<{ id: string; tenantId: string; canonicalEventId: string; source: string; startedAt: string }>> {
+  const staleAfterMinutes = Math.max(1, options.staleAfterMinutes ?? 15);
+  const rows = await db.query<{ id: string; tenantId: string; canonicalEventId: string; source: string; startedAt: string }>(
+    `UPDATE canonical_event_processing_attempts
+        SET status = 'dead_lettered',
+            finished_at = NOW(),
+            duration_ms = GREATEST(
+              0,
+              FLOOR(EXTRACT(EPOCH FROM (NOW() - started_at)) * 1000)::int
+            ),
+            error_message = 'Reaped: worker did not finalize within ' || $1::text || ' minutes. The job likely crashed or the host restarted.',
+            error_payload = COALESCE(error_payload, '{}'::jsonb) || jsonb_build_object(
+              'reapedAt', to_jsonb(NOW()::text),
+              'staleAfterMinutes', $1::int,
+              'reason', 'stalled_running_attempt'
+            ),
+            updated_at = NOW()
+      WHERE status = 'running'
+        AND started_at < NOW() - ($1::text || ' minutes')::interval
+     RETURNING
+       id,
+       tenant_id AS "tenantId",
+       canonical_event_id AS "canonicalEventId",
+       source,
+       started_at::text AS "startedAt"`,
+    [staleAfterMinutes]
+  );
+  return rows;
+}
+
 export async function finalizeCanonicalEventProcessingAttempt(
   db: Db,
   tenantId: string,

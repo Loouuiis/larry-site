@@ -1,6 +1,7 @@
 import { Job } from "bullmq";
 import {
   finalizeCanonicalEventProcessingAttempt,
+  reapStalledProcessingAttempts,
   startCanonicalEventProcessingAttempt,
   type CanonicalEventRuntimeStatus,
 } from "@larry/db";
@@ -10,6 +11,7 @@ import { runCalendarWebhookRenewal } from "./calendar-renewal.js";
 import { runLarryScan } from "./larry-scan.js";
 import { handleCanonicalEventCreated } from "./canonical-event.js";
 import { db } from "./context.js";
+import { sanitizeErrorMessageForUser } from "./error-sanitizer.js";
 
 function readCanonicalEventId(payload: Record<string, unknown>): string | null {
   const value = payload.canonicalEventId;
@@ -73,12 +75,15 @@ async function processCanonicalEventCreatedJob(job: Job<QueueMessage>): Promise<
     const status: CanonicalEventRuntimeStatus =
       attemptNumber >= maxAttempts ? "dead_lettered" : "retryable_failed";
 
+    const rawMessage = error instanceof Error ? error.message : String(error);
+    // The sanitized message is what the UI sees; the raw message still lives
+    // in error_stack + error_payload for engineering diagnosis.
     await finalizeCanonicalEventProcessingAttempt(db, job.data.tenantId, {
       attemptId: attempt.id,
       status,
-      errorMessage: error instanceof Error ? error.message : String(error),
+      errorMessage: sanitizeErrorMessageForUser(rawMessage),
       errorStack: error instanceof Error ? (error.stack ?? null) : null,
-      errorPayload: toErrorPayload(error),
+      errorPayload: { ...toErrorPayload(error), rawMessage },
     }).catch((finalizeError) => {
       const reason = finalizeError instanceof Error ? finalizeError.message : String(finalizeError);
       console.warn(
@@ -87,6 +92,19 @@ async function processCanonicalEventCreatedJob(job: Job<QueueMessage>): Promise<
     });
 
     throw error;
+  }
+}
+
+async function runStalledAttemptReaper(): Promise<void> {
+  // QA-2026-04-12 I-3/I-4: sweep any attempt stuck in "running" older than
+  // 15 minutes. Typical transcript job completes well inside that window;
+  // anything longer is almost certainly a dead worker, not slow progress.
+  const reaped = await reapStalledProcessingAttempts(db, { staleAfterMinutes: 15 });
+  if (reaped.length > 0) {
+    console.warn(
+      `[worker] stalled-attempt reaper marked ${reaped.length} attempt(s) as dead_lettered`,
+      { ids: reaped.map((r) => r.id), sources: reaped.map((r) => r.source) }
+    );
   }
 }
 
@@ -103,6 +121,9 @@ export async function processQueueJob(job: Job<QueueMessage>): Promise<void> {
       break;
     case "calendar.webhook.renew":
       await runCalendarWebhookRenewal();
+      break;
+    case "runtime.reap":
+      await runStalledAttemptReaper();
       break;
     default:
       break;

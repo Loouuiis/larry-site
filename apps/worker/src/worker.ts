@@ -52,6 +52,18 @@ await queue.add(
   }
 );
 
+// QA-2026-04-12 I-3/I-4: sweep stalled "running" attempts every 5 minutes so
+// meeting notes can't sit in PROCESSING forever when the worker host dies.
+await queue.add(
+  "runtime.reap",
+  {},
+  {
+    repeat: { every: 5 * 60 * 1000 },
+    jobId: "runtime-reap",
+    attempts: 1,
+  }
+);
+
 worker.on("completed", (job) => {
   console.log(`[worker] completed job ${job?.id} (${job?.name})`);
 });
