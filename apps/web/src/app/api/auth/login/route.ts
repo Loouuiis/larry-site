@@ -33,10 +33,10 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const { email: rawEmail, password } = body ?? {};
-    const tenantId =
+    const explicitTenantId =
       typeof body?.tenantId === "string" && body.tenantId.length > 0
         ? body.tenantId
-        : process.env.LARRY_API_TENANT_ID;
+        : undefined;
 
     if (!rawEmail || !password) {
       return NextResponse.json(
@@ -55,20 +55,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!tenantId) {
-      return NextResponse.json(
-        { error: "Missing tenant ID for API login. Set LARRY_API_TENANT_ID in web env." },
-        { status: 400 }
-      );
-    }
-
     let apiResponse: Response;
     try {
       apiResponse = await fetch(`${apiBaseUrl.replace(/\/+$/, "")}/v1/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          tenantId,
+          ...(explicitTenantId ? { tenantId: explicitTenantId } : {}),
           email,
           password: String(password),
         }),

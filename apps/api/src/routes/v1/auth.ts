@@ -178,24 +178,39 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       typeof request.headers["x-tenant-id"] === "string" ? request.headers["x-tenant-id"] : undefined;
     const tenantId = body.tenantId ?? tenantFromHeader;
 
-    if (!tenantId) {
-      return reply.badRequest("tenantId is required in body or x-tenant-id header.");
-    }
-
-    const rows = await fastify.db.query<{
-      id: string;
-      email: string;
-      password_hash: string;
-      role: "admin" | "pm" | "member" | "executive";
-      tenant_id: string;
-    }>(
-      `SELECT u.id, u.email, u.password_hash, m.role, m.tenant_id
-       FROM users u
-       JOIN memberships m ON m.user_id = u.id
-       WHERE u.email = $1 AND m.tenant_id = $2
-       LIMIT 1`,
-      [body.email, tenantId]
-    );
+    // Resolve membership by email. If a tenantId is supplied, scope to it;
+    // otherwise pick the user's oldest membership (deterministic default for
+    // users who belong to exactly one tenant, which is the signup case).
+    const rows = tenantId
+      ? await fastify.db.query<{
+          id: string;
+          email: string;
+          password_hash: string;
+          role: "admin" | "pm" | "member" | "executive";
+          tenant_id: string;
+        }>(
+          `SELECT u.id, u.email, u.password_hash, m.role, m.tenant_id
+           FROM users u
+           JOIN memberships m ON m.user_id = u.id
+           WHERE u.email = $1 AND m.tenant_id = $2
+           LIMIT 1`,
+          [body.email, tenantId]
+        )
+      : await fastify.db.query<{
+          id: string;
+          email: string;
+          password_hash: string;
+          role: "admin" | "pm" | "member" | "executive";
+          tenant_id: string;
+        }>(
+          `SELECT u.id, u.email, u.password_hash, m.role, m.tenant_id
+           FROM users u
+           JOIN memberships m ON m.user_id = u.id
+           WHERE u.email = $1
+           ORDER BY m.created_at ASC
+           LIMIT 1`,
+          [body.email]
+        );
 
     const user = rows[0];
     if (!user) {
