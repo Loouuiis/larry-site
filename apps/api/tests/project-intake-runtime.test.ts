@@ -458,6 +458,58 @@ describe("Project intake runtime routes", () => {
     );
   });
 
+  // QA-2026-04-12 T-2 regression guard.
+  //
+  // Pre-fix, meeting finalize wrote every extracted task DIRECTLY to the
+  // tasks table via executeTaskCreate AND published a canonical_event that
+  // the worker also converted into task_create Action Centre suggestions.
+  // Accepting those suggestions then duplicated the tasks (6 → 12).
+  //
+  // The preferred fix (vision doc: human-approved for task ownership /
+  // scope / deadlines): bootstrap writes NOTHING directly. The worker path
+  // queues suggestions; the user accepts them to materialise tasks.
+  it("meeting finalize does NOT call executeTaskCreate — tasks flow only via Action Centre suggestions (QA-2026-04-12 T-2)", async () => {
+    vi.mocked(insertCanonicalEventRecords).mockResolvedValue({
+      canonicalEventId: CANONICAL_EVENT_ID,
+      idempotencyKey: "idem-t2",
+      source: "transcript",
+      eventType: "commitment",
+    });
+    vi.mocked(publishCanonicalEventCreated).mockResolvedValue(undefined);
+
+    const db = createDbStub({
+      initialDraft: makeDraftRow({
+        mode: "meeting",
+        status: "draft",
+        project_name: "T-2 Meeting Intake",
+        meeting_title: "Q3 Security Audit Response Planning",
+        meeting_transcript:
+          "This transcript is long enough to pass validation and trigger bootstrap task extraction.",
+      }),
+      createdProjectId: PROJECT_ID,
+    });
+    const app = await createTestApp(db);
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/projects/intake/drafts/${DRAFT_ID}/finalize`,
+    });
+
+    expect(response.statusCode).toBe(200);
+
+    // The mocked @larry/ai returns 2 bootstrap tasks. Pre-fix this call
+    // count was 2 (one per task). The fix reduces it to 0 — the worker's
+    // canonical_event handler is the single source of task_create
+    // suggestions, and the user accepts them to create tasks.
+    expect(executeTaskCreate).not.toHaveBeenCalled();
+
+    // The canonical_event MUST still be published so the worker queues
+    // suggestions. Without this, removing the direct writes would leave
+    // the user with an empty project.
+    expect(publishCanonicalEventCreated).toHaveBeenCalledTimes(1);
+  });
+
   it("finalizes meeting draft (attach-existing path) without creating a new project", async () => {
     vi.mocked(insertCanonicalEventRecords).mockResolvedValue({
       canonicalEventId: CANONICAL_EVENT_ID,

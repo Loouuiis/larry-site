@@ -1061,22 +1061,22 @@ export const projectIntakeRoutes: FastifyPluginAsync = async (fastify) => {
             }
           }
 
-          for (const task of meetingBootstrapTasks) {
-            try {
-              await executeTaskCreate(fastify.db, tenantId, finalizedProjectId, {
-                title: task.title,
-                description: task.description ?? null,
-                dueDate: task.dueDate ?? null,
-                assigneeName: task.assigneeName ?? null,
-                priority: task.priority ?? "medium",
-              });
-            } catch (taskError) {
-              request.log.warn(
-                { err: taskError, tenantId, projectId: finalizedProjectId, taskTitle: task.title },
-                `failed to create bootstrap task "${task.title}"`
-              );
-            }
-          }
+          // QA-2026-04-12 T-2: do NOT write bootstrap tasks directly.
+          //
+          // The transcript canonical_event published at L1015 flows to the
+          // worker, which calls generateBootstrapFromTranscript and queues
+          // every extracted task as a `task_create` Action Centre
+          // suggestion. Writing tasks here too produced duplicates: 6
+          // bootstrap tasks + 6 accepted suggestions = 12 tasks for a
+          // transcript containing 6 action items. The vision doc calls
+          // for every task to be human-approved for ownership/scope/
+          // deadlines — so the worker suggestion path is the single source
+          // of truth.
+          //
+          // meetingBootstrapTasks is kept in the intake_draft row for
+          // later display (bootstrap summary, seed message) but we do not
+          // materialise tasks here.
+          void meetingBootstrapTasks;
 
           try {
             const intelligenceConfig = buildIntelligenceConfig(fastify.config);
