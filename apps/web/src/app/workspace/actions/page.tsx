@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Activity, CheckCircle2, FolderKanban, Mail, RefreshCw, Search, Layers } from "lucide-react";
 import type { WorkspaceLarryEvent } from "@/app/dashboard/types";
 import { useLarryActionCentre } from "@/hooks/useLarryActionCentre";
@@ -116,12 +117,6 @@ function getProjectLabel(event: WorkspaceLarryEvent): string {
   return event.projectName?.trim() || "Project";
 }
 
-function openConversation(event: WorkspaceLarryEvent) {
-  if (!event.conversationId) return;
-  window.dispatchEvent(new CustomEvent("larry:open"));
-  window.dispatchEvent(new CustomEvent("larry:load-conversation", { detail: event.conversationId }));
-}
-
 function buildLinkedChatHref(event: WorkspaceLarryEvent): string | null {
   if (!event.conversationId) return null;
 
@@ -214,6 +209,22 @@ function applyFilters(
 
 export default function WorkspaceActionsPage() {
   const { pushToast } = useToast();
+  const router = useRouter();
+
+  function buildFullChatHref(
+    conversationId: string,
+    event: WorkspaceLarryEvent,
+    launch: "action-centre" | "modify" = "action-centre",
+  ): string {
+    const params = new URLSearchParams({
+      projectId: event.projectId,
+      conversationId,
+      launch,
+      sourceKind: event.sourceKind ?? "chat",
+      eventType: event.eventType,
+    });
+    return `/workspace/larry?${params.toString()}`;
+  }
 
   const {
     suggested,
@@ -634,23 +645,13 @@ export default function WorkspaceActionsPage() {
                           Open project
                         </Link>
                         {event.conversationId ? (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => openConversation(event)}
-                              className="text-[12px] font-semibold"
-                              style={{ color: "var(--cta)" }}
-                            >
-                              Open linked chat
-                            </button>
-                            <Link
-                              href={buildLinkedChatHref(event)!}
-                              className="text-[12px] font-semibold"
-                              style={{ color: "var(--cta)" }}
-                            >
-                              Open in chats
-                            </Link>
-                          </>
+                          <Link
+                            href={buildLinkedChatHref(event)!}
+                            className="text-[12px] font-semibold"
+                            style={{ color: "var(--cta)" }}
+                          >
+                            Open linked chat
+                          </Link>
                         ) : (
                           <span className="text-[12px]" style={{ color: "var(--text-muted)" }}>
                             Origin: {getEventOriginLabel(event.sourceKind)}
@@ -675,8 +676,7 @@ export default function WorkspaceActionsPage() {
                           onClick={async () => {
                             const conversationId = await modify(event.id);
                             if (conversationId) {
-                              window.dispatchEvent(new CustomEvent("larry:open"));
-                              window.dispatchEvent(new CustomEvent("larry:load-conversation", { detail: conversationId }));
+                              router.push(buildFullChatHref(conversationId, event, "modify"));
                             }
                           }}
                           disabled={modifying === event.id}
@@ -807,23 +807,13 @@ export default function WorkspaceActionsPage() {
                             Open project
                           </Link>
                           {event.conversationId ? (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => openConversation(event)}
-                                className="text-[12px] font-semibold"
-                                style={{ color: "var(--cta)" }}
-                              >
-                                Open linked chat
-                              </button>
-                              <Link
-                                href={buildLinkedChatHref(event)!}
-                                className="text-[12px] font-semibold"
-                                style={{ color: "var(--cta)" }}
-                              >
-                                Open in chats
-                              </Link>
-                            </>
+                            <Link
+                              href={buildLinkedChatHref(event)!}
+                              className="text-[12px] font-semibold"
+                              style={{ color: "var(--cta)" }}
+                            >
+                              Open linked chat
+                            </Link>
                           ) : (
                             <span className="text-[12px]" style={{ color: "var(--text-muted)" }}>
                               Origin: {getEventOriginLabel(event.sourceKind)}

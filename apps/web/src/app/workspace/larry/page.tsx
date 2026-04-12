@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence } from "framer-motion";
 import {
   Clock3,
@@ -235,6 +235,8 @@ function MessageBubble({
 
 export default function AskLarryPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const preferredProjectId = searchParams.get("projectId");
   const preferredConversationId = searchParams.get("conversationId");
   const draftFromQuery = searchParams.get("draft")?.trim() ?? "";
@@ -243,6 +245,19 @@ export default function AskLarryPage() {
   const launchEventType = searchParams.get("eventType");
   const launchedFromActionCentre = launchContext === "action-centre";
   const conversationScopeProjectId = preferredProjectId ?? undefined;
+
+  const syncConversationToUrl = useCallback(
+    (conversationId: string | null, projectId?: string | null) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (conversationId) params.set("conversationId", conversationId);
+      else params.delete("conversationId");
+      if (projectId) params.set("projectId", projectId);
+      else if (!conversationId) params.delete("projectId");
+      const query = params.toString();
+      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
 
   const [projects, setProjects] = useState<WorkspaceProject[]>([]);
   const [conversations, setConversations] = useState<LarryConversation[]>([]);
@@ -321,7 +336,9 @@ export default function AskLarryPage() {
     return () => { cancelled = true; };
   }, [conversationScopeProjectId, preferredProjectId]);
 
-  // Initialize selection
+  // First-load default selection. Only runs once per mount — picks a
+  // sensible default when no conversationId is in the URL. URL-driven
+  // changes after this are handled by the reactive effect below.
   useEffect(() => {
     if (loading || initializedRef.current) return;
 
@@ -367,6 +384,20 @@ export default function AskLarryPage() {
     initializedRef.current = true;
   }, [conversations, draftFromQuery, loading, preferredConversationId, preferredProjectId]);
 
+  // React to URL changes after the initial load — ensures that external
+  // navigations (e.g. "Open in chats" from Action Centre, Modify button,
+  // browser back/forward) actually swap the visible conversation.
+  useEffect(() => {
+    if (loading || !initializedRef.current) return;
+    if (!preferredConversationId) return;
+    if (preferredConversationId === selectedConversationId) return;
+    const match = conversations.find((c) => c.id === preferredConversationId);
+    if (!match) return;
+    setSelectedConversationId(match.id);
+    setDraftProjectId(match.projectId);
+    setError(null);
+  }, [conversations, loading, preferredConversationId, selectedConversationId]);
+
   // Load messages for selected conversation
   useEffect(() => {
     if (!selectedConversationId) {
@@ -396,12 +427,14 @@ export default function AskLarryPage() {
     setMessages([]);
     setError(null);
     setInput("");
+    syncConversationToUrl(null, projectId);
   }
 
   function selectConversation(conversation: LarryConversation) {
     setSelectedConversationId(conversation.id);
     setDraftProjectId(conversation.projectId);
     setError(null);
+    syncConversationToUrl(conversation.id, conversation.projectId);
   }
 
   async function handleSubmit(event?: React.FormEvent) {
