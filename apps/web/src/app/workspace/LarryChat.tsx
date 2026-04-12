@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import { ChevronDown, Sparkles, Menu, Plus, X } from "lucide-react";
 import type { WorkspaceLarryEvent } from "@/app/dashboard/types";
 import type { LarryConversation } from "@/lib/larry";
@@ -110,23 +111,44 @@ function MessageBubble({ msg, projectId }: { msg: LarryMessage; projectId?: stri
             <span className="text-[12px] text-[#8b7fc7]">Larry is thinking…</span>
           </span>
         ) : (
-          <p style={{ whiteSpace: "pre-line" }}>
-            {msg.content || (msg.streaming ? "\u00A0" : "")}
-            {msg.streaming && (
-              <span
-                aria-hidden="true"
-                style={{
-                  display: "inline-block",
-                  width: "2px",
-                  height: "1em",
-                  backgroundColor: "#6c44f6",
-                  marginLeft: "1px",
-                  verticalAlign: "text-bottom",
-                  animation: "larry-blink 1s step-end infinite",
-                }}
-              />
+          <div className="larry-prose">
+            {isLarry ? (
+              <>
+                <ReactMarkdown
+                  components={{
+                    p: ({ children }) => <p className="mb-1 last:mb-0">{children}</p>,
+                    strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                    em: ({ children }) => <em>{children}</em>,
+                    code: ({ children }) => (
+                      <code className="rounded bg-black/8 px-1 py-0.5 text-[12px] font-mono">{children}</code>
+                    ),
+                    ul: ({ children }) => <ul className="my-1 space-y-0.5 pl-4 list-disc">{children}</ul>,
+                    ol: ({ children }) => <ol className="my-1 space-y-0.5 pl-4 list-decimal">{children}</ol>,
+                    li: ({ children }) => <li>{children}</li>,
+                    a: ({ href, children }) => <a href={href} className="underline text-[#6c44f6]" target="_blank" rel="noreferrer">{children}</a>,
+                  }}
+                >
+                  {msg.content || (msg.streaming ? "\u00A0" : "")}
+                </ReactMarkdown>
+                {msg.streaming && (
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      display: "inline-block",
+                      width: "2px",
+                      height: "1em",
+                      backgroundColor: "#6c44f6",
+                      marginLeft: "1px",
+                      verticalAlign: "text-bottom",
+                      animation: "larry-blink 1s step-end infinite",
+                    }}
+                  />
+                )}
+              </>
+            ) : (
+              <p style={{ whiteSpace: "pre-line" }}>{msg.content}</p>
             )}
-          </p>
+          </div>
         )}
         {isLarry && !isProcessing && (msg.clarifications?.length ?? 0) > 0 && (
           <div className="mt-2 rounded-lg border border-[#ddd6fe] bg-[#faf5ff] p-2">
@@ -370,13 +392,37 @@ export function LarryChat({ projectId, projectName, onVoiceInput }: LarryChatPro
       {/* ── Messages ── */}
       <div ref={containerRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {chat.messages.length === 0 && (
-          <div className="flex h-full flex-col items-center justify-center text-center">
-            <Sparkles size={28} className="mb-2 text-[#6c44f6] opacity-40" />
-            <p className="text-[13px] text-[var(--pm-text-muted)]">
-              {projectId
-                ? "Tell Larry what to do and it will persist the conversation and any linked actions here."
-                : "Ask Larry anything — tasks due across projects, general questions, or start a conversation without a specific project."}
-            </p>
+          <div className="flex h-full flex-col items-center justify-center gap-4 px-2 text-center">
+            <div>
+              <Sparkles size={28} className="mb-2 text-[#6c44f6] opacity-40 mx-auto" />
+              <p className="text-[13px] text-[var(--pm-text-muted)]">
+                {projectId ? "Your AI project manager. Ask anything or give Larry a task." : "Ask Larry anything across your workspace."}
+              </p>
+            </div>
+            <div className="w-full space-y-2">
+              {(projectId
+                ? [
+                    "What's at risk this week?",
+                    "Flag any overdue tasks as high risk",
+                    "Who's blocked right now?",
+                    "Create a task to review the QA checklist",
+                  ]
+                : [
+                    "What tasks are due this week?",
+                    "Which projects are behind schedule?",
+                    "Show me what's blocked across all projects",
+                  ]
+              ).map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  onClick={() => { void chat.sendMessage(prompt); }}
+                  className="w-full rounded-xl border border-[#e5e3f0] bg-[#fafaff] px-3 py-2 text-left text-[12px] text-[#5b4b8a] transition-colors hover:border-[#c4b8f0] hover:bg-[#f3f0ff]"
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
           </div>
         )}
         {chat.messages.map((msg) => (

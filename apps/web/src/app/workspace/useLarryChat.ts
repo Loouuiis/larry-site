@@ -482,5 +482,6 @@ export function useLarryChat(projectId?: string) {
     startNewChat,
     setInput,
     handleSubmit,
+    sendMessage,
   };
 }
