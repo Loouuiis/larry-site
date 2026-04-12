@@ -25,6 +25,7 @@ interface MeetingNoteRow {
   id: string;
   project_id: string | null;
   title: string | null;
+  summary: string | null;
 }
 
 type ProjectRuntimeStatus = "active" | "archived";
@@ -106,6 +107,7 @@ async function loadMeetingNote(
   const rows = await db.queryTenant<MeetingNoteRow>(
     tenantId,
     `SELECT id, project_id, title
+            , summary
      FROM meeting_notes
      WHERE tenant_id = $1
        AND id = $2
@@ -114,6 +116,126 @@ async function loadMeetingNote(
   );
 
   return rows[0] ?? null;
+}
+
+async function loadMeetingAnalysisFolderId(
+  tenantId: string,
+  projectId: string | null
+): Promise<string | null> {
+  if (projectId) {
+    const projectFolderRows = await db.queryTenant<{ id: string }>(
+      tenantId,
+      `SELECT id
+         FROM folders
+        WHERE tenant_id = $1
+          AND project_id = $2
+          AND parent_id IS NULL
+        LIMIT 1`,
+      [tenantId, projectId]
+    );
+    if (projectFolderRows[0]?.id) {
+      return projectFolderRows[0].id;
+    }
+  }
+
+  const generalFolderRows = await db.queryTenant<{ id: string }>(
+    tenantId,
+    `SELECT id
+       FROM folders
+      WHERE tenant_id = $1
+        AND folder_type = 'general'
+      ORDER BY created_at ASC
+      LIMIT 1`,
+    [tenantId]
+  );
+  return generalFolderRows[0]?.id ?? null;
+}
+
+async function upsertMeetingAnalysisDocument(input: {
+  tenantId: string;
+  meetingNoteId: string;
+  projectId: string | null;
+  title: string | null;
+  summary: string;
+  canonicalEventId: string;
+  createdByUserId: string | null;
+}): Promise<void> {
+  const folderId = await loadMeetingAnalysisFolderId(input.tenantId, input.projectId);
+  const documentTitleBase = readOptionalString(input.title) ?? "Meeting transcript";
+  const documentTitle = `${documentTitleBase} analysis`;
+  const metadata = JSON.stringify({
+    canonicalEventId: input.canonicalEventId,
+    generatedFrom: "meeting_transcript",
+    meetingNoteId: input.meetingNoteId,
+  });
+
+  const existingRows = await db.queryTenant<{ id: string }>(
+    input.tenantId,
+    `SELECT id
+       FROM documents
+      WHERE tenant_id = $1
+        AND source_kind = 'meeting'
+        AND source_record_id = $2
+      ORDER BY updated_at DESC
+      LIMIT 1`,
+    [input.tenantId, input.meetingNoteId]
+  );
+
+  if (existingRows[0]?.id) {
+    await db.queryTenant(
+      input.tenantId,
+      `UPDATE documents
+          SET project_id = $3,
+              folder_id = $4,
+              title = $5,
+              content = $6,
+              doc_type = 'transcript',
+              metadata = COALESCE(metadata, '{}'::jsonb) || $7::jsonb,
+              updated_at = NOW()
+        WHERE tenant_id = $1
+          AND id = $2`,
+      [
+        input.tenantId,
+        existingRows[0].id,
+        input.projectId,
+        folderId,
+        documentTitle,
+        input.summary,
+        metadata,
+      ]
+    );
+    return;
+  }
+
+  await db.queryTenant(
+    input.tenantId,
+    `INSERT INTO documents
+      (
+        tenant_id,
+        project_id,
+        folder_id,
+        title,
+        content,
+        doc_type,
+        source_kind,
+        source_record_id,
+        version,
+        metadata,
+        created_by_user_id
+      )
+     VALUES
+      ($1, $2, $3, $4, $5, 'transcript', 'meeting', $6, 1, $7::jsonb, $8)`,
+    [
+      input.tenantId,
+      input.projectId,
+      folderId,
+      documentTitle,
+      input.summary,
+      input.meetingNoteId,
+      metadata,
+      input.createdByUserId,
+    ]
+  );
 }
 
 async function loadProjectRuntimeStatus(
@@ -367,6 +489,17 @@ async function handleTranscriptCanonicalEvent(
     await reconcileMeetingNote(tenantId, meetingNoteId, existingEventIds.length, {
       projectId: resolvedProjectId,
     });
+    if (meetingNote?.summary?.trim()) {
+      await upsertMeetingAnalysisDocument({
+        tenantId,
+        meetingNoteId,
+        projectId: resolvedProjectId,
+        title: meetingNote?.title ?? null,
+        summary: meetingNote.summary,
+        canonicalEventId: canonicalEvent.id,
+        createdByUserId: submittedByUserId,
+      });
+    }
     return;
   }
 
@@ -411,9 +544,10 @@ async function handleTranscriptCanonicalEvent(
     );
     await reconcileMeetingNote(tenantId, meetingNoteId, 0, {
       projectId: resolvedProjectId,
-      summary: `Transcript saved. Task extraction failed: ${reason.slice(0, 100)}`,
     });
-    return;
+    throw aiError instanceof Error
+      ? aiError
+      : new Error(`Transcript extraction failed: ${reason}`);
   }
 
   // Convert extracted tasks into suggested task_create actions
@@ -432,6 +566,16 @@ async function handleTranscriptCanonicalEvent(
   await reconcileMeetingNote(tenantId, meetingNoteId, suggestedActions.length, {
     projectId: resolvedProjectId,
     summary,
+  });
+
+  await upsertMeetingAnalysisDocument({
+    tenantId,
+    meetingNoteId,
+    projectId: resolvedProjectId,
+    title: meetingNote?.title ?? null,
+    summary,
+    canonicalEventId: canonicalEvent.id,
+    createdByUserId: submittedByUserId,
   });
 
   const ledgerContext = {

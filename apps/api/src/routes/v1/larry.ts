@@ -1328,6 +1328,28 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
+  fastify.get(
+    "/runtime/canonical-events/:id",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
+    async (request) => {
+      const params = RuntimeCanonicalEventParamsSchema.safeParse(request.params);
+      if (!params.success) {
+        throw fastify.httpErrors.badRequest(params.error.issues[0]?.message ?? "Invalid event id");
+      }
+
+      const item = await getCanonicalEventRuntimeEntryById(
+        fastify.db,
+        request.user.tenantId,
+        params.data.id
+      );
+      if (!item) {
+        throw fastify.httpErrors.notFound("Canonical event not found.");
+      }
+
+      return { item };
+    }
+  );
+
   fastify.post(
     "/runtime/canonical-events/:id/retry",
     { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },

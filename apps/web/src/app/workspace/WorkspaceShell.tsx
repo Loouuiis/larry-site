@@ -12,6 +12,7 @@ import { WorkspaceTopBar } from "./WorkspaceTopBar";
 import { ToastProvider } from "@/components/toast/ToastContext";
 import { ToastContainer } from "@/components/toast/ToastContainer";
 import { triggerBoundedWorkspaceRefresh } from "./refresh";
+import { useTranscriptProcessing } from "./useTranscriptProcessing";
 import { VerificationBanner } from "@/components/auth/VerificationBanner";
 import { GlobalSearch } from "@/components/GlobalSearch";
 
@@ -39,7 +40,6 @@ export function WorkspaceShell({ children, userEmail, emailVerified, avatarUrl, 
   const [chatProjectId, setChatProjectId] = useState<string>("");
   const [meetingOpen, setMeetingOpen] = useState(false);
   const [transcript, setTranscript] = useState("");
-  const [meetingBusy, setMeetingBusy] = useState(false);
   const [notifCount, setNotifCount] = useState(0);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
@@ -86,6 +86,19 @@ export function WorkspaceShell({ children, userEmail, emailVerified, avatarUrl, 
     }
   }, []);
 
+  const {
+    state: transcriptProcessingState,
+    startProcessing: startTranscriptProcessing,
+    reset: resetTranscriptProcessing,
+    isProcessing: meetingBusy,
+  } = useTranscriptProcessing({
+    onSuccess: async () => {
+      setTranscript("");
+      await loadShell();
+      triggerBoundedWorkspaceRefresh();
+    },
+  });
+
   useEffect(() => {
     void loadShell();
   }, [loadShell]);
@@ -125,27 +138,11 @@ export function WorkspaceShell({ children, userEmail, emailVerified, avatarUrl, 
     const trimmedTranscript = transcript.trim();
     if (trimmedTranscript.length < 20) return;
 
-    setMeetingBusy(true);
-    try {
-      const response = await fetch("/api/workspace/meetings/transcript", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transcript: trimmedTranscript,
-          projectId: chatProjectId || undefined,
-        }),
-      });
-
-      if (response.ok) {
-        setTranscript("");
-        setMeetingOpen(false);
-        await loadShell();
-        triggerBoundedWorkspaceRefresh();
-      }
-    } finally {
-      setMeetingBusy(false);
-    }
-  }, [loadShell, chatProjectId, transcript]);
+    await startTranscriptProcessing({
+      transcript: trimmedTranscript,
+      projectId: chatProjectId || undefined,
+    });
+  }, [chatProjectId, startTranscriptProcessing, transcript]);
 
   return (
     <ToastProvider>
@@ -195,11 +192,17 @@ export function WorkspaceShell({ children, userEmail, emailVerified, avatarUrl, 
       </div>
       <MeetingTranscriptModal
         open={meetingOpen}
-        onClose={() => setMeetingOpen(false)}
+        onClose={() => {
+          setMeetingOpen(false);
+          if (!meetingBusy) {
+            resetTranscriptProcessing();
+          }
+        }}
         transcript={transcript}
         onTranscriptChange={setTranscript}
         onSubmit={onMeetingSubmit}
         busy={meetingBusy}
+        processingState={transcriptProcessingState}
       />
       {!isLarryPage && (
         <>

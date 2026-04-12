@@ -1,6 +1,7 @@
 "use client";
 
 import { Bot, MessageSquare, X } from "lucide-react";
+import type { TranscriptProcessingState } from "./useTranscriptProcessing";
 
 type MeetingTranscriptModalProps = {
   open: boolean;
@@ -9,7 +10,47 @@ type MeetingTranscriptModalProps = {
   onTranscriptChange: (value: string) => void;
   onSubmit: () => void;
   busy: boolean;
+  processingState: TranscriptProcessingState;
 };
+
+function TranscriptProgressCard({ state }: { state: TranscriptProcessingState }) {
+  const tone =
+    state.phase === "failed"
+      ? { border: "#fecaca", background: "#fef2f2", text: "#b91c1c", bar: "#dc2626" }
+      : state.phase === "succeeded"
+        ? { border: "#bbf7d0", background: "#f0fdf4", text: "#15803d", bar: "#16a34a" }
+        : { border: "var(--pm-border)", background: "var(--pm-gray-light)", text: "var(--pm-text)", bar: "var(--pm-blue)" };
+
+  return (
+    <div
+      className="mt-4 rounded-xl border px-4 py-3"
+      style={{
+        borderColor: tone.border,
+        background: tone.background,
+      }}
+    >
+      <div className="mb-2 flex items-center justify-between text-[12px]">
+        <span className="font-medium" style={{ color: tone.text }}>{state.statusLabel}</span>
+        <span className="tabular-nums" style={{ color: tone.text }}>{state.progress}%</span>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-white/70">
+        <div
+          className={state.phase === "processing" ? "pm-shimmer" : ""}
+          style={{
+            width: `${state.progress}%`,
+            height: "100%",
+            borderRadius: "999px",
+            background: tone.bar,
+            transition: "width 0.4s ease",
+          }}
+        />
+      </div>
+      <p className="mt-2 text-[12px]" style={{ color: tone.text }}>
+        {state.detail}
+      </p>
+    </div>
+  );
+}
 
 export function MeetingTranscriptModal({
   open,
@@ -18,6 +59,7 @@ export function MeetingTranscriptModal({
   onTranscriptChange,
   onSubmit,
   busy,
+  processingState,
 }: MeetingTranscriptModalProps) {
   if (!open) return null;
 
@@ -39,16 +81,18 @@ export function MeetingTranscriptModal({
         </div>
         <div className="p-5">
           <p className="mb-3 text-[13px] text-[var(--pm-text-secondary)]">
-            Paste a meeting transcript. Larry saves it now and queues background review so the meeting summary and
-            Action Centre items show up on the workspace path shortly.
+            Paste a meeting transcript. Larry will save it, analyze it, update the meeting summary, and add the
+            transcript analysis to the project documents.
           </p>
           <textarea
             value={transcript}
             onChange={(e) => onTranscriptChange(e.target.value)}
             rows={8}
             placeholder="Paste meeting transcript here... (minimum 20 characters)"
+            disabled={busy}
             className="w-full resize-y rounded-lg border border-[var(--pm-border)] bg-[var(--pm-gray-light)] px-4 py-3 text-[14px] outline-none focus:border-[var(--pm-blue)] focus:bg-white"
           />
+          {processingState.phase !== "idle" && <TranscriptProgressCard state={processingState} />}
           <div className="mt-4 flex justify-end gap-2">
             <button type="button" onClick={onClose} className="pm-btn pm-btn-secondary">
               Cancel
@@ -62,7 +106,7 @@ export function MeetingTranscriptModal({
               className="pm-btn pm-btn-primary"
             >
               <Bot size={15} />
-              {busy ? "Queueing..." : "Queue transcript"}
+              {busy ? "Processing..." : "Process transcript"}
             </button>
           </div>
         </div>
