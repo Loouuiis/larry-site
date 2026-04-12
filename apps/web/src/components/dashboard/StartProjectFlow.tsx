@@ -23,7 +23,6 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { sendLarryChat } from "@/lib/larry";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -68,15 +67,6 @@ function buildProjectIntake(answers: string[]) {
     `Deliverables or workstreams: ${deliverables}`,
     `Risks, constraints, and dependencies: ${risks}`,
   ].join("\n");
-}
-
-function buildIntakeSeedMessage(answers: string[]) {
-  const intake = buildProjectIntake(answers);
-  return [
-    "I just created a new project from guided intake answers.",
-    "Use this context to bootstrap the project chat: summarize setup and propose useful next actions.",
-    intake,
-  ].join("\n\n");
 }
 
 function StepIndicator({ step }: { step: FlowStep }) {
@@ -351,7 +341,7 @@ function ChatPane({
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<{ projectName: string; seeded: boolean } | null>(null);
+  const [success, setSuccess] = useState<{ projectName: string } | null>(null);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -395,34 +385,15 @@ function ChatPane({
         return;
       }
 
-      let seedSucceeded = false;
-      try {
-        const seedMessage = buildIntakeSeedMessage(nextAnswers);
-        const { response: seedResponse } = await sendLarryChat({
-          projectId: data.id,
-          message: seedMessage,
-        });
-        seedSucceeded = seedResponse.ok;
-      } catch {
-        seedSucceeded = false;
-      }
-
-      const replyText = seedSucceeded
-        ? `Done — "${projectName}" is created with intake context seeded in Larry chat.`
-        : `Done — "${projectName}" is created. Start by sharing your setup in project chat.`;
+      const replyText = `Done — "${projectName}" is created. Open the project when you're ready.`;
       setMessages((current) =>
         current.filter((message) => message.id !== "processing").concat({ id: crypto.randomUUID(), role: "larry", text: replyText })
       );
 
-      setSuccess({
-        projectName,
-        seeded: seedSucceeded,
-      });
+      setSuccess({ projectName });
       showToast({
         tone: "success",
-        message: seedSucceeded
-          ? `"${projectName}" created and seeded in Larry chat.`
-          : `"${projectName}" created. Chat seed did not complete.`,
+        message: `"${projectName}" created.`,
       });
       window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
     } catch {
@@ -444,9 +415,7 @@ function ChatPane({
           </div>
           <h2 className="text-h1 mt-4" style={{ color: "var(--text-1)" }}>{success.projectName} is ready</h2>
           <p className="text-body mt-2" style={{ color: "var(--text-2)" }}>
-            {success.seeded
-              ? "Open the project and continue from the seeded Larry chat context."
-              : "Open the project and continue in Larry chat with your intake summary."}
+            Open the project and continue from there.
           </p>
           <button
             type="button"
