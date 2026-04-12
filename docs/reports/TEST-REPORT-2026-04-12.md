@@ -96,3 +96,48 @@ The 11-task response still contains the T-2 transcript duplicates (two
 "Draft Executive Update", two "Schedule Penetration Test Re-evaluation
 Invite", two variants of the CSP task) — those are Step 2's scope, not a
 chat regression.
+
+### Step 2 — Transcript intake duplicates tasks — §3d, T-2 — **FIXED**
+
+**Commit:** `daf7b2a` *fix(intake): transcript bootstrap stops writing tasks directly (T-2)*
+
+**Root cause:** Meeting intake finalize in
+`apps/api/src/routes/v1/project-intake.ts` (~L1064-1079) ran
+`executeTaskCreate` for every extracted bootstrap task *and* published a
+transcript `canonical_event`. The worker
+(`apps/worker/src/canonical-event.ts` `handleTranscriptCanonicalEvent`)
+independently ran `generateBootstrapFromTranscript` on the same
+transcript and queued all of its extracted tasks as `task_create`
+Action Centre suggestions. Result: N bootstrap tasks + N pending
+suggestions. Accepting the suggestions duplicated the work — N + N = 2N
+tasks for an N-action-item transcript.
+
+**Fix:** removed the `executeTaskCreate` for-loop from the meeting-mode
+branch of finalize. Per the product vision (human-approved for task
+ownership / scope / deadlines), the worker's Action Centre queue is the
+single source of truth. `meetingBootstrapTasks` is still persisted on
+the intake draft for display in the success summary and seed message;
+no task rows are materialised until the user clicks Accept.
+
+**Regression guard:** new test in
+`apps/api/tests/project-intake-runtime.test.ts` —
+*"meeting finalize does NOT call executeTaskCreate — tasks flow only via
+Action Centre suggestions (QA-2026-04-12 T-2)"*. Pre-fix the test failed
+with `expected executeTaskCreate not to have been called, Number of
+calls: 2` (2 mocked bootstrap tasks × 1 direct write). Post-fix the test
+passes; full api suite: 248/248.
+
+**Production verification (post-deploy, hostname `fe1f9bdf309f`):**
+- Created `QA Test — T-2 Verify Transcript No Duplicate` via Start-from-meeting
+  with a 3-action-item transcript (Anna App-Store checklist, Fergus
+  server-side feature flag, Louis customer email).
+- `POST /v1/projects/intake/drafts/e0ae3fb7…/finalize` → 200.
+- Workspace project card: **0 open tasks** (direct-write path gone).
+- Action Centre: **3 pending Create Task suggestions** — one per
+  transcript action item, all attributed to "Origin: Meeting transcript".
+- Accepted all 3: `POST /v1/larry/events/{d30f4282,ae80a816,3d915515}/accept`
+  → 200 each.
+- Project Task Center after accepts: **`0 of 3 tasks completed` — 3 Not
+  Started, 0 In Progress, 0 At Risk, 0 Overdue, 0 Completed.**
+- Ratio: 3 transcript action items → 3 tasks. No duplicates.
+- Screenshot: `.playwright-mcp/step2-no-duplicate-tasks-verified-prod-2026-04-12.png`.
