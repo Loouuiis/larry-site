@@ -1458,3 +1458,17 @@ CREATE TABLE IF NOT EXISTS login_attempts (
   locked_until TIMESTAMPTZ,
   last_attempt_at TIMESTAMPTZ
 );
+
+-- 021: QA-2026-04-12 I-6 — heartbeat table for system jobs (scheduled scan,
+-- reaper, escalation) so testers can verify scheduler health from the UI
+-- without access to Railway logs.
+CREATE TABLE IF NOT EXISTS system_job_runs (
+  job_name TEXT PRIMARY KEY,
+  last_run_started_at TIMESTAMPTZ NOT NULL,
+  last_run_finished_at TIMESTAMPTZ,
+  last_run_duration_ms INT,
+  last_run_processed INT NOT NULL DEFAULT 0,
+  last_run_failed INT NOT NULL DEFAULT 0,
+  last_run_error TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

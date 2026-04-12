@@ -6,8 +6,46 @@ import { buildWorkerIntelligenceConfig } from "./intelligence-config.js";
 
 const SCAN_CONCURRENCY = 5;
 
+async function recordJobHeartbeat(
+  jobName: string,
+  startedAt: Date,
+  stats: { processed: number; failed: number; error?: string | null }
+): Promise<void> {
+  try {
+    const now = new Date();
+    await db.query(
+      `INSERT INTO system_job_runs
+         (job_name, last_run_started_at, last_run_finished_at, last_run_duration_ms,
+          last_run_processed, last_run_failed, last_run_error, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+       ON CONFLICT (job_name) DO UPDATE
+         SET last_run_started_at = EXCLUDED.last_run_started_at,
+             last_run_finished_at = EXCLUDED.last_run_finished_at,
+             last_run_duration_ms = EXCLUDED.last_run_duration_ms,
+             last_run_processed = EXCLUDED.last_run_processed,
+             last_run_failed = EXCLUDED.last_run_failed,
+             last_run_error = EXCLUDED.last_run_error,
+             updated_at = NOW()`,
+      [
+        jobName,
+        startedAt.toISOString(),
+        now.toISOString(),
+        now.getTime() - startedAt.getTime(),
+        stats.processed,
+        stats.failed,
+        stats.error ?? null,
+      ]
+    );
+  } catch (err) {
+    // Table may not yet exist on a tenant that hasn't migrated; heartbeat is
+    // best-effort — don't fail the scan because the audit write failed.
+    console.warn(`[larry-scan] heartbeat write failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
 export async function runLarryScan(): Promise<void> {
   const startTime = Date.now();
+  const startedAt = new Date(startTime);
   const config = buildWorkerIntelligenceConfig();
 
   // Load all active projects across all tenants using system bypass identity.
@@ -69,4 +107,6 @@ export async function runLarryScan(): Promise<void> {
   console.log(
     `[larry-scan] completed in ${elapsedSeconds}s — processed: ${processed}, failed: ${failed}, actions: ${totalExecuted}`
   );
+
+  await recordJobHeartbeat("larry.scan", startedAt, { processed, failed });
 }
