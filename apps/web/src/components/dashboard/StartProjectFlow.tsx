@@ -509,6 +509,7 @@ function TranscriptPane({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const [successProjectId, setSuccessProjectId] = useState<string | null>(null);
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -574,18 +575,32 @@ function TranscriptPane({
       const finalizeRes = await fetch(`/api/workspace/projects/intake/drafts/${encodeURIComponent(draftData.draft.id)}/finalize`, {
         method: "POST",
       });
-      const finalizeData = (await finalizeRes.json()) as { draft?: { id: string; projectId?: string }; error?: string; message?: string };
+      const finalizeData = (await finalizeRes.json()) as {
+        draft?: { id: string; finalized?: { projectId?: string } };
+        error?: string;
+        message?: string;
+      };
       if (!finalizeRes.ok || !finalizeData.draft) {
         setError(finalizeData.message ?? finalizeData.error ?? "Failed to finalize the project.");
         return;
       }
 
+      // QA-2026-04-12 T-1: the API returns the new project id under
+      // draft.finalized.projectId (matching the chat / manual paths and
+      // the contract test in apps/api/tests/project-intake-runtime.test.ts).
+      // Pre-fix the code read draft.projectId — always undefined — so the
+      // wizard rendered a success banner with no Open Project CTA and the
+      // user got stranded. Read the correct path AND surface the id on
+      // the success card as a defensive fallback in case the parent's
+      // onSuccess navigation races with the modal close.
+      const finalizedProjectId = finalizeData.draft.finalized?.projectId ?? null;
       setDone(true);
+      setSuccessProjectId(finalizedProjectId);
       showToast({ tone: "success", message: `"${projectName.trim()}" created from transcript.` });
       window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
 
-      if (finalizeData.draft.projectId) {
-        onSuccess(finalizeData.draft.projectId);
+      if (finalizedProjectId) {
+        onSuccess(finalizedProjectId);
       }
     } catch {
       setError("Network error while processing the transcript.");
@@ -638,6 +653,17 @@ function TranscriptPane({
           <div className="border border-emerald-200 bg-emerald-50 px-4 py-4" style={{ borderRadius: "var(--radius-card)" }}>
             <p className="text-h3" style={{ color: "var(--text-1)" }}>Project created from transcript</p>
             <p className="text-body-sm mt-1">Larry extracted actions and bootstrapped your project.</p>
+            {successProjectId && (
+              <button
+                type="button"
+                onClick={() => onSuccess(successProjectId)}
+                className="pm-btn pm-btn-primary mt-3 gap-2"
+                data-testid="transcript-intake-open-project"
+              >
+                Open Project
+                <ArrowRight size={16} />
+              </button>
+            )}
           </div>
         )}
         <div className="flex justify-end">

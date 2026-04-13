@@ -668,6 +668,8 @@ export default function WorkspaceActionsPage() {
                           disabled={dismissing === event.id}
                           className="rounded-full border px-3 py-1.5 text-[12px] font-semibold"
                           style={{ borderColor: "var(--border)", color: "var(--text-2)" }}
+                          data-testid="action-centre-dismiss"
+                          data-event-id={event.id}
                         >
                           {dismissing === event.id ? "Dismissing..." : "Dismiss"}
                         </button>
@@ -682,6 +684,8 @@ export default function WorkspaceActionsPage() {
                           disabled={modifying === event.id}
                           className="rounded-full border px-3 py-1.5 text-[12px] font-semibold"
                           style={{ borderColor: "var(--cta)", color: "var(--cta)" }}
+                          data-testid="action-centre-modify"
+                          data-event-id={event.id}
                         >
                           {modifying === event.id ? "Opening..." : "Modify"}
                         </button>
@@ -693,6 +697,8 @@ export default function WorkspaceActionsPage() {
                           disabled={accepting === event.id}
                           className="rounded-full px-3 py-1.5 text-[12px] font-semibold text-white"
                           style={{ background: "var(--cta)" }}
+                          data-testid="action-centre-accept"
+                          data-event-id={event.id}
                         >
                           {accepting === event.id ? "Accepting..." : "Accept"}
                         </button>

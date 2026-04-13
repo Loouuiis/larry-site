@@ -213,6 +213,7 @@ export function WorkspaceShell({ children, userEmail, emailVerified, avatarUrl, 
           <button
             type="button"
             aria-label="Ask Larry"
+            data-testid="ask-larry-fab"
             onClick={() => window.dispatchEvent(new CustomEvent("larry:toggle"))}
             style={{
               position: "fixed",

@@ -266,6 +266,7 @@ export function ChatInput({
           type="submit"
           disabled={busy || disabled || value.trim().length < 1}
           className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-[#6c44f6] px-3 text-[13px] font-medium text-white transition-colors hover:bg-[#5835d4] disabled:opacity-50"
+          data-testid="larry-chat-send"
         >
           {isWidget ? (
             busy ? "..." : <Send size={14} />
