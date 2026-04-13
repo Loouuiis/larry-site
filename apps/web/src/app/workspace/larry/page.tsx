@@ -508,7 +508,14 @@ export default function AskLarryPage() {
                       ? streamEvent.linkedActions
                       : previous.linkedActions,
                 }));
-                setMessages((current) => current.filter((message) => message.id !== optimisticUserId));
+                // QA-2026-04-12 M-2: keep the optimistic user message
+                // visible. When the page launched into an existing
+                // conversation (e.g. ?launch=modify), setSelectedConversationId
+                // above is a no-op (same id), so the messages-load
+                // useEffect never reruns and removing the placeholder
+                // leaves only Larry's reply on screen. The synthetic id
+                // is harmless — any future selection of this conversation
+                // replaces the array via listLarryMessages.
                 if ((streamEvent.actionsExecuted ?? 0) > 0 || (streamEvent.suggestionCount ?? 0) > 0) {
                   hadActions = true;
                 }

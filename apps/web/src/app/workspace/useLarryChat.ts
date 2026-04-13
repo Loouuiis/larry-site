@@ -305,7 +305,15 @@ export function useLarryChat(projectId?: string) {
                       ? event.linkedActions
                       : prev.linkedActions,
                 }));
-                setMessages((prev) => prev.filter((m) => m.id !== optimisticUserId));
+                // QA-2026-04-12 M-2: keep the optimistic user message in
+                // place. Pre-fix this filter dropped the user's bubble on
+                // `done`. Because this hook does not refetch messages on
+                // conversationId change, dropping the optimistic record
+                // left only Larry's reply visible — the FAB and inline
+                // project chat panels lost the user's typed text the
+                // moment Larry finished streaming. The synthetic id is
+                // safe to keep: any later loadConversation() replaces the
+                // entire messages array with the canonical server list.
                 if ((event.actionsExecuted ?? 0) > 0 || (event.suggestionCount ?? 0) > 0) {
                   hadActions = true;
                 }

@@ -1713,6 +1713,43 @@ describe("POST /larry/events/:id/modify", () => {
     }
   });
 
+  it("includes the original action's payload (assignee, due date, priority) in the opener so Larry can echo the diff (M-3)", async () => {
+    vi.mocked(getLarryEventForMutation).mockResolvedValueOnce({
+      id: EVENT_ID,
+      tenantId: TENANT_ID,
+      projectId: PROJECT_ID,
+      conversationId: null,
+      actionType: "task_create",
+      eventType: "suggested",
+      payload: {
+        title: "Audit pen-test scope",
+        assigneeName: "Joel",
+        dueDate: "2026-04-15",
+        priority: "high",
+      },
+    } as Awaited<ReturnType<typeof getLarryEventForMutation>>);
+
+    const app = await createV1PrefixedTestApp();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/v1/larry/events/${EVENT_ID}/modify`,
+    });
+
+    expect(response.statusCode).toBe(200);
+
+    const openerInserts = vi.mocked(insertLarryMessage).mock.calls;
+    expect(openerInserts.length).toBeGreaterThan(0);
+    const openerContent = (openerInserts[0]?.[3] as { content: string } | undefined)?.content ?? "";
+    // The opener must surface the specific values the user is changing
+    // FROM, so when Larry queues the "with updates" card it can echo the
+    // diff ("changed assignee to Anna, pushed due date to 30 Apr").
+    expect(openerContent).toMatch(/Joel/);
+    expect(openerContent).toMatch(/2026-04-15/);
+    expect(openerContent).toMatch(/high/i);
+  });
+
   it("atomically dismisses the source suggestion so the Action Centre no longer shows a duplicate (M-4)", async () => {
     const app = await createV1PrefixedTestApp();
     appsToClose.push(app);

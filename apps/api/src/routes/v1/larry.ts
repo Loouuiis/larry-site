@@ -1940,9 +1940,36 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       // (launch=modify&sourceKind=...&eventType=suggested) and is visible
       // in the chat header above this conversation.
       const openerDisplay = (fullEvent?.displayText ?? "this action").slice(0, 160);
+
+      // QA-2026-04-12 M-3: surface the original payload values so Larry's
+      // own conversation history carries them. When the user then asks for
+      // a change ("push to 30 Apr, reassign to Anna"), the LLM can echo
+      // the diff in its "I queued ... with updates" confirmation instead
+      // of being generic. The fields below cover task_create — the most
+      // common modify target — and degrade gracefully for other action
+      // types (the "Currently:" line is omitted when no fields resolve).
+      const payload = (event.payload ?? {}) as Record<string, unknown>;
+      const readString = (key: string): string | null => {
+        const value = payload[key];
+        return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+      };
+      const currentParts: string[] = [];
+      const assignee = readString("assigneeName") ?? readString("newOwnerName");
+      const dueDate = readString("dueDate") ?? readString("newDeadline");
+      const priority = readString("priority");
+      const riskLevel = readString("riskLevel");
+      const newStatus = readString("newStatus");
+      if (assignee) currentParts.push(`assigned to ${assignee}`);
+      if (dueDate) currentParts.push(`due ${dueDate}`);
+      if (priority) currentParts.push(`priority ${priority}`);
+      if (riskLevel) currentParts.push(`risk ${riskLevel}`);
+      if (newStatus) currentParts.push(`status ${newStatus}`);
+      const currentLine = currentParts.length > 0 ? ` Currently: ${currentParts.join(", ")}.` : "";
+
       const openerMessage =
-        `Let's refine "${openerDisplay}". Tell me what to change — assignee, deadline, priority, wording — ` +
-        `and I'll queue an updated version in the Action Centre.`;
+        `Let's refine "${openerDisplay}".${currentLine} Tell me what to change — assignee, ` +
+        `deadline, priority, wording — and I'll queue an updated version in the Action Centre, ` +
+        `noting which fields changed.`;
 
       await insertLarryMessage(fastify.db, tenantId, conversationId, {
         role: "larry",
