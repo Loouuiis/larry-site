@@ -68,14 +68,14 @@ This replaces the existing first two lines of `AdminPage` (which were just `cons
 
 - [ ] **Step 2: Verify the app compiles**
 
-Run: `cd /c/Users/oreil/Documents/larry-site && npm run web:build 2>&1 | tail -5`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npm run web:build 2>&1 | tail -5`
 
 Expected: Build succeeds with no type errors.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-cd /c/Users/oreil/Documents/larry-site
+cd /c/Dev/larry/site-deploys/larry-site
 git add apps/web/src/app/admin/page.tsx
 git commit -m "security(C1): add session + role guard to admin page
 
@@ -102,14 +102,14 @@ export const config = {
 
 - [ ] **Step 2: Verify the app compiles**
 
-Run: `cd /c/Users/oreil/Documents/larry-site && npm run web:build 2>&1 | tail -5`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npm run web:build 2>&1 | tail -5`
 
 Expected: Build succeeds.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-cd /c/Users/oreil/Documents/larry-site
+cd /c/Dev/larry/site-deploys/larry-site
 git add apps/web/src/middleware.ts
 git commit -m "security(C1,H8): expand middleware matcher to cover /admin paths
 
@@ -135,14 +135,14 @@ This removes the `|| process.env.NODE_ENV !== "production"` fallback that made t
 
 - [ ] **Step 2: Verify the app compiles**
 
-Run: `cd /c/Users/oreil/Documents/larry-site && npm run web:build 2>&1 | tail -5`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npm run web:build 2>&1 | tail -5`
 
 Expected: Build succeeds.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-cd /c/Users/oreil/Documents/larry-site
+cd /c/Dev/larry/site-deploys/larry-site
 git add apps/web/src/app/api/auth/dev-login/route.ts
 git commit -m "security(C2): require explicit ALLOW_DEV_AUTH_BYPASS=true for dev login
 
@@ -187,14 +187,14 @@ Add the output to `apps/web/.env` as `SESSION_SECRET=<generated-value>`.
 
 - [ ] **Step 3: Verify the app compiles**
 
-Run: `cd /c/Users/oreil/Documents/larry-site && npm run web:build 2>&1 | tail -5`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npm run web:build 2>&1 | tail -5`
 
 Expected: Build succeeds. (The error only throws at runtime if the env var is missing.)
 
 - [ ] **Step 4: Commit**
 
 ```bash
-cd /c/Users/oreil/Documents/larry-site
+cd /c/Dev/larry/site-deploys/larry-site
 git add apps/web/src/lib/session-secret.ts
 git commit -m "security(C3): remove hardcoded dev session secret fallback
 
@@ -244,14 +244,14 @@ Replace it with:
 
 - [ ] **Step 2: Verify the app compiles**
 
-Run: `cd /c/Users/oreil/Documents/larry-site && npm run web:build 2>&1 | tail -5`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npm run web:build 2>&1 | tail -5`
 
 Expected: Build succeeds. (`loginWithServiceCredentials` may now be unused — if the build warns about it, that's fine. If it errors on unused imports, also remove the import.)
 
 - [ ] **Step 3: Commit**
 
 ```bash
-cd /c/Users/oreil/Documents/larry-site
+cd /c/Dev/larry/site-deploys/larry-site
 git add apps/web/src/lib/workspace-proxy.ts
 git commit -m "security(C4): remove service account fallback on 401 in workspace proxy
 
@@ -314,14 +314,14 @@ to:
 
 - [ ] **Step 3: Verify the API compiles**
 
-Run: `cd /c/Users/oreil/Documents/larry-site && npm run api:build 2>&1 | tail -5`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npm run api:build 2>&1 | tail -5`
 
 Expected: Build succeeds.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-cd /c/Users/oreil/Documents/larry-site
+cd /c/Dev/larry/site-deploys/larry-site
 git add apps/api/src/routes/v1/auth.ts
 git commit -m "security(H5): add rate limiting to login (10/15min) and refresh (30/hr)"
 ```
@@ -365,14 +365,14 @@ function ensureAdminSecret(fastify: FastifyInstance, request: FastifyRequest): v
 
 - [ ] **Step 2: Verify the API compiles**
 
-Run: `cd /c/Users/oreil/Documents/larry-site && npm run api:build 2>&1 | tail -5`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npm run api:build 2>&1 | tail -5`
 
 Expected: Build succeeds.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-cd /c/Users/oreil/Documents/larry-site
+cd /c/Dev/larry/site-deploys/larry-site
 git add apps/api/src/routes/v1/orgs.ts
 git commit -m "security(H3): use timingSafeEqual for admin secret comparison
 
@@ -455,14 +455,14 @@ with:
 
 - [ ] **Step 5: Verify the API compiles**
 
-Run: `cd /c/Users/oreil/Documents/larry-site && npm run api:build 2>&1 | tail -5`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npm run api:build 2>&1 | tail -5`
 
 Expected: Build succeeds.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-cd /c/Users/oreil/Documents/larry-site
+cd /c/Dev/larry/site-deploys/larry-site
 git add apps/api/src/routes/v1/settings.ts
 git commit -m "security(H6): add requireRole guards to settings/rules write routes
 
@@ -522,14 +522,14 @@ with:
 
 - [ ] **Step 2: Verify the API compiles**
 
-Run: `cd /c/Users/oreil/Documents/larry-site && npm run api:build 2>&1 | tail -5`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npm run api:build 2>&1 | tail -5`
 
 Expected: Build succeeds.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-cd /c/Users/oreil/Documents/larry-site
+cd /c/Dev/larry/site-deploys/larry-site
 git add apps/api/src/routes/v1/documents.ts
 git commit -m "security(H10): allowlist MIME types on document download
 
@@ -547,7 +547,7 @@ Adds X-Content-Type-Options: nosniff header."
 
 - [ ] **Step 1: Install @fastify/helmet in the API**
 
-Run: `cd /c/Users/oreil/Documents/larry-site && npm install @fastify/helmet -w @larry/api`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npm install @fastify/helmet -w @larry/api`
 
 - [ ] **Step 2: Register helmet in the Fastify app**
 
@@ -593,15 +593,15 @@ export default nextConfig;
 
 - [ ] **Step 4: Verify both apps compile**
 
-Run: `cd /c/Users/oreil/Documents/larry-site && npm run api:build 2>&1 | tail -5`
-Run: `cd /c/Users/oreil/Documents/larry-site && npm run web:build 2>&1 | tail -5`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npm run api:build 2>&1 | tail -5`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npm run web:build 2>&1 | tail -5`
 
 Expected: Both succeed.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /c/Users/oreil/Documents/larry-site
+cd /c/Dev/larry/site-deploys/larry-site
 git add apps/api/src/app.ts apps/api/package.json apps/web/next.config.ts package-lock.json
 git commit -m "security(H11): add HTTP security headers to API and web app
 
@@ -649,14 +649,14 @@ Replace with:
 
 - [ ] **Step 2: Verify the API compiles**
 
-Run: `cd /c/Users/oreil/Documents/larry-site && npm run api:build 2>&1 | tail -5`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npm run api:build 2>&1 | tail -5`
 
 Expected: Build succeeds.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-cd /c/Users/oreil/Documents/larry-site
+cd /c/Dev/larry/site-deploys/larry-site
 git add apps/api/src/routes/v1/auth.ts
 git commit -m "security(M5): revoke all refresh tokens on logout
 
@@ -711,14 +711,14 @@ In each of the 5 reporting route handlers (health, outcomes, weekly-summary, tas
 
 - [ ] **Step 4: Verify the API compiles**
 
-Run: `cd /c/Users/oreil/Documents/larry-site && npm run api:build 2>&1 | tail -5`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npm run api:build 2>&1 | tail -5`
 
 Expected: Build succeeds.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-cd /c/Users/oreil/Documents/larry-site
+cd /c/Dev/larry/site-deploys/larry-site
 git add apps/api/src/routes/v1/reporting.ts
 git commit -m "security(M6): add project membership checks to reporting routes
 
@@ -757,14 +757,14 @@ with:
 
 - [ ] **Step 2: Verify the API compiles**
 
-Run: `cd /c/Users/oreil/Documents/larry-site && npm run api:build 2>&1 | tail -5`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npm run api:build 2>&1 | tail -5`
 
 Expected: Build succeeds.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-cd /c/Users/oreil/Documents/larry-site
+cd /c/Dev/larry/site-deploys/larry-site
 git add apps/api/src/routes/v1/notifications.ts
 git commit -m "security(M7): add user_id ownership check to notification mark-as-read
 
@@ -819,14 +819,14 @@ export function projectStatusSql(statusColumn: StatusColumn): string {
 
 - [ ] **Step 3: Verify the API compiles**
 
-Run: `cd /c/Users/oreil/Documents/larry-site && npm run api:build 2>&1 | tail -5`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npm run api:build 2>&1 | tail -5`
 
 Expected: Build succeeds. If any existing call sites pass a string not in the union type, the compiler will flag it — fix those by adding the value to the `ALLOWED_STATUS_COLUMNS` array.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-cd /c/Users/oreil/Documents/larry-site
+cd /c/Dev/larry/site-deploys/larry-site
 git add apps/api/src/routes/v1/projects.ts apps/api/src/lib/project-status.ts
 git commit -m "security(M8): type-safe allowlists for SQL table/column interpolation
 
@@ -877,14 +877,14 @@ with:
 
 - [ ] **Step 2: Verify the API compiles**
 
-Run: `cd /c/Users/oreil/Documents/larry-site && npm run api:build 2>&1 | tail -5`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npm run api:build 2>&1 | tail -5`
 
 Expected: Build succeeds.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-cd /c/Users/oreil/Documents/larry-site
+cd /c/Dev/larry/site-deploys/larry-site
 git add apps/api/src/routes/v1/connectors-email.ts
 git commit -m "security(M9): use timingSafeEqual for email webhook secret comparison"
 ```
@@ -914,14 +914,14 @@ Replace with:
 
 - [ ] **Step 2: Verify the API compiles**
 
-Run: `cd /c/Users/oreil/Documents/larry-site && npm run api:build 2>&1 | tail -5`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npm run api:build 2>&1 | tail -5`
 
 Expected: Build succeeds.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-cd /c/Users/oreil/Documents/larry-site
+cd /c/Dev/larry/site-deploys/larry-site
 git add apps/api/src/routes/v1/larry.ts
 git commit -m "security(L4): validate dismiss body with Zod instead of unsafe cast"
 ```
@@ -960,7 +960,7 @@ JWT_REFRESH_SECRET=<generate-with-node -e "require('crypto').randomBytes(16).toS
 - [ ] **Step 2: Commit**
 
 ```bash
-cd /c/Users/oreil/Documents/larry-site
+cd /c/Dev/larry/site-deploys/larry-site
 git add apps/api/.env.example
 git commit -m "security(C0): replace real JWT secrets in .env.example with placeholders
 

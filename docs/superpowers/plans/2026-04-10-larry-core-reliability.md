@@ -104,7 +104,7 @@ After line 891 (end of the meeting task creation loop) and before line 893 (non-
 
 - [ ] **Step 3: Verify the code compiles**
 
-Run: `cd /c/Users/oreil/documents/larry-site && npx tsc --noEmit -p apps/api/tsconfig.json 2>&1 | head -30`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npx tsc --noEmit -p apps/api/tsconfig.json 2>&1 | head -30`
 
 Expected: No errors related to project-intake.ts. Fix any import issues.
 
@@ -170,7 +170,7 @@ After line 1009 (end of the chat/manual task creation loop) and before line 1011
 
 - [ ] **Step 2: Verify the code compiles**
 
-Run: `cd /c/Users/oreil/documents/larry-site && npx tsc --noEmit -p apps/api/tsconfig.json 2>&1 | head -30`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npx tsc --noEmit -p apps/api/tsconfig.json 2>&1 | head -30`
 
 Expected: No errors.
 
@@ -258,7 +258,7 @@ Do the same for the meeting mode loop (lines 883-891).
 
 - [ ] **Step 4: Verify compiles and commit**
 
-Run: `cd /c/Users/oreil/documents/larry-site && npx tsc --noEmit -p apps/api/tsconfig.json 2>&1 | head -30`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npx tsc --noEmit -p apps/api/tsconfig.json 2>&1 | head -30`
 
 ```bash
 git add apps/api/src/routes/v1/project-intake.ts
@@ -329,7 +329,7 @@ All scheduled jobs now retry up to 3 times with exponential backoff."
 
 - [ ] **Step 1: Check if project_memberships table exists**
 
-Run: `grep -r "project_memberships\|project_collaborators" /c/Users/oreil/documents/larry-site/packages/db/src/ --include="*.ts" --include="*.sql" | head -20`
+Run: `grep -r "project_memberships\|project_collaborators" /c/Dev/larry/site-deploys/larry-site/packages/db/src/ --include="*.ts" --include="*.sql" | head -20`
 
 This will tell us the correct table name and schema.
 
@@ -387,7 +387,7 @@ This ensures blocked tasks count toward a person's workload (they still need att
 
 - [ ] **Step 4: Verify and commit**
 
-Run: `cd /c/Users/oreil/documents/larry-site && npx tsc --noEmit -p packages/db/tsconfig.json 2>&1 | head -20`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npx tsc --noEmit -p packages/db/tsconfig.json 2>&1 | head -20`
 
 ```bash
 git add packages/db/src/larry-snapshot.ts
@@ -551,7 +551,7 @@ In both mock returns (lines 689-696 and 760-767), add `followUpQuestions: []` to
 
 - [ ] **Step 7: Verify and commit**
 
-Run: `cd /c/Users/oreil/documents/larry-site && npx tsc --noEmit -p packages/ai/tsconfig.json 2>&1 | head -20`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npx tsc --noEmit -p packages/ai/tsconfig.json 2>&1 | head -20`
 
 ```bash
 git add packages/ai/src/index.ts apps/api/src/routes/v1/project-intake.ts
@@ -752,7 +752,7 @@ CRITICAL: Ask ONE question at a time when possible. If you need 3 things, pick t
 
 - [ ] **Step 2: Verify and commit**
 
-Run: `cd /c/Users/oreil/documents/larry-site && npx tsc --noEmit -p packages/ai/tsconfig.json 2>&1 | head -20`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npx tsc --noEmit -p packages/ai/tsconfig.json 2>&1 | head -20`
 
 ```bash
 git add packages/ai/src/intelligence.ts
@@ -1202,7 +1202,7 @@ future suggestions based on what the user actually wants."
 
 - [ ] **Step 1: Verify none are imported**
 
-Run: `grep -r "from.*components/dashboard/" /c/Users/oreil/documents/larry-site/apps/web/src/app/ --include="*.tsx" --include="*.ts" | head -20`
+Run: `grep -r "from.*components/dashboard/" /c/Dev/larry/site-deploys/larry-site/apps/web/src/app/ --include="*.tsx" --include="*.ts" | head -20`
 
 If any are imported, do NOT delete those. Only delete files with zero imports.
 
@@ -1217,7 +1217,7 @@ rm apps/web/src/components/dashboard/pages/GanttPage.tsx
 
 - [ ] **Step 3: Verify build still passes**
 
-Run: `cd /c/Users/oreil/documents/larry-site && npm run web:build 2>&1 | tail -10`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npm run web:build 2>&1 | tail -10`
 
 - [ ] **Step 4: Commit**
 

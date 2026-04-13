@@ -1278,7 +1278,7 @@ After removing the inline overview, the following are no longer used *only* by t
 
 - [ ] **Step 5: Verify the build compiles**
 
-Run: `cd /c/Users/oreil/documents/larry-site && npm run web:dev`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npm run web:dev`
 
 Check the terminal for TypeScript/build errors. Fix any type mismatches.
 

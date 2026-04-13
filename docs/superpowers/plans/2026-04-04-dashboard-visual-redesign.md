@@ -117,7 +117,7 @@ Change `.dashboard-root ::-webkit-scrollbar-thumb` background from `var(--border
 
 - [ ] **Step 10: Verify build**
 
-Run: `cd /c/Users/oreil/Documents/larry-site && npm run build --workspace=apps/web 2>&1 | tail -5`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npm run build --workspace=apps/web 2>&1 | tail -5`
 Expected: Build succeeds. All changes are CSS-only.
 
 - [ ] **Step 11: Commit**
@@ -179,7 +179,7 @@ In the `@theme inline` block, update:
 
 - [ ] **Step 3: Verify build**
 
-Run: `cd /c/Users/oreil/Documents/larry-site && npm run build --workspace=apps/web 2>&1 | tail -5`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npm run build --workspace=apps/web 2>&1 | tail -5`
 
 - [ ] **Step 4: Commit**
 
@@ -313,7 +313,7 @@ style={{
 
 - [ ] **Step 9: Verify build**
 
-Run: `cd /c/Users/oreil/Documents/larry-site && npm run build --workspace=apps/web 2>&1 | tail -5`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npm run build --workspace=apps/web 2>&1 | tail -5`
 
 - [ ] **Step 10: Commit**
 
@@ -364,7 +364,7 @@ In the `Breadcrumb` component, update the separator span:
 
 - [ ] **Step 4: Verify build**
 
-Run: `cd /c/Users/oreil/Documents/larry-site && npm run build --workspace=apps/web 2>&1 | tail -5`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npm run build --workspace=apps/web 2>&1 | tail -5`
 
 - [ ] **Step 5: Commit**
 
@@ -445,7 +445,7 @@ style={{
 
 - [ ] **Step 6: Verify build**
 
-Run: `cd /c/Users/oreil/Documents/larry-site && npm run build --workspace=apps/web 2>&1 | tail -5`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npm run build --workspace=apps/web 2>&1 | tail -5`
 
 - [ ] **Step 7: Commit**
 
@@ -490,7 +490,7 @@ In `TaskDetailPanel.tsx`:
 
 - [ ] **Step 4: Verify build**
 
-Run: `cd /c/Users/oreil/Documents/larry-site && npm run build --workspace=apps/web 2>&1 | tail -5`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npm run build --workspace=apps/web 2>&1 | tail -5`
 
 - [ ] **Step 5: Commit**
 
@@ -554,7 +554,7 @@ For both LarryChat files:
 
 - [ ] **Step 5: Verify build**
 
-Run: `cd /c/Users/oreil/Documents/larry-site && npm run build --workspace=apps/web 2>&1 | tail -5`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npm run build --workspace=apps/web 2>&1 | tail -5`
 
 - [ ] **Step 6: Commit**
 
@@ -604,7 +604,7 @@ style={{
 
 - [ ] **Step 3: Verify build**
 
-Run: `cd /c/Users/oreil/Documents/larry-site && npm run build --workspace=apps/web 2>&1 | tail -5`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npm run build --workspace=apps/web 2>&1 | tail -5`
 
 - [ ] **Step 4: Commit**
 
@@ -659,7 +659,7 @@ Keep the `#e2d6fc` background / `#6c44f6` text but make sure border-radius match
 
 - [ ] **Step 6: Verify build**
 
-Run: `cd /c/Users/oreil/Documents/larry-site && npm run build --workspace=apps/web 2>&1 | tail -5`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npm run build --workspace=apps/web 2>&1 | tail -5`
 
 - [ ] **Step 7: Commit**
 
@@ -721,7 +721,7 @@ For ProjectHub, AnalyticsPage, GanttPage, ChatsPage, DocumentsPage, MeetingNotes
 
 - [ ] **Step 6: Full build verification**
 
-Run: `cd /c/Users/oreil/Documents/larry-site && npm run build --workspace=apps/web 2>&1 | tail -20`
+Run: `cd /c/Dev/larry/site-deploys/larry-site && npm run build --workspace=apps/web 2>&1 | tail -20`
 Expected: Clean build, no errors.
 
 - [ ] **Step 7: Commit**

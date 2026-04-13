@@ -571,7 +571,7 @@ git commit -m "feat: updated login briefing with prioritised, specific hints"
 - [ ] **Step 1: Check packages/ai**
 
 ```bash
-cd C:/Users/oreil/documents/larry-site && npx tsc --noEmit --project packages/ai/tsconfig.json
+cd C:/Dev/larry/site-deploys/larry-site && npx tsc --noEmit --project packages/ai/tsconfig.json
 ```
 
 - [ ] **Step 2: Check packages/shared**

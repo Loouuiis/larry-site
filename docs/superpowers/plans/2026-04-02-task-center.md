@@ -239,7 +239,7 @@ export function TaskCenter({ projectId, tasks, refresh }: TaskCenterProps) {
 
 Run:
 ```bash
-cd C:/Users/oreil/documents/larry-site && npx tsc --noEmit --project apps/web/tsconfig.json 2>&1 | head -20
+cd C:/Dev/larry/site-deploys/larry-site && npx tsc --noEmit --project apps/web/tsconfig.json 2>&1 | head -20
 ```
 
 Expected: No errors related to `TaskCenter.tsx`.
@@ -280,7 +280,7 @@ Replace lines 811-823 (the `{activeTab === "tasks" && (...)}` block) with:
 
 Run:
 ```bash
-cd C:/Users/oreil/documents/larry-site && npx tsc --noEmit --project apps/web/tsconfig.json 2>&1 | head -20
+cd C:/Dev/larry/site-deploys/larry-site && npx tsc --noEmit --project apps/web/tsconfig.json 2>&1 | head -20
 ```
 
 Expected: No errors.
@@ -561,7 +561,7 @@ Check if `apps/web/src/app/api/workspace/tasks/[id]/status/route.ts` exists and 
 
 Run:
 ```bash
-cat "C:/Users/oreil/documents/larry-site/apps/web/src/app/api/workspace/tasks/[id]/status/route.ts"
+cat "C:/Dev/larry/site-deploys/larry-site/apps/web/src/app/api/workspace/tasks/[id]/status/route.ts"
 ```
 
 If it exists and proxies PATCH to the backend, proceed. If not, create the proxy route (see Step 4b).
@@ -605,7 +605,7 @@ export async function PATCH(
 
 Run:
 ```bash
-cd C:/Users/oreil/documents/larry-site && npx tsc --noEmit --project apps/web/tsconfig.json 2>&1 | head -20
+cd C:/Dev/larry/site-deploys/larry-site && npx tsc --noEmit --project apps/web/tsconfig.json 2>&1 | head -20
 ```
 
 Expected: No errors.
@@ -665,7 +665,7 @@ When `creatingInGroup` is set (user clicked "New task" from empty state), the co
 
 Run:
 ```bash
-cd C:/Users/oreil/documents/larry-site && npx tsc --noEmit --project apps/web/tsconfig.json 2>&1 | head -20
+cd C:/Dev/larry/site-deploys/larry-site && npx tsc --noEmit --project apps/web/tsconfig.json 2>&1 | head -20
 ```
 
 Expected: No errors.
@@ -686,7 +686,7 @@ git commit -m "feat(task-center): add New task button to empty state"
 Ensure Docker is running (Postgres + Redis), then:
 
 ```bash
-cd C:/Users/oreil/documents/larry-site
+cd C:/Dev/larry/site-deploys/larry-site
 npm run web:dev
 ```
 

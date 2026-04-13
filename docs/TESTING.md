@@ -23,7 +23,7 @@ This guide tells future Claude sessions **what testing tools are wired up and ho
 Production test account for Playwright lives in a gitignored file at the repo root:
 
 ```
-C:\Users\oreil\Documents\larry-site\.env.test
+C:\Dev\larry\site-deploys\larry-site\.env.test
 ```
 
 Contains `LARRY_URL`, `LARRY_TEST_EMAIL`, `LARRY_TEST_PASSWORD`. **Read this file — do not ask Fergus for the creds.**

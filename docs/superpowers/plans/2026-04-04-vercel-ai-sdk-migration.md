@@ -33,7 +33,7 @@
 The local `master` branch is 4 commits ahead of `origin/master`. Push them:
 
 ```bash
-cd C:/Users/oreil/documents/larry-site
+cd C:/Dev/larry/site-deploys/larry-site
 git push origin master
 ```
 
@@ -87,7 +87,7 @@ No code changed — this is a deployment fix. Move to Task 2 once chat is confir
 - [ ] **Step 1: Install the packages**
 
 ```bash
-cd C:/Users/oreil/documents/larry-site
+cd C:/Dev/larry/site-deploys/larry-site
 npm install --workspace=packages/ai ai @ai-sdk/openai @ai-sdk/anthropic @ai-sdk/google
 ```
 
@@ -102,7 +102,7 @@ Expected: `packages/ai/package.json` now has these in `dependencies`:
 - [ ] **Step 2: Verify the build still passes**
 
 ```bash
-cd C:/Users/oreil/documents/larry-site
+cd C:/Dev/larry/site-deploys/larry-site
 npm run api:build
 ```
 
@@ -111,7 +111,7 @@ Expected: Build succeeds with no errors. The new dependencies don't change any e
 - [ ] **Step 3: Commit**
 
 ```bash
-cd C:/Users/oreil/documents/larry-site
+cd C:/Dev/larry/site-deploys/larry-site
 git add packages/ai/package.json package-lock.json
 git commit -m "deps: add Vercel AI SDK packages to @larry/ai"
 ```
@@ -155,7 +155,7 @@ export function createModel(config: IntelligenceConfig): LanguageModel {
 - [ ] **Step 2: Verify the build passes**
 
 ```bash
-cd C:/Users/oreil/documents/larry-site
+cd C:/Dev/larry/site-deploys/larry-site
 npm run api:build
 ```
 
@@ -164,7 +164,7 @@ Expected: Build succeeds. The file is compiled but not yet imported anywhere.
 - [ ] **Step 3: Commit**
 
 ```bash
-cd C:/Users/oreil/documents/larry-site
+cd C:/Dev/larry/site-deploys/larry-site
 git add packages/ai/src/provider.ts
 git commit -m "feat(ai): add Vercel AI SDK provider factory"
 ```
@@ -232,7 +232,7 @@ Everything else in the file stays: `buildSystemPrompt()`, `buildUserPrompt()`, `
 - [ ] **Step 5: Verify the build passes**
 
 ```bash
-cd C:/Users/oreil/documents/larry-site
+cd C:/Dev/larry/site-deploys/larry-site
 npm run api:build
 ```
 
@@ -245,7 +245,7 @@ If you have a local dev setup running, test with no API key set (or `MODEL_PROVI
 - [ ] **Step 7: Commit**
 
 ```bash
-cd C:/Users/oreil/documents/larry-site
+cd C:/Dev/larry/site-deploys/larry-site
 git add packages/ai/src/intelligence.ts
 git commit -m "feat(ai): migrate intelligence.ts to Vercel AI SDK generateObject()"
 ```
@@ -526,7 +526,7 @@ export function createLlmProvider(options: {
 - [ ] **Step 7: Verify the build passes**
 
 ```bash
-cd C:/Users/oreil/documents/larry-site
+cd C:/Dev/larry/site-deploys/larry-site
 npm run api:build
 ```
 
@@ -535,7 +535,7 @@ Expected: Build succeeds. No TypeScript errors. All consumers of `createLlmProvi
 - [ ] **Step 8: Commit**
 
 ```bash
-cd C:/Users/oreil/documents/larry-site
+cd C:/Dev/larry/site-deploys/larry-site
 git add packages/ai/src/index.ts
 git commit -m "feat(ai): migrate index.ts provider classes to Vercel AI SDK"
 ```
@@ -550,7 +550,7 @@ git commit -m "feat(ai): migrate index.ts provider classes to Vercel AI SDK"
 - [ ] **Step 1: Full monorepo build**
 
 ```bash
-cd C:/Users/oreil/documents/larry-site
+cd C:/Dev/larry/site-deploys/larry-site
 npm run api:build
 ```
 
@@ -559,7 +559,7 @@ Expected: All packages build cleanly: shared, config, db, ai, api.
 - [ ] **Step 2: Run existing tests**
 
 ```bash
-cd C:/Users/oreil/documents/larry-site
+cd C:/Dev/larry/site-deploys/larry-site
 npm test --workspace=apps/api 2>&1 | tail -30
 ```
 
@@ -587,7 +587,7 @@ Expected: Returns a JSON response with `message`, `actionsExecuted`, `suggestion
 If any test adjustments were needed, commit them:
 
 ```bash
-cd C:/Users/oreil/documents/larry-site
+cd C:/Dev/larry/site-deploys/larry-site
 git add -A
 git commit -m "fix: adjust tests for Vercel AI SDK migration"
 ```
@@ -602,7 +602,7 @@ git commit -m "fix: adjust tests for Vercel AI SDK migration"
 - [ ] **Step 1: Push all changes**
 
 ```bash
-cd C:/Users/oreil/documents/larry-site
+cd C:/Dev/larry/site-deploys/larry-site
 git push origin master
 ```
 
@@ -633,7 +633,7 @@ On the deployed app:
 - [ ] **Step 5: Final commit — update spec status**
 
 ```bash
-cd C:/Users/oreil/documents/larry-site
+cd C:/Dev/larry/site-deploys/larry-site
 # Update the spec to mark implementation as complete
 git add docs/superpowers/specs/2026-04-04-vercel-ai-sdk-migration-design.md
 git commit -m "docs: mark Vercel AI SDK migration spec as implemented"

@@ -1878,7 +1878,7 @@ git commit -m "feat(timeline): wire ProjectTimeline into workspace, replace plac
 
 - [ ] **Step 1: Start dev server**
 
-Run: `cd C:/Users/oreil/documents/larry-site && npm run web:dev`
+Run: `cd C:/Dev/larry/site-deploys/larry-site && npm run web:dev`
 
 - [ ] **Step 2: Verify in browser**
 

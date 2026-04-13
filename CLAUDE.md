@@ -33,6 +33,7 @@ Read **only** what's relevant to the current task. Don't read everything.
 | **Database schema, migrations** | `docs/DATABASE.md`, `packages/db/src/schema.sql` |
 | **Deployment, env vars, infra** | `DEPLOYMENT.md` |
 | **Running locally** | `running_locally.md` |
+| **Testing deployed Larry (Playwright, Vercel MCP, CLIs)** | `docs/TESTING.md` |
 | **What's in/out of v1 scope** | `docs/V1-SCOPE.md` |
 | **Product vision, team, ICP** | `docs/OVERVIEW.md` |
 | **Codebase knowledge graph** | `graphify-out/GRAPH_REPORT.md` (communities, god nodes, connections) |
@@ -43,6 +44,9 @@ Read **only** what's relevant to the current task. Don't read everything.
 ## Production-First Workflow
 
 **Fergus tests on production, not locally.** This is the most important thing to know.
+
+**You have tools to test production directly** — Playwright MCP (Chromium automation), Vercel MCP, `vercel` CLI, `railway` CLI. Production test creds live in `.env.test` (gitignored). See `docs/TESTING.md` for the full route map, selectors, and verification checklist. Use these instead of asking Fergus to reproduce bugs manually.
+
 
 - Frontend: Vercel (auto-deploys from `master` on GitHub `Loouuiis/larry-site`)
 - API + Worker: Railway (auto-deploys from `master`)
@@ -144,4 +148,5 @@ The login page has a **Dev Login** bypass button for local development.
 - Don't put `output: "standalone"` in `next.config.ts` — breaks Vercel deployment.
 - Don't call AI model APIs directly — always go through `packages/ai`.
 - Don't assume local testing is possible — verify against production.
+- Don't diagnose errors from code alone — reproduce at the lowest layer that catches it (tsc → vitest → smoke → Playwright). See `docs/TESTING.md` "Testing Pyramid" and "When Something Breaks".
 - Don't read every doc at session start — use the routing table above.
