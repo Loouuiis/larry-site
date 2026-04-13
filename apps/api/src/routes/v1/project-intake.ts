@@ -13,6 +13,7 @@ import { generateBootstrapTasks, generateBootstrapFromTranscript, runIntelligenc
 import { getApiEnv } from "@larry/config";
 import { writeAuditLog } from "../../lib/audit.js";
 import { createProjectOwnerMembership } from "../../lib/project-memberships.js";
+import { deriveMeetingTitleFromTranscript } from "../../lib/meeting-title.js";
 import {
   ARCHIVED_PROJECT_WRITE_LOCK_MESSAGE,
   isProjectWriteLocked,
@@ -977,12 +978,18 @@ export const projectIntakeRoutes: FastifyPluginAsync = async (fastify) => {
             },
           });
 
+          // QA-2026-04-12 polish: derive a title from the transcript
+          // when intake didn't supply one, so the meetings list shows
+          // something specific instead of the literal "Meeting transcript".
+          const derivedMeetingTitle =
+            draft.meetingTitle ?? deriveMeetingTitleFromTranscript(transcript);
+
           const meetingNoteResult = await client.query<{ id: string }>(
             `INSERT INTO meeting_notes
               (tenant_id, project_id, title, transcript, created_by_user_id)
              VALUES ($1, $2, $3, $4, $5)
              RETURNING id`,
-            [tenantId, finalizedProjectId, draft.meetingTitle ?? null, transcript, actorUserId]
+            [tenantId, finalizedProjectId, derivedMeetingTitle, transcript, actorUserId]
           );
           const meetingNoteId = meetingNoteResult.rows[0]?.id ?? null;
 

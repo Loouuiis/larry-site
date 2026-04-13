@@ -49,6 +49,7 @@ import {
   touchLarryConversation,
 } from "../../lib/larry-ledger.js";
 import { getProjectMembershipAccess } from "../../lib/project-memberships.js";
+import { deriveMeetingTitleFromTranscript } from "../../lib/meeting-title.js";
 import {
   ARCHIVED_PROJECT_WRITE_LOCK_MESSAGE,
   isProjectWriteLocked,
@@ -2301,18 +2302,24 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           payload: canonicalPayload,
         });
 
+        // QA-2026-04-12 polish: when the caller didn't supply a title,
+        // try to derive one from the transcript so the meetings list
+        // doesn't show a generic "Meeting transcript" label everywhere.
+        const derivedMeetingTitle =
+          body.meetingTitle ?? deriveMeetingTitleFromTranscript(body.transcript);
+
         const meetingNoteResult = await client.query<{ id: string }>(
           `INSERT INTO meeting_notes
             (tenant_id, project_id, title, transcript, created_by_user_id)
            VALUES ($1, $2, $3, $4, $5)
            RETURNING id`,
-          [tenantId, body.projectId ?? null, body.meetingTitle ?? null, body.transcript, request.user.userId]
+          [tenantId, body.projectId ?? null, derivedMeetingTitle, body.transcript, request.user.userId]
         );
         const meetingNoteId = meetingNoteResult.rows[0]?.id ?? null;
 
         const payloadPatch = {
           transcript: body.transcript,
-          meetingTitle: body.meetingTitle,
+          meetingTitle: derivedMeetingTitle,
           projectId: body.projectId,
           meetingNoteId: meetingNoteId ?? undefined,
           submittedByUserId: request.user.userId,

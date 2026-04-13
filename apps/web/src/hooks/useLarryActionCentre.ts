@@ -129,6 +129,20 @@ export function useLarryActionCentre({
     };
   }, [load]);
 
+  // QA-2026-04-12 §3a: Accept double-click 409 race. Pre-fix the
+  // suggestion stayed in `data.suggested` until the post-accept reload
+  // returned, leaving the button visible for a few hundred ms after the
+  // POST succeeded. A second click against the same event then hit the
+  // server, by which time event_type was already "accepted" — 409. Clear
+  // the suggestion from local state the moment the API returns 200 so
+  // the row disappears immediately.
+  const removeSuggestedLocally = useCallback((eventId: string) => {
+    setData((current) => ({
+      ...current,
+      suggested: current.suggested.filter((event) => event.id !== eventId),
+    }));
+  }, []);
+
   const accept = useCallback(
     async (id: string) => {
       setAccepting(id);
@@ -140,6 +154,7 @@ export function useLarryActionCentre({
             accepted: boolean;
             event?: { actionType: string; displayText: string; projectName: string | null; projectId: string };
           }>(response);
+          removeSuggestedLocally(id);
           window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
           await Promise.all([load(), onMutate()]);
           if (body.event && onAccepted) {
@@ -164,7 +179,7 @@ export function useLarryActionCentre({
         setAccepting(null);
       }
     },
-    [load, onMutate, onAccepted]
+    [load, onMutate, onAccepted, removeSuggestedLocally]
   );
 
   const dismiss = useCallback(
@@ -178,6 +193,9 @@ export function useLarryActionCentre({
           body: JSON.stringify({}),
         });
         if (response.ok) {
+          // Same optimistic-clear treatment as accept (QA §3a) so a fast
+          // dismiss → click loop can't re-fire on the same row.
+          removeSuggestedLocally(id);
           window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
           await Promise.all([load(), onMutate()]);
         } else {
@@ -191,7 +209,7 @@ export function useLarryActionCentre({
         setDismissing(null);
       }
     },
-    [load, onMutate]
+    [load, onMutate, removeSuggestedLocally]
   );
 
   const modify = useCallback(

@@ -459,7 +459,18 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
               />
             ))}
           </div>
-        ) : filteredCards.length === 0 && !searchQuery.trim() ? (
+        // QA-2026-04-12 §1: empty-state must check the WHOLE picture, not
+        // just `filteredCards`. Pre-fix, the "No projects yet" panel
+        // rendered alongside the AI briefing carousel above (which lists
+        // briefing.projects from a prior scan) — so a user with stale
+        // briefing data + no current live projects saw both the
+        // welcome-empty panel and a heading promising "live" content.
+        // Suppress the empty state when either the briefing has projects
+        // or there are archived projects to surface.
+        ) : filteredCards.length === 0 &&
+            !searchQuery.trim() &&
+            (!briefing || briefing.projects.length === 0) &&
+            archivedCards.length === 0 ? (
           <div
             className="border border-dashed px-6 py-10 text-center"
             style={{
