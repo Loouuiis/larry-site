@@ -73,8 +73,8 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
                         COALESCE(NULLIF(users.display_name, ''), split_part(users.email, '@', 1)) as "assigneeName",
                         tasks.risk_score as "riskScore",
                         tasks.risk_level as "riskLevel",
-                        tasks.start_date as "startDate",
-                        tasks.due_date as "dueDate",
+                        tasks.start_date::text as "startDate",
+                        tasks.due_date::text as "dueDate",
                         tasks.created_at as "createdAt",
                         tasks.updated_at as "updatedAt"
                  FROM tasks
