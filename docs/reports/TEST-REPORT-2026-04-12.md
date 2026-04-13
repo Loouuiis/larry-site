@@ -204,3 +204,57 @@ Post-fix both pass; full api suite: 250/250.
   original action context into the chat system prompt when
   `conversation.sourceEventId` is set, plus prompt-engineering to ask
   Larry to echo the diff. Non-trivial; filed as a standalone ticket.
+
+### Step 4 — Invalid Date on /workspace/my-work + /workspace/calendar — §8, §9 — **FIXED**
+
+**Commit:** `527629b` *fix(tasks): cast date columns to text so dueDate is YYYY-MM-DD*
+
+**Root cause:** `apps/api/src/routes/v1/tasks.ts` SELECT exposed
+`tasks.due_date` and `tasks.start_date` with the pg driver's default
+`DATE` serialization — the values arrived in JS as `Date` objects and
+JSON-stringified to full ISO timestamps like
+`"2026-04-18T00:00:00.000Z"`. The web layer (`apps/web/src/app/workspace/WorkspaceMyWork.tsx:340`)
+formats with `new Date(task.dueDate + "T12:00:00")` on the assumption
+that `dueDate` is a bare `YYYY-MM-DD` string — concatenating
+`"T12:00:00"` to a full ISO timestamp produced
+`"2026-04-18T00:00:00.000ZT12:00:00"` → `Invalid Date` for every row
+on /workspace/my-work (and the same `dueBucket` failure dropped most
+rows from /workspace/calendar — the lone task that rendered was the
+only one whose date happened to parse).
+
+Verified the API shape pre-fix via `GET /api/workspace/home` from the
+browser console — every `dueDate` came back as `"…T00:00:00.000Z"`,
+`typeof === "string"`.
+
+**Fix:** project both DATE columns explicitly as text in the SELECT —
+`tasks.start_date::text as "startDate"` /
+`tasks.due_date::text as "dueDate"`. The TS contract
+(`dueDate: string | null`) and every consumer already assume the
+`YYYY-MM-DD` shape; the cast just makes the DB match. Calendar's
+`useCalendarEvents.toDateStr` (which wraps in `new Date(...)` and
+slices) keeps working — `"2026-04-18"` is a valid date literal.
+
+**Regression guard:** `apps/api/tests/tasks-route-due-date.test.ts` —
+exercises `GET /tasks?projectStatus=active`, captures the SQL passed
+to `db.queryTenant`, asserts the projection contains
+`due_date::text as "dueDate"` and `start_date::text as "startDate"`.
+Pre-fix the test failed (bare column refs); post-fix it passes.
+251/251 api tests green.
+
+**Production verification (post-deploy, hostname `cd2511b05cab`):**
+- `/workspace/my-work` shows real dates across "This week" (15) and
+  "Next week" (3) buckets — example column: 18 Apr, 16 Apr, 20 Apr,
+  18 Apr, 15 Apr, 19 Apr, 19 Apr, 15 Apr, 19 Apr, 15 Apr, 18 Apr,
+  15 Apr, 20 Apr, 17 Apr, 16 Apr, 25 Apr, 22 Apr, 21 Apr, 30 Apr,
+  30 Apr. Zero "Invalid Date" strings (`grep -c "Invalid Date"
+  step4-my-work-after-fix.yml = 0`).
+- `/workspace/calendar` renders 17 distinct task events (Provide
+  Penetration Test Requirements x2, Coordinate Penetration Test
+  Logistics, Ship Server-Side Feature Flag, Conduct Project Kick-off
+  Meeting, Plan User Research Strategy, Finalize App Store Review,
+  Implement CSP Header x2, Schedule Penetration Test Re-evaluation,
+  Draft Executive Update x2, Draft Customer Email, Implement Server-
+  Side Session Revocation, Draft Cross-Team Communication, Define &
+  Implement Onboarding Success Metrics, Assess Current Tooling) — was
+  1 of 17 pre-fix.
+- Screenshot: `.playwright-mcp/step4-my-work-fixed-prod-2026-04-13.png`.
