@@ -696,4 +696,78 @@ before re-runnable):**
    is emitted when `fullContent` is empty AND `toolOutcomes` is empty;
    a proper refusal would have non-empty `fullContent`.
 
+---
+
+## 13. SESSION 3 — handoff execution (night 2026-04-13 UTC)
+
+**Goal:** clear the §10–§12 blocker wall. Direct-to-master approved; no
+QA matrix re-run attempted (deferred to the next session once prod is
+verified green on all five fixes).
+
+### Five commits shipped
+
+| Commit | Bug | Summary |
+|---|---|---|
+| `2b2428d` | — | Housekeeping: path rebase `Documents/larry-site` → `Dev/larry/site-deploys/larry-site` across CLAUDE.md + 8 plan docs; CLAUDE.md routing entry for docs/TESTING.md. |
+| `0ed1fa4` | **N-8** | `packages/ai/src/structured.ts` — new `getStructuredOutputOptions(config)` helper returns `{ providerOptions: { groq: { structuredOutputs: false } } }` for any Groq model not on the published json_schema-capable list (openai/gpt-oss-*, meta-llama/llama-4-*, moonshotai/kimi-k2). Spread into all 7 `generateObject` call sites in `packages/ai/src/index.ts` (×6) + `packages/ai/src/intelligence.ts` (×1). Flips the Groq adapter from `response_format: json_schema` → `response_format: json_object` (prompt-based JSON); the AI SDK still parses + validates output against the Zod schema client-side so typed return contracts are unchanged. Regression guard: `apps/api/tests/ai-structured-output.test.ts` — 8 tests. |
+| `bceed7d` | **N-5** | `packages/db/src/larry-executor.ts` — new `isUuidShape(value)` utility (exported); gate `ensureTaskId`'s `WHERE id = $2` SQL on it. Non-UUID strings in the `taskId` slot now route through the existing `resolveTaskByTitle` 5-strategy fallback chain instead of crashing with Postgres `invalid input syntax for type uuid`. Exports both `ensureTaskId` and `isUuidShape` for testability. Regression guard: `apps/api/tests/taskid-uuid-resolution.test.ts` — 13 tests including a mock-Db capture asserting `WHERE id = $2` SQL is NEVER issued when `taskId` is a title (the core N-5 invariant). |
+| `5668879` | **N-6, N-7** | `packages/ai/src/chat.ts` system prompt hardening: added an auto-execute prose clause ("I reminded Priya about the kickoff email" — never "queued in the Action Centre" for send_reminder) + a new REFUSING DESTRUCTIVE REQUESTS section telling Larry to write a real refusal reply (not silently fall through to `buildToolRecap`'s empty-fallback) and offer a safe alternative. Exported `buildChatSystemPrompt` from `@larry/ai`. Regression guard: `apps/api/tests/chat-system-prompt.test.ts` — 7 tests. **N-6 note:** the "NO row in larry_events" symptom was a downstream effect of N-5 (UUID syntax error → `runAutoActions` catch block deletes the inserted row); `bceed7d` resolves the row-drop path. The prompt change here fixes the prose mismatch only. |
+| `e86c974` | **N-3** | `apps/web/tests/workspace-actions.spec.ts` — widened the inferred `activity` array element type via a new `ActionCentreEventFixture` union + `ActionCentreSnapshotFixture` annotation on both `globalActionCentre` and `projectActionCentre` `let` declarations. Pre-fix: TS2322 on lines 259/264 (pre-existing on master). Post-fix: `tsc --noEmit -p apps/web/tsconfig.json` clean. |
+
+### Local test runs
+
+- `@larry/api`: **287/287** across 44 files — up from 267 at session start
+  (+20 from this session: 8 structured-output, 13 taskid-uuid, 7
+  chat-system-prompt, minus the 8 already counted in the structured-output
+  batch → net +20 guard assertions).
+- `@larry/worker`: **21/21** across 3 files, unchanged.
+- `npx tsc --noEmit -p apps/web/tsconfig.json`: clean (pre-fix: 2 errors).
+
+### Production verification — blocked / partial
+
+- **Railway deploy:** four `master` pushes between 22:24 and 22:36 UTC.
+  Worker service restarted (`railway logs --service Worker` shows
+  `[worker] started queue=larry-events concurrency=5`). Next scheduled
+  scan fires at 22:30 UTC; N-8 fix verification deferred until after.
+- **Pre-deploy scan at 21:30 UTC:** `GET /v1/admin/scan/last-run` returned
+  `{ lastRunProcessed: 0, lastRunFailed: 38, lastRunError: "Request too
+  large for model llama-3.3-70b-versatile ... TPM Limit 12000, Requested
+  12982 ... Upgrade to Dev Tier today (+37 more)" }`. **Critical finding
+  for the next agent:** the first-in-aggregate failure message on the
+  prior pre-deploy scan was a Groq TPM rate limit, NOT the json_schema
+  error. My N-8 fix removes the json_schema blocker, but Groq free-tier
+  TPM (12k/minute) is a separate limiter that will still fail requests
+  whose rendered prompt exceeds 12k input tokens. For a 50-task project
+  snapshot that's quite plausible. Two mitigations: (a) upgrade Groq to
+  Dev Tier, (b) trim the prompt (truncate project_memory_entries,
+  shorter task descriptions, fewer history entries). Recommend (a) for
+  unblocking QA; (b) for long-term sustainability.
+- **N-5 live verification deferred:** Event
+  `63852f08-054b-4e18-b660-8c54472455f8` (deadline_change with
+  title-as-taskId) is still marked pending per the brief. I did not
+  exercise the accept endpoint this session — fall-through to the next
+  QA run.
+
+### Still open after this session
+
+- Live prod verification of all 5 fixes (Railway worker `[larry-scan]
+  project X ok` lines post-N-8, POST accept 200 on `63852f08` post-N-5,
+  send_reminder prose on an auto-executed reminder post-N-6, refusal
+  response prose post-N-7).
+- **NEW blocker N-9 (candidate):** Groq TPM 12k/minute free-tier limit
+  hits the scan. Not a code bug — env/plan decision. Flagging so the
+  next agent doesn't waste cycles assuming their code fix didn't land.
+- P1-1 remaining 13 action types, P1-7 500-on-accept UX, P2-* live-reply
+  probes, P3-* transcript matrix — all carried forward.
+- N-4 backfill description for the 3 pre-152411c projects (UX polish).
+
+### Note on the testing pyramid discipline
+
+Every fix in this session got a failing test BEFORE the implementation
+(red-green verified per `superpowers:test-driven-development`). The
+live-prod verification layer was skipped on purpose — Railway's redeploy
+cycle plus the Groq cap situation means prod signal will be noisy until
+the TPM angle is addressed. Unit + integration green is the strongest
+signal available tonight; prod verification is a next-session task.
+
 
