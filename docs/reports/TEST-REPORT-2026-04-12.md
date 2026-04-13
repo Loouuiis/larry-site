@@ -258,6 +258,140 @@ post-fix all three appear. Existing M-1 / M-4 guards still pass.
   the LLM's "echo the diff" prose can be re-validated once the cap is
   raised.
 
+### Step 5 — Post-create briefing trigger — §1, §2b — **FIXED**
+
+**Commit:** `152411c` *fix(intake): use bootstrap summary as project description fallback*
+
+**Root cause clarification:** the report described "no AI briefing
+yet" on new project cards, but the mechanism is actually the
+`projects.description` column. /workspace's project card fell back to
+the placeholder string "Live workspace with active delivery signals."
+(or "Ready for the first task and meeting signal.") via
+`apps/web/src/app/workspace/WorkspaceHome.tsx:134` whenever
+`description` was null. Chat and transcript intake both produced a
+`bootstrapSummary` describing the project ("Larry created N starter
+tasks…", "Larry identified N action items from <meeting>") but never
+wrote it to the row.
+
+**Fix:**
+- Chat-mode finalize now passes
+  `draft.projectDescription ?? bootstrapSummary ?? null` to
+  `INSERT INTO projects` so the description is contextual from row
+  creation.
+- Meeting-mode finalize INSERTs the project before the bootstrap is
+  computed, so an idempotent `UPDATE projects SET description = $3
+  WHERE description IS NULL` runs once `meetingBootstrapSummary` is
+  available.
+
+**Regression guard:** new test in
+`apps/api/tests/project-intake-runtime.test.ts` —
+*"persists bootstrap summary as project description when intake
+provides no explicit description (chat path)"*. 253/253 api tests
+passing.
+
+### Step 6 — Surface scan failures (`lastRunError` was null) — §15 — **FIXED**
+
+**Commit:** `445df02` *fix(worker): surface scan failures in last_run_error*
+
+**Root cause:** `apps/worker/src/larry-scan.ts` caught per-project
+exceptions, console.error'd them, and incremented `failed++` — but
+never threaded any error message into `recordJobHeartbeat`. So
+`system_job_runs.last_run_error` always landed as `null` even when
+multiple items failed (the QA report's `failed: 5, error: null`).
+
+**Fix:** collect each failure into `failureSummaries[]`, then build an
+aggregated string for the heartbeat row:
+- 1 failure: the message verbatim, capped at 480 chars.
+- 2+: the first message + `(+N more)` suffix.
+Cap is intentional so a noisy stack trace can't dominate the row;
+the on-call needs the first signal, not a transcript.
+
+Also fixed a pre-existing stale-test mismatch
+(`sourceKind: "schedule"` → `"project_review"`) and brought
+`apps/worker/src/larry-scan.js` (the tracked compiled sibling that
+vitest's NodeNext import resolves to) in sync with the .ts source.
+
+**Regression guard:** new test in
+`apps/worker/tests/larry-scan.test.ts` — three projects, two of which
+throw; asserts the heartbeat INSERT carries
+`values[6] === "<error string>"`. 21/21 worker tests passing.
+
+### Step 7 — T-1 (Open Project CTA) + starter data-testids — **FIXED (initial pass)**
+
+**Commit:** `871e9b5` *fix(intake/ui): T-1 Open Project CTA + starter data-testids*
+
+**T-1 root cause:** TranscriptPane's finalize handler read
+`finalizeData.draft.projectId` — always undefined — when the API
+actually returns `finalizeData.draft.finalized.projectId` (matching
+the contract test in
+`apps/api/tests/project-intake-runtime.test.ts` and the chat / manual
+paths). The wizard's success branch never resolved a project id, so
+the implicit `onSuccess` navigation never fired and the user got
+stranded on the success banner.
+
+**T-1 fix:** read `draft.finalized.projectId`, capture into
+`successProjectId` state, and render an explicit "Open Project"
+button on the success card as a defensive fallback in case
+the parent's `onSuccess + modal close` races.
+
+**testids first batch** (per `docs/TESTING.md` "When to Add Test IDs"):
+- Action Centre row buttons:
+  `data-testid="action-centre-{accept|modify|dismiss}"` plus
+  `data-event-id={event.id}` so a Playwright test can target a
+  specific row.
+- Global FAB: `data-testid="ask-larry-fab"`.
+- Larry chat Send button: `data-testid="larry-chat-send"`.
+- Transcript-intake Open Project CTA:
+  `data-testid="transcript-intake-open-project"`.
+
+**Out of scope (deferred to a follow-up ticket):**
+The brief's full external-content intake (4th wizard card with
+.docx / .pdf / .pptx parsing) needs a binary file-upload UI plus
+parser packages and a new canonical_event source — multi-day work.
+.txt upload already exists on the transcript card; richer formats
+will land as a standalone PR.
+
+### Medium / Low cleanup — §1, §3a + meeting-title polish — **FIXED**
+
+**Commit:** `ac9f586` *fix: Medium/Low QA cleanup — accept race, empty-state race, meeting title*
+
+- **§3a — Accept double-click 409 race.** `useLarryActionCentre` now
+  optimistically removes the suggestion from local state the moment
+  the API returns 200. The button vanishes immediately; a fast click
+  loop can no longer re-fire on the same event id. Same treatment
+  applied to dismiss().
+- **§1 — Landing empty-state race.** `WorkspaceHome` rendered "No
+  projects yet" alongside the AI briefing carousel. Tightened the
+  empty-state gate to also require
+  `(!briefing || briefing.projects.length === 0) &&
+   archivedCards.length === 0`.
+- **Meeting title heuristic.** New helper
+  `apps/api/src/lib/meeting-title.ts` derives a title from the
+  transcript's first line — recognises "Meeting:", "Subject:",
+  "Topic:", "Re:" headers (strips trailing "(date)" clauses), falls
+  back to the first line itself when it looks like a title (short,
+  no internal sentence break, no terminal punctuation, no leading
+  bullet). Wired into both transcript ingestion sites. New
+  `apps/api/tests/meeting-title.test.ts` covers all branches.
+
+### Remaining items — DEFERRED
+
+- **C-1** Connectors page calendar-link dropdown shows "No projects
+  found yet" despite projects existing. Requires deeper
+  investigation — the projects array genuinely arrives empty in this
+  hook's load, but the same `/api/workspace/projects` endpoint
+  returns the full list elsewhere on the same session; likely a
+  scope or proxy refresh race I couldn't reproduce reliably.
+- **G-1** Resolve transcript-mentioned names (Joel, Priya) into
+  Larry users so extracted-task assignees aren't dropped — needs a
+  team-lookup contract design.
+- **G-2** Full external-content intake (.docx/.pdf/.pptx parsing).
+- **G-3** Vercel CLI re-auth (resolved this session — `vercel login`
+  done by user during Step 1).
+- **Step 7 / further data-testid sweep** beyond the high-traffic
+  starter set committed in 871e9b5.
+
+
 ### Step 4 — Invalid Date on /workspace/my-work + /workspace/calendar — §8, §9 — **FIXED**
 
 **Commit:** `527629b` *fix(tasks): cast date columns to text so dueDate is YYYY-MM-DD*
