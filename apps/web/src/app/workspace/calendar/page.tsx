@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { useCalendarEvents, type CalendarEvent } from "@/hooks/useCalendarEvents";
+import { toLocalDateKey } from "@/lib/calendar-date";
 
 export const dynamic = "force-dynamic";
 
@@ -82,7 +83,7 @@ export default function CalendarPage() {
   }, [selectedDate]);
 
   function eventsForDate(date: Date): CalendarEvent[] {
-    const key = date.toISOString().slice(0, 10);
+    const key = toLocalDateKey(date);
     return events.filter((e) => e.date === key);
   }
 
@@ -217,15 +218,15 @@ export default function CalendarPage() {
                       className="min-h-[80px] p-2 transition-colors cursor-pointer"
                       style={{
                         borderRight: di < 6 ? "1px solid var(--border)" : undefined,
-                        background: isToday || (day ? day.toISOString().slice(0, 10) === selectedDate : false) ? "var(--surface-2)" : undefined,
+                        background: isToday || (day ? toLocalDateKey(day) === selectedDate : false) ? "var(--surface-2)" : undefined,
                       }}
-                      onClick={isCurrentMonth ? () => setSelectedDate(day!.toISOString().slice(0, 10)) : undefined}
+                      onClick={isCurrentMonth ? () => setSelectedDate(toLocalDateKey(day!)) : undefined}
                       onMouseEnter={(e) => {
-                        const isSel = day ? day.toISOString().slice(0, 10) === selectedDate : false;
+                        const isSel = day ? toLocalDateKey(day) === selectedDate : false;
                         if (!isToday && !isSel) e.currentTarget.style.background = "var(--surface-2)";
                       }}
                       onMouseLeave={(e) => {
-                        const isSel = day ? day.toISOString().slice(0, 10) === selectedDate : false;
+                        const isSel = day ? toLocalDateKey(day) === selectedDate : false;
                         if (!isToday && !isSel) e.currentTarget.style.background = "";
                       }}
                     >
