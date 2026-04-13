@@ -299,7 +299,7 @@ export function MeetingsPage() {
 
   useEffect(() => {
     function onRefresh() {
-      void loadOverview();
+      void loadOverview(true);
     }
 
     window.addEventListener("larry:refresh-snapshot", onRefresh);
