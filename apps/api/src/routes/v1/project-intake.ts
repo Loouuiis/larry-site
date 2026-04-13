@@ -250,6 +250,9 @@ function buildIntelligenceConfig(config: ReturnType<typeof getApiEnv>): Intellig
   if (config.MODEL_PROVIDER === "gemini") {
     return { provider: "gemini", apiKey: config.GEMINI_API_KEY, model: config.GEMINI_MODEL };
   }
+  if (config.MODEL_PROVIDER === "groq") {
+    return { provider: "groq", apiKey: config.GROQ_API_KEY, model: config.GROQ_MODEL };
+  }
   return { provider: "mock", model: "mock" };
 }
 

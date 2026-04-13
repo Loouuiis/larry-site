@@ -38,6 +38,7 @@ const providerKeyMap: Record<string, string | undefined> = {
   openai: env.OPENAI_API_KEY,
   anthropic: env.ANTHROPIC_API_KEY,
   gemini: env.GEMINI_API_KEY,
+  groq: env.GROQ_API_KEY,
 };
 
 if (!providerKeyMap[env.MODEL_PROVIDER]) {
@@ -54,6 +55,8 @@ export const llmProvider = createLlmProvider({
   anthropicModel: env.ANTHROPIC_MODEL,
   geminiApiKey: env.GEMINI_API_KEY,
   geminiModel: env.GEMINI_MODEL,
+  groqApiKey: env.GROQ_API_KEY,
+  groqModel: env.GROQ_MODEL,
 });
 
 console.log(`[worker] Database: ${new URL(env.DATABASE_URL).host}`);

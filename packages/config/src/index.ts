@@ -8,13 +8,15 @@ const SharedSchema = z.object({
   LOG_LEVEL: LogLevel,
   DATABASE_URL: z.string().min(1),
   REDIS_URL: z.string().min(1),
-  MODEL_PROVIDER: z.enum(["openai", "anthropic", "gemini"]).default("gemini"),
+  MODEL_PROVIDER: z.enum(["openai", "anthropic", "gemini", "groq"]).default("gemini"),
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_MODEL: z.string().default("gpt-4o-mini"),
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_MODEL: z.string().default("claude-haiku-4-5-20251001"),
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default("gemini-1.5-flash"),
+  GROQ_API_KEY: z.string().optional(),
+  GROQ_MODEL: z.string().default("llama-3.3-70b-versatile"),
 });
 
 const ApiSchema = SharedSchema.extend({

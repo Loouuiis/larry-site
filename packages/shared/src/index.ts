@@ -361,7 +361,7 @@ export interface ProjectSnapshot {
 }
 
 export interface IntelligenceConfig {
-  provider: "openai" | "anthropic" | "gemini" | "mock";
+  provider: "openai" | "anthropic" | "gemini" | "groq" | "mock";
   apiKey?: string;
   model: string;
 }

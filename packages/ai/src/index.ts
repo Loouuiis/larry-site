@@ -435,13 +435,15 @@ class AiSdkProvider implements LlmProvider {
 }
 
 export function createLlmProvider(options: {
-  provider: "openai" | "anthropic" | "gemini";
+  provider: "openai" | "anthropic" | "gemini" | "groq";
   openAiApiKey?: string;
   openAiModel: string;
   anthropicApiKey?: string;
   anthropicModel: string;
   geminiApiKey?: string;
   geminiModel: string;
+  groqApiKey?: string;
+  groqModel?: string;
 }): LlmProvider {
   let apiKey: string | undefined;
   let model: string;
@@ -454,6 +456,10 @@ export function createLlmProvider(options: {
     case "gemini":
       apiKey = options.geminiApiKey;
       model = options.geminiModel;
+      break;
+    case "groq":
+      apiKey = options.groqApiKey;
+      model = options.groqModel ?? "llama-3.3-70b-versatile";
       break;
     case "openai":
     default:
