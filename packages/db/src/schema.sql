@@ -1472,3 +1472,11 @@ CREATE TABLE IF NOT EXISTS system_job_runs (
   last_run_error TEXT,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- 022: QA-2026-04-13 — avatar_url was added inside the users CREATE TABLE
+-- block (line 63) but the migration runner applies schema.sql idempotently,
+-- so pre-existing production databases (where `users` already existed
+-- without the column) never received it. `GET /v1/auth/me` selects
+-- `avatar_url` and returned 500 `column "avatar_url" does not exist` on
+-- every call. Append an idempotent ALTER so existing tables get patched.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
