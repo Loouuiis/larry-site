@@ -11,6 +11,7 @@ import type {
   ProjectTaskSnapshot,
 } from "@larry/shared";
 import { generateObject } from "ai";
+import { getStructuredOutputOptions } from "./structured.js";
 import { createModel } from "./provider.js";
 
 // ── Knowledge files (loaded once, cached) ────────────────────────────────────
@@ -1129,6 +1130,7 @@ export async function runIntelligence(
     prompt: userPrompt,
     temperature: 0.2,
     abortSignal: AbortSignal.timeout(45_000),
+    ...getStructuredOutputOptions(config),
   });
 
   return object as IntelligenceResult;

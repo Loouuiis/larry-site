@@ -7,6 +7,7 @@ import type {
 } from "@larry/shared";
 import { generateObject, generateText } from "ai";
 import { createModel } from "./provider.js";
+import { getStructuredOutputOptions } from "./structured.js";
 import type { IntelligenceConfig } from "@larry/shared";
 
 // ── Prompt injection mitigations ─────────────────────────────────────────────
@@ -286,6 +287,7 @@ class AiSdkProvider implements LlmProvider {
       schema: ExtractedActionsSchema,
       system: systemPrompt,
       prompt: userPrompt,
+      ...getStructuredOutputOptions(this.config),
     });
 
     return object as ExtractedAction[];
@@ -335,6 +337,7 @@ class AiSdkProvider implements LlmProvider {
       schema: ProjectStructureSchema,
       system: systemPrompt,
       prompt: wrapUserContent(sanitised),
+      ...getStructuredOutputOptions(this.config),
     });
 
     return object as ProjectStructure;
@@ -356,6 +359,7 @@ class AiSdkProvider implements LlmProvider {
       schema: SummarySchema,
       system: systemPrompt,
       prompt: wrapUserContent(sanitised),
+      ...getStructuredOutputOptions(this.config),
     });
 
     return object;
@@ -424,6 +428,7 @@ class AiSdkProvider implements LlmProvider {
       schema: TaskCommandResultSchema,
       system: systemPrompt,
       prompt: wrapUserContent(sanitised),
+      ...getStructuredOutputOptions(this.config),
     });
 
     const result = object as TaskCommandResult;
@@ -795,6 +800,7 @@ export async function generateBootstrapTasks(
     system: systemPrompt,
     prompt: userPrompt,
     abortSignal: AbortSignal.timeout(45_000),
+    ...getStructuredOutputOptions(config),
   });
 
   return object;
@@ -890,6 +896,7 @@ export async function generateBootstrapFromTranscript(
     system: systemPrompt,
     prompt: userPrompt,
     abortSignal: AbortSignal.timeout(45_000),
+    ...getStructuredOutputOptions(config),
   });
 
   return object;
@@ -897,6 +904,8 @@ export async function generateBootstrapFromTranscript(
 
 // ── Larry Intelligence (Phase 1) ─────────────────────────────────────────────
 export { runIntelligence } from "./intelligence.js";
+export { getStructuredOutputOptions } from "./structured.js";
+export type { StructuredOutputOptions } from "./structured.js";
 
 // ── Larry Streaming Chat ──────────────────────────────────────────────────────
 export {
