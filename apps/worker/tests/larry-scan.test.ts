@@ -3,10 +3,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const contextMocks = vi.hoisted(() => ({
   queryTenant: vi.fn(),
   tx: vi.fn(),
+  query: vi.fn(),
 }));
 
 vi.mock("../src/context.js", () => ({
-  db: { queryTenant: contextMocks.queryTenant, tx: contextMocks.tx },
+  db: {
+    queryTenant: contextMocks.queryTenant,
+    tx: contextMocks.tx,
+    query: contextMocks.query,
+  },
   env: { MODEL_PROVIDER: "mock" },
 }));
 
@@ -38,6 +43,7 @@ afterEach(() => {
   vi.clearAllMocks();
   contextMocks.queryTenant.mockReset();
   contextMocks.tx.mockReset();
+  contextMocks.query.mockReset();
 });
 
 describe("runLarryScan", () => {
@@ -96,7 +102,7 @@ describe("runLarryScan", () => {
       [],
       undefined,
       {
-        sourceKind: "schedule",
+        sourceKind: "project_review",
         sourceRecordId: expect.stringMatching(UUID_REGEX),
       }
     );
@@ -108,9 +114,86 @@ describe("runLarryScan", () => {
       [],
       undefined,
       {
-        sourceKind: "schedule",
+        sourceKind: "project_review",
         sourceRecordId: expect.stringMatching(UUID_REGEX),
       }
     );
+  });
+
+  // QA-2026-04-12 §15: scan reported `lastRunFailed: 5, lastRunError:
+  // null`. Per-project failures were caught + logged but never threaded
+  // into the heartbeat row, so the operations dashboard had no signal
+  // about why items failed. The fix collects the first error message
+  // (truncated, with a "(+N more)" suffix when multiple fail) and writes
+  // it as `last_run_error` on the system_job_runs row.
+  it("captures per-project failures into last_run_error so silent failures are visible", async () => {
+    const PROJECT_ID_GOOD = "44444444-4444-4444-8444-444444444444";
+    const PROJECT_ID_BAD_1 = "55555555-5555-4555-8555-555555555555";
+    const PROJECT_ID_BAD_2 = "66666666-6666-4666-8666-666666666666";
+
+    const clientQuery = vi.fn(async (sql: string) => {
+      if (sql.includes("SELECT p.id")) {
+        return {
+          rows: [
+            { id: PROJECT_ID_GOOD, tenant_id: TENANT_ID },
+            { id: PROJECT_ID_BAD_1, tenant_id: TENANT_ID },
+            { id: PROJECT_ID_BAD_2, tenant_id: TENANT_ID },
+          ],
+        };
+      }
+      return { rows: [] };
+    });
+    contextMocks.tx.mockImplementation(async (fn: (client: { query: typeof clientQuery }) => Promise<unknown>) =>
+      fn({ query: clientQuery })
+    );
+
+    vi.mocked(getProjectSnapshot).mockImplementation(async (_db, _tenant, projectId) => {
+      if (projectId === PROJECT_ID_BAD_1) {
+        throw new Error("Snapshot load failed for project 1: connection reset");
+      }
+      if (projectId === PROJECT_ID_BAD_2) {
+        throw new Error("Snapshot load failed for project 2: timeout");
+      }
+      return {
+        project: {
+          id: projectId,
+          tenantId: TENANT_ID,
+          name: "Healthy",
+          description: null,
+          status: "active",
+          riskScore: 10,
+          riskLevel: "low",
+          startDate: null,
+          targetDate: null,
+        },
+        tasks: [],
+        team: [],
+        recentActivity: [],
+        signals: [],
+        generatedAt: "2026-04-12T20:00:00.000Z",
+      };
+    });
+    vi.mocked(runIntelligence).mockResolvedValue({
+      briefing: "stable",
+      autoActions: [],
+      suggestedActions: [],
+    });
+    vi.mocked(runAutoActions).mockResolvedValue({ executedCount: 0, suggestedCount: 0, eventIds: [] });
+    vi.mocked(storeSuggestions).mockResolvedValue({ executedCount: 0, suggestedCount: 0, eventIds: [] });
+    contextMocks.query.mockResolvedValue({ rows: [] });
+
+    await runLarryScan();
+
+    const heartbeatCall = contextMocks.query.mock.calls.find(
+      (call) => typeof call[0] === "string" && call[0].includes("INSERT INTO system_job_runs")
+    );
+    expect(heartbeatCall).toBeDefined();
+    const values = heartbeatCall?.[1] as unknown[] | undefined;
+    expect(values).toBeDefined();
+    // Schema: jobName, startedAt, finishedAt, durationMs, processed, failed, error
+    expect(values?.[5]).toBe(2); // failed count
+    const errorParam = values?.[6];
+    expect(typeof errorParam).toBe("string");
+    expect(errorParam).toMatch(/Snapshot load failed for project/i);
   });
 });

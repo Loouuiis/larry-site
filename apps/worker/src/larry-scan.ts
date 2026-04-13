@@ -65,6 +65,11 @@ export async function runLarryScan(): Promise<void> {
   let failed = 0;
   let totalExecuted = 0;
   let totalSuggested = 0;
+  // QA-2026-04-12 §15: capture per-project failures so the heartbeat row's
+  // last_run_error is never silent. Keep the FIRST error verbatim and
+  // append a "(+N more)" suffix when others land — the operations
+  // dashboard only needs an actionable signal, not a full transcript.
+  const failureSummaries: string[] = [];
 
   // Process projects in parallel with a bounded concurrency cap so a large tenant
   // does not cause the scan to run for minutes serially.
@@ -93,9 +98,11 @@ export async function runLarryScan(): Promise<void> {
         totalSuggested += suggestResult.suggestedCount + autoResult.suggestedCount;
       } catch (err) {
         failed++;
+        const message = err instanceof Error ? err.message : String(err);
+        failureSummaries.push(`project ${projectId} (tenant ${tenantId}): ${message}`);
         console.error(
           `[larry-scan] project ${projectId} (tenant ${tenantId}) failed`,
-          err instanceof Error ? err.message : String(err)
+          message
         );
       }
     }
@@ -108,5 +115,21 @@ export async function runLarryScan(): Promise<void> {
     `[larry-scan] completed in ${elapsedSeconds}s — processed: ${processed}, failed: ${failed}, actions: ${totalExecuted}`
   );
 
-  await recordJobHeartbeat("larry.scan", startedAt, { processed, failed });
+  // Cap the persisted error column at ~500 chars so a single noisy stack
+  // trace can't dominate the row. The first error is the most actionable
+  // signal; the count tells the on-call whether to investigate further.
+  let aggregatedError: string | null = null;
+  if (failureSummaries.length > 0) {
+    const head = failureSummaries[0].slice(0, 480);
+    aggregatedError =
+      failureSummaries.length === 1
+        ? head
+        : `${head} (+${failureSummaries.length - 1} more)`;
+  }
+
+  await recordJobHeartbeat("larry.scan", startedAt, {
+    processed,
+    failed,
+    error: aggregatedError,
+  });
 }
