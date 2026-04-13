@@ -219,18 +219,33 @@ async function routeLegacyLarryEventsReadBoundary(page: Page): Promise<() => num
   return () => legacyEventsReadCount;
 }
 
+// Union of every event-fixture shape the action-centre tests rearrange
+// between `suggested` and `activity` arrays. Without this, TS narrows
+// `activity: [betaActivityEvent]` → `{ eventType: "auto_executed" }[]` and
+// later pushes of an `accepted`-shaped event fail TS2322 (N-3).
+type ActionCentreEventFixture =
+  | ReturnType<typeof createSuggestedEvent>
+  | ReturnType<typeof createAcceptedEvent>
+  | typeof betaActivityEvent;
+
+interface ActionCentreSnapshotFixture {
+  suggested: ActionCentreEventFixture[];
+  activity: ActionCentreEventFixture[];
+  conversations: (typeof conversationPreview)[];
+}
+
 test("keeps the global and project action centres in sync for the same suggestion", async ({ page }) => {
   const suggestedEvent = createSuggestedEvent();
   const acceptedEvent = createAcceptedEvent(suggestedEvent);
   const getLegacyEventsReadCount = await routeLegacyLarryEventsReadBoundary(page);
 
-  let globalActionCentre = {
+  let globalActionCentre: ActionCentreSnapshotFixture = {
     suggested: [suggestedEvent],
     activity: [betaActivityEvent],
     conversations: [conversationPreview],
   };
 
-  let projectActionCentre = {
+  let projectActionCentre: ActionCentreSnapshotFixture = {
     suggested: [suggestedEvent],
     activity: [],
     conversations: [conversationPreview],
