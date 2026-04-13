@@ -38,6 +38,21 @@ export interface ExecutorResult {
   eventIds: string[];
 }
 
+// ── Id-shape utilities ────────────────────────────────────────────────────────
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Strict UUID-shape check. Used to guard the `WHERE id = $2` SQL in
+ * `ensureTaskId` against Larry's occasional title-in-taskId payloads
+ * (see TEST-REPORT-2026-04-13 N-5). A non-UUID string sent straight to a
+ * Postgres uuid column crashes the query before the existing title-resolution
+ * fallback gets a chance.
+ */
+export function isUuidShape(value: string): boolean {
+  return UUID_RE.test(value);
+}
+
 // ── Payload shapes ────────────────────────────────────────────────────────────
 
 interface TaskCreatePayload {
@@ -580,7 +595,7 @@ async function resolveTaskByTitle(
  * If the provided taskId doesn't exist, falls back to title-based resolution.
  * Mutates the payload in place and returns the resolved taskId or null.
  */
-async function ensureTaskId(
+export async function ensureTaskId(
   db: Db,
   tenantId: string,
   projectId: string,
@@ -588,13 +603,29 @@ async function ensureTaskId(
 ): Promise<string | null> {
   // If taskId is present, verify it actually exists in the database
   if (typeof payload.taskId === "string" && payload.taskId.trim()) {
-    const exists = await db.queryTenant<{ id: string }>(
-      tenantId,
-      `SELECT id FROM tasks WHERE tenant_id = $1 AND id = $2 LIMIT 1`,
-      [tenantId, payload.taskId.trim()]
-    );
-    if (exists[0]) return payload.taskId as string;
-    // taskId was provided but doesn't exist (hallucinated by AI) — fall through to title resolution
+    const raw = payload.taskId.trim();
+    if (isUuidShape(raw)) {
+      const exists = await db.queryTenant<{ id: string }>(
+        tenantId,
+        `SELECT id FROM tasks WHERE tenant_id = $1 AND id = $2 LIMIT 1`,
+        [tenantId, raw]
+      );
+      if (exists[0]) return raw;
+      // hallucinated UUID — fall through to title resolution
+    } else {
+      // N-5: Larry sometimes emits the task TITLE in the `taskId` slot.
+      // Route it through title resolution instead of sending it to a uuid
+      // column (which would crash with `invalid input syntax for type uuid`
+      // and bypass the accept handler's retry-with-resolution layer).
+      const resolved = await resolveTaskByTitle(db, tenantId, projectId, raw);
+      if (resolved) {
+        payload.taskId = resolved;
+        return resolved;
+      }
+      // Non-UUID didn't resolve as a title either — fall through to
+      // `payload.taskTitle` / `displayText` paths below in case they carry
+      // a more resolvable value.
+    }
   }
 
   // Try to resolve from taskTitle
