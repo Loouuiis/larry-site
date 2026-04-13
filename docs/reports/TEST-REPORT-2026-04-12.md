@@ -192,18 +192,71 @@ Post-fix both pass; full api suite: 250/250.
   stale Rate-Limiting card from a pre-deploy test click remains.
 - Screenshot: `.playwright-mcp/step3-m1-m4-verified-prod-2026-04-12.png`.
 
-**Deferred to follow-up ticket:**
-- **M-2** (user's typed message not rendered in FAB / inline project
-  chat panels — `/workspace/larry` already has optimistic insert at
-  `apps/web/src/app/workspace/larry/page.tsx:455`): lives in separate
-  chat-panel components and needs their `handleSend` to add an
-  optimistic user-message insert before the fetch.
-- **M-3** (generic modify confirmation — "I queued 'Create task: X
-  with updates' in the Action Centre for you to review." — doesn't
-  echo the fields the user actually changed): requires threading the
-  original action context into the chat system prompt when
-  `conversation.sourceEventId` is set, plus prompt-engineering to ask
-  Larry to echo the diff. Non-trivial; filed as a standalone ticket.
+**Deferred to follow-up ticket — NOW SHIPPED in `db4c916`:**
+
+### Step 3 follow-up — M-2, M-3 — **FIXED**
+
+**Commit:** `db4c916` *fix(modify): keep optimistic user msg + show original payload (M-2, M-3)*
+
+**M-2 root cause:** Both chat surfaces (`useLarryChat.ts` for FAB +
+inline project panel, and `apps/web/src/app/workspace/larry/page.tsx`)
+optimistically inserted a placeholder user bubble at sendMessage start
+and then filtered it out by id on the SSE `done` event.
+`/workspace/larry` mostly papered over this because
+`setSelectedConversationId(eventConversationId)` usually triggered a
+reactive `listLarryMessages` refetch — but when the page launched into
+an existing conversation (e.g. `?launch=modify`, where the
+`conversationId` is already set), that effect didn't re-fire and the
+user bubble disappeared. `useLarryChat` never refetched at all, so
+every FAB / inline turn looked like Larry talking to nobody.
+
+**M-2 fix:** stop filtering the optimistic user message on `done` in
+both hooks. The synthetic id is harmless — any future
+`loadConversation` / `selectedConversationId` switch replaces the
+entire array with the canonical server list, so there is no risk of
+duplicate persistence.
+
+**M-3 root cause:** The LLM had no visibility into the source action's
+payload — only `displayText` — so its later "with updates"
+confirmation was generic. It could not name the fields the user
+actually changed.
+
+**M-3 fix:** the modify endpoint's user-facing opener now surfaces the
+current values (assignee, dueDate, priority for `task_create`; plus
+owner/deadline/risk/status for other action types) inline:
+> Let's refine "<displayText>". Currently: assigned to Joel, due 2026-04-15, priority high. Tell me what to change — assignee, deadline, priority, wording — and I'll queue an updated version in the Action Centre, noting which fields changed.
+
+The "Currently: …" clause degrades gracefully (omitted when no fields
+resolve). With those values now in conversation history, the LLM can
+echo the diff in its later confirmation.
+
+**Regression guard:** new test in
+`apps/api/tests/larry-chat.test.ts` under
+`POST /larry/events/:id/modify` —
+*"includes the original action's payload (assignee, due date,
+priority) in the opener so Larry can echo the diff (M-3)"*. Pre-fix
+the inserted opener didn't contain `Joel`, `2026-04-15`, or `high`;
+post-fix all three appear. Existing M-1 / M-4 guards still pass.
+
+**Production verification (post-deploy, hostname `7ad7174200f6`):**
+- Clicked Modify on the *Implement Rate Limiting on Login Endpoint*
+  pending suggestion on project
+  `c88a69db-9a93-4f8f-a5b8-f1f05d86497a`.
+- Larry's first bubble:
+  > Let's refine "Create task: \"Implement Rate Limiting on Login Endpoint\"". Currently: due 2026-04-15, priority high. Tell me what to change — assignee, deadline, priority, wording — and I'll queue an updated version in the Action Centre, noting which fields changed.
+  No assigneeName resolved on the source payload, so that field was
+  cleanly omitted — the rest came through.
+- Typed *"Push the deadline to 30 April and assign to Anna."* —
+  user bubble persists on screen (M-2 ✓) — see screenshot
+  `.playwright-mcp/m2-m3-verified-prod-2026-04-13.png`.
+- Returned to `/workspace/actions`: Pending review **1 → 0** (M-4
+  guard from `9ae721c` still active).
+- Note: Larry's reply itself was an `AI_RetryError` because the test
+  tenant hit its monthly Gemini spending cap during this run — that
+  is an environment / quota issue, not a code regression. The
+  mechanical M-3 surface (opener carries payload values) is verified;
+  the LLM's "echo the diff" prose can be re-validated once the cap is
+  raised.
 
 ### Step 4 — Invalid Date on /workspace/my-work + /workspace/calendar — §8, §9 — **FIXED**
 
