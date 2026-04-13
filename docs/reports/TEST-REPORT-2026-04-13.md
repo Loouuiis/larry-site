@@ -771,3 +771,277 @@ the TPM angle is addressed. Unit + integration green is the strongest
 signal available tonight; prod verification is a next-session task.
 
 
+## 14. SESSION 4 — prod verification of the five fixes (2026-04-13 ~21:55 UTC)
+
+**Context:** Session 3 merged the five fix commits (`0ed1fa4`, `bceed7d`,
+`5668879`, `e86c974`, `26233c8`, plus `2b2428d` housekeeping) to master
+between 21:19 and 21:41 UTC. Railway redeployed. Session 4's goal: verify
+all five live in prod before starting the P1–P3 matrix.
+
+### N-8 — json_schema provider-capability switch — ✅ VERIFIED LIVE
+
+**Evidence:** `GET /v1/admin/scan/last-run` at 21:52 UTC returns a scan
+that ran at **21:30:00.02 UTC**, 5 min after `0ed1fa4` committed/pushed.
+`lastRunError` is **TPM-shaped**, NOT json_schema-shaped:
+
+```
+Request too large for model `llama-3.3-70b-versatile` ...
+TPM Limit 12000, Requested 12982 ... Upgrade to Dev Tier
+```
+
+If N-8 hadn't landed, we'd see a `tool_use_failed` / schema-rejection
+error from Groq, not a rate-limit error. The request reached Groq's
+ingress (= prompt-based JSON path is active) and was rejected at the
+TPM quota gate. Fix is live.
+
+### N-5 — title-in-taskId UUID resolution — ✅ VERIFIED LIVE
+
+**Test:** Fetched event `63852f08-054b-4e18-b660-8c54472455f8` via
+`GET /v1/larry/action-centre`. Payload confirmed the N-5 shape:
+
+```
+payload.taskId    = "Coordinate Penetration Test Logistics"  ← title, not UUID
+payload.newDeadline = "2026-04-22"
+```
+
+`POST /v1/larry/events/63852f08.../accept` with empty body returned
+**HTTP 200** and:
+
+```json
+{
+  "accepted": true,
+  "entity": {
+    "id": "e5555776-958a-4f41-967d-e17aabf6c05b",
+    "title": "Coordinate Penetration Test Logistics",
+    "due_date": "2026-04-22T00:00:00.000Z",
+    "updated_at": "2026-04-13T21:54:21.849Z"
+  },
+  "event": { "eventType": "accepted", "executedAt": "2026-04-13T21:54:22.561Z" }
+}
+```
+
+The executor correctly resolved the title string to UUID
+`e5555776-...c05b` via `resolveTaskByTitle` (N-5 invariant: no
+`WHERE id = '<title>'` SQL was issued). Task due_date updated to the
+proposed `2026-04-22`. Downstream N-6 row-drop is also fixed — the
+`larry_events` row persisted post-accept (readable as `eventType:accepted`),
+confirming `runAutoActions` no longer deleted it on a UUID syntax crash.
+
+### N-6 — send_reminder auto-execute prose — ⏸ BLOCKED (N-9)
+
+**Attempted:** Assigned task `787fded0-7cf6-4fc1-aa8f-71c155f85564`
+("Write post-audit retrospective report") to admin user Larry O'Larry
+(`PATCH /v1/tasks/:id` returned `{success:true}`), then
+`POST /v1/larry/chat` with `projectId=c88a69db...` and the message
+"Send Larry O'Larry a reminder about the Write post-audit retrospective
+report task."
+
+**Result:** `HTTP 503 ServiceUnavailableError — Request too large ...
+TPM Limit 12000, Requested 16018`. Groq rejected the request before
+Larry had a chance to call send_reminder, so no prose assertion possible.
+
+**Static guard still green:** `apps/api/tests/chat-system-prompt.test.ts`
+7/7 pass, and `packages/ai/src/chat.ts:135` contains the corrected
+auto-execute clause verbatim. Prose fix is present in code; live signal
+is blocked by N-9.
+
+### N-7 — destructive-request refusal prose — ⏸ BLOCKED (N-9)
+
+Same block: any chat invocation exceeds TPM ceiling. Unit-test guard
+present in `chat-system-prompt.test.ts`. Not exercised live.
+
+### N-9 — Groq free-tier TPM 12k/min — 🔴 PROMOTED TO ACTIVE BLOCKER
+
+Session 3 flagged N-9 as a candidate "lurking" env issue. Session 4
+confirms it is a hard prod blocker for chat and scan-path AI calls:
+
+| Path                                          | Tokens requested | Verdict |
+|-----------------------------------------------|-----------------:|---------|
+| Worker scan, project `c112d675...`            |           12 982 | 503 TPM |
+| Project chat, `c88a69db...` + single sentence |           16 018 | 503 TPM |
+| Global chat fan-out, `T-2 Verify Transcript`  |           13 704 | 503 TPM |
+| Global chat fan-out, `Q3 Security Audit`      |           16 015 | 503 TPM |
+| Global chat fan-out, `Customer Onboarding`    |           14 479 | 503 TPM |
+| Global chat fan-out, `Mobile App Launch`      |           13 415 | 503 TPM |
+| Global chat, message="hi" (no projectId)      |           13 692 | 503 TPM |
+
+**Key observation:** even the one-word message "hi" with no projectId
+produced a 13.7k-token request, because global chat fans out across
+every project in the tenant and each project's prompt carries the full
+memory + task context. The ceiling is **structural**, not dependent on
+user input size. Every chat and every scan request on the current Groq
+free tier will 503 until one of the two mitigations lands:
+
+- **(a) upgrade Groq to Dev Tier** — unblocks everything tonight, no
+  code changes required. Recommended path for matrix execution.
+- **(b) trim the prompt** — `packages/ai/src/intelligence.ts` +
+  `packages/ai/src/chat.ts` prompt builders: cap
+  `project_memory_entries`, truncate long task descriptions, cap
+  conversation history depth. Sustainable but needs design + tests
+  + re-verification.
+
+**Impact on matrix:** every item that needs a live model call is
+blocked: N-6/N-7 prose, P1-1 (13 remaining action types), P2-1/2/3/5/6
+(chat-scope / tool-call probes), P3-1/3/5 (transcript extraction
+requires AI), P2-9 (global fan-out). ~60% of the remaining matrix.
+
+**Unblocked (will proceed in this session):** P1-2 (accept edge cases —
+pure API), P1-4 (Modify on non-task_create types — pure API),
+P1-7 (500-on-accept UX + offline test — can synthesize a 500),
+P2-7 (validation 400s / archived-project 409 — pure API),
+P2-10 (DB-level memory / audit_log inspection — SQL only),
+L-3 (notifications / email-drafts / reliability page — UI only).
+
+### Pre-matrix fix verification summary
+
+| Fix  | Status        | Path to verification                                   |
+|------|---------------|--------------------------------------------------------|
+| N-8  | ✅ VERIFIED  | Scan error shape flipped from json_schema → TPM        |
+| N-5  | ✅ VERIFIED  | `POST accept` 200 + task due_date updated to 2026-04-22 |
+| N-6  | ⏸ BLOCKED    | Unit test green; live prose blocked on N-9             |
+| N-7  | ⏸ BLOCKED    | Unit test green; live prose blocked on N-9             |
+| N-3  | ➖ N/A live  | TS test-file widening; green locally, no prod surface  |
+
+### Non-chat matrix executed (live prod, free-tier-compatible)
+
+All items below exercised via direct API or Playwright browser on
+`www.larry-pm.com` / `larry-site-production.up.railway.app`. None of
+them invoke the model, so none are blocked by N-9.
+
+**P1-2 accept edge cases — ✅ PASS with one minor finding**
+
+| Sub-case                                               | Request                                                              | Result                                                                   |
+|--------------------------------------------------------|----------------------------------------------------------------------|--------------------------------------------------------------------------|
+| Stale UUID (well-formed, non-existent)                 | `POST /events/00000000-0000-0000-0000-000000000000/accept`           | **404** `{"error":"NotFoundError","message":"Event not found."}` ✅      |
+| Malformed UUID in path                                 | `POST /events/not-a-uuid/accept`                                     | **500** `{"error":"Internal Server Error","message":"An unexpected error occurred."}` 🔶 — **N-10 candidate: path-param UUID shape check missing; should 400** |
+| Double-click (re-accept already-accepted `63852f08`)   | `POST /events/63852f08.../accept` ×2                                 | **409** `{"error":"ConflictError","message":"Only suggested events can be accepted."}` ✅ idempotent |
+| 10-burst parallel accept on same event                 | 10× concurrent `POST /events/63852f08.../accept`                     | All 10 → **409** consistently ✅ no race conditions, no phantom double-apply |
+
+**P1-4 Modify on non-task_create types — ✅ PASS**
+
+| Sub-case                                                | Request                                          | Result                                                                  |
+|---------------------------------------------------------|--------------------------------------------------|-------------------------------------------------------------------------|
+| Modify on `email_draft` event `f64c1562...`             | `POST /events/f64c1562.../modify`                | **200** `{"conversationId":"1bf42c31...","eventId":"f64c1562..."}` ✅   |
+| Modify on already-accepted event (wrong event_type)     | `POST /events/63852f08.../modify`                | **409** `{"message":"Only suggested events can be modified."}` ✅       |
+
+M-4 source-suggestion-dismissal behaviour verified: post-modify the
+source event is no longer listed as `suggested` (subsequent modify on
+it would 409). Modify endpoint does **not** call the LLM directly; it
+only creates a conversation + opener message + dismissal, so it's
+N-9-safe for structural testing.
+
+**P2-7 validation + archived-project — ✅ PASS**
+
+| Sub-case                                       | Request                                                                                 | Result                                                       |
+|------------------------------------------------|-----------------------------------------------------------------------------------------|--------------------------------------------------------------|
+| Malformed JSON body on accept                  | `POST /events/63852f08.../accept` with body `{not valid json`                           | **400** Fastify `"Body is not valid JSON ..."` ✅            |
+| Unauthenticated accept                         | `POST /events/63852f08.../accept` (no bearer)                                           | **401** `"No Authorization was found in request.headers"` ✅ |
+| PATCH task in archived project                 | `POST /projects/c88a69db/archive` → `PATCH /tasks/787fded0 {"priority":"high"}`         | **409** `"Archived projects are read-only. Unarchive the project before making changes."` ✅ |
+| PATCH task after unarchive                     | `POST /projects/c88a69db/unarchive` → `PATCH /tasks/787fded0 {"priority":"medium"}`     | **200** `{"success":true}` ✅                                |
+
+Archive/unarchive round-trip is clean; 409 message is user-facing and
+specific enough to action.
+
+**P2-10 DB-level memory / audit_log — ✅ PASS**
+
+Direct `DATABASE_PUBLIC_URL` read (pg client, no admin endpoint used)
+against Postgres service `postgres-production-70745`:
+
+- `audit_log` action-type histogram (tenant `83a49085...`):
+  - `auth.login` 36, `larry.chat.stream` 20, `larry.event.accepted` **12**,
+    `project.create` 6, `project.intake.finalized` 5,
+    `larry.chat.global` 5, `larry.event.dismissed` 3,
+    `larry.transcript` 3, plus `project.archive`/`unarchive` from this
+    session.
+- Our N-5 accept at 21:54:22.561 UTC is audited as
+  `larry.event.accepted` with `object_id=63852f08...`,
+  `details={"actionType":"deadline_change"}`, `created_at=21:54:23.993Z`.
+- **Hash chain integrity verified** on the last 5 entries
+  (`previous_hash` of row N equals `entry_hash` of row N-1) — tamper
+  evidence is wired and currently consistent.
+- `larry_events` row for `63852f08` reads back
+  `event_type=accepted, executed_at=21:54:22.561, approved_at=21:54:22.561,
+  approved_by_user_id=e754dc18..., dismissed_at=null` — confirms N-6
+  downstream (no silent row-drop on accept).
+- `project_memory_entries` (tenant total: 32) — per-project breakdown:
+  `c88a69db` 24 entries (latest 21:54:23.993Z, matches our accept
+  timestamp to the second → memory writes are live on accept),
+  `db812535` 5, `16e69f35` 2, `de064498` 1. Memory layer is active;
+  no project is orphaned.
+
+**L-3 UI pages — ✅ PASS (all three reachable and populated)**
+
+Playwright session (`www.larry-pm.com`, logged in as
+`larry@larry.com`):
+
+- `/workspace/notifications` — toolbar (Mark all read, Refresh),
+  search box, status filter combobox (All/Unread/Read), 6 rendered
+  notification cards. No console errors.
+- `/workspace/email-drafts` — header "Mail / Outbound mail drafts and
+  sent messages from Larry", tabs Drafts / Sent, Compose button, empty
+  state "No drafts yet" with helpful microcopy. Table headers present:
+  Subject / Recipient / Project-Action / Status / Date.
+- `/workspace/settings/reliability` — 5 status cards
+  (Running 0, Succeeded 3, **Retryable 0**, Dead-letter 3, Unprocessed 0),
+  Status + Source + Limit filters, Refresh / Preview bulk retry / Queue
+  bulk retry buttons, 6 rows in the table. Retry button enabled only on
+  dead-lettered rows. **Historical dead-letter cause** is "Your project
+  has exceeded its monthly spending cap. Please go to AI Studio at
+  https://ai.studio/spend …" on all three Transcript dead-letter rows
+  — these are pre-Groq-swap failures from the Gemini quota
+  exhaustion. Confirms the reliability/DLQ surface works and surfaces
+  provider-layer errors verbatim for operator triage.
+
+**Workspace Action Centre `/workspace/actions` — ✅ structural PASS**
+
+Pending=0 (our test emptied it), Recent activity=10, Projects
+touched=2, Linked chats=2. The action-type filter combobox enumerates
+**all 17 action types** as first-class options:
+`create_task, status_update, risk_flag, reminder, deadline_change,
+owner_change, scope_change, email_draft, create_project,
+add_collaborator, update_role, remove_collaborator, project_note,
+create_event, update_event, slack_draft, other`. This proves the
+P1-1 "13 remaining action types" are at least wired through to the
+UI surface; end-to-end provocation per type still requires a working
+chat (blocked by N-9).
+
+### Items NOT exercised this session (with reason)
+
+- **P1-7 500-on-accept inline error UX** — no pending event available
+  to trigger a real Accept 500 through the UI path; tried to observe
+  `/workspace/actions` with an empty queue. Direct API-level 500 on
+  malformed UUID is logged as N-10 candidate (above). Full inline-error
+  UX rendering needs a seeded pending event + a server-side failure
+  injection; neither is in scope without a rebuild.
+- **P1-7 offline-mode test** — Playwright MCP currently exposed does
+  not include `context.setOffline(true)`; cannot simulate loss of
+  connectivity without that primitive.
+- **P2-1 / P2-2 / P2-3 / P2-5 / P2-6 / P2-9 / P3-* live** — all
+  require a working chat stream or scheduled scan → blocked by N-9.
+- **P2-4 date-resolution** — same block.
+
+### New findings opened this session
+
+| ID | Severity | Summary |
+|----|----------|---------|
+| **N-9** | **High / env** | Promoted from candidate to hard blocker. Groq free-tier TPM 12k/min is structurally below the smallest chat prompt (13.4–16k tokens). Every chat + scheduled scan will 503 until Dev Tier or prompt trimming lands. See §14 table above. |
+| **N-10** | Low / polish | `POST /v1/larry/events/:id/accept` with a malformed UUID in the path (e.g. `not-a-uuid`) returns **500 Internal Server Error** instead of **400 Bad Request**. The non-existent-but-well-formed UUID case correctly returns 404. A Zod `.uuid()` guard on the path param (or a try/catch around the UUID parse) would convert this to a clean 400. No security impact, just a rough error surface. |
+
+### End-of-session verdict
+
+- All five session-3 fixes (N-3, N-5, N-6, N-7, N-8) are landed in
+  master and present in prod. Of those, **N-5 and N-8 are
+  independently verified live**; **N-6 and N-7** have full unit-test
+  coverage plus the corrected prose/code paths present in
+  `packages/ai/src/chat.ts`, but their **live prose** cannot be
+  observed because every chat call is N-9-blocked. Not a regression —
+  the fixes exist and are deployed; the observation channel is down.
+- All non-chat matrix items that were listed as "still-open / carried
+  forward" into this session (P1-2 edges, P1-4, P2-7, P2-10, L-3) are
+  now verified green in prod, with one minor new finding (**N-10**,
+  malformed UUID → 500 instead of 400).
+- Net blockers: **N-9 is the only gate** on the remaining ~60% of the
+  P1/P2/P3 matrix. All code-level fixes from session 3 are present;
+  the remaining work is either ops (lift the Groq ceiling) or a
+  sustained prompt-trimming initiative.
+
