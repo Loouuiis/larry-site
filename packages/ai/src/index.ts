@@ -912,6 +912,7 @@ export {
   streamLarryChat,
   computeDateContext,
   translateFullStreamChunkToChatEvent,
+  buildChatSystemPrompt,
 } from "./chat.js";
 export type { ChatStreamEvent, ToolCallResult } from "./chat.js";
 
