@@ -1078,6 +1078,29 @@ export const projectIntakeRoutes: FastifyPluginAsync = async (fastify) => {
           // materialise tasks here.
           void meetingBootstrapTasks;
 
+          // QA-2026-04-12 §1: backfill description from bootstrap summary
+          // when the user supplied no description on intake. The project
+          // INSERT above (line ~929) ran before the bootstrap completed,
+          // so we couldn't pass the summary at that point — patch it now
+          // so the /workspace card shows contextual text instead of the
+          // "Live workspace with active delivery signals." placeholder.
+          if (
+            (draft.projectDescription ?? null) === null &&
+            meetingBootstrapSummary &&
+            meetingBootstrapSummary.trim().length > 0
+          ) {
+            await fastify.db.queryTenant(
+              tenantId,
+              `UPDATE projects
+                  SET description = $3,
+                      updated_at = NOW()
+                WHERE tenant_id = $1
+                  AND id = $2
+                  AND description IS NULL`,
+              [tenantId, finalizedProjectId, meetingBootstrapSummary]
+            );
+          }
+
           try {
             const intelligenceConfig = buildIntelligenceConfig(fastify.config);
             const snapshot = await getProjectSnapshot(fastify.db, tenantId, finalizedProjectId);
@@ -1202,6 +1225,15 @@ export const projectIntakeRoutes: FastifyPluginAsync = async (fastify) => {
           }
         }
 
+        // QA-2026-04-12 §1 / §2b: if intake produced a bootstrap summary
+        // (always true for chat / transcript paths) and the user did not
+        // type their own description, use the summary as the row's
+        // description. Without this the /workspace project card falls
+        // back to the placeholder string "Live workspace with active
+        // delivery signals." until the next 30-min scan refreshes it.
+        const initialDescription =
+          draft.projectDescription ?? bootstrapSummary ?? null;
+
         const projectRows = await fastify.db.queryTenant<{ id: string }>(
           tenantId,
           `INSERT INTO projects (tenant_id, name, description, owner_user_id, start_date, target_date)
@@ -1210,7 +1242,7 @@ export const projectIntakeRoutes: FastifyPluginAsync = async (fastify) => {
           [
             tenantId,
             projectName,
-            draft.projectDescription ?? null,
+            initialDescription,
             actorUserId,
             draft.projectStartDate ?? null,
             draft.projectTargetDate ?? null,

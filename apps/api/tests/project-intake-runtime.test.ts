@@ -458,6 +458,59 @@ describe("Project intake runtime routes", () => {
     );
   });
 
+  // QA-2026-04-12 §1 / §2b "no AI briefing yet" follow-up.
+  //
+  // New projects rendered the placeholder
+  //   "Live workspace with active delivery signals." (or "Ready for the
+  //   first task and meeting signal." when no tasks)
+  // because /workspace's project-card description fell back to that
+  // string when projects.description was null. Chat / transcript intake
+  // both produced a `bootstrapSummary` describing the project but never
+  // wrote it to the row. The fix: when no user-typed description exists,
+  // persist the bootstrap summary as the description so the card has
+  // contextual text immediately on creation.
+  it("persists bootstrap summary as project description when intake provides no explicit description (chat path)", async () => {
+    vi.mocked(executeTaskCreate).mockResolvedValue({ id: "task-id" });
+    vi.mocked(storeSuggestions).mockResolvedValue({ executedCount: 0, suggestedCount: 0, eventIds: [] });
+    vi.mocked(insertProjectMemoryEntry).mockResolvedValue("memory-1");
+
+    const db = createDbStub({
+      initialDraft: makeDraftRow({
+        mode: "chat",
+        status: "bootstrapped",
+        project_name: "Chat Intake Project",
+        project_description: null,
+        bootstrap_summary:
+          "Larry created 2 starter tasks to kick off the customer onboarding redesign work.",
+        bootstrap_tasks: [
+          { title: "Task A", description: null, dueDate: null, assigneeName: null, priority: "medium" },
+        ],
+        bootstrap_actions: [],
+        bootstrap_seed_message: "seed message",
+      }),
+      createdProjectId: PROJECT_ID,
+    });
+    const app = await createTestApp(db);
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/projects/intake/drafts/${DRAFT_ID}/finalize`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    const insertCall = (db.queryTenant as ReturnType<typeof vi.fn>).mock.calls.find(
+      (call) =>
+        typeof call[1] === "string" && call[1].includes("INSERT INTO projects")
+    );
+    expect(insertCall).toBeDefined();
+    const values = insertCall?.[2] as unknown[] | undefined;
+    // INSERT order: tenantId, projectName, description, ownerUserId, startDate, targetDate
+    expect(values?.[2]).toBe(
+      "Larry created 2 starter tasks to kick off the customer onboarding redesign work."
+    );
+  });
+
   // QA-2026-04-12 T-2 regression guard.
   //
   // Pre-fix, meeting finalize wrote every extracted task DIRECTLY to the
