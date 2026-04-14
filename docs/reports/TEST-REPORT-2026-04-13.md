@@ -1206,9 +1206,32 @@ after the quota replenishes should show 38/38 succeeded.
   Action-Centre context banner with "Modifying a Larry action — tell
   Larry what to change" title, closing the "didn't feel smooth"
   gap when clicking Modify from an Action-Centre card.
-- **Open polish items:** N-10 (UUID shape guard), U-2 (avatar race,
-  cosmetic), U-3 (open-project deep-link target, product decision),
-  N-7 refusal-prose quality (70b adherence, prompt tuning).
+- **N-10: closed** (`717f034`). `isUuidShape(id)` guard added to all
+  four `/events/:id/*` handlers (accept, dismiss, modify,
+  let-larry-execute). Live-verified on prod after redeploy: every
+  malformed-UUID path returns **400 "Invalid event id."** (pre-fix
+  was 500 "An unexpected error occurred."). Control case —
+  well-formed non-existent UUID on /accept — still returns 404,
+  confirming the guard doesn't over-reject. Regression guard:
+  `apps/api/tests/larry-event-id-uuid-guard.test.ts` — 21 cases,
+  also asserts the DB mock is never reached on a malformed id.
+- **U-3: closed** (`717f034`). Both "Open project" links in
+  `/workspace/actions` now route to `?tab=actions` so the user lands
+  on the project's own action-centre, preserving the context they
+  came from.
+- **U-4: closed** (`fb9249c`). Modify-launched chats now render the
+  banner with a modify-specific title.
+- **N-7: code tightened** (`05ba815`). REFUSING DESTRUCTIVE REQUESTS
+  now explicitly claims priority over INJECTION GUARD, bans the
+  "pivot to generic project advice" failure mode, and requires the
+  reply to start with "I can't" so the refusal is visible. Live
+  prose verification pending — Groq TPD is at 97_214/100_000 tokens
+  used, replenishing on a rolling 24h window; retry-after reported
+  by the API is 1h32m at the time of §15. Next session should repeat
+  the destructive-prompt probe from §14 once the bucket has room for
+  one ~9k-token request.
+- **Open polish items:** U-2 (avatar race, cosmetic — requires
+  session-JWT refactor to fix deterministically).
 - **External constraint:** Groq free-tier TPD 100k/day is the new
   rate-limiting floor, not TPM. ~10 scheduled-scan runs per day
   (38 projects × 9k tokens = ~342k tokens per full scan × daily
