@@ -20,6 +20,7 @@ import { folderRoutes } from "./folders.js";
 import { settingsRoutes } from "./settings.js";
 import { searchRoutes } from "./search.js";
 import { adminRoutes } from "./admin.js";
+import { resendWebhookRoutes } from "./webhooks-resend.js";
 
 export const v1Routes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(authRoutes, { prefix: "/auth" });
@@ -43,4 +44,5 @@ export const v1Routes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(settingsRoutes, { prefix: "/settings" });
   await fastify.register(searchRoutes);
   await fastify.register(adminRoutes, { prefix: "/admin" });
+  await fastify.register(resendWebhookRoutes, { prefix: "/webhooks" });
 };
