@@ -20,9 +20,14 @@ import type { IntelligenceConfig } from "@larry/shared";
 const GROQ_JSON_SCHEMA_CAPABLE_MODELS: ReadonlySet<string> = new Set([
   "openai/gpt-oss-120b",
   "openai/gpt-oss-20b",
-  "moonshotai/kimi-k2-instruct-0905",
-  // meta-llama/llama-4-* intentionally omitted: strict-mode JSON schema
-  // validation rejects our .optional()-heavy Zod shapes. Revisit if we
+  // 2026-04-14 update: moonshotai/kimi-k2-* and meta-llama/llama-4-*
+  // are both omitted even though Groq lists them as json_schema-capable.
+  // Both models enforce OpenAI strict-mode (every `properties` key must
+  // appear in `required`) and reject the Zod-to-JSON-Schema output from
+  // the AI SDK with "invalid JSON schema for response_format" when our
+  // IntelligenceResultSchema uses `.optional()` on
+  // executionOutput.emailRecipient / emailSubject. OSS models
+  // (gpt-oss-*) still tolerate the non-strict shape. Revisit if we
   // refactor the schema to be strict-mode-compliant.
 ]);
 

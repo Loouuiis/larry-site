@@ -32,6 +32,19 @@ describe("getStructuredOutputOptions — provider capability switch (N-8)", () =
     expect(opts.providerOptions).toBeUndefined();
   });
 
+  it("downshifts moonshotai/kimi-k2-instruct-0905 to json_object (strict-mode rejection, 2026-04-14)", () => {
+    // Kimi-k2 nominally supports json_schema but enforces the same
+    // OpenAI strict-mode rules as llama-4 — rejected our Zod schema
+    // with "invalid JSON schema for response_format" live.
+    const opts = getStructuredOutputOptions({
+      provider: "groq",
+      model: "moonshotai/kimi-k2-instruct-0905",
+      apiKey: "test-key",
+    });
+
+    expect(opts.providerOptions).toEqual({ groq: { structuredOutputs: false } });
+  });
+
   it("downshifts meta-llama/llama-4-scout-17b-16e-instruct to json_object (strict-mode rejection, 2026-04-14)", () => {
     // llama-4-scout nominally supports json_schema but enforces OpenAI
     // strict-mode rules the AI SDK's Zod-to-JSON-Schema converter does
