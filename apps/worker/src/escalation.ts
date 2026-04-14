@@ -220,7 +220,7 @@ export async function runEscalationScan(): Promise<void> {
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({
-                from: env.RESEND_FROM,
+                from: env.RESEND_FROM_LARRY,
                 to: [userEmail],
                 subject: notif.subject,
                 text: notif.body,

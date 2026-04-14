@@ -1,6 +1,7 @@
 import { Resend } from "resend";
 
-const FROM = "Larry <noreply@larry.app>";
+const FROM_NOREPLY = process.env.RESEND_FROM_NOREPLY ?? "Larry <noreply@larry-site.com>";
+const FROM_LARRY   = process.env.RESEND_FROM_LARRY   ?? "Larry <larry@larry-site.com>";
 
 let resendInstance: Resend | null = null;
 
@@ -61,7 +62,7 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string): Prom
   }
   const resend = getResend();
   const { error } = await resend.emails.send({
-    from: FROM,
+    from: FROM_NOREPLY,
     to,
     subject: "Reset your password",
     html: wrapHtml(`
@@ -88,7 +89,7 @@ export async function sendVerificationEmail(to: string, verifyUrl: string): Prom
   }
   const resend = getResend();
   const { error } = await resend.emails.send({
-    from: FROM,
+    from: FROM_NOREPLY,
     to,
     subject: "Verify your email address",
     html: wrapHtml(`
@@ -115,7 +116,7 @@ export async function sendEmailChangeConfirmation(to: string, confirmUrl: string
   }
   const resend = getResend();
   const { error } = await resend.emails.send({
-    from: FROM,
+    from: FROM_NOREPLY,
     to,
     subject: "Confirm your new email address",
     html: wrapHtml(`
@@ -143,7 +144,7 @@ export async function sendEmailChangeNotification(to: string): Promise<void> {
   const resend = getResend();
   const frontendUrl = getFrontendUrl();
   const { error } = await resend.emails.send({
-    from: FROM,
+    from: FROM_NOREPLY,
     to,
     subject: "Your email address is being changed",
     html: wrapHtml(`
@@ -187,7 +188,7 @@ export async function sendNewDeviceAlert(to: string, deviceInfo: DeviceInfo): Pr
     .join("");
 
   const { error } = await resend.emails.send({
-    from: FROM,
+    from: FROM_NOREPLY,
     to,
     subject: "New sign-in to your Larry account",
     html: wrapHtml(`
@@ -221,7 +222,7 @@ export async function sendMemberInviteEmail(to: string, displayName: string): Pr
   const frontendUrl = getFrontendUrl();
   const safeName = escapeHtml(displayName);
   const { error } = await resend.emails.send({
-    from: FROM,
+    from: FROM_LARRY,
     to,
     subject: "You've been invited to Larry",
     html: wrapHtml(`
