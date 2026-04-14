@@ -279,7 +279,8 @@ export default function AskLarryPage() {
   const [error, setError] = useState<string | null>(null);
   const [files, setFiles] = useState<AttachedFile[]>([]);
   const [showNewProject, setShowNewProject] = useState(false);
-  const initializedRef = useRef(false);
+  const hasPickedDefaultRef = useRef(false);
+  const streamAbortRef = useRef<AbortController | null>(null);
 
   const { containerRef, endRef, hasNewMessages, scrollToBottom } = useSmartScroll(messages);
 
@@ -344,29 +345,38 @@ export default function AskLarryPage() {
     return () => { cancelled = true; };
   }, [conversationScopeProjectId, preferredProjectId]);
 
-  // First-load default selection. Only runs once per mount — picks a
-  // sensible default when no conversationId is in the URL. URL-driven
-  // changes after this are handled by the reactive effect below.
+  // Conversation selection: honor URL param whenever present (handles first
+  // load and all subsequent soft-navigations); fall back to a sensible
+  // default only once when there is no URL param.
   useEffect(() => {
-    if (loading || initializedRef.current) return;
+    if (loading) return;
+
+    if (preferredConversationId) {
+      // URL-driven: always switch, regardless of whether this is first load.
+      const match = conversations.find((c) => c.id === preferredConversationId);
+      if (match && match.id !== selectedConversationId) {
+        // Cancel any in-flight stream from the previous conversation.
+        streamAbortRef.current?.abort();
+        streamAbortRef.current = null;
+        setBusy(false);
+        setMessages((prev) => prev.filter((m) => !m.streaming));
+        setSelectedConversationId(match.id);
+        setDraftProjectId(match.projectId);
+        setError(null);
+      }
+      hasPickedDefaultRef.current = true;
+      return;
+    }
+
+    // No URL param — pick a default once.
+    if (hasPickedDefaultRef.current) return;
 
     if (draftFromQuery) {
       setSelectedConversationId(null);
       setDraftProjectId(preferredProjectId);
       setMessages([]);
       setInput(draftFromQuery);
-      initializedRef.current = true;
-      return;
-    }
-
-    const requestedConversation = preferredConversationId
-      ? conversations.find((c) => c.id === preferredConversationId)
-      : null;
-
-    if (requestedConversation) {
-      setSelectedConversationId(requestedConversation.id);
-      setDraftProjectId(requestedConversation.projectId);
-      initializedRef.current = true;
+      hasPickedDefaultRef.current = true;
       return;
     }
 
@@ -377,34 +387,15 @@ export default function AskLarryPage() {
     if (preferredConversation) {
       setSelectedConversationId(preferredConversation.id);
       setDraftProjectId(preferredConversation.projectId);
-      initializedRef.current = true;
-      return;
-    }
-
-    if (conversations[0]) {
+    } else if (conversations[0]) {
       setSelectedConversationId(conversations[0].id);
       setDraftProjectId(conversations[0].projectId);
-      initializedRef.current = true;
-      return;
+    } else if (preferredProjectId) {
+      setDraftProjectId(preferredProjectId);
     }
-
-    if (preferredProjectId) setDraftProjectId(preferredProjectId);
-    initializedRef.current = true;
-  }, [conversations, draftFromQuery, loading, preferredConversationId, preferredProjectId]);
-
-  // React to URL changes after the initial load — ensures that external
-  // navigations (e.g. "Open in chats" from Action Centre, Modify button,
-  // browser back/forward) actually swap the visible conversation.
-  useEffect(() => {
-    if (loading || !initializedRef.current) return;
-    if (!preferredConversationId) return;
-    if (preferredConversationId === selectedConversationId) return;
-    const match = conversations.find((c) => c.id === preferredConversationId);
-    if (!match) return;
-    setSelectedConversationId(match.id);
-    setDraftProjectId(match.projectId);
-    setError(null);
-  }, [conversations, loading, preferredConversationId, selectedConversationId]);
+    hasPickedDefaultRef.current = true;
+  }, [conversations, loading, preferredConversationId, selectedConversationId,
+      draftFromQuery, preferredProjectId]);
 
   // Load messages for selected conversation
   useEffect(() => {
@@ -489,10 +480,13 @@ export default function AskLarryPage() {
       };
 
       try {
+        const controller = new AbortController();
+        streamAbortRef.current = controller;
         const response = await streamLarryChat({
           projectId: activeProjectId ?? undefined,
           message: text,
           conversationId: selectedConversationId ?? undefined,
+          signal: controller.signal,
         });
 
         if (response.ok && response.body) {
@@ -539,8 +533,17 @@ export default function AskLarryPage() {
             }
           }
         }
-      } catch {
+      } catch (streamErr) {
+        if (streamErr instanceof Error && streamErr.name === "AbortError") {
+          // Conversation switched mid-stream — UI already cleaned up by the
+          // selection effect. Exit without falling through to non-streaming.
+          return;
+        }
         didStream = false;
+      } finally {
+        if (streamAbortRef.current?.signal.aborted === false) {
+          streamAbortRef.current = null;
+        }
       }
 
       if (!didStream) {
