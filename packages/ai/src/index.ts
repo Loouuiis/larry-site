@@ -903,7 +903,11 @@ export async function generateBootstrapFromTranscript(
 }
 
 // ── Larry Intelligence (Phase 1) ─────────────────────────────────────────────
-export { runIntelligence } from "./intelligence.js";
+export {
+  runIntelligence,
+  buildIntelligenceSystemPrompt,
+  IntelligenceResultSchema,
+} from "./intelligence.js";
 export { getStructuredOutputOptions } from "./structured.js";
 export type { StructuredOutputOptions } from "./structured.js";
 

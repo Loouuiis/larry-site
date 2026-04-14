@@ -1,7 +1,4 @@
 import { z } from "zod";
-import { readFileSync, readdirSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 import type {
   IntelligenceConfig,
   IntelligenceResult,
@@ -14,28 +11,12 @@ import { generateObject } from "ai";
 import { getStructuredOutputOptions } from "./structured.js";
 import { createModel } from "./provider.js";
 
-// ── Knowledge files (loaded once, cached) ────────────────────────────────────
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const KNOWLEDGE_DIR = join(__dirname, "..", "knowledge");
-
-let _knowledgeCache: string | null = null;
-
-function loadKnowledge(): string {
-  if (_knowledgeCache !== null) return _knowledgeCache;
-  try {
-    const files = readdirSync(KNOWLEDGE_DIR)
-      .filter((f) => f.endsWith(".md"))
-      .sort();
-    const sections = files.map((f) =>
-      readFileSync(join(KNOWLEDGE_DIR, f), "utf-8").trim()
-    );
-    _knowledgeCache = sections.join("\n\n");
-  } catch {
-    _knowledgeCache = "";
-  }
-  return _knowledgeCache;
-}
+// N-9: the 12-file packages/ai/knowledge/*.md library used to be
+// concatenated into the system prompt on every call (~19_572 chars,
+// ~4_900 tokens). It was general PM guidance that the model already
+// knows, and combined with the 34_900-char template it pushed the base
+// prompt above the Groq free-tier 12k-TPM ceiling. The files remain in
+// the repo as design-reference, but are no longer injected.
 
 // ── Injection guard (inline — no circular import with index.ts) ───────────────
 
@@ -165,7 +146,7 @@ const FollowUpQuestionSchema = z.object({
   question: z.string().min(1).transform((s) => s.slice(0, 1000)),
 });
 
-const IntelligenceResultSchema = z
+export const IntelligenceResultSchema = z
   .object({
     thinking: z.string().optional(),
     briefing: z.string().min(1).transform((s) => s.slice(0, 2000)),
@@ -196,11 +177,14 @@ const IntelligenceResultSchema = z
     const autoActions = (result.autoActions ?? []).filter((a) => filterAction(a, "auto"));
     const suggestedActions = (result.suggestedActions ?? []).filter((a) => filterAction(a, "suggestion"));
 
-    let contextUpdate = result.contextUpdate ?? null;
-    if (droppedReasons.length > 0) {
-      const feedback = `\n[System] Actions dropped due to missing fields: ${droppedReasons.join("; ")}`;
-      contextUpdate = (contextUpdate ?? "") + feedback;
-    }
+    // N-9: dropped-action feedback is diagnostic-only. Previously the
+    // suffix was appended to contextUpdate and persisted to
+    // projects.larry_context, which then got re-injected into the next
+    // scan's prompt — a feedback loop that polluted 70%+ of the context
+    // column and drove token counts above the Groq free-tier 12k TPM
+    // ceiling. The droppedReasons are still logged (above) so the
+    // signal is reachable in Railway logs without leaking into memory.
+    const contextUpdate = result.contextUpdate ?? null;
 
     return {
       ...result,
@@ -212,7 +196,7 @@ const IntelligenceResultSchema = z
 
 // ── System prompt ─────────────────────────────────────────────────────────────
 
-function buildSystemPrompt(): string {
+export function buildIntelligenceSystemPrompt(): string {
   return `## 1. IDENTITY — WHO YOU ARE
 
 You are Larry. Not "an AI assistant." Not "a helpful bot." You are a senior project manager who happens to live inside software. You have 15 years of experience running complex projects. You know every task, every deadline, every dependency, every person on the team. You care about shipping.
@@ -235,7 +219,7 @@ This personality is YOU. It does not change based on which model is running unde
 
 You are not just a task tracker. You are a deeply knowledgeable project management professional. This expertise shapes every response, every analysis, every recommendation, and every document you produce. Use it constantly — when advising, when drafting, when analysing. You don't just manage tasks, you manage projects.
 
-${loadKnowledge()}
+Draw on what a seasoned PM already knows: range-based estimates, dependency mapping, critical-path thinking, workload balancing, and disciplined prioritisation. Call out blockers early, not their downstream effects. Raise risks before they land. Keep recommendations specific to this project's actual signals.
 
 ---
 
@@ -1120,7 +1104,7 @@ export async function runIntelligence(
     return mockIntelligence(snapshot, hint);
   }
 
-  const systemPrompt = buildSystemPrompt();
+  const systemPrompt = buildIntelligenceSystemPrompt();
   const userPrompt = buildUserPrompt(snapshot, hint);
 
   const { object } = await generateObject({
