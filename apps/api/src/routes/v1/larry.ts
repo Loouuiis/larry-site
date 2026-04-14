@@ -12,6 +12,7 @@ import {
   getPendingSuggestionTexts,
   getProjectSnapshot,
   insertProjectMemoryEntry,
+  isUuidShape,
   listProjectMemoryEntries,
   runAutoActions,
   storeSuggestions,
@@ -1547,6 +1548,12 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       const tenantId = request.user.tenantId;
       const actorUserId = request.user.userId;
       const { id } = request.params as { id: string };
+      // N-10: short-circuit on malformed UUID before any DB call.
+      // Previously pg threw "invalid input syntax for type uuid"
+      // and surfaced as a generic 500.
+      if (!isUuidShape(id)) {
+        throw fastify.httpErrors.badRequest("Invalid event id.");
+      }
 
       const event = await getLarryEventForMutation(fastify.db, tenantId, id);
       if (!event) {
@@ -1830,6 +1837,9 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       const tenantId = request.user.tenantId;
       const actorUserId = request.user.userId;
       const { id } = request.params as { id: string };
+      if (!isUuidShape(id)) {
+        throw fastify.httpErrors.badRequest("Invalid event id.");
+      }
       const body = z.object({ reason: z.string().max(1000).optional() }).parse(request.body ?? {});
 
       const event = await getLarryEventForMutation(fastify.db, tenantId, id);
@@ -1896,6 +1906,9 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       const tenantId = request.user.tenantId;
       const actorUserId = request.user.userId;
       const { id } = request.params as { id: string };
+      if (!isUuidShape(id)) {
+        throw fastify.httpErrors.badRequest("Invalid event id.");
+      }
 
       const event = await getLarryEventForMutation(fastify.db, tenantId, id);
       if (!event) {
@@ -2017,6 +2030,9 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       const tenantId = request.user.tenantId;
       const actorUserId = request.user.userId;
       const { id } = request.params as { id: string };
+      if (!isUuidShape(id)) {
+        throw fastify.httpErrors.badRequest("Invalid event id.");
+      }
 
       const event = await getLarryEventForMutation(fastify.db, tenantId, id);
       if (!event) {

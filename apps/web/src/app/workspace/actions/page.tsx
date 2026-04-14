@@ -134,7 +134,7 @@ function buildLinkedChatHref(event: WorkspaceLarryEvent): string | null {
 function ProjectBadge({ event }: { event: WorkspaceLarryEvent }) {
   return (
     <Link
-      href={`/workspace/projects/${event.projectId}`}
+      href={`/workspace/projects/${event.projectId}?tab=actions`}
       className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[12px] font-semibold"
       style={{
         borderColor: "var(--border)",
@@ -638,7 +638,7 @@ export default function WorkspaceActionsPage() {
                     <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
                       <div className="flex flex-wrap items-center gap-2">
                         <Link
-                          href={`/workspace/projects/${event.projectId}`}
+                          href={`/workspace/projects/${event.projectId}?tab=actions`}
                           className="rounded-full border px-3 py-1.5 text-[12px] font-semibold"
                           style={{ borderColor: "var(--border)", color: "var(--text-2)" }}
                         >
@@ -806,7 +806,7 @@ export default function WorkspaceActionsPage() {
                         )}
                         <div className="mt-3 flex flex-wrap items-center gap-3">
                           <Link
-                            href={`/workspace/projects/${event.projectId}`}
+                            href={`/workspace/projects/${event.projectId}?tab=actions`}
                             className="text-[12px] font-semibold"
                             style={{ color: "var(--cta)" }}
                           >
