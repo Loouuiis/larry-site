@@ -111,6 +111,10 @@ export default function MembersSettingsPage() {
       }
 
       setMembers(Array.isArray(data.members) ? data.members : members);
+      // U-1: dismiss the modal on success. Previously it stayed open with
+      // cleared fields and a disabled Send button, making it look like the
+      // invite had failed silently.
+      setShowInvite(false);
       setInviteEmail("");
       setInviteName("");
       setInviteRole("member");
