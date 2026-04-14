@@ -598,7 +598,15 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       sourceRecordId: input.userMessageInsert.id,
     } as const;
 
-    const resultPromises = globalProjects.map(async (project): Promise<GlobalProjectIntelligenceResult> => {
+    // N-11 (derivative of N-9): run project fan-out SEQUENTIALLY, not in
+    // parallel. Each runIntelligence call is ~9k tokens on our test
+    // tenant; with GLOBAL_CHAT_PROJECT_LIMIT=5 the parallel burst
+    // cumulatively exceeds the Groq free-tier 12k/minute TPM bucket
+    // even though every individual request fits. Serial execution
+    // keeps within-minute usage linear and removes the burst.
+    const runProjectIntelligenceFlow = async (
+      project: (typeof globalProjects)[number]
+    ): Promise<GlobalProjectIntelligenceResult> => {
       try {
         const snapshot = await getProjectSnapshot(fastify.db, input.tenantId, project.id);
         const pendingTexts = await getPendingSuggestionTexts(fastify.db, input.tenantId, project.id).catch(
@@ -691,14 +699,14 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           error: reason,
         };
       }
-    });
+    };
 
     const finalizedResults: GlobalProjectIntelligenceResult[] = [];
     let fullContent = "";
     let remainingChars = 8_000;
 
-    for (const resultPromise of resultPromises) {
-      const result = await resultPromise;
+    for (const project of globalProjects) {
+      const result = await runProjectIntelligenceFlow(project);
       finalizedResults.push(result);
 
       const section = buildGlobalGroupedSection(result);

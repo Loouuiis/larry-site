@@ -4,7 +4,12 @@ import { runIntelligence } from "@larry/ai";
 import { db } from "./context.js";
 import { buildWorkerIntelligenceConfig } from "./intelligence-config.js";
 
-const SCAN_CONCURRENCY = 5;
+// N-11: dropped from 5 → 1 to keep the scan within the Groq free-tier
+// 12k-TPM bucket. Per-project runIntelligence cost is ~9k tokens post-N-9;
+// bursting 5 of those in the same minute reliably exceeds 12k/min and
+// ~38 projects fail the scan. Serial execution adds ~1-2s per project to
+// the total scan time (still well under the 30-minute cron interval).
+const SCAN_CONCURRENCY = 1;
 
 async function recordJobHeartbeat(
   jobName: string,
