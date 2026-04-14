@@ -32,14 +32,21 @@ describe("getStructuredOutputOptions — provider capability switch (N-8)", () =
     expect(opts.providerOptions).toBeUndefined();
   });
 
-  it("keeps json_schema mode on Groq meta-llama/llama-4-scout-17b-16e-instruct", () => {
+  it("downshifts meta-llama/llama-4-scout-17b-16e-instruct to json_object (strict-mode rejection, 2026-04-14)", () => {
+    // llama-4-scout nominally supports json_schema but enforces OpenAI
+    // strict-mode rules the AI SDK's Zod-to-JSON-Schema converter does
+    // not satisfy (optional fields like executionOutput.emailRecipient
+    // aren't listed in `required`). Live prod returned 400 "invalid
+    // JSON schema" on 2026-04-14. Downshifting to structuredOutputs:
+    // false uses prompt-based JSON + client-side Zod parse, the same
+    // path that already works on llama-3.3-70b.
     const opts = getStructuredOutputOptions({
       provider: "groq",
       model: "meta-llama/llama-4-scout-17b-16e-instruct",
       apiKey: "test-key",
     });
 
-    expect(opts.providerOptions).toBeUndefined();
+    expect(opts.providerOptions).toEqual({ groq: { structuredOutputs: false } });
   });
 
   it("returns no overrides for OpenAI (json_schema universally supported)", () => {

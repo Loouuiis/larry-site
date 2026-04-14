@@ -1,17 +1,29 @@
 import type { IntelligenceConfig } from "@larry/shared";
 
 /**
- * Groq models that support `response_format: json_schema` (strict structured
- * outputs). Per https://console.groq.com/docs/structured-outputs#supported-models
- * as of 2026-04-13. Models NOT on this list reject json_schema and must
- * downshift to `json_object` (prompt-based JSON, still universally supported).
+ * Groq models that support `response_format: json_schema` **AND** accept the
+ * non-strict JSON Schema shape emitted by the AI SDK's Zod-to-JSON-Schema
+ * converter. Per https://console.groq.com/docs/structured-outputs#supported-models
+ * as of 2026-04-14.
+ *
+ * 2026-04-14 discovery: `meta-llama/llama-4-scout-17b-16e-instruct` nominally
+ * supports json_schema but enforces OpenAI strict-mode rules — every
+ * `properties` key must appear in `required`, no `anyOf` without all branches
+ * being strict, etc. Our IntelligenceResultSchema uses `.optional()` on
+ * fields like `executionOutput.emailRecipient` which emit properties absent
+ * from `required`. llama-4 rejects with "400 invalid JSON schema". Opting
+ * llama-4 OUT of json_schema mode here makes the AI SDK fall back to
+ * `json_object` (prompt-based JSON) + client-side Zod parse — the same
+ * path that already works on llama-3.3-70b. Models NOT on this list
+ * downshift automatically.
  */
 const GROQ_JSON_SCHEMA_CAPABLE_MODELS: ReadonlySet<string> = new Set([
   "openai/gpt-oss-120b",
   "openai/gpt-oss-20b",
-  "meta-llama/llama-4-maverick-17b-128e-instruct",
-  "meta-llama/llama-4-scout-17b-16e-instruct",
   "moonshotai/kimi-k2-instruct-0905",
+  // meta-llama/llama-4-* intentionally omitted: strict-mode JSON schema
+  // validation rejects our .optional()-heavy Zod shapes. Revisit if we
+  // refactor the schema to be strict-mode-compliant.
 ]);
 
 export interface StructuredOutputOptions {
