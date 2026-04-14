@@ -4,15 +4,19 @@ import { buildIntelligenceSystemPrompt, IntelligenceResultSchema } from "@larry/
 describe("N-9: intelligence system prompt trimming", () => {
   const prompt = buildIntelligenceSystemPrompt();
 
-  it("is meaningfully smaller than the pre-N-9 baseline (54_472 chars)", () => {
-    // Pre-fix: 34_900-char template + 19_572-char loadKnowledge() injection
-    // = 54_472 chars (~13_600 tokens). That exceeded the Groq free-tier
-    // 12_000-TPM ceiling before any user data. Step 1 of the N-9 fix drops
-    // loadKnowledge(), saving ~19k chars (~4_900 tokens). Step 3 (still
-    // optional as of this commit) will further compress the template
-    // toward <15_000 chars. This threshold validates Step 1 and leaves a
-    // future-tightening target for Step 3.
-    expect(prompt.length).toBeLessThan(36_000);
+  it("stays under 18_000 chars — Step 3 target (post-compression, 2026-04-14)", () => {
+    // Baseline history:
+    //   Pre-N-9:           34_900 template + 19_572 knowledge = 54_472 chars (~13_600 tokens)
+    //   Post Step 1+2:     34_714 chars (loadKnowledge removed + ~200-char replacement)
+    //   Post Step 3 today: 16_996 chars (aggressive template compression)
+    // Step 3 halves the template by dropping elaborated examples, duplicated
+    // rules, and the Mode 1-5 prose expansions while keeping identity,
+    // reasoning framework, larry_context handling, action schemas, required-
+    // field table, email format, auto-vs-approval rules, briefing voice, and
+    // output format. Per-request cost on prod dropped from ~10_323 tokens to
+    // ~5-6k, unblocking kimi-k2 (10K TPM) and giving the free-tier Groq
+    // budget 2-4x more daily headroom.
+    expect(prompt.length).toBeLessThan(18_000);
   });
 
   it("does NOT inject the knowledge/*.md files verbatim", () => {
