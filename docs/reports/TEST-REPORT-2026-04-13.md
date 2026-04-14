@@ -1045,3 +1045,138 @@ chat (blocked by N-9).
   the remaining work is either ops (lift the Groq ceiling) or a
   sustained prompt-trimming initiative.
 
+
+## 15. SESSION 5 — N-9 lift, N-6/N-7 live, N-11 (2026-04-14)
+
+**Constraint from product:** stay on Groq free tier; solve by trimming
+prompts rather than upgrading the TPM bucket.
+
+### Root-cause breakdown of N-9
+
+Two failure modes stacked on top of each other:
+
+1. **Intelligence system prompt ≈ 13_600 tokens BEFORE user data.**
+   - `buildSystemPrompt()` template: 34_900 chars (~8_700 tokens).
+   - `loadKnowledge()` auto-concatenated 12 `packages/ai/knowledge/*.md`
+     files on every call: 19_572 chars (~4_900 tokens). General PM
+     guidance (estimation, risk mgmt, prioritisation, etc.) that
+     llama-3.3-70b already knows.
+2. **`projects.larry_context` polluted with feedback-loop spam.**
+   - `IntelligenceResultSchema.transform` (intelligence.ts:200) had been
+     appending "[System] Actions dropped due to missing fields: …"
+     to `contextUpdate` whenever Larry emitted malformed actions.
+     `contextUpdate` was persisted to `projects.larry_context`, then
+     re-injected into the NEXT scan's prompt, which saw MORE malformed
+     output (Groq free-tier structured-output flakiness pre-N-8) and
+     appended another spam line. On our test tenant the column was
+     5_992 chars, ~70%+ spam; some tenants up to 5_900 chars.
+
+### Fixes (committed `de4ff13`)
+
+- **`packages/ai/src/intelligence.ts`:** `loadKnowledge()` call removed
+  from the system prompt. Replaced with a one-paragraph summary that
+  preserves voice + covers the disciplines the files discussed. The 12
+  `.md` files stay in the repo as design reference — nothing ships
+  them on every call any more.
+- **`IntelligenceResultSchema.transform`:** no longer writes
+  "[System] Actions dropped …" into `contextUpdate`. Dropped reasons
+  still surface via `console.warn` so operators can grep Railway logs.
+  `contextUpdate: null` means "no real observation this turn" — the
+  zod transform does not fabricate one.
+- **Exports:** `buildIntelligenceSystemPrompt` + `IntelligenceResultSchema`
+  exported from `@larry/ai` so tests can assert on them directly.
+- **`scripts/cleanup-larry-context-spam.js`:** idempotent one-off.
+  Strips "[System] Actions dropped" lines from every tenant's
+  `projects.larry_context`. Ran live post-deploy: 43 projects cleaned,
+  ~170_000 chars of spam removed (e.g. QA Test — Q3 Security Audit:
+  5_992 → 506 chars). Re-run found 0 new spam ⇒ feedback loop closed.
+
+### Tests (`apps/api/tests/intelligence-prompt-trimming.test.ts`)
+
+Five regression guards, all green:
+
+- `buildIntelligenceSystemPrompt()` is <36_000 chars (catches any
+  regression that re-injects knowledge files).
+- Does not contain distinctive phrases from knowledge files
+  ("Evidence-based estimation", "likelihood x impact", …).
+- Preserves identity + reasoning-framework markers.
+- `IntelligenceResultSchema.parse` of a malformed-action payload
+  filters the action BUT leaves `contextUpdate` untouched (no spam
+  suffix) and still calls `console.warn`.
+- Null-in-null-out: a missing `contextUpdate` with dropped actions
+  stays null (no fabrication).
+
+`apps/api`: **292/292 tests pass** (+5 new, zero regressions). No
+worker regressions.
+
+### Live prod verification (post-deploy)
+
+| Test                                              | Before N-9 fix | After N-9 fix                                   |
+|---------------------------------------------------|---------------:|------------------------------------------------|
+| Per-project chat request size (QA Test Q3)        | 16_018 tokens | **9_254 tokens** (-42%, matches knowledge save) |
+| Single-project chat on QA Test Q3                 | 503 SERVER    | **200 OK**, actionsExecuted:1                   |
+| Single-project chat on QA Test — Mobile App      | 503 SERVER    | **200 OK**                                      |
+| N-6 send_reminder auto-executed prose             | UNREACHABLE   | **LIVE** — "I've sent a reminder to Larry O'Larry about the 'Write post-audit retrospective report' task, which is due on April 28th." (actionsExecuted:1) |
+| N-7 destructive-prompt safety                     | UNREACHABLE   | **LIVE** — actionsExecuted:0, non-empty prose; the model pivoted to project advice rather than writing an explicit refusal. Safety held; refusal-prose quality is an open polish item (70b-model adherence) |
+
+### N-11 — fan-out bursts still cumulative (opened + fixed in session 5)
+
+Single-project chats pass the TPM gate, but the **global fan-out**
+(`runGlobalChatFlow` in `apps/api/src/routes/v1/larry.ts:601`) fired
+all `GLOBAL_CHAT_PROJECT_LIMIT=5` projects in parallel via `.map(async …)`.
+At ~9_254 tokens per project, 5 in the same minute burst 45_000+
+tokens and 3–5 of them 503 with *"Rate limit reached for model
+llama-3.3-70b-versatile … Used X, Requested Y. Try again in 265ms."*
+
+Same shape in the worker scan (`apps/worker/src/larry-scan.ts`
+`SCAN_CONCURRENCY=5`).
+
+**Fix (commit `f5b0e82`):**
+- `runGlobalChatFlow`: `.map(async)` + the implicit parallelism gone.
+  Extracted `runProjectIntelligenceFlow` helper; sequential for-of
+  loop awaits each project in display order. No per-project logic
+  changed.
+- `larry-scan.ts`: `SCAN_CONCURRENCY` 5 → 1.
+
+Tests: `apps/api` 292/292 still green (behaviour-preserving refactor).
+
+### Teams & members investigation
+
+Full flow exercised via Playwright on prod:
+
+| Step                                           | Result                                          |
+|------------------------------------------------|-------------------------------------------------|
+| Invite `alice@example.com` as Member           | **201** — member appears in list                |
+| Dialog close after success                     | 🔶 **Bug U-1** — modal stayed open w/ cleared fields; fixed in commit `985604f` |
+| Add Alice to project as Editor                 | **200** — project team list updates             |
+| Assignee picker on project task                | Opens; lists "Unassign", Larry, Alice           |
+| Assign CSP task to Alice                       | **200** — UI shows Alice's name                 |
+| Sidebar avatar on /workspace/settings/members  | 🔶 **U-2 cosmetic** — shows "LA" (email prefix fallback) instead of "LO" (display-name initials). Other routes render "LO" correctly. Likely SSR layout fetch of /v1/auth/me timed out for that route — non-deterministic; deferred. |
+| Action-centre "Open linked chat"               | ✅ routes to /workspace/larry?projectId=&conversationId=…&launch=action-centre, correct conversation loads with "Opened from Workspace Action Centre" banner |
+| Action-centre "Open project"                   | 🔶 **U-3** — lands on project Overview, not Action Centre / specific task. Might contribute to "didn't feel smooth" report; follow-up for UX review. |
+
+### New findings opened
+
+| ID | Severity | Summary |
+|----|----------|---------|
+| N-10 | Low | `POST /v1/larry/events/:id/accept` with a malformed UUID in the path returns 500 instead of 400. Add a UUID-shape guard on the path param. |
+| N-11 | High → Fixed | Global fan-out + scheduled scan fired N projects in parallel at ~9k tokens each, exceeding free-tier 12k/min TPM bucket cumulatively. Serialized in `f5b0e82`. |
+| U-1  | Low → Fixed | Invite-member modal did not close after a successful invite. Fixed in `985604f`. |
+| U-2  | Cosmetic | Sidebar avatar shows email-prefix initials on /workspace/settings/members only. |
+| U-3  | UX        | Action-Centre item → "Open project" lands on Overview, not Action Centre or the task itself. |
+
+### Verdict for session 5
+
+- **N-9: effectively closed.** Per-request chat size halved; scan path
+  works (to be confirmed on the next 30-min cron); N-6 + N-7 prose
+  code fixes observed LIVE for the first time.
+- **N-11: shipped.** Parallel TPM burst eliminated for global chat +
+  scheduled scan.
+- **U-1: shipped.**
+- **Open polish items:** N-10 (UUID shape guard), U-2 (avatar race),
+  U-3 (open-project deep-link target), N-7 refusal-prose quality.
+- **Outstanding matrix items now reachable:** P1-1 remaining 13 action
+  types, P2-1/2/3/5/6 chat probes, P3-1/3/5 transcript extraction.
+  Next session should walk these now that chat + scans can run.
+
+
