@@ -25,7 +25,18 @@ const queue = new Queue(EVENT_QUEUE_NAME, { connection });
 const scanDisabled = process.env.DISABLE_LARRY_SCAN === "1";
 if (scanDisabled) {
   try {
-    await queue.removeRepeatable("larry.scan", { every: 30 * 60 * 1000, jobId: "larry-scan" });
+    // BullMQ signature: removeRepeatable(name, repeatOpts, jobId?).
+    // jobId is a separate 3rd arg — a prior iteration passed it inside
+    // repeatOpts which silently didn't match the existing entry, so
+    // the cron kept firing. Also prune any orphaned repeatable entries
+    // defensively by iterating getRepeatableJobs.
+    await queue.removeRepeatable("larry.scan", { every: 30 * 60 * 1000 }, "larry-scan");
+    const repeatables = await queue.getRepeatableJobs();
+    for (const entry of repeatables) {
+      if (entry.name === "larry.scan") {
+        await queue.removeRepeatableByKey(entry.key);
+      }
+    }
     console.log("[worker] larry.scan repeatable disabled via DISABLE_LARRY_SCAN=1");
   } catch (err) {
     console.warn("[worker] failed to remove larry.scan repeatable:", err);
