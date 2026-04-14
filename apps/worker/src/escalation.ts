@@ -1,4 +1,5 @@
 import { db, env } from "./context.js";
+import { isLikelyFakeEmail } from "./fake-email-guard.js";
 
 // Phase 8: Escalation scan — runs hourly to detect overdue / at-risk tasks
 export async function runEscalationScan(): Promise<void> {
@@ -211,7 +212,7 @@ export async function runEscalationScan(): Promise<void> {
         const userEmail = notif.userId ? userEmailMap[notif.userId] : null;
 
         // Email delivery via Resend
-        if (env.RESEND_API_KEY && userEmail) {
+        if (env.RESEND_API_KEY && userEmail && !isLikelyFakeEmail(userEmail)) {
           try {
             const res = await fetch("https://api.resend.com/emails", {
               method: "POST",
