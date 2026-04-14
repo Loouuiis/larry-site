@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { ChevronDown, Sparkles, Menu, Plus, X } from "lucide-react";
 import type { WorkspaceLarryEvent } from "@/app/dashboard/types";
-import type { LarryConversation } from "@/lib/larry";
+import { type LarryConversation, stripFunctionCallMarkup } from "@/lib/larry";
 import { ChatInput, type AttachedFile } from "@/components/larry/ChatInput";
 import { useSmartScroll } from "@/hooks/useSmartScroll";
 import { useLarryChat, type LarryMessage } from "./useLarryChat";
@@ -128,7 +128,7 @@ function MessageBubble({ msg, projectId }: { msg: LarryMessage; projectId?: stri
                     a: ({ href, children }) => <a href={href} className="underline text-[#6c44f6]" target="_blank" rel="noreferrer">{children}</a>,
                   }}
                 >
-                  {msg.content || (msg.streaming ? "\u00A0" : "")}
+                  {stripFunctionCallMarkup(msg.content) || (msg.streaming ? "\u00A0" : "")}
                 </ReactMarkdown>
                 {msg.streaming && (
                   <span

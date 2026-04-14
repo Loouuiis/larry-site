@@ -3438,6 +3438,9 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
             fullContent = recap;
           }
         }
+        // Strip any inline function-call markup emitted as plain text by
+        // models that don't use the AI SDK's structured tool-calling interface.
+        fullContent = fullContent.replace(/<function=[^>]*>/g, "");
         await fastify.db.queryTenant<Record<string, unknown>>(
           tenantId,
           `UPDATE larry_messages SET content = $3 WHERE tenant_id = $1 AND id = $2`,

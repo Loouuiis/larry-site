@@ -19,6 +19,7 @@ import {
   readJson,
   sendLarryChat,
   streamLarryChat,
+  stripFunctionCallMarkup,
 } from "@/lib/larry";
 import { parseLarrySseStream } from "@/lib/larry-stream";
 import { ChatInput, type AttachedFile } from "@/components/larry/ChatInput";
@@ -201,7 +202,7 @@ function MessageBubble({
           <>
             <p style={{ marginBottom: "6px", fontSize: "11px", fontWeight: 600, color: isLarry ? "var(--text-muted)" : "rgba(255,255,255,0.85)" }}>{actorLabel}</p>
             <p style={{ whiteSpace: "pre-line" }}>
-              {message.content}
+              {stripFunctionCallMarkup(message.content)}
               {isLarry && isStreaming && (
                 <span
                   aria-hidden="true"
