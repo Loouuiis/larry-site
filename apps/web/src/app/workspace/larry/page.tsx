@@ -243,7 +243,15 @@ export default function AskLarryPage() {
   const launchContext = searchParams.get("launch");
   const launchSourceKind = searchParams.get("sourceKind");
   const launchEventType = searchParams.get("eventType");
-  const launchedFromActionCentre = launchContext === "action-centre";
+  // U-4: both "action-centre" (Open linked chat) and "modify" (Modify
+  // button) deep-links arrive via the Workspace Action Centre; the
+  // banner should render for both so the user sees where they came
+  // from and which action triggered this chat. Pre-fix only
+  // action-centre showed the banner, so clicking Modify dropped you
+  // into a chat with Larry's opener message and no framing — felt
+  // disconnected.
+  const launchedFromActionCentre =
+    launchContext === "action-centre" || launchContext === "modify";
   const conversationScopeProjectId = preferredProjectId ?? undefined;
 
   const syncConversationToUrl = useCallback(
@@ -604,7 +612,11 @@ export default function AskLarryPage() {
         {launchedFromActionCentre && (
           <div style={{ borderRadius: "var(--radius-card)", border: "1px solid #bfdbfe", background: "#eff6ff", padding: "14px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", flexWrap: "wrap" }}>
             <div>
-              <p style={{ fontSize: "14px", fontWeight: 600, color: "#1d4ed8" }}>Opened from Workspace Action Centre</p>
+              <p style={{ fontSize: "14px", fontWeight: 600, color: "#1d4ed8" }}>
+                {launchContext === "modify"
+                  ? "Modifying a Larry action — tell Larry what to change"
+                  : "Opened from Workspace Action Centre"}
+              </p>
               <p style={{ marginTop: "4px", fontSize: "12px", color: "#1e3a8a" }}>
                 Project: {activeProjectId ? activeProjectLabel : "General workspace"} | Source: {launchSourceLabel}
                 {launchEventLabel ? ` | Event: ${launchEventLabel}` : ""}
