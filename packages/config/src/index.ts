@@ -58,13 +58,16 @@ const ApiSchema = SharedSchema.extend({
   GMAIL_REDIRECT_URI: z.string().url().optional(),
   GMAIL_SCOPES: z.string().default("https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email"),
   RESEND_API_KEY: z.string().optional(),
+  RESEND_FROM_NOREPLY: z.string().default("Larry <noreply@larry-pm.com>"),
+  RESEND_FROM_LARRY: z.string().default("Larry <larry@larry-pm.com>"),
   FRONTEND_URL: z.string().url().optional(),
 });
 
 const WorkerSchema = SharedSchema.extend({
   WORKER_CONCURRENCY: z.coerce.number().int().positive().default(5),
   RESEND_API_KEY: z.string().optional(),
-  RESEND_FROM: z.string().default("Larry <noreply@larry.app>"),
+  RESEND_FROM_NOREPLY: z.string().default("Larry <noreply@larry-pm.com>"),
+  RESEND_FROM_LARRY: z.string().default("Larry <larry@larry-pm.com>"),
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_CALENDAR_WEBHOOK_URL: z.string().url().optional(),

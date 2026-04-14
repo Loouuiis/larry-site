@@ -115,7 +115,7 @@ No RLS — table is accessed by the API service role only, not tenant-scoped.
 
 ### Email Template
 
-- From: `Larry <noreply@larry.app>`
+- From: `Larry <noreply@larry-pm.com>` (updated 2026-04-14 — see `2026-04-14-resend-email-integration-design.md`)
 - Subject: "Reset your Larry password"
 - Body: Branded Larry email with single CTA button linking to `{FRONTEND_URL}/reset-password?token={rawToken}`
 - Plain text fallback included
@@ -207,7 +207,7 @@ Checked in the web middleware (`middleware.ts`) and/or workspace layout:
 
 ### Email Template
 
-- From: `Larry <noreply@larry.app>`
+- From: `Larry <noreply@larry-pm.com>` (updated 2026-04-14 — see `2026-04-14-resend-email-integration-design.md`)
 - Subject: "Verify your email for Larry"
 - Body: Branded Larry email with CTA button to `{FRONTEND_URL}/verify-email?token={rawToken}`
 - Footer: "If you didn't create a Larry account, ignore this email."
