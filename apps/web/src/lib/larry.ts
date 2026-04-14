@@ -77,6 +77,7 @@ export async function streamLarryChat(input: {
   projectId?: string;
   message: string;
   conversationId?: string;
+  signal?: AbortSignal;
 }): Promise<Response> {
   return fetch("/api/workspace/larry/chat/stream", {
     method: "POST",
@@ -86,6 +87,7 @@ export async function streamLarryChat(input: {
       message: input.message,
       conversationId: input.conversationId,
     }),
+    signal: input.signal,
   });
 }
 
