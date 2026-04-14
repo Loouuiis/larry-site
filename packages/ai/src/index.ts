@@ -30,6 +30,34 @@ export function detectInjectionAttempt(text: string): boolean {
   return INJECTION_PATTERNS.some((pattern) => pattern.test(text));
 }
 
+/**
+ * Destructive-sweep detector (N-7 client-side refusal injection).
+ *
+ * Matches phrasings that ask Larry to wipe a large scope at once —
+ * every task, all projects, the whole backlog. A legitimate
+ * PM request to delete ONE task ("delete the duplicate task") must
+ * NOT match, because blanket refusing all destructive verbs would
+ * break useful cleanup workflows.
+ *
+ * The rule: destructive verb (delete/wipe/clear/remove/drop/purge/
+ * destroy/reset) + sweeping quantifier (every/all/the backlog/
+ * the project/the queue) within the same clause.
+ */
+const DESTRUCTIVE_SWEEP_PATTERNS: ReadonlyArray<RegExp> = [
+  // delete every / delete all (+ any word before the noun, up to a few tokens)
+  /\b(?:delete|wipe|destroy|purge)\s+(?:every|all)\b/i,
+  // clear / remove / drop — needs either "every", "all", or a sweep noun
+  /\b(?:clear|remove|drop)\s+(?:every|all)\b/i,
+  // "wipe the project" / "wipe every task" / "wipe the backlog"
+  /\b(?:wipe|clear|reset|purge)\s+(?:the|this|every|all)\s+(?:project|backlog|queue|state|tasks?|board)\b/i,
+  // "delete the whole project" style
+  /\b(?:delete|remove|drop)\s+(?:the\s+)?(?:whole|entire)\s+(?:project|backlog|board)\b/i,
+];
+
+export function detectDestructiveSweep(text: string): boolean {
+  return DESTRUCTIVE_SWEEP_PATTERNS.some((pattern) => pattern.test(text));
+}
+
 export function sanitiseUserContent(text: string): { sanitised: string; injectionDetected: boolean } {
   const injectionDetected = detectInjectionAttempt(text);
   // Truncate to 8000 chars as a hard cap regardless of caller validation

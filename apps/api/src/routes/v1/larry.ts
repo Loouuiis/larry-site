@@ -1,7 +1,12 @@
 import { FastifyPluginAsync } from "fastify";
 import type { FastifyRequest } from "fastify";
 import { z } from "zod";
-import { runIntelligence, streamLarryChat } from "@larry/ai";
+import {
+  runIntelligence,
+  streamLarryChat,
+  detectInjectionAttempt,
+  detectDestructiveSweep,
+} from "@larry/ai";
 import type { ToolCallResult } from "@larry/ai";
 import {
   getCanonicalEventRuntimeEntryById,
@@ -2441,6 +2446,93 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         }
       }
 
+      // ── N-7 client-side refusal short-circuit ─────────────────────────────
+      // Live testing on llama-3.3-70b and llama-4-scout showed that the
+      // REFUSING DESTRUCTIVE REQUESTS section of the system prompt cannot
+      // reliably coerce an "I can't ..." opener — both models pivot to
+      // generic PM advice on jailbreak-style destructive prompts even when
+      // the safety (actionsExecuted:0) layer holds. The deterministic fix:
+      // detect the AND of (injection attempt + destructive sweep) in the
+      // user message before any model call, and short-circuit with a
+      // canned refusal. The INJECTION GUARD in the system prompt stays in
+      // place as defence-in-depth for messages that bypass the regex.
+      const refuseClientSide =
+        detectInjectionAttempt(message) && detectDestructiveSweep(message);
+      if (refuseClientSide) {
+        const cannedRefusal =
+          "I can't run a sweeping destructive operation like that — " +
+          "deleting every task / wiping the backlog is a one-way action " +
+          "I don't take from a chat prompt. If you want to reset this " +
+          "project, I can queue an archive for your approval. If you want " +
+          "to clear a specific set of tasks, list them by name and I'll " +
+          "mark them cancelled one by one.";
+
+        const conversation =
+          existingConversation ??
+          await createLarryConversation(fastify.db, tenantId, actorUserId, {
+            projectId: projectId ?? null,
+            title: message.slice(0, 80),
+          });
+
+        const userMessageInsert = await insertLarryMessage(fastify.db, tenantId, conversation.id, {
+          role: "user",
+          content: message,
+          actorUserId,
+        });
+        const assistantMessageInsert = await insertLarryMessage(fastify.db, tenantId, conversation.id, {
+          role: "larry",
+          content: cannedRefusal,
+        });
+        await touchLarryConversation(fastify.db, tenantId, conversation.id, message.slice(0, 80));
+
+        await writeAuditLog(fastify.db, {
+          tenantId,
+          actorUserId,
+          actionType: projectId ? "larry.chat.stream" : "larry.chat.global",
+          objectType: projectId ? "project" : "workspace",
+          objectId: projectId ?? tenantId,
+          details: {
+            conversationId: conversation.id,
+            refusedClientSide: true,
+            reason: "injection+destructive-sweep regex",
+            tokensSaved: "full runIntelligence call bypassed",
+          },
+        });
+
+        const persistedMessages = await listLarryMessagesByIds(fastify.db, tenantId, [
+          userMessageInsert.id,
+          assistantMessageInsert.id,
+        ]);
+        const userMessage =
+          persistedMessages.find((entry) => entry.id === userMessageInsert.id) ??
+          fallbackMessage({
+            id: userMessageInsert.id,
+            role: "user",
+            content: message,
+            createdAt: userMessageInsert.createdAt,
+            actorUserId,
+          });
+        const assistantMessage =
+          persistedMessages.find((entry) => entry.id === assistantMessageInsert.id) ??
+          fallbackMessage({
+            id: assistantMessageInsert.id,
+            role: "larry",
+            content: cannedRefusal,
+            createdAt: assistantMessageInsert.createdAt,
+          });
+
+        const responsePayload: LarryChatResponse = {
+          conversationId: conversation.id,
+          message: cannedRefusal,
+          userMessage,
+          assistantMessage,
+          linkedActions: [],
+          actionsExecuted: 0,
+          suggestionCount: 0,
+        };
+        return reply.code(200).send(responsePayload);
+      }
+
       if (!projectId) {
         const conversation =
           existingConversation ??
@@ -3063,6 +3155,59 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         "X-Accel-Buffering": "no",
         "Transfer-Encoding": "chunked",
       });
+
+      // ── N-7 client-side refusal short-circuit (streaming variant) ────────
+      // Same gate as /chat — (injection + destructive sweep) -> canned
+      // refusal, no model call. Must fire AFTER the SSE headers are
+      // written so the client sees a valid stream, and must emit at least
+      // one token event + a done event so the UI reconciles state cleanly.
+      const refuseClientSide =
+        detectInjectionAttempt(message) && detectDestructiveSweep(message);
+      if (refuseClientSide) {
+        const cannedRefusal =
+          "I can't run a sweeping destructive operation like that — " +
+          "deleting every task / wiping the backlog is a one-way action " +
+          "I don't take from a chat prompt. If you want to reset this " +
+          "project, I can queue an archive for your approval. If you want " +
+          "to clear a specific set of tasks, list them by name and I'll " +
+          "mark them cancelled one by one.";
+
+        const writeEvent = (payload: unknown) => {
+          reply.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
+        };
+        writeEvent({ type: "token", delta: cannedRefusal });
+        writeEvent({
+          type: "done",
+          conversationId: conversation.id,
+          messageId: larryMessageId,
+          actionsExecuted: 0,
+          suggestionCount: 0,
+          linkedActions: [],
+        });
+
+        // Persist the canned refusal as Larry's final message + audit.
+        await fastify.db.queryTenant<Record<string, unknown>>(
+          tenantId,
+          `UPDATE larry_messages SET content = $3 WHERE tenant_id = $1 AND id = $2`,
+          [tenantId, larryMessageId, cannedRefusal]
+        );
+        await touchLarryConversation(fastify.db, tenantId, conversation.id, message.slice(0, 80));
+        await writeAuditLog(fastify.db, {
+          tenantId,
+          actorUserId,
+          actionType: projectId ? "larry.chat.stream" : "larry.chat.global",
+          objectType: projectId ? "project" : "workspace",
+          objectId: projectId ?? tenantId,
+          details: {
+            conversationId: conversation.id,
+            refusedClientSide: true,
+            reason: "injection+destructive-sweep regex",
+          },
+        });
+
+        if (!reply.raw.destroyed) reply.raw.end();
+        return reply;
+      }
 
       const write = (obj: object): void => {
         if (!reply.raw.destroyed) {
