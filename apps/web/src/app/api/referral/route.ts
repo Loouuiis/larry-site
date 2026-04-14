@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
   const resend = new Resend(resendKey);
 
   const { error } = await resend.emails.send({
-    from: "Larry <noreply@larry-site.vercel.app>",
+    from: process.env.RESEND_FROM_LARRY ?? "Larry <larry@larry-site.com>",
     to: friendEmail,
     subject: `${referrerEmail} invited you to join Larry`,
     html: `
