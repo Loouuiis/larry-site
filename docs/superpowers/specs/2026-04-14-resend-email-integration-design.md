@@ -32,14 +32,14 @@ This spec covers the production rollout: domain, sender strategy, env provisioni
 
 ### Domain & senders
 
-Single verified domain: **`larry-site.com`** (Louis confirmed ownership; verification still required at registrar).
+Single verified domain: **`larry-pm.com`** (Louis confirmed ownership; verification still required at registrar).
 
 Two senders on that domain:
 
 | Sender | Purpose | Voice |
 |---|---|---|
-| `Larry <noreply@larry-site.com>` | Security/transactional. Replies ignored. | Impersonal, automated. |
-| `Larry <larry@larry-site.com>` | Product communications. Personifies the product. | Friendly, in-character. |
+| `Larry <noreply@larry-pm.com>` | Security/transactional. Replies ignored. | Impersonal, automated. |
+| `Larry <larry@larry-pm.com>` | Product communications. Personifies the product. | Friendly, in-character. |
 
 Both are verified by verifying the **domain** in Resend; no per-address verification needed.
 
@@ -50,8 +50,8 @@ Replaces the existing single `RESEND_FROM` env var with a pair:
 | Variable | Value | Notes |
 |---|---|---|
 | `RESEND_API_KEY` | (from Resend dashboard) | Same key on Vercel + Railway api + Railway worker. |
-| `RESEND_FROM_NOREPLY` | `Larry <noreply@larry-site.com>` | Default in code matches this. |
-| `RESEND_FROM_LARRY` | `Larry <larry@larry-site.com>` | Default in code matches this. |
+| `RESEND_FROM_NOREPLY` | `Larry <noreply@larry-pm.com>` | Default in code matches this. |
+| `RESEND_FROM_LARRY` | `Larry <larry@larry-pm.com>` | Default in code matches this. |
 
 The schema in `packages/config/src/index.ts` makes `RESEND_API_KEY` optional (preserving the kill-switch / dev fallback) and provides hardcoded defaults for the two FROM vars so a missing env doesn't break boot.
 
@@ -72,8 +72,8 @@ The schema in `packages/config/src/index.ts` makes `RESEND_API_KEY` optional (pr
 
 ### Reply handling
 
-- `noreply@larry-site.com` — drop silently for v1. Optional follow-up: configure auto-responder pointing users to the in-app contact channel.
-- `larry@larry-site.com` — forward to Louis's inbox via registrar/email host; out of scope for this spec but should be set up before any volume hits.
+- `noreply@larry-pm.com` — drop silently for v1. Optional follow-up: configure auto-responder pointing users to the in-app contact channel.
+- `larry@larry-pm.com` — forward to Louis's inbox via registrar/email host; out of scope for this spec but should be set up before any volume hits.
 
 ## Code changes
 
@@ -85,8 +85,8 @@ Both the api schema and worker schema:
 
 ```ts
 RESEND_API_KEY: z.string().optional(),
-RESEND_FROM_NOREPLY: z.string().default("Larry <noreply@larry-site.com>"),
-RESEND_FROM_LARRY: z.string().default("Larry <larry@larry-site.com>"),
+RESEND_FROM_NOREPLY: z.string().default("Larry <noreply@larry-pm.com>"),
+RESEND_FROM_LARRY: z.string().default("Larry <larry@larry-pm.com>"),
 ```
 
 Remove the existing `RESEND_FROM` line in the worker schema.
@@ -96,8 +96,8 @@ Remove the existing `RESEND_FROM` line in the worker schema.
 Replace the hardcoded `const FROM = "Larry <noreply@larry.app>"` with:
 
 ```ts
-const FROM_NOREPLY = process.env.RESEND_FROM_NOREPLY ?? "Larry <noreply@larry-site.com>";
-const FROM_LARRY   = process.env.RESEND_FROM_LARRY   ?? "Larry <larry@larry-site.com>";
+const FROM_NOREPLY = process.env.RESEND_FROM_NOREPLY ?? "Larry <noreply@larry-pm.com>";
+const FROM_LARRY   = process.env.RESEND_FROM_LARRY   ?? "Larry <larry@larry-pm.com>";
 ```
 
 Per-function changes (swap `from: FROM` → the right constant):
@@ -123,8 +123,8 @@ Switch its `from` to use `RESEND_FROM_LARRY` (read from `process.env`, with the 
 
 ```
 RESEND_API_KEY=
-RESEND_FROM_NOREPLY=Larry <noreply@larry-site.com>
-RESEND_FROM_LARRY=Larry <larry@larry-site.com>
+RESEND_FROM_NOREPLY=Larry <noreply@larry-pm.com>
+RESEND_FROM_LARRY=Larry <larry@larry-pm.com>
 ```
 
 ### 6. Tests
@@ -142,10 +142,10 @@ RESEND_FROM_LARRY=Larry <larry@larry-site.com>
 ### Phase A — Resend account & domain (Louis, ~10 min)
 
 1. Sign up at resend.com using "Sign in with GitHub" (account `led1299`).
-2. Dashboard → **Domains** → add `larry-site.com`.
-3. Add the 3 DNS records (SPF/TXT, DKIM/CNAME ×2 or TXT, DMARC/TXT) at the registrar for `larry-site.com`.
+2. Dashboard → **Domains** → add `larry-pm.com`.
+3. Add the 3 DNS records (SPF/TXT, DKIM/CNAME ×2 or TXT, DMARC/TXT) at the registrar for `larry-pm.com`.
 4. Click **Verify** in Resend until all 3 records show green.
-5. **API Keys** → New → name `larry-prod`, permission `Sending access`, scoped to `larry-site.com`. Copy the key.
+5. **API Keys** → New → name `larry-prod`, permission `Sending access`, scoped to `larry-pm.com`. Copy the key.
 6. Hand the key to Claude. Acceptable channels: paste in chat (key is never persisted to disk by Claude), or write to `apps/api/.env.local` and tell Claude. Do NOT commit the key. Do NOT email it.
 
 ### Phase B — env injection (Claude, ~2 min)

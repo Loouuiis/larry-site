@@ -1,7 +1,7 @@
 import { Resend } from "resend";
 
-const FROM_NOREPLY = process.env.RESEND_FROM_NOREPLY ?? "Larry <noreply@larry-site.com>";
-const FROM_LARRY   = process.env.RESEND_FROM_LARRY   ?? "Larry <larry@larry-site.com>";
+const FROM_NOREPLY = process.env.RESEND_FROM_NOREPLY ?? "Larry <noreply@larry-pm.com>";
+const FROM_LARRY   = process.env.RESEND_FROM_LARRY   ?? "Larry <larry@larry-pm.com>";
 
 let resendInstance: Resend | null = null;
 

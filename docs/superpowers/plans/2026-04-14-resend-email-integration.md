@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Wire up production Resend email delivery using verified domain `larry-site.com` with two senders (`noreply@` for security, `larry@` for product), shared `RESEND_API_KEY` across Vercel (web) + Railway (api + worker), with TDD coverage on the FROM mapping.
+**Goal:** Wire up production Resend email delivery using verified domain `larry-pm.com` with two senders (`noreply@` for security, `larry@` for product), shared `RESEND_API_KEY` across Vercel (web) + Railway (api + worker), with TDD coverage on the FROM mapping.
 
 **Architecture:** Replace the single hardcoded `FROM` in `apps/api/src/lib/email.ts` and the single `RESEND_FROM` env var with a pair: `RESEND_FROM_NOREPLY` and `RESEND_FROM_LARRY`. Each of the 6 transactional functions, the worker escalation, and the web referral route maps to the appropriate sender. Existing `isResendConfigured()` console-log fallback is preserved as a kill switch.
 
@@ -40,8 +40,8 @@
 **This entire plan blocks on the user completing Phase A from the spec.** Before starting Task 1, the user must:
 
 1. Sign up at resend.com using GitHub `led1299`.
-2. Add `larry-site.com` as a domain in Resend, configure DNS (SPF/DKIM/DMARC), wait for all 3 records to verify green.
-3. Create an API key named `larry-prod`, scoped to `larry-site.com`, with `Sending access` permission.
+2. Add `larry-pm.com` as a domain in Resend, configure DNS (SPF/DKIM/DMARC), wait for all 3 records to verify green.
+3. Create an API key named `larry-prod`, scoped to `larry-pm.com`, with `Sending access` permission.
 4. Provide the API key to the executor (paste in chat OR write to `apps/api/.env.local`).
 
 **Code tasks (1–6) can begin in parallel with Phase A** — they don't need the API key. **Tasks 7+ require the key in hand.**
@@ -91,8 +91,8 @@ Replace it with:
 
 ```ts
 RESEND_API_KEY: z.string().optional(),
-RESEND_FROM_NOREPLY: z.string().default("Larry <noreply@larry-site.com>"),
-RESEND_FROM_LARRY: z.string().default("Larry <larry@larry-site.com>"),
+RESEND_FROM_NOREPLY: z.string().default("Larry <noreply@larry-pm.com>"),
+RESEND_FROM_LARRY: z.string().default("Larry <larry@larry-pm.com>"),
 ```
 
 - [ ] **Step 2: Update WorkerSchema — replace RESEND_FROM with the two new vars**
@@ -108,8 +108,8 @@ Replace with:
 
 ```ts
 RESEND_API_KEY: z.string().optional(),
-RESEND_FROM_NOREPLY: z.string().default("Larry <noreply@larry-site.com>"),
-RESEND_FROM_LARRY: z.string().default("Larry <larry@larry-site.com>"),
+RESEND_FROM_NOREPLY: z.string().default("Larry <noreply@larry-pm.com>"),
+RESEND_FROM_LARRY: z.string().default("Larry <larry@larry-pm.com>"),
 ```
 
 - [ ] **Step 3: Type-check the package**
@@ -126,7 +126,7 @@ git add packages/config/src/index.ts && \
 git commit -m "feat(config): add RESEND_FROM_NOREPLY and RESEND_FROM_LARRY env vars
 
 Replaces single RESEND_FROM with a noreply/larry pair so security and
-product emails can be sent from distinct addresses on larry-site.com."
+product emails can be sent from distinct addresses on larry-pm.com."
 ```
 
 ---
@@ -151,8 +151,8 @@ vi.mock("resend", () => ({
   })),
 }));
 
-const NOREPLY = "Larry <noreply@larry-site.com>";
-const LARRY = "Larry <larry@larry-site.com>";
+const NOREPLY = "Larry <noreply@larry-pm.com>";
+const LARRY = "Larry <larry@larry-pm.com>";
 
 describe("email.ts FROM mapping", () => {
   beforeEach(() => {
@@ -217,7 +217,7 @@ Run: `cd /c/Dev/larry/site-deploys/larry-site/apps/api && npx vitest run src/lib
 
 Expected: All 6 tests fail with assertions like:
 ```
-AssertionError: expected 'Larry <noreply@larry.app>' to be 'Larry <noreply@larry-site.com>'
+AssertionError: expected 'Larry <noreply@larry.app>' to be 'Larry <noreply@larry-pm.com>'
 ```
 
 If tests pass, the test file is wrong — fix it before continuing. The whole point is that the tests assert the NEW behaviour against the OLD code.
@@ -240,8 +240,8 @@ const FROM = "Larry <noreply@larry.app>";
 Replace with:
 
 ```ts
-const FROM_NOREPLY = process.env.RESEND_FROM_NOREPLY ?? "Larry <noreply@larry-site.com>";
-const FROM_LARRY   = process.env.RESEND_FROM_LARRY   ?? "Larry <larry@larry-site.com>";
+const FROM_NOREPLY = process.env.RESEND_FROM_NOREPLY ?? "Larry <noreply@larry-pm.com>";
+const FROM_LARRY   = process.env.RESEND_FROM_LARRY   ?? "Larry <larry@larry-pm.com>";
 ```
 
 - [ ] **Step 2: Update each `from: FROM` to the correct constant**
@@ -280,8 +280,8 @@ git add apps/api/src/lib/email.ts apps/api/src/lib/email.test.ts && \
 git commit -m "feat(email): split FROM into noreply/larry pair with mapping tests
 
 Auth/security emails (password reset, verification, email change,
-new-device alert) use noreply@larry-site.com. Workspace invites use
-larry@larry-site.com. Adds vitest coverage asserting each function
+new-device alert) use noreply@larry-pm.com. Workspace invites use
+larry@larry-pm.com. Adds vitest coverage asserting each function
 calls Resend with the correct from address."
 ```
 
@@ -353,7 +353,7 @@ from: "Larry <noreply@larry-site.vercel.app>",
 Replace with:
 
 ```ts
-from: process.env.RESEND_FROM_LARRY ?? "Larry <larry@larry-site.com>",
+from: process.env.RESEND_FROM_LARRY ?? "Larry <larry@larry-pm.com>",
 ```
 
 - [ ] **Step 2: Type-check the web app**
@@ -367,7 +367,7 @@ Run:
 ```bash
 cd /c/Dev/larry/site-deploys/larry-site && \
 git add apps/web/src/app/api/referral/route.ts && \
-git commit -m "fix(web): use larry@larry-site.com for referral emails
+git commit -m "fix(web): use larry@larry-pm.com for referral emails
 
 Previous hardcoded sender was noreply@larry-site.vercel.app — a Vercel
 preview hostname that cannot be SPF-aligned, so referral emails would
@@ -393,8 +393,8 @@ RESEND_API_KEY=
 Replace with:
 ```
 RESEND_API_KEY=
-RESEND_FROM_NOREPLY=Larry <noreply@larry-site.com>
-RESEND_FROM_LARRY=Larry <larry@larry-site.com>
+RESEND_FROM_NOREPLY=Larry <noreply@larry-pm.com>
+RESEND_FROM_LARRY=Larry <larry@larry-pm.com>
 ```
 
 - [ ] **Step 2: Update apps/web/.env.example**
@@ -407,8 +407,8 @@ RESEND_API_KEY=
 Replace with:
 ```
 RESEND_API_KEY=
-RESEND_FROM_NOREPLY=Larry <noreply@larry-site.com>
-RESEND_FROM_LARRY=Larry <larry@larry-site.com>
+RESEND_FROM_NOREPLY=Larry <noreply@larry-pm.com>
+RESEND_FROM_LARRY=Larry <larry@larry-pm.com>
 ```
 
 - [ ] **Step 3: Update apps/worker/.env.example**
@@ -422,8 +422,8 @@ RESEND_FROM=Larry <noreply@yourdomain.com>
 Replace with:
 ```
 RESEND_API_KEY=
-RESEND_FROM_NOREPLY=Larry <noreply@larry-site.com>
-RESEND_FROM_LARRY=Larry <larry@larry-site.com>
+RESEND_FROM_NOREPLY=Larry <noreply@larry-pm.com>
+RESEND_FROM_LARRY=Larry <larry@larry-pm.com>
 ```
 
 - [ ] **Step 4: Commit**
@@ -450,7 +450,7 @@ Run: `cd /c/Dev/larry/site-deploys/larry-site && grep -nE "RESEND_FROM|larry\.ap
 - [ ] **Step 2: Update each match**
 
 For each line found, judge case-by-case:
-- If it describes the email **FROM address** (e.g., "emails sent from `noreply@larry.app`"), update to `larry-site.com`.
+- If it describes the email **FROM address** (e.g., "emails sent from `noreply@larry.app`"), update to `larry-pm.com`.
 - If it references `larry.app` as a URL, marketing domain, or unrelated context, **leave it alone**.
 - If it mentions `RESEND_FROM` env var, update to mention the new pair `RESEND_FROM_NOREPLY` + `RESEND_FROM_LARRY`.
 
@@ -461,7 +461,7 @@ If no changes needed, skip. Otherwise:
 ```bash
 cd /c/Dev/larry/site-deploys/larry-site && \
 git add docs/CONNECTORS.md SECURITY-REVIEW.md && \
-git commit -m "docs: update Resend references to larry-site.com domain"
+git commit -m "docs: update Resend references to larry-pm.com domain"
 ```
 
 ---
@@ -484,8 +484,8 @@ Wait until the latest "Backend CI" run shows `completed success`. If it fails, i
 
 Before continuing, the user must confirm:
 - ✓ Resend account created via GitHub `led1299`
-- ✓ Domain `larry-site.com` verified (all 3 DNS records green in Resend dashboard)
-- ✓ API key `larry-prod` created with sending access scoped to `larry-site.com`
+- ✓ Domain `larry-pm.com` verified (all 3 DNS records green in Resend dashboard)
+- ✓ API key `larry-prod` created with sending access scoped to `larry-pm.com`
 - ✓ API key in hand (pasted in chat OR written to `apps/api/.env.local`)
 
 If any of the above isn't true, STOP and surface the gap to the user.
@@ -506,8 +506,8 @@ Expected: confirms link to `loouuiis-projects/ailarry`.
 For each of these three vars, run `vercel env add <NAME> production` and paste the value when prompted:
 
 - `RESEND_API_KEY` → the key from Resend dashboard
-- `RESEND_FROM_NOREPLY` → `Larry <noreply@larry-site.com>`
-- `RESEND_FROM_LARRY` → `Larry <larry@larry-site.com>`
+- `RESEND_FROM_NOREPLY` → `Larry <noreply@larry-pm.com>`
+- `RESEND_FROM_LARRY` → `Larry <larry@larry-pm.com>`
 
 - [ ] **Step 3: Add vars to Vercel — preview env**
 
@@ -528,8 +528,8 @@ Expected: shows linked project and service. If not, run `railway link` and selec
 Run:
 ```bash
 railway variables --set "RESEND_API_KEY=<KEY>" \
-  --set "RESEND_FROM_NOREPLY=Larry <noreply@larry-site.com>" \
-  --set "RESEND_FROM_LARRY=Larry <larry@larry-site.com>"
+  --set "RESEND_FROM_NOREPLY=Larry <noreply@larry-pm.com>" \
+  --set "RESEND_FROM_LARRY=Larry <larry@larry-pm.com>"
 ```
 
 - [ ] **Step 7: Switch to worker service and set vars**
@@ -539,8 +539,8 @@ Run: `railway service` → select worker service.
 Then:
 ```bash
 railway variables --set "RESEND_API_KEY=<KEY>" \
-  --set "RESEND_FROM_NOREPLY=Larry <noreply@larry-site.com>" \
-  --set "RESEND_FROM_LARRY=Larry <larry@larry-site.com>"
+  --set "RESEND_FROM_NOREPLY=Larry <noreply@larry-pm.com>" \
+  --set "RESEND_FROM_LARRY=Larry <larry@larry-pm.com>"
 ```
 
 - [ ] **Step 8: Verify Railway vars on both services**
@@ -585,13 +585,13 @@ if (!TO) {
 
 async function run() {
   console.log("→ password reset");
-  await sendPasswordResetEmail(TO, "https://larry-site.com/reset?token=test");
+  await sendPasswordResetEmail(TO, "https://larry-pm.com/reset?token=test");
 
   console.log("→ verification");
-  await sendVerificationEmail(TO, "https://larry-site.com/verify?token=test");
+  await sendVerificationEmail(TO, "https://larry-pm.com/verify?token=test");
 
   console.log("→ email change confirm");
-  await sendEmailChangeConfirmation(TO, "https://larry-site.com/confirm-email?token=test");
+  await sendEmailChangeConfirmation(TO, "https://larry-pm.com/confirm-email?token=test");
 
   console.log("→ email change notification");
   await sendEmailChangeNotification(TO);
@@ -624,9 +624,9 @@ Expected: 6 lines of `→ ...` output and `All 6 sent.`
 
 Open the test inbox. Confirm:
 - All 6 emails arrived (not in spam).
-- 5 are from `Larry <noreply@larry-site.com>`; 1 (member invite) from `Larry <larry@larry-site.com>`.
+- 5 are from `Larry <noreply@larry-pm.com>`; 1 (member invite) from `Larry <larry@larry-pm.com>`.
 - HTML renders correctly with the purple Larry "L" badge.
-- Links in CTAs point to `https://larry-site.com/...`.
+- Links in CTAs point to `https://larry-pm.com/...`.
 
 If any are in spam: mark as "Not spam," let inbox provider learn. If still landing in spam after multiple sends, investigate DMARC/SPF alignment in Resend dashboard before continuing.
 
@@ -659,7 +659,7 @@ gh pr create --base master --head feat/resend-integration \
   --title "Resend email integration (production rollout)" \
   --body "$(cat <<'EOF'
 ## Summary
-- Replace single hardcoded FROM with a NOREPLY / LARRY env var pair for distinct sender personas on `larry-site.com`.
+- Replace single hardcoded FROM with a NOREPLY / LARRY env var pair for distinct sender personas on `larry-pm.com`.
 - Map auth/security emails to `noreply@`; workspace invites, escalations, and referrals to `larry@`.
 - Fix referral route's broken FROM (was unalignable Vercel preview hostname).
 - Add vitest coverage on FROM mapping for all 6 transactional emails.
@@ -706,19 +706,19 @@ Railway: Run `railway status` for both api and worker services. Wait until both 
 
 In a private/incognito browser, go to the production frontend. Sign up with a fresh email address (use `+resend-smoke-1@yourdomain.com` style alias).
 
-Expected: signup completes; verification email arrives within 30 seconds; from = `Larry <noreply@larry-site.com>`; clicking the link verifies the address; redirect to dashboard succeeds.
+Expected: signup completes; verification email arrives within 30 seconds; from = `Larry <noreply@larry-pm.com>`; clicking the link verifies the address; redirect to dashboard succeeds.
 
 - [ ] **Step 2: Forgot password → reset email**
 
 Sign out. Click "Forgot password" → enter the email from Step 1.
 
-Expected: reset email arrives; from = `noreply@larry-site.com`; clicking the link allows password change; new password works for sign-in.
+Expected: reset email arrives; from = `noreply@larry-pm.com`; clicking the link allows password change; new password works for sign-in.
 
 - [ ] **Step 3: Workspace invite → larry@ email**
 
 Sign in as the original test account. Invite a fresh email to your workspace.
 
-Expected: invite email arrives; from = `Larry <larry@larry-site.com>` (the friendly sender); subject = "You've been invited to Larry."
+Expected: invite email arrives; from = `Larry <larry@larry-pm.com>` (the friendly sender); subject = "You've been invited to Larry."
 
 - [ ] **Step 4: Confirm Resend dashboard shows production sends**
 
@@ -767,7 +767,7 @@ git commit -m "docs(spec): record inbox matrix results from production smoke tes
 
 - [ ] **Step 5: Done**
 
-Update memory: add a note that Larry's transactional email is live on Resend with verified `larry-site.com` domain, dual senders (`noreply@` + `larry@`), and the `isResendConfigured()` kill switch is the rollback path.
+Update memory: add a note that Larry's transactional email is live on Resend with verified `larry-pm.com` domain, dual senders (`noreply@` + `larry@`), and the `isResendConfigured()` kill switch is the rollback path.
 
 ---
 
@@ -778,4 +778,4 @@ Update memory: add a note that Larry's transactional email is live on Resend wit
 - Type-checks before commits in Tasks 2, 5, 6.
 - Rollback path explicit in Task 13.
 - No placeholders: every code change shows the exact before/after content.
-- Domain: `larry-site.com`. Senders: `noreply@` and `larry@`. Env vars: `RESEND_API_KEY`, `RESEND_FROM_NOREPLY`, `RESEND_FROM_LARRY` (these names are stable across all tasks).
+- Domain: `larry-pm.com`. Senders: `noreply@` and `larry@`. Env vars: `RESEND_API_KEY`, `RESEND_FROM_NOREPLY`, `RESEND_FROM_LARRY` (these names are stable across all tasks).

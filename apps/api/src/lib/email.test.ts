@@ -8,8 +8,8 @@ vi.mock("resend", () => ({
   })),
 }));
 
-const NOREPLY = "Larry <noreply@larry-site.com>";
-const LARRY = "Larry <larry@larry-site.com>";
+const NOREPLY = "Larry <noreply@larry-pm.com>";
+const LARRY = "Larry <larry@larry-pm.com>";
 
 describe("email.ts FROM mapping", () => {
   beforeEach(() => {
