@@ -20,7 +20,12 @@ export default async function WorkspaceLayout({ children }: { children: React.Re
   // Fetch email verification state + profile from the API
   let emailVerified = true; // default to true for safety (legacy/dev sessions)
   let avatarUrl: string | null = null;
-  let displayName: string | null = null;
+  // U-2: seed displayName from the session cookie before we fetch
+  // /v1/auth/me. The cookie value was stashed at login/refresh time
+  // (apps/web/src/app/api/auth/login/route.ts + lib/auth.ts). When the
+  // /auth/me fetch is slow or fails, the sidebar still renders the
+  // correct initials instead of falling back to the email prefix.
+  let displayName: string | null = session.displayName ?? null;
   const apiBaseUrl = process.env.LARRY_API_BASE_URL;
 
   if (apiBaseUrl && session.apiAccessToken) {
@@ -35,7 +40,9 @@ export default async function WorkspaceLayout({ children }: { children: React.Re
         const data = (await res.json()) as MeResponse;
         emailVerified = !!data.user.emailVerifiedAt;
         avatarUrl = data.user.avatarUrl ?? null;
-        displayName = data.user.displayName ?? null;
+        // Fresh value wins when available; stale session value stays as a
+        // fallback in case a later field goes missing.
+        displayName = data.user.displayName ?? displayName;
 
         // If past grace deadline and not verified, redirect to locked screen
         if (

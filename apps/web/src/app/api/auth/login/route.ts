@@ -16,6 +16,7 @@ interface ApiLoginResponse {
     email: string;
     tenantId: string;
     role: string;
+    displayName?: string | null;
   };
 }
 
@@ -105,6 +106,7 @@ export async function POST(req: NextRequest) {
       email: payload.user.email,
       tenantId: payload.user.tenantId,
       role: payload.user.role,
+      displayName: payload.user.displayName ?? null,
       apiAccessToken: payload.accessToken,
       apiRefreshToken: payload.refreshToken,
       authMode: "api",

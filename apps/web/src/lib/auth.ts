@@ -14,6 +14,10 @@ export interface AppSession {
   email?: string;
   tenantId?: string;
   role?: string;
+  // U-2: stashed at login so the workspace layout can render correct
+  // avatar initials without waiting on /v1/auth/me — the 5s-timeout
+  // fetch there raced and produced "LA" (email prefix) on slow loads.
+  displayName?: string | null;
   apiAccessToken?: string;
   apiRefreshToken?: string;
   authMode?: SessionAuthMode;
@@ -25,6 +29,7 @@ interface SessionJwtPayload extends JWTPayload {
   email?: string;
   tenantId?: string;
   role?: string;
+  displayName?: string | null;
   apiAccessToken?: string;
   apiRefreshToken?: string;
   authMode?: SessionAuthMode;
@@ -43,6 +48,7 @@ export async function createSessionToken(session: AppSession): Promise<string> {
     email: session.email,
     tenantId: session.tenantId,
     role: session.role,
+    displayName: session.displayName ?? null,
     apiAccessToken: session.apiAccessToken,
     apiRefreshToken: session.apiRefreshToken,
     authMode: session.authMode,
@@ -67,6 +73,12 @@ export async function verifySessionToken(
       email: typeof payload.email === "string" ? payload.email : undefined,
       tenantId: typeof payload.tenantId === "string" ? payload.tenantId : undefined,
       role: typeof payload.role === "string" ? payload.role : undefined,
+      displayName:
+        typeof payload.displayName === "string"
+          ? payload.displayName
+          : payload.displayName === null
+            ? null
+            : undefined,
       apiAccessToken: typeof payload.apiAccessToken === "string" ? payload.apiAccessToken : undefined,
       apiRefreshToken: typeof payload.apiRefreshToken === "string" ? payload.apiRefreshToken : undefined,
       authMode:

@@ -157,6 +157,9 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         email: newUser.email,
         role: "admin",
         tenantId,
+        // U-2: include displayName derived at signup (first + last name
+        // or fallback) so the web layer can seed the session cookie.
+        displayName: displayName ?? null,
       },
     });
   });
@@ -188,8 +191,9 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
           password_hash: string;
           role: "admin" | "pm" | "member" | "executive";
           tenant_id: string;
+          display_name: string | null;
         }>(
-          `SELECT u.id, u.email, u.password_hash, m.role, m.tenant_id
+          `SELECT u.id, u.email, u.password_hash, u.display_name, m.role, m.tenant_id
            FROM users u
            JOIN memberships m ON m.user_id = u.id
            WHERE u.email = $1 AND m.tenant_id = $2
@@ -202,8 +206,9 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
           password_hash: string;
           role: "admin" | "pm" | "member" | "executive";
           tenant_id: string;
+          display_name: string | null;
         }>(
-          `SELECT u.id, u.email, u.password_hash, m.role, m.tenant_id
+          `SELECT u.id, u.email, u.password_hash, u.display_name, m.role, m.tenant_id
            FROM users u
            JOIN memberships m ON m.user_id = u.id
            WHERE u.email = $1
@@ -325,6 +330,9 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         email: user.email,
         role: user.role,
         tenantId: user.tenant_id,
+        // U-2: include displayName so the web layer can stash it in the
+        // session cookie and not race on /v1/auth/me for sidebar initials.
+        displayName: user.display_name ?? null,
       },
     });
   });
