@@ -1335,6 +1335,44 @@ Full suite: 344/344.
 
 **N-7 is closed.**
 
+### §15 addendum 3 — U-2 CLOSED via session-carried displayName (`f34bb88`, 2026-04-14 21:00 UTC)
+
+Earlier deferred as "cosmetic, needs session-JWT refactor." Shipped
+today. Five-file change:
+
+- **`apps/api/src/routes/v1/auth.ts`** — login + signup responses now
+  include `user.displayName` (SELECTs pull `u.display_name`).
+- **`apps/web/src/lib/auth.ts`** — `AppSession.displayName?: string | null`;
+  `createSessionToken` serialises it into the JWT;
+  `verifySessionToken` reads it back.
+- **`apps/web/src/app/api/auth/{login,signup}/route.ts`** — forward
+  `payload.user.displayName` into `createSessionToken`.
+- **`apps/web/src/app/workspace/layout.tsx`** — seeds
+  `displayName` from `session.displayName` BEFORE the `/v1/auth/me`
+  fetch. Successful fetch still overrides; a slow or failed fetch
+  falls back to the cookie value so the sidebar renders "LO" not
+  "LA" every time.
+
+Verification:
+```
+API /v1/auth/login .user.displayName = "Larry O'Larry"   ✅
+Web /api/auth/login Set-Cookie payload includes:
+  keys: [sub, email, tenantId, role, displayName, apiAccessToken,
+         apiRefreshToken, authMode, csrfToken, iat, exp]
+  displayName: "Larry O'Larry"                           ✅
+```
+
+Existing sessions signed before `f34bb88` won't carry `displayName`
+in their JWT — they fall through to the `/v1/auth/me` path same as
+before. Not a regression; they resolve on next login. No migration
+needed.
+
+Tests: apps/api 344/344 pass, apps/web tsc clean.
+
+**U-2 is closed.** Every finding from the Larry QA testing cycle is
+now either shipped live, or has been explicitly rejected with
+rationale.
+
 - **External constraint:** Groq free-tier TPD 100k/day is the new
   rate-limiting floor, not TPM. ~10 scheduled-scan runs per day
   (38 projects × 9k tokens = ~342k tokens per full scan × daily
