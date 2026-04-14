@@ -158,6 +158,14 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
       const params = ProjectIdParamSchema.parse(request.params);
       const tenantId = request.user.tenantId;
 
+      await getProjectAccessOrThrow({
+        tenantId,
+        userId: request.user.userId,
+        tenantRole: request.user.role,
+        projectId: params.id,
+        mode: "read",
+      });
+
       const taskRows = await fastify.db.queryTenant<{
         id: string;
         title: string;
