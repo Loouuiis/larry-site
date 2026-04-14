@@ -1,7 +1,7 @@
 # Resend Email Integration — Design Spec
 
 **Date:** 2026-04-14
-**Status:** Approved (Louis/Fergus, 2026-04-14) — implementation pending
+**Status:** Shipped 2026-04-14 (PR #42 + PR #44 follow-up for escalation TLD guard)
 **Author:** Claude (brainstormed with Fergus)
 
 ---
@@ -196,3 +196,39 @@ Setting `RESEND_API_KEY=""` on Railway + Vercel restores the existing console-lo
 ## Open questions
 
 None at spec-write time. All decisions have been made and approved.
+
+## Post-shipping notes (2026-04-14)
+
+### Final domain decision
+
+The domain is **`larry-pm.com`** (not `larry-site.com` as initially scoped). Correction was made mid-flight when Fergus sent a Cloudflare DNS screenshot that revealed the actual domain. See `feedback-verify-domain-before-hardcoding.md` in Claude's memory.
+
+### Final DNS setup
+
+Resend offered subdomain verification — chosen to avoid conflict with Zoho Mail (the incumbent inbound provider). Three records added to Cloudflare, all on subdomains:
+
+- `TXT` at `resend._domainkey` — DKIM for Resend
+- `MX` at `send` (priority 10, pointing to `feedback-smtp.eu-west-1.amazonses.com`) — bounce feedback
+- `TXT` at `send` (`v=spf1 include:amazonses.com ~all`) — SPF for the subdomain
+
+All Zoho records at root (MX, SPF, DKIM, DMARC) untouched. `Enable Receiving` toggle kept OFF.
+
+### Inbox matrix results
+
+| Provider | Result | Notes |
+|---|---|---|
+| TCD Microsoft Exchange (`@tcd.ie`) | Inbox on first send | Corporate Exchange — the hardest target. All 6 transactional email types + the workspace invite delivered without junk folder detour. |
+| Gmail | Not tested | Deferred — Fergus can run this from a personal Gmail account when convenient. |
+| Outlook consumer (`@outlook.com` / `@hotmail.com`) | Not tested | Deferred. Typically more lenient than corporate Exchange, so the TCD result is a positive leading indicator. |
+
+### Worker escalation landmine
+
+Enabling `RESEND_API_KEY` on the Railway Worker service unexpectedly fired ~15 backlog emails to `@larry.local` seed-data users — every one a hard bounce at AWS SES. Resend dashboard showed no domain warnings afterwards (lucky), but the class of bug warrants a permanent guard.
+
+PR #44 ships `apps/worker/src/fake-email-guard.ts` — `isLikelyFakeEmail()` that skips `.local`, `.test`, `.invalid`, `.example`, and `example.{com,org,net}`. Wired into the escalation cron's send path. Worker's `RESEND_API_KEY` has been re-enabled on Railway after the guard shipped.
+
+### Known follow-ups
+
+- Vercel preview env vars for Resend aren't set (CLI quirk with `--value` + non-interactive that wasn't worth fighting). Not a blocker — preview deploys log to console via `isResendConfigured()`. Add if needed later.
+- Bounce/complaint webhooks from Resend not configured. Useful for long-term deliverability hygiene; out of scope for v1.
+- Seed/demo users at `@larry.local` remain in prod DB. The guard now protects against sending to them, but a DB cleanup would be a nicer long-term fix.
