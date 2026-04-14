@@ -60,6 +60,7 @@ const ApiSchema = SharedSchema.extend({
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM_NOREPLY: z.string().default("Larry <noreply@larry-pm.com>"),
   RESEND_FROM_LARRY: z.string().default("Larry <larry@larry-pm.com>"),
+  RESEND_WEBHOOK_SECRET: z.string().optional(),
   FRONTEND_URL: z.string().url().optional(),
 });
 
