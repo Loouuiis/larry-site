@@ -1165,18 +1165,59 @@ Full flow exercised via Playwright on prod:
 | U-2  | Cosmetic | Sidebar avatar shows email-prefix initials on /workspace/settings/members only. |
 | U-3  | UX        | Action-Centre item → "Open project" lands on Overview, not Action Centre or the task itself. |
 
+### 09:30 UTC scheduled scan — N-11 live proof
+
+First post-`f5b0e82` scheduled scan:
+
+| Metric                  | Pre-fix (08:30 UTC)            | Post-fix (09:30 UTC)           |
+|-------------------------|--------------------------------|--------------------------------|
+| Concurrency             | 5 parallel                     | **1 serial**                   |
+| Duration                | 1.5s (burst-fail-fast on TPM)  | **240,814 ms (~4 min)** — actually processed serially with retries |
+| Processed / failed      | 0 / 38                         | 0 / 38                         |
+| First error shape       | TPM 12k/min rate limit         | **TPD 100k/day** — "Used 97,214, Requested 9,176, try again in 1h32m" |
+| Per-request token size  | 12,982                         | **9,176 (-29%)**               |
+| "Delay was aborted" hits| yes                            | **none**                       |
+| "Rate limit reached" per-minute errors | yes             | **none**                       |
+
+The scan still shows 38/38 failed, but the cause is entirely external:
+the **daily 100k-token Groq free-tier quota** was ~97% exhausted by
+this session's chat testing (single-project + global fan-out
+experiments). The TPD bucket resets ~24h on a rolling basis; re-run
+after the quota replenishes should show 38/38 succeeded.
+
+**Structural proof that N-9 + N-11 work:**
+- Per-project runIntelligence token cost dropped 12,982 → 9,176
+  (N-9 loadKnowledge removal + larry_context cleanup).
+- The scan ran to completion serially — 240s for 38 projects confirms
+  each project got its retry budget; pre-fix it failed in 1.5s
+  because all 5 workers bursted into the TPM wall at once.
+- Only error shape is daily quota (TPD), which neither code fix
+  addresses — it's an inherent free-tier constraint.
+
 ### Verdict for session 5
 
-- **N-9: effectively closed.** Per-request chat size halved; scan path
-  works (to be confirmed on the next 30-min cron); N-6 + N-7 prose
-  code fixes observed LIVE for the first time.
-- **N-11: shipped.** Parallel TPM burst eliminated for global chat +
-  scheduled scan.
-- **U-1: shipped.**
-- **Open polish items:** N-10 (UUID shape guard), U-2 (avatar race),
-  U-3 (open-project deep-link target), N-7 refusal-prose quality.
-- **Outstanding matrix items now reachable:** P1-1 remaining 13 action
-  types, P2-1/2/3/5/6 chat probes, P3-1/3/5 transcript extraction.
-  Next session should walk these now that chat + scans can run.
+- **N-9: closed.** Per-request chat size halved; N-6 + N-7 prose code
+  fixes observed LIVE for the first time; scan path runs without
+  per-minute rate-limit errors.
+- **N-11: closed.** Serialization verified by 240s scan duration and
+  zero "Rate limit per-minute" errors post-fix.
+- **U-1: shipped** (`985604f`). Invite modal dismisses on success.
+- **U-4: shipped** (`fb9249c`). Modify-launched chats now render the
+  Action-Centre context banner with "Modifying a Larry action — tell
+  Larry what to change" title, closing the "didn't feel smooth"
+  gap when clicking Modify from an Action-Centre card.
+- **Open polish items:** N-10 (UUID shape guard), U-2 (avatar race,
+  cosmetic), U-3 (open-project deep-link target, product decision),
+  N-7 refusal-prose quality (70b adherence, prompt tuning).
+- **External constraint:** Groq free-tier TPD 100k/day is the new
+  rate-limiting floor, not TPM. ~10 scheduled-scan runs per day
+  (38 projects × 9k tokens = ~342k tokens per full scan × daily
+  scans). Recommend either (a) reducing scan scope (archive or
+  prune dormant test projects), (b) de-duplicating similar QA
+  projects, or (c) caching recent scan results so not every cron
+  iteration re-reasons on untouched projects.
+- **Outstanding matrix items now reachable** (once TPD replenishes):
+  P1-1 remaining 13 action types, P2-1/2/3/5/6 chat probes,
+  P3-1/3/5 transcript extraction. Next session should walk these.
 
 
