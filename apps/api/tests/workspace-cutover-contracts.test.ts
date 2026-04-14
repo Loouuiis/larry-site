@@ -141,6 +141,14 @@ describe("Workspace cutover contracts", () => {
   it("GET /projects/:id/timeline returns the scoped timeline read model", async () => {
     const db = {
       queryTenant: vi.fn(async (_tenantId: string, sql: string) => {
+        if (sql.includes("FROM projects")) {
+          return [{ id: PROJECT_ID, status: "active" }];
+        }
+
+        if (sql.includes("FROM project_memberships")) {
+          return [{ role: "owner" }];
+        }
+
         if (sql.includes("FROM task_dependencies")) {
           return [
             {
