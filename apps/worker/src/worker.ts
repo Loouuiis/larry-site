@@ -16,16 +16,32 @@ const queue = new Queue(EVENT_QUEUE_NAME, { connection });
 
 // Run Larry's intelligence scan across all active projects every 30 minutes.
 // Stable jobId prevents duplicate repeatable entries on restart.
-await queue.add(
-  "larry.scan",
-  {},
-  {
-    repeat: { every: 30 * 60 * 1000 },
-    jobId: "larry-scan",
-    attempts: 3,
-    backoff: { type: "exponential", delay: 10_000 },
+//
+// 2026-04-14: the cron can be paused via DISABLE_LARRY_SCAN=1 on the
+// Worker service — useful when the Groq free-tier TPD is exhausted by
+// test traffic and every scheduled tick is cannibalising the drip-feed
+// replenishment. When paused, any already-scheduled repeatable entry
+// is removed so it doesn't keep firing from Redis.
+const scanDisabled = process.env.DISABLE_LARRY_SCAN === "1";
+if (scanDisabled) {
+  try {
+    await queue.removeRepeatable("larry.scan", { every: 30 * 60 * 1000, jobId: "larry-scan" });
+    console.log("[worker] larry.scan repeatable disabled via DISABLE_LARRY_SCAN=1");
+  } catch (err) {
+    console.warn("[worker] failed to remove larry.scan repeatable:", err);
   }
-);
+} else {
+  await queue.add(
+    "larry.scan",
+    {},
+    {
+      repeat: { every: 30 * 60 * 1000 },
+      jobId: "larry-scan",
+      attempts: 3,
+      backoff: { type: "exponential", delay: 10_000 },
+    }
+  );
+}
 
 // Register the escalation scan as a BullMQ repeatable job (hourly).
 // Using a stable jobId ensures only one repeatable entry exists even on restart.
