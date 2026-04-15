@@ -79,9 +79,11 @@ export const authPasswordResetRoutes: FastifyPluginAsync = async (fastify) => {
     ).replace(/\/+$/, "");
     const resetUrl = `${frontendUrl}/reset-password?token=${encodeURIComponent(raw)}`;
 
-    // Send email (best-effort — don't fail the request)
+    // Send email (best-effort — don't fail the request). EmailQuotaError /
+    // EmailSuppressedError are caught here too so forgot-password always
+    // returns the generic success response (enumeration-safe).
     try {
-      await sendPasswordResetEmail(user.email, resetUrl);
+      await sendPasswordResetEmail(user.email, resetUrl, { userId: user.id });
     } catch (err) {
       request.log.error({ err, userId: user.id }, "Failed to send password reset email");
     }

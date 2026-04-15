@@ -69,6 +69,10 @@ const ApiSchema = SharedSchema.extend({
     .default("true")
     .transform((v) => v !== "false"),
   RATE_LIMIT_BYPASS_SECRET: z.string().optional(),
+  EMAIL_QUOTA_ENABLED: z
+    .string()
+    .default("true")
+    .transform((v) => v !== "false"),
 });
 
 const WorkerSchema = SharedSchema.extend({

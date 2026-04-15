@@ -1,4 +1,10 @@
 import { Resend } from "resend";
+import {
+  checkEmailQuota,
+  isSuppressed,
+  type EmailQuotaContext,
+  type EmailKind,
+} from "./email-quota.js";
 
 const FROM_NOREPLY = process.env.RESEND_FROM_NOREPLY ?? "Larry <noreply@larry-pm.com>";
 const FROM_LARRY   = process.env.RESEND_FROM_LARRY   ?? "Larry <larry@larry-pm.com>";
@@ -30,6 +36,32 @@ function getFrontendUrl(): string {
 }
 
 // ---------------------------------------------------------------------------
+// Abuse guard — suppression + per-kind quotas.
+// Every send path goes through this. Keeps the rate-limit contract in one
+// place so a new email function can't silently bypass the caps.
+// ---------------------------------------------------------------------------
+
+export interface EmailSendContext {
+  userId?: string;
+  tenantId?: string;
+}
+
+/**
+ * Returns true if the caller should proceed with the send.
+ * Returns false on suppression (silent no-op by design).
+ * Throws EmailQuotaError on quota exhaustion — callers decide whether to
+ * propagate (auth flows typically swallow to preserve enumeration-safe UX).
+ */
+async function guard(kind: EmailKind, to: string, ctx?: EmailSendContext): Promise<boolean> {
+  if (await isSuppressed(to)) return false;
+  const quotaCtx: EmailQuotaContext = { kind, recipient: to };
+  if (ctx?.userId) quotaCtx.userId = ctx.userId;
+  if (ctx?.tenantId) quotaCtx.tenantId = ctx.tenantId;
+  await checkEmailQuota(quotaCtx);
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 // Shared HTML wrapper
 // ---------------------------------------------------------------------------
 
@@ -55,11 +87,16 @@ function ctaButton(href: string, label: string): string {
 // Email functions
 // ---------------------------------------------------------------------------
 
-export async function sendPasswordResetEmail(to: string, resetUrl: string): Promise<void> {
+export async function sendPasswordResetEmail(
+  to: string,
+  resetUrl: string,
+  ctx?: EmailSendContext,
+): Promise<void> {
   if (!isResendConfigured()) {
     console.log("[email] RESEND_API_KEY not configured. Password reset URL for %s:\n  %s", to, resetUrl);
     return;
   }
+  if (!(await guard("password_reset", to, ctx))) return;
   const resend = getResend();
   const { error } = await resend.emails.send({
     from: FROM_NOREPLY,
@@ -82,11 +119,16 @@ export async function sendPasswordResetEmail(to: string, resetUrl: string): Prom
   }
 }
 
-export async function sendVerificationEmail(to: string, verifyUrl: string): Promise<void> {
+export async function sendVerificationEmail(
+  to: string,
+  verifyUrl: string,
+  ctx?: EmailSendContext,
+): Promise<void> {
   if (!isResendConfigured()) {
     console.log("[email] RESEND_API_KEY not configured. Verification URL for %s:\n  %s", to, verifyUrl);
     return;
   }
+  if (!(await guard("verification", to, ctx))) return;
   const resend = getResend();
   const { error } = await resend.emails.send({
     from: FROM_NOREPLY,
@@ -109,11 +151,16 @@ export async function sendVerificationEmail(to: string, verifyUrl: string): Prom
   }
 }
 
-export async function sendEmailChangeConfirmation(to: string, confirmUrl: string): Promise<void> {
+export async function sendEmailChangeConfirmation(
+  to: string,
+  confirmUrl: string,
+  ctx?: EmailSendContext,
+): Promise<void> {
   if (!isResendConfigured()) {
     console.log("[email] RESEND_API_KEY not configured. Email change confirm URL for %s:\n  %s", to, confirmUrl);
     return;
   }
+  if (!(await guard("email_change_confirm", to, ctx))) return;
   const resend = getResend();
   const { error } = await resend.emails.send({
     from: FROM_NOREPLY,
@@ -136,11 +183,15 @@ export async function sendEmailChangeConfirmation(to: string, confirmUrl: string
   }
 }
 
-export async function sendEmailChangeNotification(to: string): Promise<void> {
+export async function sendEmailChangeNotification(
+  to: string,
+  ctx?: EmailSendContext,
+): Promise<void> {
   if (!isResendConfigured()) {
     console.log("[email] RESEND_API_KEY not configured. Skipping email change notification for %s", to);
     return;
   }
+  if (!(await guard("email_change_notify", to, ctx))) return;
   const resend = getResend();
   const frontendUrl = getFrontendUrl();
   const { error } = await resend.emails.send({
@@ -171,11 +222,16 @@ export interface DeviceInfo {
   location?: string;
 }
 
-export async function sendNewDeviceAlert(to: string, deviceInfo: DeviceInfo): Promise<void> {
+export async function sendNewDeviceAlert(
+  to: string,
+  deviceInfo: DeviceInfo,
+  ctx?: EmailSendContext,
+): Promise<void> {
   if (!isResendConfigured()) {
     console.log("[email] RESEND_API_KEY not configured. Skipping new device alert for %s", to);
     return;
   }
+  if (!(await guard("new_device_alert", to, ctx))) return;
   const resend = getResend();
   const frontendUrl = getFrontendUrl();
   const details = [
@@ -213,11 +269,16 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-export async function sendMemberInviteEmail(to: string, displayName: string): Promise<void> {
+export async function sendMemberInviteEmail(
+  to: string,
+  displayName: string,
+  ctx?: EmailSendContext,
+): Promise<void> {
   if (!isResendConfigured()) {
     console.log("[email] RESEND_API_KEY not configured. Invite email for %s skipped.", to);
     return;
   }
+  if (!(await guard("member_invite", to, ctx))) return;
   const resend = getResend();
   const frontendUrl = getFrontendUrl();
   const safeName = escapeHtml(displayName);
@@ -241,3 +302,6 @@ export async function sendMemberInviteEmail(to: string, displayName: string): Pr
     throw new Error(`Failed to send member invite email: ${error.message}`);
   }
 }
+
+// Re-export the quota error so callers can detect it for enumeration-safe flows.
+export { EmailQuotaError } from "./email-quota.js";
