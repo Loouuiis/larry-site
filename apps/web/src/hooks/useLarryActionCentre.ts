@@ -48,6 +48,7 @@ export function useLarryActionCentre({
   const [accepting, setAccepting] = useState<string | null>(null);
   const [dismissing, setDismissing] = useState<string | null>(null);
   const [modifying, setModifying] = useState<string | null>(null);
+  const [modifyingEventId, setModifyingEventId] = useState<string | null>(null);
   const [executing, setExecuting] = useState<string | null>(null);
   const [actionError, setActionError] = useState<ActionError | null>(null);
   const loadInFlightRef = useRef<Promise<void> | null>(null);
@@ -212,30 +213,18 @@ export function useLarryActionCentre({
     [load, onMutate, removeSuggestedLocally]
   );
 
-  const modify = useCallback(
-    async (id: string): Promise<string | null> => {
-      setModifying(id);
-      setActionError(null);
-      try {
-        const response = await fetch(`/api/workspace/larry/events/${id}/modify`, { method: "POST" });
-        if (!response.ok) {
-          const body = await readJson<{ message?: string; error?: string }>(response);
-          setActionError({
-            eventId: id,
-            message: body.message || body.error || `Modify failed (${response.status}).`,
-          });
-          return null;
-        }
-        const data = await response.json();
-        return data.conversationId ?? null;
-      } catch {
-        return null;
-      } finally {
-        setModifying(null);
-      }
-    },
-    []
-  );
+  // Opens the inline Modify panel for an event. The panel itself (ModifyPanel +
+  // useModifyPanel) fetches the editable snapshot from /api/workspace/larry/events/
+  // [id]/modify, so this callback just toggles the UI.
+  // Spec: 2026-04-15-modify-action-design.md.
+  const modify = useCallback((id: string): void => {
+    setActionError(null);
+    setModifyingEventId(id);
+  }, []);
+
+  const closeModify = useCallback((): void => {
+    setModifyingEventId(null);
+  }, []);
 
   const letLarryExecute = useCallback(
     async (id: string): Promise<boolean> => {
@@ -272,11 +261,13 @@ export function useLarryActionCentre({
     accepting,
     dismissing,
     modifying,
+    modifyingEventId,
     executing,
     actionError,
     accept,
     dismiss,
     modify,
+    closeModify,
     letLarryExecute,
     clearActionError,
     refresh: load,
