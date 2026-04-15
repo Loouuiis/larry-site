@@ -51,8 +51,10 @@ function isSameDay(a: Date, b: Date): boolean {
 export default function CalendarPage() {
   const today = useMemo(() => new Date(), []);
   const [viewDate, setViewDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
-  const { events, loading: eventsLoading, refresh } = useCalendarEvents();
+  const { events, loading: eventsLoading, refresh, moveEventLocally } = useCalendarEvents();
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null);
+  const [rescheduling, setRescheduling] = useState(false);
 
   // Task creation state
   const [creating, setCreating] = useState(false);
@@ -96,6 +98,64 @@ export default function CalendarPage() {
   const prevMonth = () => setViewDate(new Date(year, month - 1, 1));
   const nextMonth = () => setViewDate(new Date(year, month + 1, 1));
   const goToday = () => setViewDate(new Date(today.getFullYear(), today.getMonth(), 1));
+
+  const TASK_DRAG_MIME = "application/x-larry-task-id";
+
+  function handleEventDragStart(evt: CalendarEvent) {
+    return (e: React.DragEvent<HTMLDivElement>) => {
+      if (evt.kind !== "deadline" || !evt.taskId) {
+        e.preventDefault();
+        return;
+      }
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", evt.id);
+      e.dataTransfer.setData(TASK_DRAG_MIME, evt.taskId);
+    };
+  }
+
+  function handleDayDragOver(dayKey: string) {
+    return (e: React.DragEvent<HTMLDivElement>) => {
+      if (!e.dataTransfer.types.includes(TASK_DRAG_MIME) && !e.dataTransfer.types.includes("text/plain")) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      if (dragOverKey !== dayKey) setDragOverKey(dayKey);
+    };
+  }
+
+  function handleDayDragLeave() {
+    setDragOverKey(null);
+  }
+
+  function handleDayDrop(day: Date) {
+    return async (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      setDragOverKey(null);
+      const eventId = e.dataTransfer.getData("text/plain");
+      const taskId = e.dataTransfer.getData(TASK_DRAG_MIME);
+      if (!eventId || !taskId) return;
+      const newKey = toLocalDateKey(day);
+      const existing = events.find((evt) => evt.id === eventId);
+      if (!existing || existing.date === newKey) return;
+      const prevDate = existing.date;
+      moveEventLocally(eventId, newKey);
+      setRescheduling(true);
+      try {
+        const res = await fetch(`/api/workspace/tasks/${encodeURIComponent(taskId)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dueDate: newKey }),
+        });
+        if (!res.ok) {
+          moveEventLocally(eventId, prevDate);
+        }
+      } catch {
+        moveEventLocally(eventId, prevDate);
+      } finally {
+        setRescheduling(false);
+        void refresh();
+      }
+    };
+  }
 
   async function handleCreateTask(e: React.FormEvent) {
     e.preventDefault();
@@ -212,15 +272,27 @@ export default function CalendarPage() {
                 {week.map((day, di) => {
                   const isToday = day && isSameDay(day, today);
                   const isCurrentMonth = day !== null;
+                  const dayKey = day ? toLocalDateKey(day) : null;
+                  const isDragOver = dayKey !== null && dayKey === dragOverKey;
                   return (
                     <div
                       key={di}
                       className="min-h-[80px] p-2 transition-colors cursor-pointer"
                       style={{
                         borderRight: di < 6 ? "1px solid var(--border)" : undefined,
-                        background: isToday || (day ? toLocalDateKey(day) === selectedDate : false) ? "var(--surface-2)" : undefined,
+                        background: isDragOver
+                          ? "var(--surface-3, var(--surface-2))"
+                          : isToday || (day ? toLocalDateKey(day) === selectedDate : false)
+                            ? "var(--surface-2)"
+                            : undefined,
+                        outline: isDragOver ? "2px dashed #6c44f6" : undefined,
+                        outlineOffset: isDragOver ? "-2px" : undefined,
                       }}
                       onClick={isCurrentMonth ? () => setSelectedDate(toLocalDateKey(day!)) : undefined}
+                      onDragOver={isCurrentMonth && dayKey ? handleDayDragOver(dayKey) : undefined}
+                      onDragLeave={isCurrentMonth ? handleDayDragLeave : undefined}
+                      onDrop={isCurrentMonth && day ? handleDayDrop(day) : undefined}
+                      data-calendar-day={dayKey ?? undefined}
                       onMouseEnter={(e) => {
                         const isSel = day ? toLocalDateKey(day) === selectedDate : false;
                         if (!isToday && !isSel) e.currentTarget.style.background = "var(--surface-2)";
@@ -246,14 +318,26 @@ export default function CalendarPage() {
                             if (dayEvents.length === 0) return null;
                             return (
                               <div className="mt-1 flex flex-wrap gap-1">
-                                {dayEvents.slice(0, 3).map((evt) => (
-                                  <div
-                                    key={evt.id}
-                                    className="h-2.5 w-2.5 rounded-full"
-                                    style={{ background: evt.color }}
-                                    title={evt.title}
-                                  />
-                                ))}
+                                {dayEvents.slice(0, 3).map((evt) => {
+                                  const canDrag = evt.kind === "deadline" && !!evt.taskId;
+                                  return (
+                                    <div
+                                      key={evt.id}
+                                      className="h-2.5 w-2.5 rounded-full"
+                                      style={{
+                                        background: evt.color,
+                                        cursor: canDrag ? "grab" : undefined,
+                                        opacity: rescheduling ? 0.6 : 1,
+                                      }}
+                                      title={canDrag ? `${evt.title} — drag to reschedule` : evt.title}
+                                      draggable={canDrag}
+                                      onDragStart={canDrag ? handleEventDragStart(evt) : undefined}
+                                      onClick={(e) => { if (canDrag) e.stopPropagation(); }}
+                                      data-calendar-event-id={evt.id}
+                                      data-calendar-event-kind={evt.kind}
+                                    />
+                                  );
+                                })}
                                 {dayEvents.length > 3 && (
                                   <span className="text-[9px]" style={{ color: "var(--text-disabled)" }}>
                                     +{dayEvents.length - 3}
