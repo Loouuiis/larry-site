@@ -1973,6 +1973,224 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
+  // POST /events/:id/modify/save — applies an edit patch to a pending suggestion
+  // and (optionally) executes it atomically. Spec: 2026-04-15-modify-action-design.md.
+  const ModifySaveBodySchema = z.object({
+    payloadPatch: z.record(z.string(), z.unknown()),
+    executeImmediately: z.boolean(),
+    conversationId: z.string().uuid().optional(),
+  });
+
+  fastify.post(
+    "/events/:id/modify/save",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
+    async (request, reply) => {
+      const tenantId = request.user.tenantId;
+      const actorUserId = request.user.userId;
+      const { id } = request.params as { id: string };
+      if (!isUuidShape(id)) {
+        throw fastify.httpErrors.badRequest("Invalid event id.");
+      }
+
+      const parsed = ModifySaveBodySchema.safeParse(request.body ?? {});
+      if (!parsed.success) {
+        throw fastify.httpErrors.badRequest(
+          parsed.error.issues[0]?.message ?? "Invalid body."
+        );
+      }
+      const { payloadPatch, executeImmediately } = parsed.data;
+
+      // Re-fetch under the suggested guard — race-safe against concurrent accept.
+      const event = await getLarryEventForMutation(fastify.db, tenantId, id);
+      if (!event) {
+        throw fastify.httpErrors.notFound("Event not found.");
+      }
+      await assertProjectAccessOrThrow({
+        tenantId,
+        userId: actorUserId,
+        tenantRole: request.user.role,
+        projectId: event.projectId,
+        mode: "manage",
+        requireWritable: true,
+      });
+      if (event.eventType !== "suggested") {
+        throw fastify.httpErrors.conflict(
+          "This suggestion was already resolved elsewhere."
+        );
+      }
+
+      try {
+        assertPatchIsAllowed(event.actionType, payloadPatch);
+      } catch (err) {
+        throw fastify.httpErrors.unprocessableEntity(
+          err instanceof Error ? err.message : String(err)
+        );
+      }
+
+      const nextPayload = applyPatch(
+        (event.payload ?? {}) as Record<string, unknown>,
+        payloadPatch
+      );
+
+      // Persist the edit first. If the user is only saving (not executing), we're done.
+      // If they're also executing, we run the executor; on executor failure we intentionally
+      // leave the edited payload in place so the user can retry Accept without re-editing.
+      const updatedRows = await fastify.db.queryTenant<{ id: string }>(
+        tenantId,
+        `UPDATE larry_events
+            SET previous_payload    = COALESCE(previous_payload, payload),
+                payload             = $3::jsonb,
+                modified_by_user_id = $4,
+                modified_at         = NOW()
+          WHERE tenant_id = $1
+            AND id        = $2
+            AND event_type = 'suggested'
+        RETURNING id`,
+        [tenantId, id, JSON.stringify(nextPayload), actorUserId]
+      );
+      if (updatedRows.length === 0) {
+        // Lost the race — another tab resolved the event between our fetch and UPDATE.
+        throw fastify.httpErrors.conflict(
+          "This suggestion was already resolved elsewhere."
+        );
+      }
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId,
+        actionType: "larry.event.modified",
+        objectType: "larry_event",
+        objectId: id,
+        details: {
+          actionType: event.actionType,
+          changedKeys: Object.keys(payloadPatch),
+        },
+      });
+
+      if (!executeImmediately) {
+        const [persisted] = await listLarryEventSummaries(fastify.db, tenantId, { ids: [id] });
+        return reply.code(200).send({ event: persisted ?? null, executed: false, entity: null });
+      }
+
+      // Execute the edited action. Retry-with-resolution mirrors the /accept handler
+      // for the common hallucinated/stale taskId case; calendar and slack actions
+      // are not modifiable per the spec, so this simpler path is sufficient.
+      const executePayload = { ...nextPayload, displayText: event.displayText };
+      let entity: unknown;
+      try {
+        entity = await executeAction(
+          fastify.db,
+          tenantId,
+          event.projectId,
+          event.actionType as LarryActionType,
+          executePayload,
+          actorUserId
+        );
+      } catch (firstError) {
+        const firstMsg = firstError instanceof Error ? firstError.message : String(firstError);
+        const canRetry =
+          firstMsg.includes("taskId could not be resolved") ||
+          firstMsg.includes("not found for tenant") ||
+          (firstMsg.includes("user") && firstMsg.includes("not found in tenant"));
+
+        if (canRetry) {
+          try {
+            const retryPayload: Record<string, unknown> = { ...executePayload };
+            if (firstMsg.includes("taskId")) delete retryPayload.taskId;
+            entity = await executeAction(
+              fastify.db,
+              tenantId,
+              event.projectId,
+              event.actionType as LarryActionType,
+              retryPayload,
+              actorUserId
+            );
+            request.log.info(
+              { tenantId, eventId: id, originalError: firstMsg },
+              "Modify/save succeeded on retry after payload repair"
+            );
+          } catch (retryError) {
+            const retryMsg = retryError instanceof Error ? retryError.message : String(retryError);
+            throw fastify.httpErrors.unprocessableEntity(retryMsg);
+          }
+        } else {
+          throw fastify.httpErrors.unprocessableEntity(firstMsg);
+        }
+      }
+
+      await markLarryEventAccepted(fastify.db, tenantId, id, actorUserId);
+
+      await fastify.db.queryTenant(
+        tenantId,
+        `INSERT INTO correction_feedback
+           (tenant_id, action_id, corrected_by_user_id, correction_type, correction_payload)
+         VALUES
+           ($1, $2, $3, 'modified_and_accepted', $4::jsonb)`,
+        [
+          tenantId,
+          id,
+          actorUserId,
+          JSON.stringify({
+            actionType: event.actionType,
+            changedKeys: Object.keys(payloadPatch),
+          }),
+        ]
+      );
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId,
+        actionType: "larry.event.accepted",
+        objectType: "larry_event",
+        objectId: id,
+        details: { actionType: event.actionType, viaModify: true },
+      });
+
+      const [persisted] = await listLarryEventSummaries(fastify.db, tenantId, { ids: [id] });
+      return reply.code(200).send({ event: persisted ?? null, executed: true, entity });
+    }
+  );
+
+  // POST /events/:id/modify/stop — user cancelled a modify panel without saving.
+  // Writes an audit-log breadcrumb so we can measure abandonment; the event itself
+  // remains in its current state (unchanged pending suggestion).
+  fastify.post(
+    "/events/:id/modify/stop",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
+    async (request, reply) => {
+      const tenantId = request.user.tenantId;
+      const actorUserId = request.user.userId;
+      const { id } = request.params as { id: string };
+      if (!isUuidShape(id)) {
+        throw fastify.httpErrors.badRequest("Invalid event id.");
+      }
+
+      const event = await getLarryEventForMutation(fastify.db, tenantId, id);
+      if (!event) {
+        throw fastify.httpErrors.notFound("Event not found.");
+      }
+      await assertProjectAccessOrThrow({
+        tenantId,
+        userId: actorUserId,
+        tenantRole: request.user.role,
+        projectId: event.projectId,
+        mode: "manage",
+        requireWritable: true,
+      });
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId,
+        actionType: "larry.event.modify_cancelled",
+        objectType: "larry_event",
+        objectId: id,
+        details: { actionType: event.actionType },
+      });
+
+      return reply.code(200).send({ ok: true });
+    }
+  );
+
   fastify.post(
     "/events/:id/let-larry-execute",
     { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
