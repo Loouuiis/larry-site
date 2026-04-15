@@ -6,6 +6,8 @@ import {
   streamLarryChat,
   detectInjectionAttempt,
   detectDestructiveSweep,
+  scrubInlineToolCallText,
+  InlineToolCallScrubber,
 } from "@larry/ai";
 import type { ToolCallResult } from "@larry/ai";
 import {
@@ -3407,6 +3409,11 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       };
 
       // ── Stream ────────────────────────────────────────────────────────────
+      // Scrub inline tool-call XML (`<function=...>{json}</function>` and the
+      // orphaned-closing-tag variant seen from Gemini) out of live tokens
+      // before they reach the browser. Without this, users see raw tool-call
+      // syntax in the chat bubble (QA-2026-04-15 #49).
+      const chatScrubber = new InlineToolCallScrubber();
       try {
         for await (const event of streamLarryChat({
           config,
@@ -3416,8 +3423,12 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         })) {
           if (event.type === "token") {
             fullContent += event.delta;
-            write({ type: "token", delta: event.delta });
+            const clean = chatScrubber.push(event.delta);
+            if (clean) write({ type: "token", delta: clean });
           } else if (event.type === "tool_start") {
+            // Flush any buffered prose so tool chips sit after it in UI order.
+            const tail = chatScrubber.flush();
+            if (tail) write({ type: "token", delta: tail });
             write(event);
           } else if (event.type === "tool_done") {
             write(event);
@@ -3427,7 +3438,16 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           }
         }
 
+        // Drain any remaining scrubbed text.
+        const tail = chatScrubber.flush();
+        if (tail) write({ type: "token", delta: tail });
+
         // ── Post-stream DB writes ─────────────────────────────────────────
+        // Scrub the accumulated raw content once more for DB persistence —
+        // idempotent, and guarantees the stored message matches what the
+        // user saw during streaming.
+        fullContent = scrubInlineToolCallText(fullContent);
+
         // When the model emits only tool calls and no prose, synthesize a
         // recap. Stream it as tokens so the live UI shows the recap too,
         // then persist it so refreshes render the same text.
@@ -3438,9 +3458,6 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
             fullContent = recap;
           }
         }
-        // Strip any inline function-call markup emitted as plain text by
-        // models that don't use the AI SDK's structured tool-calling interface.
-        fullContent = fullContent.replace(/<function=[^>]*>/g, "");
         await fastify.db.queryTenant<Record<string, unknown>>(
           tenantId,
           `UPDATE larry_messages SET content = $3 WHERE tenant_id = $1 AND id = $2`,

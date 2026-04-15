@@ -945,6 +945,8 @@ export {
   computeDateContext,
   translateFullStreamChunkToChatEvent,
   buildChatSystemPrompt,
+  scrubInlineToolCallText,
+  InlineToolCallScrubber,
 } from "./chat.js";
 export type { ChatStreamEvent, ToolCallResult } from "./chat.js";
 

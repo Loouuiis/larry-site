@@ -251,9 +251,17 @@ export function useLarryChat(projectId?: string) {
 
           for await (const event of parseLarrySseStream(response.body)) {
             switch (event.type) {
-              case "token":
-                updateStreamingMessage((prev) => ({ content: prev.content + event.delta }));
+              case "token": {
+                // QA-2026-04-15 #49 defense-in-depth: guard against any
+                // upstream delta that isn't a string (would coerce to
+                // "[object Object]" under string concat). Server now emits
+                // strings only, but unknown future providers or proxies
+                // could slip through.
+                const deltaStr = typeof event.delta === "string" ? event.delta : "";
+                if (deltaStr.length === 0) break;
+                updateStreamingMessage((prev) => ({ content: prev.content + deltaStr }));
                 break;
+              }
 
               case "tool_start": {
                 const chip = toolEventToChip(
