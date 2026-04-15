@@ -95,5 +95,9 @@ export function useCalendarEvents(projectId?: string) {
     void load();
   }, [load]);
 
-  return { events, loading, refresh: load };
+  const moveEventLocally = useCallback((eventId: string, newDate: string) => {
+    setEvents((prev) => prev.map((e) => (e.id === eventId ? { ...e, date: newDate } : e)));
+  }, []);
+
+  return { events, loading, refresh: load, moveEventLocally };
 }
