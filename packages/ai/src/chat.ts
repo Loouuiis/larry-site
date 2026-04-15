@@ -4,6 +4,82 @@ import { z } from "zod";
 import type { IntelligenceConfig } from "@larry/shared";
 import { createModel } from "./provider.js";
 
+// ── Inline tool-call text scrubbing ───────────────────────────────────────────
+//
+// Some providers (notably Gemini) occasionally emit tool-call XML directly in
+// the text-delta channel instead of — or in addition to — the structured
+// tool-call channel. Observed leak patterns:
+//
+//   1. Full inline call:        "<function=get_task_list>{\"filter\":\"all\"}</function>"
+//   2. Orphaned payload + close: "{\"filter\":\"all\"}</function>"   (QA-2026-04-15 #49)
+//   3. Bare closing tag:         "</function>"
+//
+// These must be stripped before the token reaches the client *and* before the
+// final content is persisted. The DB strip previously covered only opening
+// tags and never touched the live stream, so users saw the raw XML in the
+// assistant bubble until a refresh pulled the scrubbed DB copy.
+
+/**
+ * Non-streaming scrubber — strip every inline tool-call artefact from a
+ * fully-formed string. Safe to apply repeatedly (idempotent).
+ */
+export function scrubInlineToolCallText(text: string): string {
+  let s = text;
+  // Complete <function=...>...</function> blocks (non-greedy, nested-safe).
+  let prev: string;
+  do {
+    prev = s;
+    s = s.replace(/<function=[^>]*>[\s\S]*?<\/function>/g, "");
+  } while (s !== prev);
+  // Orphaned trailing JSON payload + closing tag.
+  s = s.replace(/\{[\s\S]*?\}\s*<\/function>/g, "");
+  // Bare closing tags.
+  s = s.replace(/<\/function>/g, "");
+  // Unclosed opening tag: drop from the opening to end-of-input.
+  s = s.replace(/<function=[^>]*>[\s\S]*$/, "");
+  return s;
+}
+
+/**
+ * Streaming scrubber — accept text in arbitrary chunks, emit the portion safe
+ * to forward to the client, and buffer anything that could still be the start
+ * of a leaked tool-call fragment. Call `flush()` at end-of-stream to drain.
+ */
+export class InlineToolCallScrubber {
+  // Max unemitted trail size. Must be >= len("</function>") (11) AND large
+  // enough to absorb a short "{json}</function>" pair while it assembles.
+  private static readonly HOLD = 64;
+  private buf = "";
+
+  push(chunk: string): string {
+    this.buf += chunk;
+    this.buf = scrubInlineToolCallText(this.buf);
+
+    // Everything from any still-open <function=... must stay buffered until
+    // its </function> arrives.
+    const openIdx = this.buf.indexOf("<function=");
+    if (openIdx !== -1) {
+      const emit = this.buf.slice(0, openIdx);
+      this.buf = this.buf.slice(openIdx);
+      return emit;
+    }
+
+    if (this.buf.length > InlineToolCallScrubber.HOLD) {
+      const cut = this.buf.length - InlineToolCallScrubber.HOLD;
+      const emit = this.buf.slice(0, cut);
+      this.buf = this.buf.slice(cut);
+      return emit;
+    }
+    return "";
+  }
+
+  flush(): string {
+    const final = scrubInlineToolCallText(this.buf);
+    this.buf = "";
+    return final;
+  }
+}
+
 // ── Public types ───────────────────────────────────────────────────────────────
 
 export type ChatStreamEvent =
