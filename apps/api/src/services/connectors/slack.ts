@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 
 const SlackOauthSuccessSchema = z.object({
@@ -139,7 +139,10 @@ export function createSignedStateToken(
   ttlSeconds = 600
 ): string {
   const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
-  const encodedPayload = Buffer.from(JSON.stringify({ ...payload, exp })).toString("base64url");
+  // jti enables single-use enforcement at the callback. Random 128-bit id
+  // is collision-free in practice and base-10-safe for easy Redis keys.
+  const jti = randomBytes(16).toString("hex");
+  const encodedPayload = Buffer.from(JSON.stringify({ ...payload, exp, jti })).toString("base64url");
   const signature = createHmac("sha256", secret).update(encodedPayload).digest("base64url");
   return `${encodedPayload}.${signature}`;
 }

@@ -79,6 +79,10 @@ const ApiSchema = SharedSchema.extend({
     .transform((v) => v !== "false"),
   LLM_TENANT_DAILY_TOKENS: z.coerce.number().int().positive().default(30_000),
   LLM_GLOBAL_DAILY_TOKENS: z.coerce.number().int().positive().default(80_000),
+  OAUTH_STATE_SINGLE_USE_ENABLED: z
+    .string()
+    .default("true")
+    .transform((v) => v !== "false"),
 });
 
 const WorkerSchema = SharedSchema.extend({
