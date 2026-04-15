@@ -948,6 +948,16 @@ export {
 } from "./chat.js";
 export type { ChatStreamEvent, ToolCallResult } from "./chat.js";
 
+// ── Larry Modify Action chat ─────────────────────────────────────────────────
+export {
+  streamModifyChat,
+  buildModifySystemPrompt,
+} from "./modify-chat.js";
+export type {
+  ModifyChatContext,
+  ModifyChatStreamEvent,
+} from "./modify-chat.js";
+
 // Re-export new shared intelligence types for convenience
 export type {
   IntelligenceConfig,
