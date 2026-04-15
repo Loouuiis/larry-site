@@ -4,9 +4,11 @@ import { z } from "zod";
 import {
   runIntelligence,
   streamLarryChat,
+  streamModifyChat,
   detectInjectionAttempt,
   detectDestructiveSweep,
 } from "@larry/ai";
+import type { ModifyChatStreamEvent } from "@larry/ai";
 import type { ToolCallResult } from "@larry/ai";
 import {
   applyPatch,
@@ -2188,6 +2190,186 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       });
 
       return reply.code(200).send({ ok: true });
+    }
+  );
+
+  // POST /events/:id/modify-chat — dedicated chat endpoint for the Modify panel.
+  // Runs streamModifyChat (single tool: apply_modification) and returns a
+  // payloadPatch the frontend can merge into its working draft without
+  // touching the database. Spec: 2026-04-15-modify-action-design.md.
+  const ModifyChatBodySchema = z.object({
+    message: z.string().trim().min(1).max(4_000),
+    currentPayload: z.record(z.string(), z.unknown()),
+    conversationId: z.string().uuid().optional(),
+  });
+
+  fastify.post(
+    "/events/:id/modify-chat",
+    {
+      config: {
+        rateLimit: {
+          max: 20,
+          timeWindow: "1 minute",
+          keyGenerator: (req: FastifyRequest) =>
+            (req.user as { tenantId?: string } | undefined)?.tenantId ?? req.ip,
+        },
+      },
+      preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])],
+    },
+    async (request, reply) => {
+      const tenantId = request.user.tenantId;
+      const actorUserId = request.user.userId;
+      const { id } = request.params as { id: string };
+      if (!isUuidShape(id)) {
+        throw fastify.httpErrors.badRequest("Invalid event id.");
+      }
+
+      const parsed = ModifyChatBodySchema.safeParse(request.body ?? {});
+      if (!parsed.success) {
+        throw fastify.httpErrors.badRequest(
+          parsed.error.issues[0]?.message ?? "Invalid body."
+        );
+      }
+      const { message, currentPayload, conversationId: providedConvId } = parsed.data;
+
+      const event = await getLarryEventForMutation(fastify.db, tenantId, id);
+      if (!event) {
+        throw fastify.httpErrors.notFound("Event not found.");
+      }
+      await assertProjectAccessOrThrow({
+        tenantId,
+        userId: actorUserId,
+        tenantRole: request.user.role,
+        projectId: event.projectId,
+        mode: "manage",
+        requireWritable: true,
+      });
+      if (event.eventType !== "suggested") {
+        throw fastify.httpErrors.conflict(
+          "This suggestion was already resolved elsewhere."
+        );
+      }
+
+      const editableFields = editableFieldsForActionType(event.actionType);
+      if (editableFields.length === 0) {
+        throw fastify.httpErrors.unprocessableEntity(
+          `Action type '${event.actionType}' is not modifiable.`
+        );
+      }
+
+      // Resolve or create the conversation for this modify session.
+      let conversationId = providedConvId ?? null;
+      if (conversationId) {
+        const existing = await getLarryConversationForUser(
+          fastify.db,
+          tenantId,
+          actorUserId,
+          conversationId
+        );
+        if (!existing || existing.projectId !== event.projectId) {
+          throw fastify.httpErrors.notFound("Conversation not found.");
+        }
+      } else {
+        const created = await createLarryConversation(
+          fastify.db,
+          tenantId,
+          actorUserId,
+          {
+            projectId: event.projectId,
+            title: `Modify: ${event.displayText.slice(0, 120)}`,
+          }
+        );
+        conversationId = created.id;
+      }
+
+      const teamMembers = await fastify.db.queryTenant<{ displayName: string }>(
+        tenantId,
+        `SELECT COALESCE(u.display_name, u.email) AS "displayName"
+           FROM users u
+           JOIN project_members pm ON pm.user_id = u.id
+          WHERE pm.tenant_id = $1 AND pm.project_id = $2
+          ORDER BY "displayName" ASC`,
+        [tenantId, event.projectId]
+      );
+
+      const userMessageInsert = await insertLarryMessage(
+        fastify.db,
+        tenantId,
+        conversationId,
+        { role: "user", content: message, actorUserId }
+      );
+
+      const modifyConfig = buildIntelligenceConfig(fastify.config);
+
+      // History is just this turn's user message — the modify panel is a
+      // stateless one-shot per send. If we later add multi-turn refinement,
+      // load prior messages via listLarryMessagesForConversation.
+      const generator = streamModifyChat({
+        config: modifyConfig,
+        messages: [{ role: "user", content: message }],
+        context: {
+          actionType: event.actionType,
+          displayText: event.displayText,
+          reasoning: event.reasoning,
+          currentPayload,
+          editableFields,
+          teamMembers,
+        },
+      });
+
+      let fullText = "";
+      let payloadPatch: Record<string, unknown> | null = null;
+      let summary = "";
+      let streamError: string | null = null;
+
+      for await (const evt of generator as AsyncIterable<ModifyChatStreamEvent>) {
+        if (evt.type === "token") fullText += evt.delta;
+        else if (evt.type === "tool_done" && evt.name === "apply_modification") {
+          payloadPatch = evt.payloadPatch;
+          summary = evt.summary;
+        } else if (evt.type === "error") {
+          streamError = evt.message;
+        }
+      }
+
+      const assistantText =
+        fullText.trim().length > 0
+          ? fullText.trim()
+          : summary ||
+            (streamError
+              ? "I couldn't process that request — please try again."
+              : "I didn't catch that. Can you rephrase the change you want?");
+
+      const assistantInsert = await insertLarryMessage(
+        fastify.db,
+        tenantId,
+        conversationId,
+        { role: "larry", content: assistantText }
+      );
+      await touchLarryConversation(fastify.db, tenantId, conversationId, message.slice(0, 80));
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId,
+        actionType: "larry.event.modify_chat",
+        objectType: "larry_event",
+        objectId: id,
+        details: {
+          conversationId,
+          producedPatch: payloadPatch !== null,
+          patchKeys: payloadPatch ? Object.keys(payloadPatch) : [],
+        },
+      });
+
+      return reply.code(200).send({
+        conversationId,
+        userMessageId: userMessageInsert.id,
+        assistantMessageId: assistantInsert.id,
+        message: assistantText,
+        payloadPatch: payloadPatch ?? {},
+        summary,
+        streamError,
+      });
     }
   );
 
