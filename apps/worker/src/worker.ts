@@ -60,7 +60,7 @@ await queue.add(
   "escalation.scan",
   {},
   {
-    repeat: { every: 60 * 60 * 1000 },
+    repeat: { every: 24 * 60 * 60 * 1000 },
     jobId: "escalation-scan",
     attempts: 3,
     backoff: { type: "exponential", delay: 10_000 },
