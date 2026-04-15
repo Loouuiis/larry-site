@@ -1123,6 +1123,14 @@ ALTER TABLE larry_events
 ALTER TABLE larry_events
   ADD COLUMN IF NOT EXISTS source_record_id UUID;
 
+-- Modify Action audit columns (spec 2026-04-15-modify-action-design.md, migration 020).
+ALTER TABLE larry_events
+  ADD COLUMN IF NOT EXISTS previous_payload    JSONB;
+ALTER TABLE larry_events
+  ADD COLUMN IF NOT EXISTS modified_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE larry_events
+  ADD COLUMN IF NOT EXISTS modified_at         TIMESTAMPTZ;
+
 UPDATE larry_events
 SET execution_mode = CASE
   WHEN event_type = 'auto_executed' THEN 'auto'
