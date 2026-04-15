@@ -12,6 +12,8 @@ import { healthRoutes } from "./routes/health.js";
 import { v1Routes } from "./routes/v1/index.js";
 import { createQueuePublisher } from "./services/queue.js";
 import { getRedis, closeRedis } from "./lib/redis.js";
+import { LLMQuotaError } from "./lib/llm-budget.js";
+import { EmailQuotaError } from "./lib/email-quota.js";
 
 export async function createApp() {
   const env = getApiEnv();
@@ -65,6 +67,31 @@ export async function createApp() {
         statusCode: 400,
         error: "Validation Error",
         message: messages.join(". ") + ".",
+      });
+    }
+    if (error instanceof LLMQuotaError) {
+      request.log.warn(
+        { scope: error.scope, limit: error.limit, url: request.url },
+        "llm quota rejected",
+      );
+      return reply.status(429).send({
+        statusCode: 429,
+        error: "Too Many Requests",
+        message:
+          error.scope === "tenant"
+            ? "Daily AI usage limit reached for this workspace. Please try again tomorrow."
+            : "Daily AI usage limit reached. Please try again shortly.",
+      });
+    }
+    if (error instanceof EmailQuotaError) {
+      request.log.warn(
+        { detail: error.detail, url: request.url },
+        "email quota rejected",
+      );
+      return reply.status(429).send({
+        statusCode: 429,
+        error: "Too Many Requests",
+        message: "Email send limit reached. Please try again later.",
       });
     }
     // Let Fastify handle everything else (including @fastify/sensible errors)

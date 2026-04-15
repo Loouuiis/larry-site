@@ -36,6 +36,23 @@ vi.mock("../src/lib/audit.js", () => ({
   writeAuditLog: vi.fn().mockResolvedValue(undefined),
 }));
 
+// LLM budget writes to Redis; these tests don't exercise it. Keep the
+// reservation inert so chat flows behave as they did pre-Phase-3.
+vi.mock("../src/lib/llm-budget.js", () => ({
+  reserveTokens: vi.fn().mockResolvedValue({ active: false }),
+  reconcileTokens: vi.fn().mockResolvedValue(undefined),
+  LLMQuotaError: class LLMQuotaError extends Error {
+    readonly scope: "tenant" | "global";
+    readonly limit: number;
+    constructor(scope: "tenant" | "global", limit: number) {
+      super("fake llm quota");
+      this.name = "LLMQuotaError";
+      this.scope = scope;
+      this.limit = limit;
+    }
+  },
+}));
+
 vi.mock("../src/services/larry-briefing.js", () => ({
   getOrGenerateBriefing: vi.fn(),
 }));

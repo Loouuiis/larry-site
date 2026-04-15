@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./budget": {
+      "types": "./dist/budget.d.ts",
+      "default": "./dist/budget.js"
     }
   },
   "scripts": {
