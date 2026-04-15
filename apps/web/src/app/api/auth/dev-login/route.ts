@@ -3,6 +3,11 @@ import { createSessionToken, sessionCookieOptions, AppSession } from "@/lib/auth
 
 const allowed = process.env.ALLOW_DEV_AUTH_BYPASS === "true";
 
+if (allowed) {
+  console.warn("⚠️ Dev auth bypass is ENABLED — do not run this in production.");
+}
+
+
 // Attempt a real API login so the session carries a valid access token.
 // This prevents workspace-proxy from hammering /v1/auth/login on every request.
 async function tryApiLogin(): Promise<AppSession | null> {
@@ -45,12 +50,9 @@ async function tryApiLogin(): Promise<AppSession | null> {
 }
 
 export async function POST() {
-  if (process.env.NODE_ENV === "production") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
 
-  if (!allowed) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!allowed) {        
+    return new NextResponse(null, { status: 404 });
   }
 
   // Try a real API login first so workspace routes have a valid token.
