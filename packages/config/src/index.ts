@@ -62,6 +62,13 @@ const ApiSchema = SharedSchema.extend({
   RESEND_FROM_LARRY: z.string().default("Larry <larry@larry-pm.com>"),
   RESEND_WEBHOOK_SECRET: z.string().optional(),
   FRONTEND_URL: z.string().url().optional(),
+  // Rate-limiting hardening (2026-04-15). Flags default to enabled;
+  // flip to "false" in Railway to roll back a phase without redeploying.
+  RATE_LIMIT_REDIS_ENABLED: z
+    .string()
+    .default("true")
+    .transform((v) => v !== "false"),
+  RATE_LIMIT_BYPASS_SECRET: z.string().optional(),
 });
 
 const WorkerSchema = SharedSchema.extend({
