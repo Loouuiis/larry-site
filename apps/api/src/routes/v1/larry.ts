@@ -9,6 +9,9 @@ import {
 } from "@larry/ai";
 import type { ToolCallResult } from "@larry/ai";
 import {
+  applyPatch,
+  assertPatchIsAllowed,
+  editableFieldsForActionType,
   getCanonicalEventRuntimeEntryById,
   getCanonicalEventRuntimeSummary,
   listCanonicalEventRetryCandidates,
@@ -1904,6 +1907,10 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
+  // POST /events/:id/modify — returns an editable snapshot of a pending suggestion.
+  // Per spec 2026-04-15-modify-action-design.md: no DB write, no dismissal. The
+  // frontend opens the Modify panel with this snapshot, lets the user edit fields
+  // or chat via /modify-chat, and commits via /modify/save.
   fastify.post(
     "/events/:id/modify",
     { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
@@ -1931,100 +1938,38 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         throw fastify.httpErrors.conflict("Only suggested events can be modified.");
       }
 
-      // Fetch full event details for the chat context message
-      const [fullEvent] = await fastify.db.queryTenant<{
-        conversationId: string | null;
-        displayText: string | null;
-        reasoning: string | null;
-      }>(
-        tenantId,
-        `SELECT conversation_id AS "conversationId",
-                display_text   AS "displayText",
-                reasoning
-           FROM larry_events
-          WHERE tenant_id = $1 AND id = $2
-          LIMIT 1`,
-        [tenantId, id]
-      );
-
-      let conversationId = fullEvent?.conversationId ?? null;
-
-      if (!conversationId) {
-        const conversation = await createLarryConversation(
-          fastify.db,
-          tenantId,
-          actorUserId,
-          { projectId: event.projectId, title: `Modify: ${(fullEvent?.displayText ?? "Larry action").slice(0, 120)}` }
+      const editableFields = editableFieldsForActionType(event.actionType);
+      if (editableFields.length === 0) {
+        throw fastify.httpErrors.unprocessableEntity(
+          `Action type '${event.actionType}' is not modifiable.`
         );
-        conversationId = conversation.id;
       }
 
-      // QA-2026-04-12 M-1: previously this handler wrote a raw internal
-      // template ("The user wants to modify this action: ... Original
-      // reasoning: ... Action type: task_create.") straight to the user's
-      // chat history. That string rendered as Larry's first visible bubble
-      // and looked like a leaked system prompt.
-      //
-      // The user-facing opener below is plain prose Larry would say; the
-      // action being modified is already communicated by the launch URL
-      // (launch=modify&sourceKind=...&eventType=suggested) and is visible
-      // in the chat header above this conversation.
-      const openerDisplay = (fullEvent?.displayText ?? "this action").slice(0, 160);
-
-      // QA-2026-04-12 M-3: surface the original payload values so Larry's
-      // own conversation history carries them. When the user then asks for
-      // a change ("push to 30 Apr, reassign to Anna"), the LLM can echo
-      // the diff in its "I queued ... with updates" confirmation instead
-      // of being generic. The fields below cover task_create — the most
-      // common modify target — and degrade gracefully for other action
-      // types (the "Currently:" line is omitted when no fields resolve).
-      const payload = (event.payload ?? {}) as Record<string, unknown>;
-      const readString = (key: string): string | null => {
-        const value = payload[key];
-        return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
-      };
-      const currentParts: string[] = [];
-      const assignee = readString("assigneeName") ?? readString("newOwnerName");
-      const dueDate = readString("dueDate") ?? readString("newDeadline");
-      const priority = readString("priority");
-      const riskLevel = readString("riskLevel");
-      const newStatus = readString("newStatus");
-      if (assignee) currentParts.push(`assigned to ${assignee}`);
-      if (dueDate) currentParts.push(`due ${dueDate}`);
-      if (priority) currentParts.push(`priority ${priority}`);
-      if (riskLevel) currentParts.push(`risk ${riskLevel}`);
-      if (newStatus) currentParts.push(`status ${newStatus}`);
-      const currentLine = currentParts.length > 0 ? ` Currently: ${currentParts.join(", ")}.` : "";
-
-      const openerMessage =
-        `Let's refine "${openerDisplay}".${currentLine} Tell me what to change — assignee, ` +
-        `deadline, priority, wording — and I'll queue an updated version in the Action Centre, ` +
-        `noting which fields changed.`;
-
-      await insertLarryMessage(fastify.db, tenantId, conversationId, {
-        role: "larry",
-        content: openerMessage,
-      });
-
-      await touchLarryConversation(fastify.db, tenantId, conversationId);
-
-      // QA-2026-04-12 M-4: dismiss the source suggestion immediately. The
-      // user has chosen to rework it — keeping it pending means Action
-      // Centre shows both the original and the later "with updates" card,
-      // and accepting both duplicates the task.
-      //
-      // If the user abandons the modify chat without sending a message,
-      // this still reflects intent: they clicked Modify, which is a
-      // "don't accept as-is" signal. Safer than leaving a stale pending.
-      await markLarryEventDismissed(
-        fastify.db,
+      const teamMembers = await fastify.db.queryTenant<{
+        userId: string;
+        displayName: string;
+        email: string;
+      }>(
         tenantId,
-        id,
-        actorUserId,
-        "modify-superseded"
+        `SELECT u.id AS "userId",
+                COALESCE(u.display_name, u.email) AS "displayName",
+                u.email
+           FROM users u
+           JOIN project_members pm ON pm.user_id = u.id
+          WHERE pm.tenant_id = $1 AND pm.project_id = $2
+          ORDER BY "displayName" ASC`,
+        [tenantId, event.projectId]
       );
 
-      return reply.code(200).send({ conversationId, eventId: id });
+      return reply.code(200).send({
+        eventId: id,
+        actionType: event.actionType,
+        displayText: event.displayText,
+        reasoning: event.reasoning,
+        payload: event.payload ?? {},
+        editableFields,
+        teamMembers,
+      });
     }
   );
 
