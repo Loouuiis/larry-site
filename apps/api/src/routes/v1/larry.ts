@@ -3407,6 +3407,12 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       };
 
       // ── Stream ────────────────────────────────────────────────────────────
+      // Track whether the SDK emitted an error event mid-stream. When it does
+      // the client sets the bubble to event.message, and a subsequent recap
+      // token would get concatenated onto the error text with no separator
+      // (e.g. ".../billingI don't have anything to add here..."). Suppress
+      // the recap entirely in that case — the error message is the response.
+      let hadStreamError = false;
       try {
         for await (const event of streamLarryChat({
           config,
@@ -3422,6 +3428,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           } else if (event.type === "tool_done") {
             write(event);
           } else if (event.type === "error") {
+            hadStreamError = true;
             write(event);
             // Don't abort — let the stream finish naturally
           }
@@ -3430,8 +3437,9 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         // ── Post-stream DB writes ─────────────────────────────────────────
         // When the model emits only tool calls and no prose, synthesize a
         // recap. Stream it as tokens so the live UI shows the recap too,
-        // then persist it so refreshes render the same text.
-        if (fullContent.trim().length === 0) {
+        // then persist it so refreshes render the same text. Skipped on
+        // stream errors so it doesn't concatenate onto the error text.
+        if (!hadStreamError && fullContent.trim().length === 0) {
           const recap = buildToolRecap(toolOutcomes);
           if (recap.length > 0) {
             write({ type: "token", delta: recap });
