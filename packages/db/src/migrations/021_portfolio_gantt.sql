@@ -25,3 +25,11 @@ ALTER TABLE tasks
 
 CREATE INDEX IF NOT EXISTS idx_tasks_parent
   ON tasks (tenant_id, parent_task_id);
+
+ALTER TABLE project_categories ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_project_categories
+    ON project_categories
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
