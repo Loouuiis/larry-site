@@ -1957,7 +1957,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
                 COALESCE(u.display_name, u.email) AS "displayName",
                 u.email
            FROM users u
-           JOIN project_members pm ON pm.user_id = u.id
+           JOIN project_memberships pm ON pm.user_id = u.id
           WHERE pm.tenant_id = $1 AND pm.project_id = $2
           ORDER BY "displayName" ASC`,
         [tenantId, event.projectId]
@@ -2286,7 +2286,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         tenantId,
         `SELECT COALESCE(u.display_name, u.email) AS "displayName"
            FROM users u
-           JOIN project_members pm ON pm.user_id = u.id
+           JOIN project_memberships pm ON pm.user_id = u.id
           WHERE pm.tenant_id = $1 AND pm.project_id = $2
           ORDER BY "displayName" ASC`,
         [tenantId, event.projectId]
