@@ -86,3 +86,27 @@ describe("POST /tasks with parentTaskId", () => {
     expect(res.statusCode).toBe(404);
   });
 });
+
+describe("PATCH /tasks/:id parentTaskId", () => {
+  it("accepts null to un-parent", async () => {
+    const queryTenant = vi.fn()
+      .mockResolvedValueOnce([{ id: "t1", projectId: PROJECT_ID, status: "active" }]) // existing task lookup
+      .mockResolvedValueOnce([{ id: "t1", parentTaskId: null }]);                     // update RETURNING
+    const app = await buildApp(queryTenant);
+    const res = await app.inject({ method: "PATCH", url: "/tasks/66666666-6666-4666-8666-666666666666", payload: { parentTaskId: null } });
+    await app.close();
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("rejects self-parenting", async () => {
+    const queryTenant = vi.fn()
+      .mockResolvedValueOnce([{ id: "11111111-1111-4111-8111-111111111111", projectId: PROJECT_ID, status: "active" }]);
+    const app = await buildApp(queryTenant);
+    const res = await app.inject({
+      method: "PATCH", url: "/tasks/11111111-1111-4111-8111-111111111111",
+      payload: { parentTaskId: "11111111-1111-4111-8111-111111111111" },
+    });
+    await app.close();
+    expect(res.statusCode).toBe(400);
+  });
+});
