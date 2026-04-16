@@ -10,6 +10,7 @@ import { useEmailDrafts } from "@/hooks/useEmailDrafts";
 import { getActionTypeTag, getAllActionTypes } from "@/lib/action-types";
 import { useToast } from "@/components/toast/ToastContext";
 import { ActionDetailPreview } from "@/components/workspace/ActionDetailPreview";
+import { ModifyPanel } from "@/app/workspace/ModifyPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -235,11 +236,13 @@ export default function WorkspaceActionsPage() {
     accepting,
     dismissing,
     modifying,
+    modifyingEventId,
     executing,
     actionError,
     accept,
     dismiss,
     modify,
+    closeModify,
     letLarryExecute,
     clearActionError,
     refresh,
@@ -675,19 +678,16 @@ export default function WorkspaceActionsPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={async () => {
-                            const conversationId = await modify(event.id);
-                            if (conversationId) {
-                              router.push(buildFullChatHref(conversationId, event, "modify"));
-                            }
+                          onClick={() => {
+                            modify(event.id);
                           }}
-                          disabled={modifying === event.id}
+                          disabled={modifyingEventId === event.id}
                           className="rounded-full border px-3 py-1.5 text-[12px] font-semibold"
                           style={{ borderColor: "var(--cta)", color: "var(--cta)" }}
                           data-testid="action-centre-modify"
                           data-event-id={event.id}
                         >
-                          {modifying === event.id ? "Opening..." : "Modify"}
+                          {modifyingEventId === event.id ? "Editing…" : "Modify"}
                         </button>
                         <button
                           type="button"
@@ -720,6 +720,18 @@ export default function WorkspaceActionsPage() {
                           Dismiss
                         </button>
                       </div>
+                    )}
+
+                    {modifyingEventId === event.id && (
+                      <ModifyPanel
+                        eventId={event.id}
+                        onFinished={async (outcome) => {
+                          closeModify();
+                          if (outcome === "saved") {
+                            await refresh();
+                          }
+                        }}
+                      />
                     )}
                   </div>
                 ))

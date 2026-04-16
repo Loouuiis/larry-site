@@ -46,6 +46,7 @@ import { ProjectTimeline } from "@/components/workspace/timeline/ProjectTimeline
 import { getActionTypeTag, getAllActionTypes } from "@/lib/action-types";
 import { useToast } from "@/components/toast/ToastContext";
 import { ActionDetailPreview } from "@/components/workspace/ActionDetailPreview";
+import { ModifyPanel } from "@/app/workspace/ModifyPanel";
 import { ActionBellDropdown } from "./overview/ActionBellDropdown";
 import { ProjectOverviewTab } from "./overview/ProjectOverviewTab";
 import { ProjectDescriptionCard } from "./overview/ProjectDescriptionCard";
@@ -1039,10 +1040,13 @@ function ProjectActionCentreTab({
   accepting,
   dismissing,
   modifying,
+  modifyingEventId,
   actionError,
   accept,
   dismiss,
   modify,
+  closeModify,
+  onModifySaved,
   clearActionError,
   onOpenConversation,
 }: {
@@ -1051,10 +1055,13 @@ function ProjectActionCentreTab({
   accepting: string | null;
   dismissing: string | null;
   modifying: string | null;
+  modifyingEventId: string | null;
   actionError: { eventId: string; message: string } | null;
   accept: (id: string) => Promise<void>;
   dismiss: (id: string) => Promise<void>;
-  modify: (id: string) => Promise<string | null>;
+  modify: (id: string) => void;
+  closeModify: () => void;
+  onModifySaved: () => Promise<void>;
   clearActionError: () => void;
   onOpenConversation: (conversationId: string) => void;
 }) {
@@ -1269,18 +1276,14 @@ function ProjectActionCentreTab({
                       </button>
                       <button
                         type="button"
-                        onClick={async () => {
-                          const conversationId = await modify(event.id);
-                          if (conversationId) {
-                            window.dispatchEvent(new CustomEvent("larry:open"));
-                            window.dispatchEvent(new CustomEvent("larry:load-conversation", { detail: conversationId }));
-                          }
+                        onClick={() => {
+                          modify(event.id);
                         }}
-                        disabled={modifying === event.id}
+                        disabled={modifyingEventId === event.id}
                         className="rounded-full border px-3 py-1.5 text-[12px] font-semibold"
                         style={{ borderColor: "var(--cta)", color: "var(--cta)" }}
                       >
-                        {modifying === event.id ? "Opening..." : "Modify"}
+                        {modifyingEventId === event.id ? "Editing…" : "Modify"}
                       </button>
                       <button
                         type="button"
@@ -1309,6 +1312,18 @@ function ProjectActionCentreTab({
                         Dismiss
                       </button>
                     </div>
+                  )}
+
+                  {modifyingEventId === event.id && (
+                    <ModifyPanel
+                      eventId={event.id}
+                      onFinished={async (outcome) => {
+                        closeModify();
+                        if (outcome === "saved") {
+                          await onModifySaved();
+                        }
+                      }}
+                    />
                   )}
                 </div>
               ))
@@ -1451,11 +1466,13 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
     accepting,
     dismissing,
     modifying,
+    modifyingEventId,
     executing,
     actionError,
     accept,
     dismiss,
     modify,
+    closeModify,
     letLarryExecute,
     clearActionError,
     refresh: refreshActionCentre,
@@ -2171,10 +2188,13 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
           accepting={accepting}
           dismissing={dismissing}
           modifying={modifying}
+          modifyingEventId={modifyingEventId}
           actionError={actionError}
           accept={accept}
           dismiss={dismiss}
           modify={modify}
+          closeModify={closeModify}
+          onModifySaved={refreshActionCentre}
           clearActionError={clearActionError}
           onOpenConversation={openConversation}
         />)}

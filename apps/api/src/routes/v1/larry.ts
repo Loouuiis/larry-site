@@ -4,11 +4,16 @@ import { z } from "zod";
 import {
   runIntelligence,
   streamLarryChat,
+  streamModifyChat,
   detectInjectionAttempt,
   detectDestructiveSweep,
 } from "@larry/ai";
+import type { ModifyChatStreamEvent } from "@larry/ai";
 import type { ToolCallResult } from "@larry/ai";
 import {
+  applyPatch,
+  assertPatchIsAllowed,
+  editableFieldsForActionType,
   getCanonicalEventRuntimeEntryById,
   getCanonicalEventRuntimeSummary,
   listCanonicalEventRetryCandidates,
@@ -1918,6 +1923,10 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
+  // POST /events/:id/modify — returns an editable snapshot of a pending suggestion.
+  // Per spec 2026-04-15-modify-action-design.md: no DB write, no dismissal. The
+  // frontend opens the Modify panel with this snapshot, lets the user edit fields
+  // or chat via /modify-chat, and commits via /modify/save.
   fastify.post(
     "/events/:id/modify",
     { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
@@ -1945,100 +1954,436 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         throw fastify.httpErrors.conflict("Only suggested events can be modified.");
       }
 
-      // Fetch full event details for the chat context message
-      const [fullEvent] = await fastify.db.queryTenant<{
-        conversationId: string | null;
-        displayText: string | null;
-        reasoning: string | null;
+      const editableFields = editableFieldsForActionType(event.actionType);
+      if (editableFields.length === 0) {
+        throw fastify.httpErrors.unprocessableEntity(
+          `Action type '${event.actionType}' is not modifiable.`
+        );
+      }
+
+      const teamMembers = await fastify.db.queryTenant<{
+        userId: string;
+        displayName: string;
+        email: string;
       }>(
         tenantId,
-        `SELECT conversation_id AS "conversationId",
-                display_text   AS "displayText",
-                reasoning
-           FROM larry_events
-          WHERE tenant_id = $1 AND id = $2
-          LIMIT 1`,
-        [tenantId, id]
+        `SELECT u.id AS "userId",
+                COALESCE(u.display_name, u.email) AS "displayName",
+                u.email
+           FROM users u
+           JOIN project_members pm ON pm.user_id = u.id
+          WHERE pm.tenant_id = $1 AND pm.project_id = $2
+          ORDER BY "displayName" ASC`,
+        [tenantId, event.projectId]
       );
 
-      let conversationId = fullEvent?.conversationId ?? null;
+      return reply.code(200).send({
+        eventId: id,
+        actionType: event.actionType,
+        displayText: event.displayText,
+        reasoning: event.reasoning,
+        payload: event.payload ?? {},
+        editableFields,
+        teamMembers,
+      });
+    }
+  );
 
-      if (!conversationId) {
-        const conversation = await createLarryConversation(
+  // POST /events/:id/modify/save — applies an edit patch to a pending suggestion
+  // and (optionally) executes it atomically. Spec: 2026-04-15-modify-action-design.md.
+  const ModifySaveBodySchema = z.object({
+    payloadPatch: z.record(z.string(), z.unknown()),
+    executeImmediately: z.boolean(),
+    conversationId: z.string().uuid().optional(),
+  });
+
+  fastify.post(
+    "/events/:id/modify/save",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
+    async (request, reply) => {
+      const tenantId = request.user.tenantId;
+      const actorUserId = request.user.userId;
+      const { id } = request.params as { id: string };
+      if (!isUuidShape(id)) {
+        throw fastify.httpErrors.badRequest("Invalid event id.");
+      }
+
+      const parsed = ModifySaveBodySchema.safeParse(request.body ?? {});
+      if (!parsed.success) {
+        throw fastify.httpErrors.badRequest(
+          parsed.error.issues[0]?.message ?? "Invalid body."
+        );
+      }
+      const { payloadPatch, executeImmediately } = parsed.data;
+
+      // Re-fetch under the suggested guard — race-safe against concurrent accept.
+      const event = await getLarryEventForMutation(fastify.db, tenantId, id);
+      if (!event) {
+        throw fastify.httpErrors.notFound("Event not found.");
+      }
+      await assertProjectAccessOrThrow({
+        tenantId,
+        userId: actorUserId,
+        tenantRole: request.user.role,
+        projectId: event.projectId,
+        mode: "manage",
+        requireWritable: true,
+      });
+      if (event.eventType !== "suggested") {
+        throw fastify.httpErrors.conflict(
+          "This suggestion was already resolved elsewhere."
+        );
+      }
+
+      try {
+        assertPatchIsAllowed(event.actionType, payloadPatch);
+      } catch (err) {
+        throw fastify.httpErrors.unprocessableEntity(
+          err instanceof Error ? err.message : String(err)
+        );
+      }
+
+      const nextPayload = applyPatch(
+        (event.payload ?? {}) as Record<string, unknown>,
+        payloadPatch
+      );
+
+      // Persist the edit first. If the user is only saving (not executing), we're done.
+      // If they're also executing, we run the executor; on executor failure we intentionally
+      // leave the edited payload in place so the user can retry Accept without re-editing.
+      const updatedRows = await fastify.db.queryTenant<{ id: string }>(
+        tenantId,
+        `UPDATE larry_events
+            SET previous_payload    = COALESCE(previous_payload, payload),
+                payload             = $3::jsonb,
+                modified_by_user_id = $4,
+                modified_at         = NOW()
+          WHERE tenant_id = $1
+            AND id        = $2
+            AND event_type = 'suggested'
+        RETURNING id`,
+        [tenantId, id, JSON.stringify(nextPayload), actorUserId]
+      );
+      if (updatedRows.length === 0) {
+        // Lost the race — another tab resolved the event between our fetch and UPDATE.
+        throw fastify.httpErrors.conflict(
+          "This suggestion was already resolved elsewhere."
+        );
+      }
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId,
+        actionType: "larry.event.modified",
+        objectType: "larry_event",
+        objectId: id,
+        details: {
+          actionType: event.actionType,
+          changedKeys: Object.keys(payloadPatch),
+        },
+      });
+
+      if (!executeImmediately) {
+        const [persisted] = await listLarryEventSummaries(fastify.db, tenantId, { ids: [id] });
+        return reply.code(200).send({ event: persisted ?? null, executed: false, entity: null });
+      }
+
+      // Execute the edited action. Retry-with-resolution mirrors the /accept handler
+      // for the common hallucinated/stale taskId case; calendar and slack actions
+      // are not modifiable per the spec, so this simpler path is sufficient.
+      const executePayload = { ...nextPayload, displayText: event.displayText };
+      let entity: unknown;
+      try {
+        entity = await executeAction(
+          fastify.db,
+          tenantId,
+          event.projectId,
+          event.actionType as LarryActionType,
+          executePayload,
+          actorUserId
+        );
+      } catch (firstError) {
+        const firstMsg = firstError instanceof Error ? firstError.message : String(firstError);
+        const canRetry =
+          firstMsg.includes("taskId could not be resolved") ||
+          firstMsg.includes("not found for tenant") ||
+          (firstMsg.includes("user") && firstMsg.includes("not found in tenant"));
+
+        if (canRetry) {
+          try {
+            const retryPayload: Record<string, unknown> = { ...executePayload };
+            if (firstMsg.includes("taskId")) delete retryPayload.taskId;
+            entity = await executeAction(
+              fastify.db,
+              tenantId,
+              event.projectId,
+              event.actionType as LarryActionType,
+              retryPayload,
+              actorUserId
+            );
+            request.log.info(
+              { tenantId, eventId: id, originalError: firstMsg },
+              "Modify/save succeeded on retry after payload repair"
+            );
+          } catch (retryError) {
+            const retryMsg = retryError instanceof Error ? retryError.message : String(retryError);
+            throw fastify.httpErrors.unprocessableEntity(retryMsg);
+          }
+        } else {
+          throw fastify.httpErrors.unprocessableEntity(firstMsg);
+        }
+      }
+
+      await markLarryEventAccepted(fastify.db, tenantId, id, actorUserId);
+
+      await fastify.db.queryTenant(
+        tenantId,
+        `INSERT INTO correction_feedback
+           (tenant_id, action_id, corrected_by_user_id, correction_type, correction_payload)
+         VALUES
+           ($1, $2, $3, 'modified_and_accepted', $4::jsonb)`,
+        [
+          tenantId,
+          id,
+          actorUserId,
+          JSON.stringify({
+            actionType: event.actionType,
+            changedKeys: Object.keys(payloadPatch),
+          }),
+        ]
+      );
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId,
+        actionType: "larry.event.accepted",
+        objectType: "larry_event",
+        objectId: id,
+        details: { actionType: event.actionType, viaModify: true },
+      });
+
+      const [persisted] = await listLarryEventSummaries(fastify.db, tenantId, { ids: [id] });
+      return reply.code(200).send({ event: persisted ?? null, executed: true, entity });
+    }
+  );
+
+  // POST /events/:id/modify/stop — user cancelled a modify panel without saving.
+  // Writes an audit-log breadcrumb so we can measure abandonment; the event itself
+  // remains in its current state (unchanged pending suggestion).
+  fastify.post(
+    "/events/:id/modify/stop",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
+    async (request, reply) => {
+      const tenantId = request.user.tenantId;
+      const actorUserId = request.user.userId;
+      const { id } = request.params as { id: string };
+      if (!isUuidShape(id)) {
+        throw fastify.httpErrors.badRequest("Invalid event id.");
+      }
+
+      const event = await getLarryEventForMutation(fastify.db, tenantId, id);
+      if (!event) {
+        throw fastify.httpErrors.notFound("Event not found.");
+      }
+      await assertProjectAccessOrThrow({
+        tenantId,
+        userId: actorUserId,
+        tenantRole: request.user.role,
+        projectId: event.projectId,
+        mode: "manage",
+        requireWritable: true,
+      });
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId,
+        actionType: "larry.event.modify_cancelled",
+        objectType: "larry_event",
+        objectId: id,
+        details: { actionType: event.actionType },
+      });
+
+      return reply.code(200).send({ ok: true });
+    }
+  );
+
+  // POST /events/:id/modify-chat — dedicated chat endpoint for the Modify panel.
+  // Runs streamModifyChat (single tool: apply_modification) and returns a
+  // payloadPatch the frontend can merge into its working draft without
+  // touching the database. Spec: 2026-04-15-modify-action-design.md.
+  const ModifyChatBodySchema = z.object({
+    message: z.string().trim().min(1).max(4_000),
+    currentPayload: z.record(z.string(), z.unknown()),
+    conversationId: z.string().uuid().optional(),
+  });
+
+  fastify.post(
+    "/events/:id/modify-chat",
+    {
+      config: {
+        rateLimit: {
+          max: 20,
+          timeWindow: "1 minute",
+          keyGenerator: (req: FastifyRequest) =>
+            (req.user as { tenantId?: string } | undefined)?.tenantId ?? req.ip,
+        },
+      },
+      preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])],
+    },
+    async (request, reply) => {
+      const tenantId = request.user.tenantId;
+      const actorUserId = request.user.userId;
+      const { id } = request.params as { id: string };
+      if (!isUuidShape(id)) {
+        throw fastify.httpErrors.badRequest("Invalid event id.");
+      }
+
+      const parsed = ModifyChatBodySchema.safeParse(request.body ?? {});
+      if (!parsed.success) {
+        throw fastify.httpErrors.badRequest(
+          parsed.error.issues[0]?.message ?? "Invalid body."
+        );
+      }
+      const { message, currentPayload, conversationId: providedConvId } = parsed.data;
+
+      const event = await getLarryEventForMutation(fastify.db, tenantId, id);
+      if (!event) {
+        throw fastify.httpErrors.notFound("Event not found.");
+      }
+      await assertProjectAccessOrThrow({
+        tenantId,
+        userId: actorUserId,
+        tenantRole: request.user.role,
+        projectId: event.projectId,
+        mode: "manage",
+        requireWritable: true,
+      });
+      if (event.eventType !== "suggested") {
+        throw fastify.httpErrors.conflict(
+          "This suggestion was already resolved elsewhere."
+        );
+      }
+
+      const editableFields = editableFieldsForActionType(event.actionType);
+      if (editableFields.length === 0) {
+        throw fastify.httpErrors.unprocessableEntity(
+          `Action type '${event.actionType}' is not modifiable.`
+        );
+      }
+
+      // Resolve or create the conversation for this modify session.
+      let conversationId = providedConvId ?? null;
+      if (conversationId) {
+        const existing = await getLarryConversationForUser(
           fastify.db,
           tenantId,
           actorUserId,
-          { projectId: event.projectId, title: `Modify: ${(fullEvent?.displayText ?? "Larry action").slice(0, 120)}` }
+          conversationId
         );
-        conversationId = conversation.id;
+        if (!existing || existing.projectId !== event.projectId) {
+          throw fastify.httpErrors.notFound("Conversation not found.");
+        }
+      } else {
+        const created = await createLarryConversation(
+          fastify.db,
+          tenantId,
+          actorUserId,
+          {
+            projectId: event.projectId,
+            title: `Modify: ${event.displayText.slice(0, 120)}`,
+          }
+        );
+        conversationId = created.id;
       }
 
-      // QA-2026-04-12 M-1: previously this handler wrote a raw internal
-      // template ("The user wants to modify this action: ... Original
-      // reasoning: ... Action type: task_create.") straight to the user's
-      // chat history. That string rendered as Larry's first visible bubble
-      // and looked like a leaked system prompt.
-      //
-      // The user-facing opener below is plain prose Larry would say; the
-      // action being modified is already communicated by the launch URL
-      // (launch=modify&sourceKind=...&eventType=suggested) and is visible
-      // in the chat header above this conversation.
-      const openerDisplay = (fullEvent?.displayText ?? "this action").slice(0, 160);
-
-      // QA-2026-04-12 M-3: surface the original payload values so Larry's
-      // own conversation history carries them. When the user then asks for
-      // a change ("push to 30 Apr, reassign to Anna"), the LLM can echo
-      // the diff in its "I queued ... with updates" confirmation instead
-      // of being generic. The fields below cover task_create — the most
-      // common modify target — and degrade gracefully for other action
-      // types (the "Currently:" line is omitted when no fields resolve).
-      const payload = (event.payload ?? {}) as Record<string, unknown>;
-      const readString = (key: string): string | null => {
-        const value = payload[key];
-        return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
-      };
-      const currentParts: string[] = [];
-      const assignee = readString("assigneeName") ?? readString("newOwnerName");
-      const dueDate = readString("dueDate") ?? readString("newDeadline");
-      const priority = readString("priority");
-      const riskLevel = readString("riskLevel");
-      const newStatus = readString("newStatus");
-      if (assignee) currentParts.push(`assigned to ${assignee}`);
-      if (dueDate) currentParts.push(`due ${dueDate}`);
-      if (priority) currentParts.push(`priority ${priority}`);
-      if (riskLevel) currentParts.push(`risk ${riskLevel}`);
-      if (newStatus) currentParts.push(`status ${newStatus}`);
-      const currentLine = currentParts.length > 0 ? ` Currently: ${currentParts.join(", ")}.` : "";
-
-      const openerMessage =
-        `Let's refine "${openerDisplay}".${currentLine} Tell me what to change — assignee, ` +
-        `deadline, priority, wording — and I'll queue an updated version in the Action Centre, ` +
-        `noting which fields changed.`;
-
-      await insertLarryMessage(fastify.db, tenantId, conversationId, {
-        role: "larry",
-        content: openerMessage,
-      });
-
-      await touchLarryConversation(fastify.db, tenantId, conversationId);
-
-      // QA-2026-04-12 M-4: dismiss the source suggestion immediately. The
-      // user has chosen to rework it — keeping it pending means Action
-      // Centre shows both the original and the later "with updates" card,
-      // and accepting both duplicates the task.
-      //
-      // If the user abandons the modify chat without sending a message,
-      // this still reflects intent: they clicked Modify, which is a
-      // "don't accept as-is" signal. Safer than leaving a stale pending.
-      await markLarryEventDismissed(
-        fastify.db,
+      const teamMembers = await fastify.db.queryTenant<{ displayName: string }>(
         tenantId,
-        id,
-        actorUserId,
-        "modify-superseded"
+        `SELECT COALESCE(u.display_name, u.email) AS "displayName"
+           FROM users u
+           JOIN project_members pm ON pm.user_id = u.id
+          WHERE pm.tenant_id = $1 AND pm.project_id = $2
+          ORDER BY "displayName" ASC`,
+        [tenantId, event.projectId]
       );
 
-      return reply.code(200).send({ conversationId, eventId: id });
+      const userMessageInsert = await insertLarryMessage(
+        fastify.db,
+        tenantId,
+        conversationId,
+        { role: "user", content: message, actorUserId }
+      );
+
+      const modifyConfig = buildIntelligenceConfig(fastify.config);
+
+      // History is just this turn's user message — the modify panel is a
+      // stateless one-shot per send. If we later add multi-turn refinement,
+      // load prior messages via listLarryMessagesForConversation.
+      const generator = streamModifyChat({
+        config: modifyConfig,
+        messages: [{ role: "user", content: message }],
+        context: {
+          actionType: event.actionType,
+          displayText: event.displayText,
+          reasoning: event.reasoning,
+          currentPayload,
+          editableFields,
+          teamMembers,
+        },
+      });
+
+      let fullText = "";
+      let payloadPatch: Record<string, unknown> | null = null;
+      let summary = "";
+      let streamError: string | null = null;
+
+      for await (const evt of generator as AsyncIterable<ModifyChatStreamEvent>) {
+        if (evt.type === "token") fullText += evt.delta;
+        else if (evt.type === "tool_done" && evt.name === "apply_modification") {
+          payloadPatch = evt.payloadPatch;
+          summary = evt.summary;
+        } else if (evt.type === "error") {
+          streamError = evt.message;
+        }
+      }
+
+      const assistantText =
+        fullText.trim().length > 0
+          ? fullText.trim()
+          : summary ||
+            (streamError
+              ? "I couldn't process that request — please try again."
+              : "I didn't catch that. Can you rephrase the change you want?");
+
+      const assistantInsert = await insertLarryMessage(
+        fastify.db,
+        tenantId,
+        conversationId,
+        { role: "larry", content: assistantText }
+      );
+      await touchLarryConversation(fastify.db, tenantId, conversationId, message.slice(0, 80));
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId,
+        actionType: "larry.event.modify_chat",
+        objectType: "larry_event",
+        objectId: id,
+        details: {
+          conversationId,
+          producedPatch: payloadPatch !== null,
+          patchKeys: payloadPatch ? Object.keys(payloadPatch) : [],
+        },
+      });
+
+      return reply.code(200).send({
+        conversationId,
+        userMessageId: userMessageInsert.id,
+        assistantMessageId: assistantInsert.id,
+        message: assistantText,
+        payloadPatch: payloadPatch ?? {},
+        summary,
+        streamError,
+      });
     }
   );
 
@@ -3433,6 +3778,12 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         provider: config.provider,
         estimatedTokens: STREAM_CHAT_ESTIMATED_TOKENS,
       });
+      // Track whether the SDK emitted an error event mid-stream. When it does
+      // the client sets the bubble to event.message, and a subsequent recap
+      // token would get concatenated onto the error text with no separator
+      // (e.g. ".../billingI don't have anything to add here..."). Suppress
+      // the recap entirely in that case — the error message is the response.
+      let hadStreamError = false;
       try {
         for await (const event of streamLarryChat({
           config,
@@ -3448,6 +3799,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           } else if (event.type === "tool_done") {
             write(event);
           } else if (event.type === "error") {
+            hadStreamError = true;
             write(event);
             // Don't abort — let the stream finish naturally
           }
@@ -3456,14 +3808,18 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         // ── Post-stream DB writes ─────────────────────────────────────────
         // When the model emits only tool calls and no prose, synthesize a
         // recap. Stream it as tokens so the live UI shows the recap too,
-        // then persist it so refreshes render the same text.
-        if (fullContent.trim().length === 0) {
+        // then persist it so refreshes render the same text. Skipped on
+        // stream errors so it doesn't concatenate onto the error text.
+        if (!hadStreamError && fullContent.trim().length === 0) {
           const recap = buildToolRecap(toolOutcomes);
           if (recap.length > 0) {
             write({ type: "token", delta: recap });
             fullContent = recap;
           }
         }
+        // Strip any inline function-call markup emitted as plain text by
+        // models that don't use the AI SDK's structured tool-calling interface.
+        fullContent = fullContent.replace(/<function=[^>]*>/g, "");
         await fastify.db.queryTenant<Record<string, unknown>>(
           tenantId,
           `UPDATE larry_messages SET content = $3 WHERE tenant_id = $1 AND id = $2`,

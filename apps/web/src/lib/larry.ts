@@ -108,3 +108,11 @@ export async function sendLarryChat(input: {
   const data = await readJson<LarryChatResponse>(response);
   return { response, data };
 }
+
+/**
+ * Remove inline function-call markup that some models emit as plain text,
+ * e.g. `<function=get_task_list{"filter":"all"}>`.
+ */
+export function stripFunctionCallMarkup(text: string): string {
+  return text.replace(/<function=[^>]*>/g, "");
+}

@@ -187,13 +187,20 @@ export async function runEscalationScan(): Promise<void> {
       // --- Insert notification records and deliver ---
 
       for (const notif of deliverableNotifications) {
+        // Build a per-task-per-type dedup key so each specific alert fires at
+        // most once per day, independently of other alerts for the same user.
+        const notifMeta = JSON.parse(notif.metadata) as { taskId: string; type: string };
+        const dedupeKey = `${notif.userId}:${notifMeta.taskId}:${notifMeta.type}`;
+
+        let wasInserted = false;
         try {
-          await db.queryTenant(
+          const inserted = await db.queryTenant<{ id: string }>(
             tenantId,
             `INSERT INTO notifications
               (tenant_id, user_id, channel, subject, body, metadata, dedupe_scope, dedupe_user_key, dedupe_date)
              VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, CURRENT_DATE)
-             ON CONFLICT ON CONSTRAINT uq_notifications_dedup DO NOTHING`,
+             ON CONFLICT ON CONSTRAINT uq_notifications_dedup DO NOTHING
+             RETURNING id`,
             [
               tenantId,
               notif.userId,
@@ -202,12 +209,17 @@ export async function runEscalationScan(): Promise<void> {
               notif.body,
               notif.metadata,
               "escalation",
-              notif.userId ?? "__broadcast__",
+              dedupeKey,
             ]
           );
+          wasInserted = inserted.length > 0;
         } catch {
           // ignore individual insert failures
         }
+
+        // Only deliver email/Slack when a new notification row was inserted.
+        // If the insert was a no-op (already sent today), skip delivery.
+        if (!wasInserted) continue;
 
         const userEmail = notif.userId ? userEmailMap[notif.userId] : null;
 
