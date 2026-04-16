@@ -38,4 +38,20 @@ describe("categories repository", () => {
     const sql = (db as unknown as { queryTenant: ReturnType<typeof vi.fn> }).queryTenant.mock.calls[0][1];
     expect(sql).toMatch(/CASE id/i);
   });
+
+  it("updateCategory sets colour to null when patch.colour is explicitly null", async () => {
+    const row = { id: "c1", tenantId: "t1", name: "X", colour: null, sortOrder: 0, createdAt: "x", updatedAt: "x" };
+    const db = { queryTenant: vi.fn().mockResolvedValue([row]) } as never;
+    await updateCategory(db, "t1", "c1", { colour: null });
+    const params = (db as unknown as { queryTenant: ReturnType<typeof vi.fn> }).queryTenant.mock.calls[0][2];
+    // Flag is params[3] (patch.colour !== undefined), value is params[4].
+    expect(params[3]).toBe(true);
+    expect(params[4]).toBeNull();
+  });
+
+  it("reorderCategories with empty array is a no-op", async () => {
+    const db = { queryTenant: vi.fn() } as never;
+    await reorderCategories(db, "t1", []);
+    expect((db as unknown as { queryTenant: ReturnType<typeof vi.fn> }).queryTenant).not.toHaveBeenCalled();
+  });
 });

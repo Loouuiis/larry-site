@@ -30,6 +30,7 @@ export async function insertCategory(
   const rows = await db.queryTenant<ProjectCategory>(tenantId, sql, [
     tenantId, input.name, input.colour, input.sortOrder,
   ]);
+  if (!rows[0]) throw new Error("insertCategory: INSERT returned no rows");
   return rows[0];
 }
 
