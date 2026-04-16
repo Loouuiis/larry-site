@@ -32,14 +32,19 @@ export function GanttRow({ row, range, hoveredKey, selectedKey, onHoverKey, onSe
   let content: React.ReactNode = null;
   if (n.kind === "task" || n.kind === "subtask") {
     const t = n.task;
-    const start = t.startDate;
+    const todayIso = new Date().toISOString().slice(0, 10);
     const end = t.endDate ?? t.dueDate;
-    if (start && end) {
+    // Normalize end to yyyy-mm-dd (API can return full ISO timestamps like 2026-04-16T00:00:00.000Z)
+    const endNorm = end ? String(end).slice(0, 10) : null;
+    const startNorm = t.startDate
+      ? String(t.startDate).slice(0, 10)
+      : (endNorm && endNorm > todayIso ? todayIso : endNorm);
+    if (startNorm && endNorm) {
       content = (
         <GanttBar
           variant={n.kind}
-          start={start}
-          end={end}
+          start={startNorm}
+          end={endNorm}
           progressPercent={t.progressPercent}
           range={range}
           label={t.title}

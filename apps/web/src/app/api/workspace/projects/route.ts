@@ -33,6 +33,7 @@ const CreateProjectSchema = z.object({
   description: z.string().max(4000).optional(),
   startDate: z.string().date().optional(),
   targetDate: z.string().date().optional(),
+  categoryId: z.string().uuid().nullable().optional(),
 });
 
 export async function POST(request: NextRequest) {

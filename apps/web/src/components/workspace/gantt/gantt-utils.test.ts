@@ -102,4 +102,15 @@ describe("rollUpBar", () => {
   it("returns null when no tasks have dates", () => {
     expect(rollUpBar([baseTask()])).toBeNull();
   });
+
+  it("rollUpBar synthesizes start = today when only dueDate present and date is in future", () => {
+    const future = new Date();
+    future.setDate(future.getDate() + 30);
+    const futureIso = future.toISOString().slice(0, 10);
+    const t = baseTask({ id: "a", startDate: null, endDate: null, dueDate: futureIso });
+    const r = rollUpBar([t]);
+    expect(r).not.toBeNull();
+    expect(r!.start).toBeTruthy();
+    expect(r!.end).toBe(futureIso);
+  });
 });
