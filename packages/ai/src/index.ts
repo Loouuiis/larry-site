@@ -905,6 +905,9 @@ export async function generateBootstrapFromTranscript(
     "  3. What success looks like — what does 'done' mean for this task?",
     "  4. Any dependencies, blockers, or related work mentioned.",
     "Bad description: 'Update the deck.' Good description: 'Sarah agreed to update the investor deck with the revised pricing model discussed in the meeting. This is blocking the board presentation scheduled for next Thursday. The update should include the new SaaS tier breakdown and remove the enterprise-only pricing table. Coordinate with Joel on the financial projections section.'",
+    "",
+    "OUTPUT FORMAT:",
+    "Return a single JSON object matching the provided schema. No prose outside the JSON.",
   ].join("\n");
 
   const truncated = input.transcript.slice(0, 20_000);
