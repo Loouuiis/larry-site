@@ -40,14 +40,16 @@ const PASSWORD_HASH = "$2b$12$SjkLUt9sfCzzTGw4k6YI3OLi9WO4FmUmJq.dcFssppzOOh1hj3
 // ─── Stable IDs (prefix 9* so they do not collide with the Acme seed) ─────────
 const T = "99999999-9999-4999-8999-999999999991"; // tenant
 
-const U_LARRY   = "99999999-0000-4000-8000-000000000001"; // larry@larry.com (admin backdoor)
-const U_JOEL    = "99999999-0000-4000-8000-000000000002"; // Joel Okafor — PM, hero on camera
-const U_CLAIRE  = "99999999-0000-4000-8000-000000000003"; // Claire Beaumont — zeb Partner
-const U_LARS    = "99999999-0000-4000-8000-000000000004"; // Lars Holm — Head of Risk
-const U_PRIYA   = "99999999-0000-4000-8000-000000000005"; // Priya Shah — Data Lead
-const U_MARCUS  = "99999999-0000-4000-8000-000000000006"; // Marcus Reinhardt — IT Ops Lead
-const U_ELENA   = "99999999-0000-4000-8000-000000000007"; // Elena Fischer — Compliance Analyst
-const U_TOMAS   = "99999999-0000-4000-8000-000000000008"; // Tomás Rivera — Junior Analyst
+// Preferred UUIDs. If the email already exists with a different UUID we keep the
+// existing one and reassign these locals to match (see upsertUser() below).
+let U_LARRY   = "99999999-0000-4000-8000-000000000001"; // larry@larry.com (admin backdoor)
+let U_JOEL    = "99999999-0000-4000-8000-000000000002"; // Joel Okafor — PM, hero on camera
+let U_CLAIRE  = "99999999-0000-4000-8000-000000000003"; // Claire Beaumont — zeb Partner
+let U_LARS    = "99999999-0000-4000-8000-000000000004"; // Lars Holm — Head of Risk
+let U_PRIYA   = "99999999-0000-4000-8000-000000000005"; // Priya Shah — Data Lead
+let U_MARCUS  = "99999999-0000-4000-8000-000000000006"; // Marcus Reinhardt — IT Ops Lead
+let U_ELENA   = "99999999-0000-4000-8000-000000000007"; // Elena Fischer — Compliance Analyst
+let U_TOMAS   = "99999999-0000-4000-8000-000000000008"; // Tomás Rivera — Junior Analyst
 
 const P = "99999999-1111-4111-8111-000000000001"; // project
 
@@ -205,31 +207,35 @@ async function seed() {
   console.log("✓ Tenant: Nordvik × zeb Compliance");
 
   // ── Users ──────────────────────────────────────────────────────────────────
-  const users: Array<[string, string, string]> = [
-    [U_LARRY,  "larry@larry.com",                     "Larry (Admin)"],
-    [U_JOEL,   "joel.okafor@zeb-consulting.demo",     "Joel Okafor"],
-    [U_CLAIRE, "claire.beaumont@zeb-consulting.demo", "Claire Beaumont"],
-    [U_LARS,   "lars.holm@nordvik.demo",              "Lars Holm"],
-    [U_PRIYA,  "priya.shah@nordvik.demo",             "Priya Shah"],
-    [U_MARCUS, "marcus.reinhardt@nordvik.demo",       "Marcus Reinhardt"],
-    [U_ELENA,  "elena.fischer@nordvik.demo",          "Elena Fischer"],
-    [U_TOMAS,  "tomas.rivera@zeb-consulting.demo",    "Tomás Rivera"],
-  ];
-  for (const [id, email, name] of users) {
-    await q(
+  // Upsert by email. If an email already exists with a different id (e.g. a real
+  // larry@larry.com account from another tenant), we keep the existing id and
+  // update the display name + password hash. Resolve the real id back so all
+  // downstream inserts (memberships, tasks, events) reference it correctly.
+  async function upsertUser(preferredId: string, email: string, name: string): Promise<string> {
+    const rows = await db.query<{ id: string }>(
       `INSERT INTO users (id, email, password_hash, display_name, is_active, email_verified_at)
        VALUES ($1, $2, $3, $4, TRUE, NOW())
-       ON CONFLICT (id) DO UPDATE SET
-         email = EXCLUDED.email,
+       ON CONFLICT (email) DO UPDATE SET
          password_hash = EXCLUDED.password_hash,
          display_name = EXCLUDED.display_name,
-         email_verified_at = COALESCE(users.email_verified_at, EXCLUDED.email_verified_at)`,
-      [id, email, PASSWORD_HASH, name]
+         is_active = TRUE,
+         email_verified_at = COALESCE(users.email_verified_at, EXCLUDED.email_verified_at),
+         updated_at = NOW()
+       RETURNING id`,
+      [preferredId, email, PASSWORD_HASH, name]
     );
+    return rows[0].id;
   }
-  // Separately ensure email uniqueness didn't hit an existing row from another tenant
-  // (safe: same password hash, same display name).
-  console.log("✓ Users: 8 (larry@larry.com, Joel, Claire, Lars, Priya, Marcus, Elena, Tomás)");
+
+  U_LARRY  = await upsertUser(U_LARRY,  "larry@larry.com",                     "Larry (Admin)");
+  U_JOEL   = await upsertUser(U_JOEL,   "joel.okafor@zeb-consulting.demo",     "Joel Okafor");
+  U_CLAIRE = await upsertUser(U_CLAIRE, "claire.beaumont@zeb-consulting.demo", "Claire Beaumont");
+  U_LARS   = await upsertUser(U_LARS,   "lars.holm@nordvik.demo",              "Lars Holm");
+  U_PRIYA  = await upsertUser(U_PRIYA,  "priya.shah@nordvik.demo",             "Priya Shah");
+  U_MARCUS = await upsertUser(U_MARCUS, "marcus.reinhardt@nordvik.demo",       "Marcus Reinhardt");
+  U_ELENA  = await upsertUser(U_ELENA,  "elena.fischer@nordvik.demo",          "Elena Fischer");
+  U_TOMAS  = await upsertUser(U_TOMAS,  "tomas.rivera@zeb-consulting.demo",    "Tomás Rivera");
+  console.log("✓ Users upserted: 8 (larry@larry.com, Joel, Claire, Lars, Priya, Marcus, Elena, Tomás)");
 
   // ── Memberships ────────────────────────────────────────────────────────────
   const memberships: Array<[string, string]> = [
