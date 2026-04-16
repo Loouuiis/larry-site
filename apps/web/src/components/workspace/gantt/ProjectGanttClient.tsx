@@ -30,8 +30,10 @@ function toGanttTask(t: WorkspaceTimelineTask): GanttTask {
   };
 }
 
-export function ProjectGanttClient({ projectId, projectName, tasks }: Props) {
-  const ganttTasks = useMemo(() => tasks.map(toGanttTask), [tasks]);
+export function ProjectGanttClient({ projectId, projectName, tasks, timeline, refresh: _refresh }: Props) {
+  // _refresh: Wired via onAdd in a follow-up
+  const source = (timeline?.gantt && timeline.gantt.length > 0) ? timeline.gantt : tasks;
+  const ganttTasks = useMemo(() => (source as WorkspaceTimelineTask[]).map(toGanttTask), [source]);
   const root = useMemo(
     () => buildProjectTree({ id: projectId, name: projectName, status: "active" }, ganttTasks),
     [projectId, projectName, ganttTasks],
