@@ -287,6 +287,8 @@ function ProjectCalendar({ projectId }: { projectId: string }) {
   const [viewDate, setViewDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const { events, loading, refresh } = useCalendarEvents(projectId);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [draggingEvent, setDraggingEvent] = useState<CalendarEvent | null>(null);
+  const [dragOverDate, setDragOverDate] = useState<string | null>(null);
 
   const [creating, setCreating] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
@@ -319,6 +321,20 @@ function ProjectCalendar({ projectId }: { projectId: string }) {
       // ignore
     } finally {
       setTaskSaving(false);
+    }
+  }
+
+  async function handleReschedule(event: CalendarEvent, newDate: string) {
+    if (!event.taskId || event.date === newDate) return;
+    try {
+      await fetch(`/api/workspace/tasks/${event.taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dueDate: newDate }),
+      });
+      await refresh();
+    } catch {
+      // ignore
     }
   }
 
@@ -443,17 +459,33 @@ function ProjectCalendar({ projectId }: { projectId: string }) {
               {week.map((day, di) => {
                 const isToday = day && isSameDay(day, today);
                 const isCurrentMonth = day !== null;
+                const dayKey = day ? day.toISOString().slice(0, 10) : null;
+                const isDragOver = isCurrentMonth && dragOverDate === dayKey && draggingEvent !== null;
                 return (
                   <div
                     key={di}
                     className="min-h-[60px] p-1.5 transition-colors cursor-pointer"
                     style={{
                       borderRight: di < 6 ? "1px solid var(--border)" : undefined,
-                      background: isToday || (day ? day.toISOString().slice(0, 10) === selectedDate : false) ? "var(--surface-2)" : undefined,
+                      background: isDragOver
+                        ? "var(--brand-subtle, color-mix(in srgb, var(--brand) 12%, transparent))"
+                        : isToday || (day ? dayKey === selectedDate : false)
+                        ? "var(--surface-2)"
+                        : undefined,
+                      outline: isDragOver ? "2px solid var(--brand)" : undefined,
+                      outlineOffset: isDragOver ? "-2px" : undefined,
                     }}
-                    onClick={isCurrentMonth ? () => setSelectedDate(day!.toISOString().slice(0, 10)) : undefined}
-                    onMouseEnter={(e) => { const isSel = day ? day.toISOString().slice(0, 10) === selectedDate : false; if (!isToday && !isSel) e.currentTarget.style.background = "var(--surface-2)"; }}
-                    onMouseLeave={(e) => { const isSel = day ? day.toISOString().slice(0, 10) === selectedDate : false; if (!isToday && !isSel) e.currentTarget.style.background = ""; }}
+                    onClick={isCurrentMonth ? () => setSelectedDate(dayKey!) : undefined}
+                    onMouseEnter={(e) => { const isSel = day ? dayKey === selectedDate : false; if (!isToday && !isSel && !isDragOver) e.currentTarget.style.background = "var(--surface-2)"; }}
+                    onMouseLeave={(e) => { const isSel = day ? dayKey === selectedDate : false; if (!isToday && !isSel && !isDragOver) e.currentTarget.style.background = ""; }}
+                    onDragOver={isCurrentMonth ? (e) => { e.preventDefault(); setDragOverDate(dayKey); } : undefined}
+                    onDragLeave={isCurrentMonth ? () => setDragOverDate(null) : undefined}
+                    onDrop={isCurrentMonth ? (e) => {
+                      e.preventDefault();
+                      setDragOverDate(null);
+                      if (draggingEvent && dayKey) void handleReschedule(draggingEvent, dayKey);
+                      setDraggingEvent(null);
+                    } : undefined}
                   >
                     {isCurrentMonth && (
                       <>
@@ -470,18 +502,30 @@ function ProjectCalendar({ projectId }: { projectId: string }) {
                           const dayEvents = eventsForDate(day!);
                           if (dayEvents.length === 0) return null;
                           return (
-                            <div className="mt-0.5 flex flex-wrap gap-0.5">
+                            <div className="mt-0.5 flex flex-col gap-0.5">
                               {dayEvents.slice(0, 3).map((evt) => (
                                 <div
                                   key={evt.id}
-                                  className="h-2.5 w-2.5 rounded-full"
-                                  style={{ background: evt.color }}
+                                  className="flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium truncate"
+                                  style={{
+                                    background: evt.color,
+                                    color: "#fff",
+                                    cursor: evt.kind === "deadline" ? "grab" : "default",
+                                    opacity: draggingEvent?.id === evt.id ? 0.4 : 1,
+                                    userSelect: "none",
+                                  }}
                                   title={evt.title}
-                                />
+                                  draggable={evt.kind === "deadline"}
+                                  onDragStart={evt.kind === "deadline" ? (e) => { e.stopPropagation(); setDraggingEvent(evt); } : undefined}
+                                  onDragEnd={() => { setDraggingEvent(null); setDragOverDate(null); }}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <span className="truncate">{evt.title}</span>
+                                </div>
                               ))}
                               {dayEvents.length > 3 && (
-                                <span className="text-[8px]" style={{ color: "var(--text-disabled)" }}>
-                                  +{dayEvents.length - 3}
+                                <span className="text-[8px] px-1" style={{ color: "var(--text-disabled)" }}>
+                                  +{dayEvents.length - 3} more
                                 </span>
                               )}
                             </div>
@@ -594,13 +638,22 @@ function ProjectCalendar({ projectId }: { projectId: string }) {
                     </>
                   );
                   const sharedClass = "flex items-center gap-2 rounded-lg border px-2.5 py-1.5";
-                  const sharedStyle = { borderColor: "var(--border)" };
+                  const sharedStyle = {
+                    borderColor: "var(--border)",
+                    cursor: evt.kind === "deadline" ? "grab" : undefined,
+                    opacity: draggingEvent?.id === evt.id ? 0.4 : 1,
+                  };
+                  const dragProps = evt.kind === "deadline" ? {
+                    draggable: true as const,
+                    onDragStart: (e: React.DragEvent) => { e.stopPropagation(); setDraggingEvent(evt); },
+                    onDragEnd: () => { setDraggingEvent(null); setDragOverDate(null); },
+                  } : {};
                   return href ? (
-                    <Link key={evt.id} href={href} className={sharedClass} style={sharedStyle}>
+                    <Link key={evt.id} href={href} className={sharedClass} style={sharedStyle} {...dragProps}>
                       {inner}
                     </Link>
                   ) : (
-                    <div key={evt.id} className={sharedClass} style={sharedStyle}>
+                    <div key={evt.id} className={sharedClass} style={sharedStyle} {...dragProps}>
                       {inner}
                     </div>
                   );
