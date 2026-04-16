@@ -711,11 +711,13 @@ export interface BootstrapTask {
 }
 
 const BootstrapTaskSchema = z.object({
-  title: z.string().min(1).max(200),
-  description: z.string().min(1).max(1200),
+  title: z.string().min(1).max(300),
+  description: z.string().min(1).max(3000),
   priority: z.enum(["low", "medium", "high", "critical"]),
-  workstream: z.string().nullable(),
-  dueDate: z.string().nullable(),
+  // Models frequently omit workstream/dueDate entirely; accept missing keys and
+  // normalise them to null so downstream consumers can treat absence uniformly.
+  workstream: z.string().nullable().optional().transform((v) => v ?? null),
+  dueDate: z.string().nullable().optional().transform((v) => v ?? null),
 });
 
 const BootstrapFollowUpSchema = z.object({
@@ -723,11 +725,21 @@ const BootstrapFollowUpSchema = z.object({
   question: z.string().min(1).max(500),
 });
 
-const BootstrapResultSchema = z.object({
-  tasks: z.array(BootstrapTaskSchema).max(10).default([]),
-  summary: z.string().min(1).max(500),
-  followUpQuestions: z.array(BootstrapFollowUpSchema).max(5).default([]),
-});
+const BootstrapResultSchema = z
+  .object({
+    tasks: z.array(BootstrapTaskSchema).max(30).default([]),
+    // Some models emit `meetingSummary` or `overview` instead of `summary`.
+    // Accept any of those and normalise in the preprocess.
+    summary: z.string().min(1).max(2000).optional(),
+    meetingSummary: z.string().min(1).max(2000).optional(),
+    overview: z.string().min(1).max(2000).optional(),
+    followUpQuestions: z.array(BootstrapFollowUpSchema).max(10).default([]),
+  })
+  .transform((v) => ({
+    tasks: v.tasks,
+    summary: v.summary ?? v.meetingSummary ?? v.overview ?? "",
+    followUpQuestions: v.followUpQuestions,
+  }));
 
 export async function generateBootstrapTasks(
   config: IntelligenceConfig,
@@ -906,8 +918,23 @@ export async function generateBootstrapFromTranscript(
     "  4. Any dependencies, blockers, or related work mentioned.",
     "Bad description: 'Update the deck.' Good description: 'Sarah agreed to update the investor deck with the revised pricing model discussed in the meeting. This is blocking the board presentation scheduled for next Thursday. The update should include the new SaaS tier breakdown and remove the enterprise-only pricing table. Coordinate with Joel on the financial projections section.'",
     "",
-    "OUTPUT FORMAT:",
-    "Return a single JSON object matching the provided schema. No prose outside the JSON.",
+    "OUTPUT FORMAT — STRICT:",
+    "Return a single JSON object with EXACTLY these top-level keys and no others:",
+    "  {",
+    '    "tasks": [ ... array of task objects ... ],',
+    '    "summary": "one or two sentences covering the meeting\'s key outcomes",',
+    '    "followUpQuestions": [ ... array of { field, question } — use [] if none ... ]',
+    "  }",
+    "Do NOT use 'meetingSummary' or 'overview' — the key must be exactly 'summary'.",
+    "",
+    "Each task object MUST have ALL of these keys (use null when unknown, NEVER omit the key):",
+    '  "title": string (imperative phrasing, starts with a verb)',
+    '  "description": string (3-5 sentences per the rules above)',
+    '  "priority": one of "low" | "medium" | "high" | "critical"',
+    '  "workstream": string | null (the project area, e.g. "Data Migration", or null)',
+    '  "dueDate": string | null (YYYY-MM-DD, or null if no deadline can be inferred)',
+    "",
+    "No prose or markdown outside the JSON object. No trailing commas.",
   ].join("\n");
 
   const truncated = input.transcript.slice(0, 20_000);
