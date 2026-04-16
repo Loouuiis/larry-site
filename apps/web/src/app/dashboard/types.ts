@@ -100,6 +100,8 @@ export interface WorkspaceTimelineTask {
   assigneeName?: string | null;
   riskLevel: string;
   milestones?: TimelineMilestone[];
+  projectId?: string | null;
+  parentTaskId?: string | null;
 }
 
 export interface WorkspaceTimeline {

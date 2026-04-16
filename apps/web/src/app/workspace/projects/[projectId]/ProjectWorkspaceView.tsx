@@ -42,7 +42,7 @@ import { ProjectNotesPanel } from "./ProjectNotesPanel";
 import { TaskCenter } from "./TaskCenter";
 import { ProjectDashboard } from "./dashboard/ProjectDashboard";
 import { ProjectDashboardExtra } from "./dashboard/ProjectDashboardExtra";
-import { ProjectTimeline } from "@/components/workspace/timeline/ProjectTimeline";
+import { ProjectGanttClient } from "@/components/workspace/gantt/ProjectGanttClient";
 import { getActionTypeTag, getAllActionTypes } from "@/lib/action-types";
 import { useToast } from "@/components/toast/ToastContext";
 import { ActionDetailPreview } from "@/components/workspace/ActionDetailPreview";
@@ -1794,8 +1794,9 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
 
         {/* ── Tab: Timeline ──────────────────────────────── */}
         {activeTab === "timeline" && (
-          <ProjectTimeline
-            projectId={projectId}
+          <ProjectGanttClient
+            projectId={project.id}
+            projectName={project.name}
             tasks={tasks as unknown as WorkspaceTimelineTask[]}
             timeline={timeline}
             refresh={refresh}
