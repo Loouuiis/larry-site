@@ -181,6 +181,7 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
         title: string;
         status: "backlog" | "not_started" | "in_progress" | "waiting" | "completed" | "blocked";
         priority: "low" | "medium" | "high" | "critical";
+        parentTaskId: string | null;
         assigneeUserId: string | null;
         assigneeName: string | null;
         progressPercent: number;
@@ -190,6 +191,7 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
       }>(
         tenantId,
         `SELECT tasks.id, tasks.title, tasks.status, tasks.priority,
+                tasks.parent_task_id as "parentTaskId",
                 tasks.assignee_user_id as "assigneeUserId",
                 COALESCE(NULLIF(u.display_name, ''), split_part(u.email, '@', 1)) as "assigneeName",
                 tasks.progress_percent as "progressPercent",
