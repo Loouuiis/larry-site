@@ -48,10 +48,12 @@ export function GanttToolbar({ zoom, allCollapsed, search, onZoom, onToggleColla
 
       <div style={{ flex: 1 }} />
 
-      <button style={{ ...btn, background: canAdd ? "#6c44f6" : "#ddd", color: "#fff", border: 0, opacity: canAdd ? 1 : 0.6 }}
-        onClick={canAdd ? onAdd : undefined}>
-        <Plus size={14} />{addLabel}
-      </button>
+      {canAdd && (
+        <button style={{ ...btn, background: "#6c44f6", color: "#fff", border: 0 }}
+          onClick={onAdd}>
+          <Plus size={14} />{addLabel}
+        </button>
+      )}
     </div>
   );
 }
