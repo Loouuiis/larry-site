@@ -11,6 +11,7 @@
     "test:e2e": "playwright test -c playwright.config.ts"
   },
   "dependencies": {
+    "@larry/shared": "file:../../packages/shared",
     "framer-motion": "^12.35.0",
     "html2canvas-pro": "^2.0.2",
     "ioredis": "^5.8.0",
