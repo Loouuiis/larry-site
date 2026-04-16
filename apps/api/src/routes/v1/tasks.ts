@@ -65,6 +65,7 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
       const filters = ["tasks.tenant_id = $1"];
       let sql = `SELECT tasks.id,
                         tasks.project_id as "projectId",
+                        tasks.parent_task_id as "parentTaskId",
                         tasks.title,
                         tasks.description,
                         tasks.status,
@@ -191,13 +192,13 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
       const tenantId = request.user.tenantId;
 
       const rows = await fastify.db.queryTenant<{
-        id: string; project_id: string; title: string; description: string | null;
+        id: string; project_id: string; parent_task_id: string | null; title: string; description: string | null;
         status: string; priority: string; assignee_user_id: string | null;
         progress_percent: number; risk_score: number; risk_level: string;
         start_date: string | null; due_date: string | null; created_at: string; updated_at: string;
       }>(
         tenantId,
-        `SELECT id, project_id, title, description, status, priority,
+        `SELECT id, project_id, parent_task_id, title, description, status, priority,
                 assignee_user_id, progress_percent, risk_score, risk_level,
                 start_date, due_date, created_at, updated_at
          FROM tasks WHERE tenant_id = $1 AND id = $2 LIMIT 1`,
@@ -208,7 +209,8 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
 
       const r = rows[0];
       return {
-        id: r.id, projectId: r.project_id, title: r.title, description: r.description,
+        id: r.id, projectId: r.project_id, parentTaskId: r.parent_task_id ?? null,
+        title: r.title, description: r.description,
         status: r.status, priority: r.priority, assigneeUserId: r.assignee_user_id,
         progressPercent: r.progress_percent, riskScore: r.risk_score, riskLevel: r.risk_level,
         startDate: r.start_date, dueDate: r.due_date, createdAt: r.created_at, updatedAt: r.updated_at,
