@@ -61,11 +61,12 @@ export function GanttBar({ variant, start, end, progressPercent, range, label, h
         height: "100%",
         background: cfg.bar,
       }} />
-      {label && variant !== "subtask" && (
+      {label && variant !== "subtask" && variant !== "category" && (
         <span style={{
           position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)",
           fontSize: 11, fontWeight: cfg.bold ? 700 : 500,
-          color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+          color: "#fff",
+          whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
           maxWidth: "calc(100% - 16px)", mixBlendMode: "normal",
         }}>{label}</span>
       )}
