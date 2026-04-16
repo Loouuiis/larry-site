@@ -61,7 +61,7 @@ export const authVerificationRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Send email (best-effort)
     try {
-      await sendVerificationEmail(email!, verifyUrl);
+      await sendVerificationEmail(email!, verifyUrl, { userId });
     } catch (err) {
       request.log.error({ err, userId }, "Failed to send verification email");
     }

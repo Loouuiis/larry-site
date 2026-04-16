@@ -134,7 +134,10 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       ).replace(/\/+$/, "");
       const verifyUrl = `${frontendUrl}/verify-email?token=${encodeURIComponent(raw)}`;
 
-      await sendVerificationEmail(newUser.email, verifyUrl);
+      await sendVerificationEmail(newUser.email, verifyUrl, {
+        userId: newUser.id,
+        tenantId,
+      });
     } catch (err) {
       request.log.error({ err, userId: newUser.id }, "Failed to send verification email on signup");
     }
@@ -292,7 +295,11 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         const ua = request.headers["user-agent"] ?? "Unknown device";
         const uaShort = ua.length > 100 ? ua.substring(0, 100) + "..." : ua;
         const { sendNewDeviceAlert } = await import("../../lib/email.js");
-        await sendNewDeviceAlert(user.email, { browser: uaShort, ip: request.ip }).catch(() => {});
+        await sendNewDeviceAlert(
+          user.email,
+          { browser: uaShort, ip: request.ip },
+          { userId: user.id, tenantId: user.tenant_id },
+        ).catch(() => {});
       }
     } catch { /* non-fatal */ }
 
@@ -532,9 +539,11 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
           [tenantId, userId, body.role]
         );
 
-        // Send invite email (graceful — don't fail the invite if email fails)
+        // Send invite email (graceful — don't fail the invite if email fails).
+        // tenantId drives the per-tenant invite cap (20/hour) and the daily
+        // 200/tenant global cap.
         try {
-          await sendMemberInviteEmail(body.email, displayName);
+          await sendMemberInviteEmail(body.email, displayName, { tenantId });
         } catch (emailErr) {
           console.error("[invite] Failed to send invite email:", emailErr);
         }

@@ -40,6 +40,15 @@ import type {
 } from "@larry/shared";
 import { writeAuditLog } from "../../lib/audit.js";
 import { buildPendingClause } from "../../lib/intelligence-hints.js";
+import { reserveTokens } from "../../lib/llm-budget.js";
+
+// Conservative pre-call estimates. runIntelligence empirically lands around
+// 9k tokens on our test tenant; streamLarryChat turns are typically 2-3k.
+// Over-estimating slightly is intentional — a pre-reserved call that ends
+// up cheaper is safer than the reverse. Reconciliation to actuals is a
+// follow-up step (current AI SDK call paths don't surface usage yet).
+const RUN_INTELLIGENCE_ESTIMATED_TOKENS = 9_500;
+const STREAM_CHAT_ESTIMATED_TOKENS = 3_000;
 import {
   ACTIVE_PROJECT_STATUS,
   ProjectStatusFilterSchema,
@@ -619,6 +628,11 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       project: (typeof globalProjects)[number]
     ): Promise<GlobalProjectIntelligenceResult> => {
       try {
+        await reserveTokens({
+          tenantId: input.tenantId,
+          provider: config.provider,
+          estimatedTokens: RUN_INTELLIGENCE_ESTIMATED_TOKENS,
+        });
         const snapshot = await getProjectSnapshot(fastify.db, input.tenantId, project.id);
         const pendingTexts = await getPendingSuggestionTexts(fastify.db, input.tenantId, project.id).catch(
           () => [] as string[]
@@ -3100,6 +3114,11 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const config = buildIntelligenceConfig(fastify.config);
+      await reserveTokens({
+        tenantId,
+        provider: config.provider,
+        estimatedTokens: RUN_INTELLIGENCE_ESTIMATED_TOKENS,
+      });
       let result;
       try {
         result = await runIntelligence(
@@ -3752,6 +3771,13 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       };
 
       // ── Stream ────────────────────────────────────────────────────────────
+      // Reserve budget before opening the stream. If quota is exhausted the
+      // global error handler will return 429 before any SSE frames are sent.
+      await reserveTokens({
+        tenantId,
+        provider: config.provider,
+        estimatedTokens: STREAM_CHAT_ESTIMATED_TOKENS,
+      });
       // Track whether the SDK emitted an error event mid-stream. When it does
       // the client sets the bubble to event.message, and a subsequent recap
       // token would get concatenated onto the error text with no separator
