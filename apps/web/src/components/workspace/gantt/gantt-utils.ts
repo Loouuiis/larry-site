@@ -113,8 +113,9 @@ export function flattenVisible(root: GanttNode, expanded: Set<string>): FlatRow[
     for (const child of children) walk(child, depth + (isSyntheticRoot ? 0 : 1), false);
   }
 
-  const isSynthetic = root.kind === "category" && root.id === "__root__";
-  walk(root, 0, isSynthetic);
+  // Always treat the node passed as root as the invisible tree root —
+  // it is never emitted as a visible row; its children start at depth 0.
+  walk(root, 0, true);
   return rows;
 }
 

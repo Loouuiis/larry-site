@@ -67,14 +67,23 @@ describe("flattenVisible", () => {
       children: [{ kind: "subtask" as const, id: "t2", task: baseTask({ id: "t2", parentTaskId: "t1" }) }] };
     const project: GanttNode = { kind: "project", id: "p1", name: "P", status: "active", children: [task1] };
     const cat: GanttNode = { kind: "category", id: "c1", name: "C", colour: null, children: [project] };
+    // Use synthetic __root__ wrapper (mirrors portfolio usage; root is always skipped)
+    const syntheticRoot: GanttNode = { kind: "category", id: "__root__", name: "", colour: null, children: [cat] };
 
     const expanded = new Set<string>(["cat:c1", "proj:p1"]); // task NOT expanded → subtask hidden
-    const rows = flattenVisible(cat, expanded);
+    const rows = flattenVisible(syntheticRoot, expanded);
     expect(rows.map(r => r.key)).toEqual(["cat:c1", "proj:p1", "task:t1"]);
 
     expanded.add("task:t1");
-    const rows2 = flattenVisible(cat, expanded);
+    const rows2 = flattenVisible(syntheticRoot, expanded);
     expect(rows2.map(r => r.key)).toEqual(["cat:c1", "proj:p1", "task:t1", "sub:t2"]);
+  });
+
+  it("flattenVisible skips a project-kind root", () => {
+    const task = { kind: "task" as const, id: "t1", task: baseTask({ id: "t1" }), children: [] };
+    const proj: GanttNode = { kind: "project", id: "p1", name: "P", status: "active", children: [task] };
+    const rows = flattenVisible(proj, new Set(["proj:p1"]));
+    expect(rows.map(r => r.key)).toEqual(["task:t1"]); // no "proj:p1" at depth 0
   });
 });
 
