@@ -55,6 +55,7 @@ export function WorkspaceShell({ children, userEmail, emailVerified, avatarUrl, 
   const activeNav: WorkspaceSidebarNav = useMemo(() => {
     if (pathname === "/workspace") return "home";
     if (pathname?.startsWith("/workspace/my-work")) return "my-work";
+    if (pathname?.startsWith("/workspace/timeline")) return "timeline";
     if (pathname?.startsWith("/workspace/actions")) return "actions";
     if (pathname?.startsWith("/workspace/notifications")) return "notifications";
     if (pathname?.startsWith("/workspace/meetings")) return "meetings";
