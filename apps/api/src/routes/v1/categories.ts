@@ -7,13 +7,13 @@ import {
 
 const CreateSchema = z.object({
   name: z.string().min(1).max(120),
-  colour: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
+  colour: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).nullable().optional(),
   sortOrder: z.number().int().min(0).optional(),
 });
 
 const UpdateSchema = z.object({
   name: z.string().min(1).max(120).optional(),
-  colour: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
+  colour: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).nullable().optional(),
   sortOrder: z.number().int().min(0).optional(),
 });
 
