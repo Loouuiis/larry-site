@@ -41,6 +41,7 @@ export function GanttOutlineRow({ row, expanded, selected, hovered, onToggle, on
         borderLeft: selected ? "3px solid #6c44f6" : "3px solid transparent",
         background: hovered ? "var(--surface-2, #fafafa)" : "transparent",
         cursor: onSelect ? "pointer" : "default",
+        opacity: row.dimmed ? 0.35 : 1,
         fontSize: n.kind === "category" ? 12 : 13,
         fontWeight: n.kind === "category" ? 700 : n.kind === "project" ? 600 : 500,
         textTransform: n.kind === "category" ? "uppercase" : "none",

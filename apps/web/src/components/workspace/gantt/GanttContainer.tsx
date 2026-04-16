@@ -31,7 +31,7 @@ export function GanttContainer({ root, defaultZoom = "month", onOpenDetail, onAd
     const base = flattenVisible(root, expanded);
     if (!search.trim()) return base;
     const q = search.toLowerCase();
-    return base.filter((r) => nodeLabel(r.node).toLowerCase().includes(q));
+    return base.map((r) => ({ ...r, dimmed: !nodeLabel(r.node).toLowerCase().includes(q) }));
   }, [root, expanded, search]);
 
   const allCollapsed = expanded.size === 0;

@@ -89,6 +89,7 @@ export interface FlatRow {
   depth: number;      // 0..3
   node: GanttNode;
   hasChildren: boolean;
+  dimmed?: boolean;
 }
 
 export function flattenVisible(root: GanttNode, expanded: Set<string>): FlatRow[] {

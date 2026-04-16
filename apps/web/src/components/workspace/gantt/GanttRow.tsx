@@ -45,7 +45,7 @@ export function GanttRow({ row, range, hoveredKey, selectedKey, onHoverKey, onSe
           label={t.title}
           task={t}
           highlighted={highlighted}
-          dimmed={false}
+          dimmed={row.dimmed ?? false}
           onClick={() => onSelectKey(row.key)}
           onMouseEnter={() => onHoverKey(row.key)}
           onMouseLeave={() => onHoverKey(null)}
@@ -64,6 +64,7 @@ export function GanttRow({ row, range, hoveredKey, selectedKey, onHoverKey, onSe
           range={range}
           label={n.kind === "category" ? n.name : n.kind === "project" ? n.name : ""}
           highlighted={highlighted}
+          dimmed={row.dimmed ?? false}
           onMouseEnter={() => onHoverKey(row.key)}
           onMouseLeave={() => onHoverKey(null)}
         />
