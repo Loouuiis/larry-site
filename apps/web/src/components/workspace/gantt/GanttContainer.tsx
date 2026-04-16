@@ -1,8 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { GanttNode } from "./gantt-types";
+import type { GanttNode, GanttTask, ZoomLevel } from "./gantt-types";
 import { computeRange, flattenVisible, dateToPct } from "./gantt-utils";
-import type { ZoomLevel } from "./gantt-types";
 import { GanttOutline } from "./GanttOutline";
 import { GanttGrid } from "./GanttGrid";
 import { GanttToolbar } from "./GanttToolbar";
@@ -108,8 +107,8 @@ function nodeLabel(n: GanttNode): string {
   return n.task.title;
 }
 
-function collectTasks(root: GanttNode): import("./gantt-types").GanttTask[] {
-  const out: import("./gantt-types").GanttTask[] = [];
+function collectTasks(root: GanttNode): GanttTask[] {
+  const out: GanttTask[] = [];
   function walk(n: GanttNode) {
     if (n.kind === "task" || n.kind === "subtask") out.push(n.task);
     if (n.kind !== "subtask") for (const c of n.children) walk(c);
