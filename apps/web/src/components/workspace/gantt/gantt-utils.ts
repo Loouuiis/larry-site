@@ -128,15 +128,18 @@ export interface RolledBar {
 }
 
 export function rollUpBar(tasks: GanttTask[]): RolledBar | null {
+  const todayIso = new Date().toISOString().slice(0, 10);
   const ranges = tasks
     .map((t) => {
-      const s = t.startDate;
+      const s = t.startDate ? String(t.startDate).slice(0, 10) : null;
       const e = t.endDate ?? t.dueDate;
-      if (!s || !e) return null;
+      const eNorm = e ? String(e).slice(0, 10) : null;
+      const sNorm = s ?? (eNorm && eNorm > todayIso ? todayIso : eNorm);
+      if (!sNorm || !eNorm) return null;
       const days = Math.max(1, Math.round(
-        (new Date(e).getTime() - new Date(s).getTime()) / 86_400_000,
+        (new Date(eNorm).getTime() - new Date(sNorm).getTime()) / 86_400_000,
       ));
-      return { start: s, end: e, progress: t.progressPercent, days };
+      return { start: sNorm, end: eNorm, progress: t.progressPercent, days };
     })
     .filter((x): x is NonNullable<typeof x> => x !== null);
 
