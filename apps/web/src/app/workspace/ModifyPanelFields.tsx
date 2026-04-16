@@ -219,13 +219,14 @@ function DraftEmailFields({ payload, onPatch }: FieldsProps) {
   );
 }
 
+// Keys are canonical DB action_type values (LarryActionType), not chat tool names.
 const FIELDS_BY_TYPE: Record<string, (props: FieldsProps) => ReactElement> = {
-  create_task: CreateTaskFields,
-  change_deadline: ChangeDeadlineFields,
-  change_task_owner: ChangeTaskOwnerFields,
-  update_task_status: UpdateTaskStatusFields,
-  flag_task_risk: FlagTaskRiskFields,
-  draft_email: DraftEmailFields,
+  task_create: CreateTaskFields,
+  deadline_change: ChangeDeadlineFields,
+  owner_change: ChangeTaskOwnerFields,
+  status_update: UpdateTaskStatusFields,
+  risk_flag: FlagTaskRiskFields,
+  email_draft: DraftEmailFields,
 };
 
 export function ModifyPanelFields(props: FieldsProps) {

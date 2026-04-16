@@ -1,22 +1,25 @@
 // Pure helpers for the Modify Action flow (spec 2026-04-15-modify-action-design.md).
 // No DB access; this module is safe to import from the API package and from tests.
 
+// Action type identifiers match the canonical LarryActionType values stored in
+// larry_events.action_type — NOT the chat tool names (which are different —
+// e.g. the chat tool `create_task` maps to DB action_type `task_create`).
 export type ModifiableActionType =
-  | "create_task"
-  | "update_task_status"
-  | "flag_task_risk"
-  | "change_deadline"
-  | "change_task_owner"
-  | "draft_email";
+  | "task_create"
+  | "status_update"
+  | "risk_flag"
+  | "deadline_change"
+  | "owner_change"
+  | "email_draft";
 
 const FIELDS_BY_ACTION_TYPE: Record<string, readonly string[]> = {
-  create_task:        ["title", "description", "dueDate", "assigneeName", "priority"],
-  update_task_status: ["newStatus", "newRiskLevel"],
-  flag_task_risk:     ["riskLevel"],
-  change_deadline:    ["newDeadline"],
-  change_task_owner:  ["newOwnerName"],
-  draft_email:        ["to", "subject", "body"],
-  // send_reminder auto-executes and never appears as a suggestion; intentionally omitted.
+  task_create:     ["title", "description", "dueDate", "assigneeName", "priority"],
+  status_update:   ["newStatus", "newRiskLevel"],
+  risk_flag:       ["riskLevel"],
+  deadline_change: ["newDeadline"],
+  owner_change:    ["newOwnerName"],
+  email_draft:     ["to", "subject", "body"],
+  // reminder_send auto-executes and never appears as a suggestion; intentionally omitted.
 };
 
 export function editableFieldsForActionType(actionType: string): string[] {
