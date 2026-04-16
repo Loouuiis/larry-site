@@ -21,6 +21,7 @@ const CreateTaskSchema = z.object({
   priority: z.enum(["low", "medium", "high", "critical"]).default("medium"),
   startDate: z.string().date().optional(),
   dueDate: z.string().date().optional(),
+  parentTaskId: z.string().uuid().nullable().optional(),
 });
 
 const AddDependencySchema = z.object({
@@ -111,6 +112,23 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const body = CreateTaskSchema.parse(request.body);
       const tenantId = request.user.tenantId;
+
+      if (body.parentTaskId) {
+        const parentRows = await fastify.db.queryTenant<{ projectId: string; parentTaskId: string | null }>(
+          tenantId,
+          `SELECT project_id AS "projectId", parent_task_id AS "parentTaskId"
+             FROM tasks WHERE tenant_id = $1 AND id = $2`,
+          [tenantId, body.parentTaskId],
+        );
+        if (parentRows.length === 0) throw fastify.httpErrors.notFound("Parent task not found");
+        if (parentRows[0].projectId !== body.projectId) {
+          throw fastify.httpErrors.badRequest("Parent task must be in the same project");
+        }
+        if (parentRows[0].parentTaskId !== null) {
+          throw fastify.httpErrors.badRequest("Subtask depth limit reached (parent already has a parent)");
+        }
+      }
+
       const projectWriteState = await loadProjectWriteState(fastify.db, tenantId, body.projectId);
       if (projectWriteState) {
         assertProjectWritableOrThrow(projectWriteState.status);
@@ -126,13 +144,14 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
       });
       const riskLevel = classifyRiskLevel(riskScore);
 
-      const rows = await fastify.db.queryTenant<{ id: string }>(
+      const rows = await fastify.db.queryTenant<{ id: string; parentTaskId: string | null }>(
         tenantId,
         `INSERT INTO tasks (
           tenant_id, project_id, title, description, priority,
-          assignee_user_id, created_by_user_id, start_date, due_date, risk_score, risk_level
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-        RETURNING id`,
+          assignee_user_id, created_by_user_id, start_date, due_date, risk_score, risk_level,
+          parent_task_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        RETURNING id, parent_task_id AS "parentTaskId"`,
         [
           tenantId,
           body.projectId,
@@ -145,6 +164,7 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
           body.dueDate ?? null,
           riskScore,
           riskLevel,
+          body.parentTaskId ?? null,
         ]
       );
 
