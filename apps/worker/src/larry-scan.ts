@@ -3,6 +3,13 @@ import { getProjectSnapshot, runAutoActions, storeSuggestions, updateProjectLarr
 import { runIntelligence } from "@larry/ai";
 import { db } from "./context.js";
 import { buildWorkerIntelligenceConfig } from "./intelligence-config.js";
+import { reserveTokens, LLMQuotaError } from "./llm-budget.js";
+
+// Per-project estimated token cost for runIntelligence. Empirically ~9k
+// post-N-9. We over-estimate slightly so the budget debits a number close
+// to reality without a post-call reconcile step (runIntelligence doesn't
+// surface usage today; see future work in the rate-limit hardening spec).
+const SCAN_ESTIMATED_TOKENS = 9_500;
 
 // N-11: dropped from 5 → 1 to keep the scan within the Groq free-tier
 // 12k-TPM bucket. Per-project runIntelligence cost is ~9k tokens post-N-9;
@@ -85,6 +92,27 @@ export async function runLarryScan(): Promise<void> {
       if (!row) break;
       const { id: projectId, tenant_id: tenantId } = row;
       try {
+        // Reserve LLM budget before the scan. If the tenant or the provider's
+        // global daily cap is exhausted we skip this project — the next cron
+        // tick will retry once the day rolls over. This is the last line of
+        // defence against a runaway tenant burning the Groq free-tier TPD.
+        try {
+          await reserveTokens({
+            tenantId,
+            provider: config.provider,
+            estimatedTokens: SCAN_ESTIMATED_TOKENS,
+          });
+        } catch (err) {
+          if (err instanceof LLMQuotaError) {
+            console.warn(
+              `[larry-scan] quota exceeded (${err.scope}), skipping project ${projectId} (tenant ${tenantId})`
+            );
+            // Don't count this as a "failed" scan — quota skips are expected.
+            continue;
+          }
+          throw err;
+        }
+
         const snapshot = await getProjectSnapshot(db, tenantId, projectId);
         const result = await runIntelligence(config, snapshot, "scheduled health scan");
         const ledgerContext = { sourceKind: "project_review", sourceRecordId: randomUUID() } as const;

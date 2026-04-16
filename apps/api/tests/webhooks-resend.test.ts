@@ -1,7 +1,19 @@
 import { createHmac } from "node:crypto";
 import Fastify, { FastifyInstance } from "fastify";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { resendWebhookRoutes, verifySvixSignature } from "../src/routes/v1/webhooks-resend.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Mock email-quota so webhook tests don't need a real Redis. Behavior of
+// addSuppression itself is covered by email-quota.test.ts; here we only care
+// that the webhook calls it with the right arguments on hard bounce /
+// complaint events and does NOT call it for soft bounces or delivered events.
+const addSuppressionMock = vi.fn().mockResolvedValue(undefined);
+vi.mock("../src/lib/email-quota.js", () => ({
+  addSuppression: addSuppressionMock,
+}));
+
+const { resendWebhookRoutes, verifySvixSignature } = await import(
+  "../src/routes/v1/webhooks-resend.js"
+);
 
 /**
  * Tests cover both the unit of the signature verifier (pure function)
@@ -67,6 +79,7 @@ describe("POST /webhooks/resend", () => {
 
   beforeEach(async () => {
     process.env.RESEND_WEBHOOK_SECRET = FULL_SECRET;
+    addSuppressionMock.mockClear();
     app = Fastify({ logger: false });
     await app.register(resendWebhookRoutes, { prefix: "/webhooks" });
     await app.ready();
@@ -187,5 +200,86 @@ describe("POST /webhooks/resend", () => {
       payload: body,
     });
     expect(res.statusCode).toBe(400);
+  });
+
+  async function postEvent(event: Record<string, unknown>): Promise<number> {
+    const svixId = "msg_" + Math.random().toString(36).slice(2);
+    const svixTs = freshTs();
+    const body = JSON.stringify(event);
+    const res = await app.inject({
+      method: "POST",
+      url: "/webhooks/resend",
+      headers: {
+        "content-type": "application/json",
+        "svix-id": svixId,
+        "svix-timestamp": svixTs,
+        "svix-signature": signSvix(svixId, svixTs, body),
+      },
+      payload: body,
+    });
+    return res.statusCode;
+  }
+
+  it("adds suppression on hard bounce (bounce_type field)", async () => {
+    const status = await postEvent({
+      type: "email.bounced",
+      data: { to: ["hard@example.com"], bounce_type: "hard" },
+    });
+    expect(status).toBe(200);
+    expect(addSuppressionMock).toHaveBeenCalledWith("hard@example.com", "bounce");
+  });
+
+  it("adds suppression on hard bounce (nested bounce.type shape)", async () => {
+    const status = await postEvent({
+      type: "email.bounced",
+      data: { to: ["hard2@example.com"], bounce: { type: "hard" } },
+    });
+    expect(status).toBe(200);
+    expect(addSuppressionMock).toHaveBeenCalledWith("hard2@example.com", "bounce");
+  });
+
+  it("does NOT suppress soft bounces", async () => {
+    const status = await postEvent({
+      type: "email.bounced",
+      data: { to: ["soft@example.com"], bounce_type: "soft" },
+    });
+    expect(status).toBe(200);
+    expect(addSuppressionMock).not.toHaveBeenCalled();
+  });
+
+  it("does NOT suppress when bounce type is absent (unknown → treat as soft)", async () => {
+    const status = await postEvent({
+      type: "email.bounced",
+      data: { to: ["unknown@example.com"] },
+    });
+    expect(status).toBe(200);
+    expect(addSuppressionMock).not.toHaveBeenCalled();
+  });
+
+  it("adds suppression on complaint events", async () => {
+    const status = await postEvent({
+      type: "email.complained",
+      data: { to: ["spam@example.com"] },
+    });
+    expect(status).toBe(200);
+    expect(addSuppressionMock).toHaveBeenCalledWith("spam@example.com", "complaint");
+  });
+
+  it("ignores delivered / opened / clicked events (no suppression)", async () => {
+    for (const type of ["email.delivered", "email.opened", "email.clicked", "email.sent"]) {
+      await postEvent({ type, data: { to: ["ok@example.com"] } });
+    }
+    expect(addSuppressionMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 200 even if addSuppression throws (don't NACK the webhook)", async () => {
+    addSuppressionMock.mockRejectedValueOnce(new Error("redis down"));
+    const status = await postEvent({
+      type: "email.bounced",
+      data: { to: ["transient@example.com"], bounce_type: "hard" },
+    });
+    // We logged the error but still returned 200 so Resend doesn't retry
+    // indefinitely on a transient Redis blip.
+    expect(status).toBe(200);
   });
 });

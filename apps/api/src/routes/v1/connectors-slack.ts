@@ -12,6 +12,7 @@ import {
 } from "../../services/connectors/slack.js";
 import { ingestCanonicalEvent } from "../../services/ingest/pipeline.js";
 import { writeAuditLog } from "../../lib/audit.js";
+import { claimStateToken } from "../../lib/oauth-state.js";
 
 const SlackOauthStateSchema = z.object({
   kind: z.literal("slack_oauth_state"),
@@ -132,7 +133,15 @@ export const slackConnectorRoutes: FastifyPluginAsync = async (fastify) => {
     };
   });
 
-  fastify.get("/callback", async (request, reply) => {
+  fastify.get("/callback", {
+    config: {
+      rateLimit: {
+        max: 10,
+        timeWindow: "1 minute",
+        keyGenerator: (req: import("fastify").FastifyRequest) => req.ip,
+      },
+    },
+  }, async (request, reply) => {
     const oauth = requireSlackOauthConfig(fastify);
     const query = SlackCallbackQuerySchema.parse(request.query);
 
@@ -144,8 +153,10 @@ export const slackConnectorRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     let oauthState: z.infer<typeof SlackOauthStateSchema>;
+    let decodedJti: string | undefined;
     try {
       const decoded = verifySignedStateToken(query.state, fastify.config.JWT_ACCESS_SECRET);
+      decodedJti = typeof decoded.jti === "string" ? decoded.jti : undefined;
       oauthState = SlackOauthStateSchema.parse(decoded);
     } catch (error) {
       const reason = error instanceof Error ? error.message : "unknown";
@@ -153,6 +164,12 @@ export const slackConnectorRoutes: FastifyPluginAsync = async (fastify) => {
         throw fastify.httpErrors.badRequest(`Invalid or expired Slack OAuth state (${reason}).`);
       }
       throw fastify.httpErrors.badRequest("Invalid or expired Slack OAuth state.");
+    }
+
+    // Single-use enforcement to defeat state replay (see lib/oauth-state.ts).
+    if (decodedJti && !(await claimStateToken(decodedJti, fastify.config.SLACK_OAUTH_STATE_TTL_SECONDS))) {
+      request.log.warn({ jti: decodedJti }, "slack/callback: state replay rejected");
+      throw fastify.httpErrors.badRequest("OAuth state already used.");
     }
 
     const oauthResult = await exchangeSlackOauthCode({

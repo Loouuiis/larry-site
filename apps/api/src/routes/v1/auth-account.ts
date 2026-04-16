@@ -238,7 +238,7 @@ export const authAccountRoutes: FastifyPluginAsync = async (fastify) => {
 
       // Send confirmation to NEW email
       try {
-        await sendEmailChangeConfirmation(body.newEmail, confirmUrl);
+        await sendEmailChangeConfirmation(body.newEmail, confirmUrl, { userId });
       } catch (err) {
         request.log.error(
           { err, userId },
@@ -248,7 +248,7 @@ export const authAccountRoutes: FastifyPluginAsync = async (fastify) => {
 
       // Send notification to OLD email (best-effort)
       try {
-        await sendEmailChangeNotification(user.email);
+        await sendEmailChangeNotification(user.email, { userId });
       } catch (err) {
         request.log.error(
           { err, userId },

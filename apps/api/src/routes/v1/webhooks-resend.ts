@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { FastifyPluginAsync } from "fastify";
+import { addSuppression } from "../../lib/email-quota.js";
 
 /**
  * Resend webhook receiver.
@@ -70,15 +71,34 @@ export const resendWebhookRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.code(400).send({ error: "Invalid JSON" });
     }
 
-    // Log interesting events. Future: insert into email_events table.
+    // Log interesting events and auto-suppress on hard bounces and complaints
+    // so we stop burning Resend quota / domain reputation on known-bad recipients.
     const to = extractTo(event);
     const type = event.type ?? "unknown";
     switch (type) {
-      case "email.bounced":
-        request.log.warn({ svixId, type, to, data: event.data }, "[webhook-resend] bounce");
+      case "email.bounced": {
+        const bounceType = extractBounceType(event);
+        request.log.warn({ svixId, type, to, bounceType, data: event.data }, "[webhook-resend] bounce");
+        // Only suppress hard bounces — soft bounces (mailbox full, temporary
+        // outage) are transient and the address may recover.
+        if (to && bounceType === "hard") {
+          try {
+            await addSuppression(to, "bounce");
+          } catch (err) {
+            request.log.error({ err, to }, "[webhook-resend] failed to add bounce suppression");
+          }
+        }
         break;
+      }
       case "email.complained":
         request.log.warn({ svixId, type, to, data: event.data }, "[webhook-resend] complaint");
+        if (to) {
+          try {
+            await addSuppression(to, "complaint");
+          } catch (err) {
+            request.log.error({ err, to }, "[webhook-resend] failed to add complaint suppression");
+          }
+        }
         break;
       case "email.delivery_delayed":
         request.log.info({ svixId, type, to }, "[webhook-resend] delivery delayed");
@@ -122,6 +142,21 @@ function extractTo(event: ResendEvent): string | undefined {
   const to = event.data?.to;
   if (Array.isArray(to)) return to[0];
   if (typeof to === "string") return to;
+  return undefined;
+}
+
+function extractBounceType(event: ResendEvent): "hard" | "soft" | undefined {
+  // Resend shapes the bounce payload as either a `bounce` object with a
+  // `type` field, or the type is nested under `bounce_type`. Be defensive.
+  const data = event.data as Record<string, unknown> | undefined;
+  if (!data) return undefined;
+  const direct = data["bounce_type"];
+  if (direct === "hard" || direct === "soft") return direct;
+  const nested = data["bounce"] as { type?: unknown } | undefined;
+  if (nested && typeof nested === "object") {
+    const t = nested.type;
+    if (t === "hard" || t === "soft") return t;
+  }
   return undefined;
 }
 

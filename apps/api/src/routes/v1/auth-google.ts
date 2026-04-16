@@ -3,6 +3,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { issueAccessToken, issueRefreshToken } from "../../lib/auth.js";
 import { writeAuditLog } from "../../lib/audit.js";
+import { claimStateToken } from "../../lib/oauth-state.js";
 import {
   createSignedStateToken,
   verifySignedStateToken,
@@ -142,7 +143,18 @@ export const authGoogleRoutes: FastifyPluginAsync = async (fastify) => {
   // ─────────────────────────────────────────────────────────────────
   // GET /google/callback — Handle Google redirect
   // ─────────────────────────────────────────────────────────────────
-  fastify.get("/google/callback", async (request, reply) => {
+  fastify.get("/google/callback", {
+    config: {
+      // Rate-limit by client IP. State JWT + single-use jti guard the auth
+      // flow; this limit caps probing attempts that churn through state
+      // tokens from the same origin.
+      rateLimit: {
+        max: 10,
+        timeWindow: "1 minute",
+        keyGenerator: (req: import("fastify").FastifyRequest) => req.ip,
+      },
+    },
+  }, async (request, reply) => {
     const oauth = requireGoogleAuthConfig(fastify);
     const query = GoogleCallbackQuerySchema.parse(request.query);
 
@@ -161,14 +173,25 @@ export const authGoogleRoutes: FastifyPluginAsync = async (fastify) => {
 
     // Verify state
     let oauthState: z.infer<typeof GoogleStateSchema>;
+    let decodedJti: string | undefined;
     try {
       const decoded = verifySignedStateToken(
         query.state,
         fastify.config.JWT_ACCESS_SECRET
       );
+      decodedJti = typeof decoded.jti === "string" ? decoded.jti : undefined;
       oauthState = GoogleStateSchema.parse(decoded);
     } catch {
       return reply.redirect(`${frontendUrl}/login?error=google_invalid_state`);
+    }
+
+    // Single-use enforcement — a state token that's valid in signature and
+    // within TTL is still rejected on its second redemption. Without this,
+    // a leaked state is replayable until the TTL runs out.
+    const stateTtl = fastify.config.GOOGLE_OAUTH_STATE_TTL_SECONDS;
+    if (decodedJti && !(await claimStateToken(decodedJti, stateTtl))) {
+      request.log.warn({ jti: decodedJti }, "google/callback: state replay rejected");
+      return reply.redirect(`${frontendUrl}/login?error=google_state_replay`);
     }
 
     // Exchange code for tokens
@@ -405,7 +428,17 @@ export const authGoogleRoutes: FastifyPluginAsync = async (fastify) => {
   // ─────────────────────────────────────────────────────────────────
   fastify.post(
     "/google/link",
-    { preHandler: [fastify.authenticate] },
+    {
+      preHandler: [fastify.authenticate],
+      config: {
+        rateLimit: {
+          max: 10,
+          timeWindow: "1 hour",
+          keyGenerator: (req: import("fastify").FastifyRequest) =>
+            `google-link:${req.user?.userId ?? req.ip}`,
+        },
+      },
+    },
     async (request, reply) => {
       const body = GoogleLinkBodySchema.parse(request.body);
       const user = request.user;
@@ -467,7 +500,17 @@ export const authGoogleRoutes: FastifyPluginAsync = async (fastify) => {
   // ─────────────────────────────────────────────────────────────────
   fastify.post(
     "/google/unlink",
-    { preHandler: [fastify.authenticate] },
+    {
+      preHandler: [fastify.authenticate],
+      config: {
+        rateLimit: {
+          max: 10,
+          timeWindow: "1 hour",
+          keyGenerator: (req: import("fastify").FastifyRequest) =>
+            `google-unlink:${req.user?.userId ?? req.ip}`,
+        },
+      },
+    },
     async (request, reply) => {
       const user = request.user;
 

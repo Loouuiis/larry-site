@@ -62,6 +62,27 @@ const ApiSchema = SharedSchema.extend({
   RESEND_FROM_LARRY: z.string().default("Larry <larry@larry-pm.com>"),
   RESEND_WEBHOOK_SECRET: z.string().optional(),
   FRONTEND_URL: z.string().url().optional(),
+  // Rate-limiting hardening (2026-04-15). Flags default to enabled;
+  // flip to "false" in Railway to roll back a phase without redeploying.
+  RATE_LIMIT_REDIS_ENABLED: z
+    .string()
+    .default("true")
+    .transform((v) => v !== "false"),
+  RATE_LIMIT_BYPASS_SECRET: z.string().optional(),
+  EMAIL_QUOTA_ENABLED: z
+    .string()
+    .default("true")
+    .transform((v) => v !== "false"),
+  LLM_BUDGET_ENABLED: z
+    .string()
+    .default("true")
+    .transform((v) => v !== "false"),
+  LLM_TENANT_DAILY_TOKENS: z.coerce.number().int().positive().default(30_000),
+  LLM_GLOBAL_DAILY_TOKENS: z.coerce.number().int().positive().default(80_000),
+  OAUTH_STATE_SINGLE_USE_ENABLED: z
+    .string()
+    .default("true")
+    .transform((v) => v !== "false"),
 });
 
 const WorkerSchema = SharedSchema.extend({
@@ -73,6 +94,12 @@ const WorkerSchema = SharedSchema.extend({
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_CALENDAR_WEBHOOK_URL: z.string().url().optional(),
   JWT_ACCESS_SECRET: z.string().min(32).optional(),
+  LLM_BUDGET_ENABLED: z
+    .string()
+    .default("true")
+    .transform((v) => v !== "false"),
+  LLM_TENANT_DAILY_TOKENS: z.coerce.number().int().positive().default(30_000),
+  LLM_GLOBAL_DAILY_TOKENS: z.coerce.number().int().positive().default(80_000),
 });
 
 export type ApiEnv = z.infer<typeof ApiSchema>;

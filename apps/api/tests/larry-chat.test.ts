@@ -36,6 +36,23 @@ vi.mock("../src/lib/audit.js", () => ({
   writeAuditLog: vi.fn().mockResolvedValue(undefined),
 }));
 
+// LLM budget writes to Redis; these tests don't exercise it. Keep the
+// reservation inert so chat flows behave as they did pre-Phase-3.
+vi.mock("../src/lib/llm-budget.js", () => ({
+  reserveTokens: vi.fn().mockResolvedValue({ active: false }),
+  reconcileTokens: vi.fn().mockResolvedValue(undefined),
+  LLMQuotaError: class LLMQuotaError extends Error {
+    readonly scope: "tenant" | "global";
+    readonly limit: number;
+    constructor(scope: "tenant" | "global", limit: number) {
+      super("fake llm quota");
+      this.name = "LLMQuotaError";
+      this.scope = scope;
+      this.limit = limit;
+    }
+  },
+}));
+
 vi.mock("../src/services/larry-briefing.js", () => ({
   getOrGenerateBriefing: vi.fn(),
 }));
@@ -1635,17 +1652,31 @@ describe("POST /larry/chat/stream", () => {
   });
 });
 
-// QA-2026-04-12 Step 3 regression guards — M-1 (system-prompt leak) and M-4
-// (original suggestion not dismissed). The Modify flow used to:
-//   1. Write the raw "The user wants to modify this action: ..." template
-//      as Larry's first visible chat bubble (M-1).
-//   2. Leave the source suggestion pending so Action Centre showed both
-//      the original AND the later "with updates" card (M-4).
-// After the fix the modify endpoint:
-//   - Inserts a user-facing opener as Larry's first message — the raw
-//     template does not appear in chat history.
-//   - Calls markLarryEventDismissed(source_event) so the original
-//     suggestion is removed from Action Centre immediately on click.
+// QA-2026-04-12 Step 3 regression guards — M-1 (system-prompt leak), M-3
+// (payload echo) and M-4 (duplicate suggestion in Action Centre).
+//
+// Original bug (pre-2026-04-12): /modify wrote the raw template string
+// "The user wants to modify this action: ... Original reasoning: ...
+// Action type: task_create." as Larry's first chat bubble (M-1 leak)
+// and left the source suggestion pending, so Action Centre showed both
+// the original AND the later "with updates" card — accepting both
+// produced duplicate tasks (M-4 duplicate).
+//
+// The first fix (9ae721c, 2026-04-12) swapped the leaked template for a
+// plain opener and called markLarryEventDismissed on open.
+//
+// The current architecture (7a8bad6, 2026-04-15 — spec
+// docs/superpowers/specs/2026-04-15-modify-action-design.md §6.1/§6.3)
+// removes both writes entirely: /modify is a read-only snapshot. The
+// opener has moved to /modify-chat (created only when the user actually
+// types something), and source dismissal is gone — /modify/save
+// UPDATEs the event row in place, so no duplicate can ever exist.
+//
+// These regression guards therefore assert that /modify performs NO
+// chat-bubble insert (M-1 leak is impossible if no bubble is written)
+// and NO dismissal (M-4 duplicate is impossible if the source is never
+// touched on open), and that the original payload is returned in the
+// response body so the panel can echo the diff (M-3).
 describe("POST /larry/events/:id/modify", () => {
   const EVENT_ID = "88888888-8888-4888-8888-888888888888";
   const MODIFY_CONVERSATION_ID = "99999999-9999-4999-8999-999999999999";
@@ -1699,18 +1730,13 @@ describe("POST /larry/events/:id/modify", () => {
 
     expect(response.statusCode).toBe(200);
 
-    // insertLarryMessage may be called once (for the opener). The stored
-    // content MUST NOT echo the pre-fix leak pattern. Pre-fix, content
-    // was: "The user wants to modify this action: ... Original reasoning:
-    // ... Action type: task_create.".
-    const openerInserts = vi.mocked(insertLarryMessage).mock.calls;
-    expect(openerInserts.length).toBeGreaterThan(0);
-    for (const call of openerInserts) {
-      const content = (call[3] as { content: string } | undefined)?.content ?? "";
-      expect(content).not.toMatch(/The user wants to modify this action:/i);
-      expect(content).not.toMatch(/Original reasoning:/i);
-      expect(content).not.toMatch(/Action type: task_create/i);
-    }
+    // Post spec 2026-04-15-modify-action-design.md §6.1, /modify is a
+    // read-only snapshot — it must never create a chat bubble on open.
+    // The original leak bug wrote "The user wants to modify this
+    // action: ..." as Larry's first message; asserting no insert at
+    // all is a stronger guard and protects against any re-introduction
+    // of an auto-opener on this endpoint.
+    expect(insertLarryMessage).not.toHaveBeenCalled();
   });
 
   it("includes the original action's payload (assignee, due date, priority) in the opener so Larry can echo the diff (M-3)", async () => {
@@ -1739,15 +1765,15 @@ describe("POST /larry/events/:id/modify", () => {
 
     expect(response.statusCode).toBe(200);
 
-    const openerInserts = vi.mocked(insertLarryMessage).mock.calls;
-    expect(openerInserts.length).toBeGreaterThan(0);
-    const openerContent = (openerInserts[0]?.[3] as { content: string } | undefined)?.content ?? "";
-    // The opener must surface the specific values the user is changing
-    // FROM, so when Larry queues the "with updates" card it can echo the
-    // diff ("changed assignee to Anna, pushed due date to 30 Apr").
-    expect(openerContent).toMatch(/Joel/);
-    expect(openerContent).toMatch(/2026-04-15/);
-    expect(openerContent).toMatch(/high/i);
+    // Post spec 2026-04-15-modify-action-design.md §6.1, the modify
+    // snapshot is returned in the response body (not as a chat bubble).
+    // The panel renders the diff from this payload so the user can see
+    // what they are changing FROM — preserving the M-3 intent that the
+    // original values are visible at the moment the user starts editing.
+    const body = JSON.parse(response.body) as { payload: Record<string, unknown> };
+    expect(body.payload.assigneeName).toBe("Joel");
+    expect(body.payload.dueDate).toBe("2026-04-15");
+    expect(body.payload.priority).toBe("high");
   });
 
   it("atomically dismisses the source suggestion so the Action Centre no longer shows a duplicate (M-4)", async () => {
@@ -1760,12 +1786,12 @@ describe("POST /larry/events/:id/modify", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(markLarryEventDismissed).toHaveBeenCalledWith(
-      expect.anything(),
-      TENANT_ID,
-      EVENT_ID,
-      USER_ID,
-      expect.stringMatching(/modif/i)
-    );
+    // Post spec 2026-04-15-modify-action-design.md §6.3, auto-dismiss-
+    // on-modify is gone: /modify is a read, and the source event is
+    // UPDATEd in place by /modify/save. No duplicate can ever exist
+    // because no second card is created. Asserting no dismissal on
+    // open guards against regressing to the click-dismisses-source
+    // behaviour that caused the original Action Centre duplicates.
+    expect(markLarryEventDismissed).not.toHaveBeenCalled();
   });
 });
