@@ -365,3 +365,55 @@ export interface IntelligenceConfig {
   apiKey?: string;
   model: string;
 }
+
+// ── Portfolio Gantt types ─────────────────────────────────────────────────────
+
+export type GanttTaskStatus = "not_started" | "on_track" | "at_risk" | "overdue" | "completed";
+export type GanttTaskPriority = "low" | "medium" | "high" | "critical";
+
+export interface ProjectCategory {
+  id: string;
+  tenantId: string;
+  name: string;
+  colour: string | null;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GanttTask {
+  id: string;
+  projectId: string;
+  parentTaskId: string | null;
+  title: string;
+  status: GanttTaskStatus;
+  priority: GanttTaskPriority;
+  assigneeUserId: string | null;
+  assigneeName: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  dueDate: string | null;
+  progressPercent: number;
+}
+
+export interface PortfolioTimelineProject {
+  id: string;
+  name: string;
+  status: "active" | "archived";
+  startDate: string | null;
+  targetDate: string | null;
+  tasks: GanttTask[];
+}
+
+export interface PortfolioTimelineCategory {
+  id: string | null;
+  name: string;
+  colour: string | null;
+  sortOrder: number;
+  projects: PortfolioTimelineProject[];
+}
+
+export interface PortfolioTimelineResponse {
+  categories: PortfolioTimelineCategory[];
+  dependencies: Array<{ taskId: string; dependsOnTaskId: string }>;
+}
