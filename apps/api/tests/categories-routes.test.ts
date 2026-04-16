@@ -55,3 +55,41 @@ describe("POST /categories", () => {
     expect(res.statusCode).toBe(400);
   });
 });
+
+describe("PATCH /categories/:id", () => {
+  it("updates name + colour", async () => {
+    const app = await buildApp(); apps.push(app);
+    const row = { id: "c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1", tenantId: TENANT_ID, name: "Renamed", colour: "#6c44f6", sortOrder: 2, createdAt: "x", updatedAt: "x" };
+    vi.mocked(repo.updateCategory).mockResolvedValue(row);
+    const res = await app.inject({ method: "PATCH", url: "/categories/c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1", payload: { name: "Renamed", colour: "#6c44f6" } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ category: row });
+  });
+
+  it("returns 404 when not found", async () => {
+    const app = await buildApp(); apps.push(app);
+    vi.mocked(repo.updateCategory).mockResolvedValue(null);
+    const res = await app.inject({ method: "PATCH", url: "/categories/11111111-1111-4111-8111-111111111111", payload: { name: "X" } });
+    expect(res.statusCode).toBe(404);
+  });
+});
+
+describe("DELETE /categories/:id", () => {
+  it("returns 204", async () => {
+    const app = await buildApp(); apps.push(app);
+    vi.mocked(repo.deleteCategory).mockResolvedValue();
+    const res = await app.inject({ method: "DELETE", url: "/categories/11111111-1111-4111-8111-111111111111" });
+    expect(res.statusCode).toBe(204);
+  });
+});
+
+describe("POST /categories/reorder", () => {
+  it("calls repo with ids", async () => {
+    const app = await buildApp(); apps.push(app);
+    vi.mocked(repo.reorderCategories).mockResolvedValue();
+    const ids = ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"];
+    const res = await app.inject({ method: "POST", url: "/categories/reorder", payload: { ids } });
+    expect(res.statusCode).toBe(200);
+    expect(repo.reorderCategories).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ids);
+  });
+});
