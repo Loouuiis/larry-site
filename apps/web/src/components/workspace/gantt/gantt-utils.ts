@@ -1,8 +1,41 @@
 import type {
-  GanttNode, GanttTask, PortfolioTimelineResponse, ZoomLevel,
+  GanttNode, GanttTask, GanttTaskStatus, PortfolioTimelineResponse, ZoomLevel,
 } from "./gantt-types";
 
+/* ─── DB status normalisation ──────────────────────────────────────── */
+
+const DB_TO_GANTT_STATUS: Record<string, GanttTaskStatus> = {
+  backlog:     "not_started",
+  not_started: "not_started",
+  in_progress: "on_track",
+  on_track:    "on_track",
+  waiting:     "at_risk",
+  at_risk:     "at_risk",
+  blocked:     "overdue",
+  overdue:     "overdue",
+  completed:   "completed",
+  done:        "completed",
+};
+
+export function normalizeGanttStatus(dbStatus: string | null | undefined): GanttTaskStatus {
+  if (!dbStatus) return "not_started";
+  return DB_TO_GANTT_STATUS[dbStatus] ?? "not_started";
+}
+
 /* ─── Tree building ────────────────────────────────────────────────── */
+
+export function normalizePortfolioStatuses(data: PortfolioTimelineResponse): PortfolioTimelineResponse {
+  return {
+    ...data,
+    categories: data.categories.map((c) => ({
+      ...c,
+      projects: c.projects.map((p) => ({
+        ...p,
+        tasks: p.tasks.map((t) => ({ ...t, status: normalizeGanttStatus(t.status as string) })),
+      })),
+    })),
+  };
+}
 
 export function buildPortfolioTree(resp: PortfolioTimelineResponse): GanttNode {
   const categoryChildren: GanttNode[] = resp.categories.map((c) => ({

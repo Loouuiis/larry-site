@@ -2,7 +2,7 @@
 import { useMemo } from "react";
 import type { WorkspaceTimelineTask, WorkspaceTimeline } from "@/app/dashboard/types";
 import type { GanttTask } from "./gantt-types";
-import { buildProjectTree } from "./gantt-utils";
+import { buildProjectTree, normalizeGanttStatus } from "./gantt-utils";
 import { GanttContainer } from "./GanttContainer";
 
 interface Props {
@@ -19,7 +19,7 @@ function toGanttTask(t: WorkspaceTimelineTask): GanttTask {
     projectId: t.projectId ?? "",
     parentTaskId: t.parentTaskId ?? null,
     title: t.title,
-    status: t.status as GanttTask["status"],
+    status: normalizeGanttStatus(t.status as string),
     priority: t.priority as GanttTask["priority"],
     assigneeUserId: t.assigneeUserId ?? null,
     assigneeName: t.assigneeName ?? null,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildPortfolioTree, buildProjectTree, flattenVisible, rollUpBar } from "./gantt-utils";
+import { buildPortfolioTree, buildProjectTree, flattenVisible, normalizeGanttStatus, rollUpBar } from "./gantt-utils";
 import type { PortfolioTimelineResponse, GanttTask, GanttNode } from "./gantt-types";
 
 const baseTask = (over: Partial<GanttTask> = {}): GanttTask => ({
@@ -8,6 +8,17 @@ const baseTask = (over: Partial<GanttTask> = {}): GanttTask => ({
   assigneeUserId: null, assigneeName: null,
   startDate: null, endDate: null, dueDate: null, progressPercent: 0,
   ...over,
+});
+
+describe("normalizeGanttStatus", () => {
+  it("maps DB enum values to Gantt status palette", () => {
+    expect(normalizeGanttStatus("backlog")).toBe("not_started");
+    expect(normalizeGanttStatus("in_progress")).toBe("on_track");
+    expect(normalizeGanttStatus("blocked")).toBe("overdue");
+    expect(normalizeGanttStatus("completed")).toBe("completed");
+    expect(normalizeGanttStatus(null)).toBe("not_started");
+    expect(normalizeGanttStatus("unknown")).toBe("not_started");
+  });
 });
 
 describe("buildPortfolioTree", () => {
