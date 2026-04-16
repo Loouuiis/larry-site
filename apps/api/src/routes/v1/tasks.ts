@@ -21,6 +21,7 @@ const CreateTaskSchema = z.object({
   priority: z.enum(["low", "medium", "high", "critical"]).default("medium"),
   startDate: z.string().date().optional(),
   dueDate: z.string().date().optional(),
+  parentTaskId: z.string().uuid().nullable().optional(),
 });
 
 const AddDependencySchema = z.object({
@@ -64,6 +65,7 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
       const filters = ["tasks.tenant_id = $1"];
       let sql = `SELECT tasks.id,
                         tasks.project_id as "projectId",
+                        tasks.parent_task_id as "parentTaskId",
                         tasks.title,
                         tasks.description,
                         tasks.status,
@@ -111,6 +113,23 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const body = CreateTaskSchema.parse(request.body);
       const tenantId = request.user.tenantId;
+
+      if (body.parentTaskId) {
+        const parentRows = await fastify.db.queryTenant<{ projectId: string; parentTaskId: string | null }>(
+          tenantId,
+          `SELECT project_id AS "projectId", parent_task_id AS "parentTaskId"
+             FROM tasks WHERE tenant_id = $1 AND id = $2`,
+          [tenantId, body.parentTaskId],
+        );
+        if (parentRows.length === 0) throw fastify.httpErrors.notFound("Parent task not found");
+        if (parentRows[0].projectId !== body.projectId) {
+          throw fastify.httpErrors.badRequest("Parent task must be in the same project");
+        }
+        if (parentRows[0].parentTaskId !== null) {
+          throw fastify.httpErrors.badRequest("Subtask depth limit reached (parent already has a parent)");
+        }
+      }
+
       const projectWriteState = await loadProjectWriteState(fastify.db, tenantId, body.projectId);
       if (projectWriteState) {
         assertProjectWritableOrThrow(projectWriteState.status);
@@ -126,13 +145,14 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
       });
       const riskLevel = classifyRiskLevel(riskScore);
 
-      const rows = await fastify.db.queryTenant<{ id: string }>(
+      const rows = await fastify.db.queryTenant<{ id: string; parentTaskId: string | null }>(
         tenantId,
         `INSERT INTO tasks (
           tenant_id, project_id, title, description, priority,
-          assignee_user_id, created_by_user_id, start_date, due_date, risk_score, risk_level
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-        RETURNING id`,
+          assignee_user_id, created_by_user_id, start_date, due_date, risk_score, risk_level,
+          parent_task_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        RETURNING id, parent_task_id AS "parentTaskId"`,
         [
           tenantId,
           body.projectId,
@@ -145,6 +165,7 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
           body.dueDate ?? null,
           riskScore,
           riskLevel,
+          body.parentTaskId ?? null,
         ]
       );
 
@@ -171,13 +192,13 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
       const tenantId = request.user.tenantId;
 
       const rows = await fastify.db.queryTenant<{
-        id: string; project_id: string; title: string; description: string | null;
+        id: string; project_id: string; parent_task_id: string | null; title: string; description: string | null;
         status: string; priority: string; assignee_user_id: string | null;
         progress_percent: number; risk_score: number; risk_level: string;
         start_date: string | null; due_date: string | null; created_at: string; updated_at: string;
       }>(
         tenantId,
-        `SELECT id, project_id, title, description, status, priority,
+        `SELECT id, project_id, parent_task_id, title, description, status, priority,
                 assignee_user_id, progress_percent, risk_score, risk_level,
                 start_date, due_date, created_at, updated_at
          FROM tasks WHERE tenant_id = $1 AND id = $2 LIMIT 1`,
@@ -188,7 +209,8 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
 
       const r = rows[0];
       return {
-        id: r.id, projectId: r.project_id, title: r.title, description: r.description,
+        id: r.id, projectId: r.project_id, parentTaskId: r.parent_task_id ?? null,
+        title: r.title, description: r.description,
         status: r.status, priority: r.priority, assigneeUserId: r.assignee_user_id,
         progressPercent: r.progress_percent, riskScore: r.risk_score, riskLevel: r.risk_level,
         startDate: r.start_date, dueDate: r.due_date, createdAt: r.created_at, updatedAt: r.updated_at,
@@ -382,8 +404,43 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
         dueDate: z.string().date().optional().nullable(),
         startDate: z.string().date().optional().nullable(),
         assigneeUserId: z.string().uuid().optional().nullable(),
+        parentTaskId: z.string().uuid().nullable().optional(),
       }).parse(request.body);
       const tenantId = request.user.tenantId;
+
+      // parentTaskId validation — must happen before write-lock check so we can use the
+      // task's own projectId (not from the body) for the same-project constraint.
+      if (body.parentTaskId !== undefined) {
+        if (body.parentTaskId === params.id) {
+          throw fastify.httpErrors.badRequest("Task cannot be its own parent");
+        }
+
+        if (body.parentTaskId !== null) {
+          // Fetch the task being patched to get its projectId
+          const taskRows = await fastify.db.queryTenant<{ projectId: string }>(
+            tenantId,
+            `SELECT project_id AS "projectId" FROM tasks WHERE tenant_id = $1 AND id = $2 LIMIT 1`,
+            [tenantId, params.id],
+          );
+          if (!taskRows[0]) throw fastify.httpErrors.notFound("Task not found");
+          const taskProjectId = taskRows[0].projectId;
+
+          const parentRows = await fastify.db.queryTenant<{ projectId: string; parentTaskId: string | null }>(
+            tenantId,
+            `SELECT project_id AS "projectId", parent_task_id AS "parentTaskId"
+               FROM tasks WHERE tenant_id = $1 AND id = $2`,
+            [tenantId, body.parentTaskId],
+          );
+          if (parentRows.length === 0) throw fastify.httpErrors.notFound("Parent task not found");
+          if (parentRows[0].projectId !== taskProjectId) {
+            throw fastify.httpErrors.badRequest("Parent task must be in the same project");
+          }
+          if (parentRows[0].parentTaskId !== null) {
+            throw fastify.httpErrors.badRequest("Subtask depth limit reached (parent already has a parent)");
+          }
+        }
+      }
+
       const taskProjectState = await loadTaskProjectWriteState(fastify.db, tenantId, params.id);
       if (taskProjectState) {
         assertProjectWritableOrThrow(taskProjectState.projectStatus);
@@ -401,6 +458,14 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
       if (body.dueDate !== undefined) { setClauses.push(`due_date = $${idx++}`); values.push(body.dueDate); }
       if (body.startDate !== undefined) { setClauses.push(`start_date = $${idx++}`); values.push(body.startDate); }
       if (body.assigneeUserId !== undefined) { setClauses.push(`assignee_user_id = $${idx++}`); values.push(body.assigneeUserId); }
+
+      // parentTaskId uses CASE-WHEN flag pattern so null (un-parent) is distinguishable
+      // from "not provided" (leave unchanged).
+      const parentTaskIdFlag = body.parentTaskId !== undefined;
+      const parentTaskIdValue = body.parentTaskId ?? null;
+      setClauses.push(`parent_task_id = CASE WHEN $${idx}::boolean THEN $${idx + 1} ELSE parent_task_id END`);
+      values.push(parentTaskIdFlag, parentTaskIdValue);
+      idx += 2;
 
       if (setClauses.length === 1) return { success: true };
 
@@ -425,13 +490,14 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
         }
       }
 
-      await fastify.db.queryTenant(
+      const rows = await fastify.db.queryTenant<{ parentTaskId: string | null }>(
         tenantId,
-        `UPDATE tasks SET ${setClauses.join(", ")} WHERE tenant_id = $1 AND id = $2`,
+        `UPDATE tasks SET ${setClauses.join(", ")} WHERE tenant_id = $1 AND id = $2
+         RETURNING parent_task_id AS "parentTaskId"`,
         values
       );
 
-      return { success: true };
+      return { success: true, parentTaskId: rows[0]?.parentTaskId ?? null };
     }
   );
 

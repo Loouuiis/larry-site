@@ -10,7 +10,7 @@ import {
   X, FolderOpen, Home, ListTodo, Settings,
   Search, LogOut, FolderKanban, CheckSquare, Bell,
   Plus, BarChart2, Sparkles, PanelLeftClose, PanelLeftOpen, Star, Mail,
-  ChevronDown, Camera,
+  ChevronDown, Camera, GanttChartSquare,
 } from "lucide-react";
 import { WorkspaceProject } from "@/app/dashboard/types";
 import { StartProjectFlow } from "./StartProjectFlow";
@@ -21,12 +21,13 @@ const DRAWER_EASE = [0.22, 1, 0.36, 1] as const;
 /* ─── Types ────────────────────────────────────────────────────────── */
 
 export type NavSection = "projects" | "documents" | "chats" | "meetings" | "analytics";
-export type WorkspaceSidebarNav = "home" | "my-work" | "actions" | "notifications" | "project" | "meetings" | "calendar" | "documents" | "email-drafts" | "chats" | "larry" | "settings";
+export type WorkspaceSidebarNav = "home" | "my-work" | "timeline" | "actions" | "notifications" | "project" | "meetings" | "calendar" | "documents" | "email-drafts" | "chats" | "larry" | "settings";
 
 const WORKSPACE_NAV: { id: WorkspaceSidebarNav; label: string; icon: React.ElementType; href: string }[] = [
   { id: "home",      label: "Home",       icon: Home,          href: "/workspace"           },
-  { id: "my-work",   label: "My tasks",   icon: ListTodo,      href: "/workspace/my-work"   },
-  { id: "actions",   label: "Actions",    icon: CheckSquare,   href: "/workspace/actions"   },
+  { id: "my-work",   label: "My tasks",   icon: ListTodo,         href: "/workspace/my-work"   },
+  { id: "timeline",  label: "Timeline",   icon: GanttChartSquare, href: "/workspace/timeline"  },
+  { id: "actions",   label: "Actions",    icon: CheckSquare,      href: "/workspace/actions"   },
   { id: "notifications", label: "Notifications", icon: Bell, href: "/workspace/notifications" },
   { id: "meetings",  label: "Meetings",   icon: ClipboardList, href: "/workspace/meetings"  },
   { id: "calendar",  label: "Calendar",   icon: Calendar,      href: "/workspace/calendar"  },

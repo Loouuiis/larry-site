@@ -36,6 +36,16 @@ const CreateProjectSchema = z.object({
   ownerUserId: z.string().uuid().optional(),
   startDate: z.string().date().optional(),
   targetDate: z.string().date().optional(),
+  categoryId: z.string().uuid().nullable().optional(),
+});
+
+const UpdateProjectSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  description: z.string().max(4_000).optional(),
+  startDate: z.string().date().optional().nullable(),
+  targetDate: z.string().date().optional().nullable(),
+  status: z.enum(["active", "archived"]).optional(),
+  categoryId: z.string().uuid().nullable().optional(),
 });
 const ProjectListQuerySchema = z.object({
   status: ProjectStatusFilterSchema.optional().default("all"),
@@ -171,6 +181,7 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
         title: string;
         status: "backlog" | "not_started" | "in_progress" | "waiting" | "completed" | "blocked";
         priority: "low" | "medium" | "high" | "critical";
+        parentTaskId: string | null;
         assigneeUserId: string | null;
         assigneeName: string | null;
         progressPercent: number;
@@ -180,6 +191,7 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
       }>(
         tenantId,
         `SELECT tasks.id, tasks.title, tasks.status, tasks.priority,
+                tasks.parent_task_id as "parentTaskId",
                 tasks.assignee_user_id as "assigneeUserId",
                 COALESCE(NULLIF(u.display_name, ''), split_part(u.email, '@', 1)) as "assigneeName",
                 tasks.progress_percent as "progressPercent",
@@ -245,6 +257,7 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
                 ${projectStatusSql("projects.status")} as status,
                 risk_score as "riskScore", risk_level as "riskLevel",
                 start_date as "startDate", target_date as "targetDate",
+                category_id as "categoryId",
                 created_at as "createdAt", updated_at as "updatedAt"
          FROM projects
          WHERE ${filters.join(" AND ")}
@@ -264,8 +277,8 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
       const ownerUserId = body.ownerUserId ?? request.user.userId;
       const rows = await fastify.db.queryTenant<{ id: string }>(
         request.user.tenantId,
-        `INSERT INTO projects (tenant_id, name, description, owner_user_id, start_date, target_date)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO projects (tenant_id, name, description, owner_user_id, start_date, target_date, category_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING id`,
         [
           request.user.tenantId,
@@ -274,6 +287,7 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
           ownerUserId,
           body.startDate ?? null,
           body.targetDate ?? null,
+          body.categoryId ?? null,
         ]
       );
 
@@ -303,6 +317,79 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
       });
 
       return reply.code(201).send({ id: projectId });
+    }
+  );
+
+  fastify.patch(
+    "/:id",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
+    async (request) => {
+      const params = parseOrBadRequest(ProjectIdParamSchema, request.params);
+      const body = parseOrBadRequest(UpdateProjectSchema, request.body);
+      const tenantId = request.user.tenantId;
+
+      const projectRows = await fastify.db.queryTenant<{ id: string; tenantId: string; status: string }>(
+        tenantId,
+        `SELECT id, tenant_id as "tenantId", ${projectStatusSql("status")} as status
+           FROM projects
+          WHERE tenant_id = $1
+            AND id = $2
+          LIMIT 1`,
+        [tenantId, params.id]
+      );
+      const project = projectRows[0];
+      if (!project) {
+        throw fastify.httpErrors.notFound("Project not found.");
+      }
+      assertProjectWritableOrThrow(project.status);
+
+      const setClauses: string[] = ["updated_at = NOW()"];
+      const values: unknown[] = [tenantId, params.id];
+      let idx = 3;
+
+      if (body.name !== undefined) { setClauses.push(`name = $${idx++}`); values.push(body.name); }
+      if (body.description !== undefined) { setClauses.push(`description = $${idx++}`); values.push(body.description); }
+      if (body.startDate !== undefined) { setClauses.push(`start_date = $${idx++}`); values.push(body.startDate ?? null); }
+      if (body.targetDate !== undefined) { setClauses.push(`target_date = $${idx++}`); values.push(body.targetDate ?? null); }
+      if (body.status !== undefined) { setClauses.push(`status = $${idx++}`); values.push(body.status); }
+
+      // categoryId uses CASE-WHEN flag pattern so null (uncategorise) is distinguishable
+      // from "not provided" (leave unchanged).
+      const categoryIdFlag = body.categoryId !== undefined;
+      const categoryIdValue = body.categoryId ?? null;
+      setClauses.push(`category_id = CASE WHEN $${idx}::boolean THEN $${idx + 1} ELSE category_id END`);
+      values.push(categoryIdFlag, categoryIdValue);
+      idx += 2;
+
+      if (setClauses.length === 1) {
+        return { id: params.id };
+      }
+
+      const updated = await fastify.db.queryTenant<{
+        id: string;
+        name: string;
+        status: string;
+        categoryId: string | null;
+      }>(
+        tenantId,
+        `UPDATE projects
+            SET ${setClauses.join(", ")}
+          WHERE tenant_id = $1
+            AND id = $2
+         RETURNING id, name, ${projectStatusSql("status")} as status, category_id as "categoryId"`,
+        values
+      );
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId: request.user.userId,
+        actionType: "project.update",
+        objectType: "project",
+        objectId: params.id,
+        details: { fields: Object.keys(body) },
+      });
+
+      return updated[0] ?? { id: params.id };
     }
   );
 

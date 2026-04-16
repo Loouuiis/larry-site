@@ -2,6 +2,7 @@ import { FastifyPluginAsync } from "fastify";
 import { authRoutes } from "./auth.js";
 import { projectRoutes } from "./projects.js";
 import { taskRoutes } from "./tasks.js";
+import { categoryRoutes } from "./categories.js";
 import { ingestRoutes } from "./ingest.js";
 import { reportingRoutes } from "./reporting.js";
 import { slackConnectorRoutes } from "./connectors-slack.js";
@@ -21,6 +22,7 @@ import { settingsRoutes } from "./settings.js";
 import { searchRoutes } from "./search.js";
 import { adminRoutes } from "./admin.js";
 import { resendWebhookRoutes } from "./webhooks-resend.js";
+import { timelineRoutes } from "./timeline.js";
 
 export const v1Routes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(authRoutes, { prefix: "/auth" });
@@ -29,6 +31,7 @@ export const v1Routes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(documentRoutes, { prefix: "/documents" });
   await fastify.register(folderRoutes, { prefix: "/folders" });
   await fastify.register(taskRoutes, { prefix: "/tasks" });
+  await fastify.register(categoryRoutes, { prefix: "/categories" });
   await fastify.register(ingestRoutes, { prefix: "/ingest" });
   await fastify.register(slackConnectorRoutes, { prefix: "/connectors/slack" });
   await fastify.register(googleCalendarConnectorRoutes, { prefix: "/connectors/google-calendar" });
@@ -45,4 +48,5 @@ export const v1Routes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(searchRoutes);
   await fastify.register(adminRoutes, { prefix: "/admin" });
   await fastify.register(resendWebhookRoutes, { prefix: "/webhooks" });
+  await fastify.register(timelineRoutes);
 };
