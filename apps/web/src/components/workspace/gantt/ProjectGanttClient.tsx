@@ -1,8 +1,9 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { WorkspaceTimelineTask, WorkspaceTimeline } from "@/app/dashboard/types";
-import type { GanttTask } from "./gantt-types";
-import { buildProjectTree, normalizeGanttStatus } from "./gantt-utils";
+import type { GanttTask, ProjectCategory } from "./gantt-types";
+import { DEFAULT_CATEGORY_COLOUR } from "./gantt-types";
+import { buildProjectTree, buildCategoryColorMap, normalizeGanttStatus } from "./gantt-utils";
 import { GanttContainer } from "./GanttContainer";
 import { AddNodeModal } from "./AddNodeModal";
 
@@ -13,6 +14,8 @@ interface Props {
   timeline: WorkspaceTimeline | null;
   refresh: () => Promise<void>;
 }
+
+type ProjectSummary = { id: string; categoryId: string | null };
 
 function toGanttTask(t: WorkspaceTimelineTask): GanttTask {
   return {
@@ -40,6 +43,31 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
   );
 
   const [addCtx, setAddCtx] = useState<{ mode: "task" | "subtask"; parentTaskId?: string } | null>(null);
+  const [categoryColour, setCategoryColour] = useState<string>(DEFAULT_CATEGORY_COLOUR);
+
+  // One-shot lookup of this project's category colour. Defaults to Larry purple until resolved.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [projectsRes, categoriesRes] = await Promise.all([
+          fetch("/api/workspace/projects?status=all", { cache: "no-store" }),
+          fetch("/api/workspace/categories", { cache: "no-store" }),
+        ]);
+        if (!projectsRes.ok || !categoriesRes.ok) return;
+        const projectsBody = await projectsRes.json() as { items?: ProjectSummary[] };
+        const categoriesBody = await categoriesRes.json() as { categories?: ProjectCategory[] };
+        const project = (projectsBody.items ?? []).find((p) => p.id === projectId);
+        const categoryId = project?.categoryId ?? null;
+        const map = buildCategoryColorMap(categoriesBody.categories?.map((c) => ({ id: c.id, colour: c.colour })) ?? []);
+        const colour = categoryId ? (map.get(`cat:${categoryId}`) ?? DEFAULT_CATEGORY_COLOUR) : DEFAULT_CATEGORY_COLOUR;
+        if (!cancelled) setCategoryColour(colour);
+      } catch {
+        // fallback stays Larry purple
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [projectId]);
 
   function handleAdd(context: { selectedKey: string | null }) {
     if (context.selectedKey?.startsWith("task:")) {
@@ -51,7 +79,13 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
 
   return (
     <>
-      <GanttContainer root={root} defaultZoom="month" addLabel={addCtx?.mode === "subtask" ? "+ Subtask" : "+ Task"} onAdd={handleAdd} />
+      <GanttContainer
+        root={root}
+        defaultZoom="month"
+        addLabel={addCtx?.mode === "subtask" ? "+ Subtask" : "+ Task"}
+        onAdd={handleAdd}
+        rootCategoryColor={categoryColour}
+      />
       {addCtx && (
         <AddNodeModal
           mode={addCtx.mode}

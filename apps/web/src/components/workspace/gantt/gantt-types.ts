@@ -10,3 +10,9 @@ export type GanttNode =
 
 export type ZoomLevel = "week" | "month" | "quarter";
 export const ROW_HEIGHT = 36;
+
+// Key format: "cat:<uuid>" for a real category, "cat:uncat" for the synthetic bucket.
+export type CategoryColorMap = Map<string, string>;
+
+// Larry purple — used when a category has no colour or a row has no category.
+export const DEFAULT_CATEGORY_COLOUR = "#6c44f6";

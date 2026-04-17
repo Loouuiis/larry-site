@@ -2,9 +2,12 @@
 import { ChevronRight } from "lucide-react";
 import type { FlatRow } from "./gantt-utils";
 import { ROW_HEIGHT } from "./gantt-types";
+import { CategoryDot, type CategoryDotTier } from "./CategoryDot";
+
+type NodeRow = Extract<FlatRow, { kind: "node" }>;
 
 interface Props {
-  row: FlatRow;
+  row: NodeRow;
   expanded: boolean;
   selected: boolean;
   hovered: boolean;
@@ -13,21 +16,59 @@ interface Props {
   onHover?: (hovered: boolean) => void;
 }
 
-function iconForKind(kind: FlatRow["node"]["kind"]) {
-  return kind === "category" ? "C" : kind === "project" ? "P" : kind === "task" ? "·" : "◦";
+type Tier = CategoryDotTier;
+
+const TYPOGRAPHY_BY_TIER: Record<Tier, React.CSSProperties> = {
+  category: {
+    fontSize: 11,
+    fontWeight: 500,
+    letterSpacing: "0.06em",
+    textTransform: "uppercase",
+    color: "var(--text-1)",
+  },
+  project: {
+    fontSize: 13,
+    fontWeight: 500,
+    color: "var(--text-1)",
+  },
+  task: {
+    fontSize: 12,
+    fontWeight: 400,
+    color: "var(--text-1)",
+  },
+  subtask: {
+    fontSize: 11,
+    fontWeight: 400,
+    color: "var(--text-2)",
+  },
+};
+
+function tierOf(kind: NodeRow["node"]["kind"]): Tier {
+  return kind;
 }
 
 export function GanttOutlineRow({ row, expanded, selected, hovered, onToggle, onSelect, onHover }: Props) {
-  const indent = 12 + row.depth * 12;
   const n = row.node;
+  const tier = tierOf(n.kind);
+  const indent = 14 + row.depth * 14;
   const label =
     n.kind === "category" ? n.name :
     n.kind === "project"  ? n.name :
-    n.kind === "task"     ? n.task.title :
-                             n.task.title;
+    n.task.title;
+
+  const isCategory = n.kind === "category";
+
+  const background = isCategory
+    ? "var(--surface-2, #f6f2fc)"
+    : selected
+      ? "rgba(108, 68, 246, 0.04)"
+      : hovered
+        ? "var(--surface-2, #f6f2fc)"
+        : "transparent";
 
   return (
     <div
+      role="row"
       onMouseEnter={() => onHover?.(true)}
       onMouseLeave={() => onHover?.(false)}
       onClick={onSelect}
@@ -35,41 +76,50 @@ export function GanttOutlineRow({ row, expanded, selected, hovered, onToggle, on
         height: ROW_HEIGHT,
         display: "flex",
         alignItems: "center",
+        gap: 8,
         paddingLeft: indent,
-        paddingRight: 8,
-        borderBottom: "1px solid var(--border, #eaeaea)",
+        paddingRight: 14,
+        borderBottom: "1px solid var(--border, #f0edfa)",
         borderLeft: selected ? "3px solid #6c44f6" : "3px solid transparent",
-        background: hovered ? "var(--surface-2, #fafafa)" : "transparent",
+        background,
         cursor: onSelect ? "pointer" : "default",
         opacity: row.dimmed ? 0.35 : 1,
-        fontSize: n.kind === "category" ? 12 : 13,
-        fontWeight: n.kind === "category" ? 700 : n.kind === "project" ? 600 : 500,
-        textTransform: n.kind === "category" ? "uppercase" : "none",
-        letterSpacing: n.kind === "category" ? 0.4 : 0,
-        color: n.kind === "subtask" ? "var(--text-2)" : "var(--text-1)",
         userSelect: "none",
       }}
     >
       {row.hasChildren ? (
         <button
           onClick={(e) => { e.stopPropagation(); onToggle?.(); }}
-          style={{
-            width: 18, height: 18, marginRight: 4,
-            background: "transparent", border: 0, padding: 0,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            color: "var(--text-muted)",
-            transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
-            transition: "transform 120ms", cursor: "pointer",
-          }}
           aria-label={expanded ? "Collapse" : "Expand"}
+          style={{
+            width: 16, height: 16, flexShrink: 0,
+            background: "transparent", border: 0, padding: 0,
+            display: "inline-flex", alignItems: "center", justifyContent: "center",
+            color: "var(--text-muted, #bdb7d0)",
+            transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
+            transition: "transform 120ms",
+            cursor: "pointer",
+          }}
         >
-          <ChevronRight size={14} />
+          <ChevronRight size={10} />
         </button>
       ) : (
-        <span style={{ width: 22 }} />
+        <span style={{ width: 16, flexShrink: 0 }} />
       )}
-      <span style={{ width: 14, fontSize: 10, color: "var(--text-muted)" }}>{iconForKind(n.kind)}</span>
-      <span style={{ marginLeft: 6, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1 }}>
+
+      <CategoryDot color={row.categoryColor} tier={tier} />
+
+      <span
+        title={label}
+        style={{
+          ...TYPOGRAPHY_BY_TIER[tier],
+          flex: 1,
+          minWidth: 0,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+      >
         {label}
       </span>
     </div>

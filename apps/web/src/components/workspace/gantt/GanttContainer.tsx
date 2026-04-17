@@ -1,7 +1,7 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { GanttNode, GanttTask, ZoomLevel } from "./gantt-types";
-import { computeRange, flattenVisible, dateToPct } from "./gantt-utils";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import type { CategoryColorMap, GanttNode, GanttTask, ZoomLevel } from "./gantt-types";
+import { computeRange, flattenVisible, dateToPct, injectInlineAdds } from "./gantt-utils";
 import { GanttOutline } from "./GanttOutline";
 import { GanttGrid } from "./GanttGrid";
 import { GanttToolbar } from "./GanttToolbar";
@@ -12,12 +12,23 @@ interface Props {
   onOpenDetail?: (key: string) => void;
   onAdd?: (context: { selectedKey: string | null }) => void;
   addLabel?: string;
+  categoryColorMap?: CategoryColorMap;
+  rootCategoryColor?: string;
+  onInlineAdd?: (ctx: { mode: "category" | "project" | "task" | "subtask"; parentKey: string | null }) => void;
+  outlineHeader?: ReactNode;
+  outlineHeaderActions?: ReactNode;
+  outlineFooter?: ReactNode;
+  outlineOverlay?: ReactNode;
 }
 
-export function GanttContainer({ root, defaultZoom = "month", onOpenDetail, onAdd, addLabel = "+ Add" }: Props) {
+export function GanttContainer({
+  root, defaultZoom = "month", onOpenDetail, onAdd, addLabel = "+ Add",
+  categoryColorMap, rootCategoryColor,
+  onInlineAdd, outlineHeader, outlineHeaderActions, outlineFooter, outlineOverlay,
+}: Props) {
   const [zoom, setZoom] = useState<ZoomLevel>(defaultZoom);
   const [search, setSearch] = useState("");
-  const [outlineWidth, setOutlineWidth] = useState(320);
+  const [outlineWidth, setOutlineWidth] = useState(260);
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(() => collectAllKeys(root));
@@ -27,11 +38,17 @@ export function GanttContainer({ root, defaultZoom = "month", onOpenDetail, onAd
   const range = useMemo(() => computeRange(allTasks, zoom), [allTasks, zoom]);
 
   const rows = useMemo(() => {
-    const base = flattenVisible(root, expanded);
-    if (!search.trim()) return base;
-    const q = search.toLowerCase();
-    return base.map((r) => ({ ...r, dimmed: !nodeLabel(r.node).toLowerCase().includes(q) }));
-  }, [root, expanded, search]);
+    const base = flattenVisible(root, expanded, { categoryColorMap, rootCategoryColor });
+    const withSearch = (!search.trim())
+      ? base
+      : (() => {
+          const q = search.toLowerCase();
+          return base.map((r) => r.kind === "node"
+            ? { ...r, dimmed: !nodeLabel(r.node).toLowerCase().includes(q) }
+            : r);
+        })();
+    return onInlineAdd ? injectInlineAdds(withSearch, expanded) : withSearch;
+  }, [root, expanded, search, categoryColorMap, rootCategoryColor, onInlineAdd]);
 
   const allCollapsed = expanded.size === 0;
 
@@ -75,7 +92,7 @@ export function GanttContainer({ root, defaultZoom = "month", onOpenDetail, onAd
         canAdd={Boolean(onAdd)}
         addLabel={addLabel}
       />
-      <div style={{ display: "flex", flex: 1, minHeight: 0, border: "1px solid var(--border, #eaeaea)", borderRadius: 12, background: "#fff", overflow: "hidden" }}>
+      <div style={{ display: "flex", flex: 1, minHeight: 0, border: "1px solid var(--border, #f0edfa)", borderRadius: 12, background: "#fff", overflow: "hidden" }}>
         <GanttOutline
           rows={rows}
           expanded={expanded}
@@ -86,6 +103,11 @@ export function GanttContainer({ root, defaultZoom = "month", onOpenDetail, onAd
           onToggle={toggle}
           onSelect={(k) => { setSelectedKey(k); onOpenDetail?.(k); }}
           onHover={setHoveredKey}
+          onInlineAdd={onInlineAdd}
+          header={outlineHeader}
+          headerActions={outlineHeaderActions}
+          footer={outlineFooter}
+          overlay={outlineOverlay}
         />
         <GanttGrid
           ref={gridRef}
