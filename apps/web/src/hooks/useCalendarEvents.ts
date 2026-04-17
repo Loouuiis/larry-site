@@ -1,6 +1,7 @@
 // apps/web/src/hooks/useCalendarEvents.ts
 import { useCallback, useEffect, useState } from "react";
 import type { WorkspaceTask, WorkspaceMeeting } from "@/app/dashboard/types";
+import { parseDateKey } from "@/lib/calendar-date";
 
 export type CalendarEventKind = "deadline" | "meeting" | "external";
 
@@ -25,14 +26,7 @@ function taskPriorityColor(priority: string | null | undefined): string {
   return "#22c55e"; // low
 }
 
-function toDateStr(value: string | null | undefined): string | null {
-  if (!value) return null;
-  try {
-    return new Date(value).toISOString().slice(0, 10);
-  } catch {
-    return null;
-  }
-}
+const toDateStr = parseDateKey;
 
 export function useCalendarEvents(projectId?: string) {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
