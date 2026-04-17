@@ -1,6 +1,5 @@
 "use client";
 import type { FlatRow } from "./gantt-utils";
-import { ROW_HEIGHT } from "./gantt-types";
 import { GanttBar } from "./GanttBar";
 import { rollUpBar, type TimelineRange } from "./gantt-utils";
 import type { GanttNode, GanttTask } from "./gantt-types";
@@ -14,6 +13,7 @@ interface Props {
   selectedKey: string | null;
   onHoverKey: (k: string | null) => void;
   onSelectKey: (k: string | null) => void;
+  onContextMenu?: (rowKey: string, rowKind: GanttNode["kind"], e: React.MouseEvent) => void;
 }
 
 function gatherDescendantTasks(node: GanttNode): GanttTask[] {
@@ -26,11 +26,16 @@ function gatherDescendantTasks(node: GanttNode): GanttTask[] {
   return out;
 }
 
-export function GanttRow({ row, range, hoveredKey, selectedKey, onHoverKey, onSelectKey }: Props) {
+export function GanttRow({ row, range, hoveredKey, selectedKey, onHoverKey, onSelectKey, onContextMenu }: Props) {
   const n = row.node;
   const highlighted = hoveredKey === row.key;
   const selected = selectedKey === row.key;
-  const isCategory = n.kind === "category";
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    if (!onContextMenu) return;
+    e.preventDefault();
+    onContextMenu(row.key, n.kind, e);
+  };
 
   let content: React.ReactNode = null;
   if (n.kind === "task" || n.kind === "subtask") {
@@ -57,6 +62,7 @@ export function GanttRow({ row, range, hoveredKey, selectedKey, onHoverKey, onSe
           selected={selected}
           dimmed={row.dimmed ?? false}
           onClick={() => onSelectKey(row.key)}
+          onContextMenu={handleContextMenu}
           onMouseEnter={() => onHoverKey(row.key)}
           onMouseLeave={() => onHoverKey(null)}
         />
@@ -77,6 +83,8 @@ export function GanttRow({ row, range, hoveredKey, selectedKey, onHoverKey, onSe
           highlighted={highlighted}
           selected={selected}
           dimmed={row.dimmed ?? false}
+          onClick={() => onSelectKey(row.key)}
+          onContextMenu={handleContextMenu}
           onMouseEnter={() => onHoverKey(row.key)}
           onMouseLeave={() => onHoverKey(null)}
         />
@@ -85,16 +93,15 @@ export function GanttRow({ row, range, hoveredKey, selectedKey, onHoverKey, onSe
   }
 
   return (
-    <div style={{
-      height: ROW_HEIGHT,
-      position: "relative",
-      borderBottom: "1px solid var(--border, #f0edfa)",
-      background: isCategory
-        ? "var(--surface-2, #f6f2fc)"
-        : selected
-          ? "rgba(108, 68, 246, 0.04)"
-          : "transparent",
-    }}>
+    <div
+      style={{
+        height: row.height,
+        position: "relative",
+        background: (highlighted || selected) ? "var(--surface-2)" : "transparent",
+        transition: "background-color 150ms ease-out",
+      }}
+      onContextMenu={handleContextMenu}
+    >
       {content}
     </div>
   );

@@ -1,8 +1,8 @@
 import type {
-  CategoryColorMap,
-  GanttNode, GanttTask, GanttTaskStatus, PortfolioTimelineResponse, ZoomLevel,
+  CategoryColorMap, ContextMenuItem,
+  GanttNode, GanttTask, GanttTaskStatus, PortfolioTimelineResponse, StatusChipData, ZoomLevel,
 } from "./gantt-types";
-import { DEFAULT_CATEGORY_COLOUR } from "./gantt-types";
+import { DEFAULT_CATEGORY_COLOUR, ROW_HEIGHT, ROW_HEIGHT_TASK } from "./gantt-types";
 
 /* ─── DB status normalisation ──────────────────────────────────────── */
 
@@ -86,28 +86,16 @@ function buildTaskForest(tasks: GanttTask[]): GanttNode[] {
 
 /* ─── Flatten for rendering ────────────────────────────────────────── */
 
-export type InlineAddMode = "category" | "project" | "task" | "subtask";
-
-export type FlatRow =
-  | {
-      kind: "node";
-      key: string;         // stable id, e.g. "cat:c1", "proj:p1", "task:t1", "sub:t2"
-      depth: number;       // 0..3
-      node: GanttNode;
-      hasChildren: boolean;
-      categoryColor: string; // resolved category colour; fallback to Larry purple
-      dimmed?: boolean;
-      height?: number;     // optional override; defaults to ROW_HEIGHT
-    }
-  | {
-      kind: "add";
-      key: string;         // e.g. "add:cat:c1", "add:proj:p1", "add:root"
-      depth: number;
-      mode: InlineAddMode;
-      parentKey: string | null;
-      categoryColor: string;
-      height: number;      // typically 28
-    };
+export type FlatRow = {
+  kind: "node";
+  key: string;         // stable id, e.g. "cat:c1", "proj:p1", "task:t1", "sub:t2"
+  depth: number;       // 0..3
+  node: GanttNode;
+  hasChildren: boolean;
+  categoryColor: string; // resolved category colour; fallback to Larry purple
+  dimmed?: boolean;
+  height: number;      // per-level (ROW_HEIGHT for cat/proj, ROW_HEIGHT_TASK for task/sub)
+};
 
 export interface FlattenOptions {
   categoryColorMap?: CategoryColorMap;
@@ -145,7 +133,10 @@ export function flattenVisible(
     const key = keyOf(node);
     const categoryColor = colourFor(node, inherited);
 
-    if (!isSyntheticRoot) rows.push({ kind: "node", key, depth, node, hasChildren, categoryColor });
+    if (!isSyntheticRoot) {
+      const height = (node.kind === "task" || node.kind === "subtask") ? ROW_HEIGHT_TASK : ROW_HEIGHT;
+      rows.push({ kind: "node", key, depth, node, hasChildren, categoryColor, height });
+    }
 
     if (!isSyntheticRoot && !expanded.has(key)) return;
     for (const child of children) {
@@ -155,46 +146,6 @@ export function flattenVisible(
 
   walk(root, 0, true, rootColour);
   return rows;
-}
-
-/* ─── Inline add-row injection ─────────────────────────────────────── */
-
-const INLINE_ADD_HEIGHT = 28;
-
-// Inject "+ Add project / task" rows under expanded Category / Project rows.
-// The injection preserves the row-alignment invariant by being consumed by
-// both GanttOutline (which renders the affordance) and GanttGrid (which
-// renders a blank spacer of the same height).
-export function injectInlineAdds(rows: FlatRow[], expanded: Set<string>): FlatRow[] {
-  const out: FlatRow[] = [];
-  for (const r of rows) {
-    out.push(r);
-    if (r.kind !== "node") continue;
-    if (!expanded.has(r.key)) continue;
-    const n = r.node;
-    if (n.kind === "category" && n.id !== "__root__") {
-      out.push({
-        kind: "add",
-        key: `add:${r.key}`,
-        depth: r.depth + 1,
-        mode: "project",
-        parentKey: r.key,
-        categoryColor: r.categoryColor,
-        height: INLINE_ADD_HEIGHT,
-      });
-    } else if (n.kind === "project") {
-      out.push({
-        kind: "add",
-        key: `add:${r.key}`,
-        depth: r.depth + 1,
-        mode: "task",
-        parentKey: r.key,
-        categoryColor: r.categoryColor,
-        height: INLINE_ADD_HEIGHT,
-      });
-    }
-  }
-  return out;
 }
 
 /* ─── Category colour resolution ───────────────────────────────────── */
@@ -436,4 +387,74 @@ export function tinyTint(hex: string, alpha = 0.15): string {
   const rgb = parseHex(hex);
   if (!rgb) return `rgba(108, 68, 246, ${alpha})`;
   return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+}
+
+/* ─── v3 — context menu items ──────────────────────────────────────── */
+
+export function contextMenuItemsFor(args: {
+  rowKind: "category" | "project" | "task" | "subtask";
+  isUncategorised: boolean;
+}): ContextMenuItem[] {
+  if (args.rowKind === "category") {
+    if (args.isUncategorised) {
+      return [{
+        id: "rename",
+        label: "Uncategorised is the default bucket; not editable.",
+        disabled: true,
+      }];
+    }
+    return [
+      { id: "rename",       label: "Rename" },
+      { id: "changeColour", label: "Change colour" },
+      { id: "delete",       label: "Delete", destructive: true },
+    ];
+  }
+  if (args.rowKind === "project") {
+    return [
+      { id: "openDetail",     label: "Open project" },
+      { id: "moveToCategory", label: "Move to category…", hasSubmenu: true },
+      { id: "addChild",       label: "Add task" },
+      { id: "delete",         label: "Delete", destructive: true },
+    ];
+  }
+  // task or subtask
+  return [
+    { id: "openDetail",          label: "Open task" },
+    { id: "moveToCategory",      label: "Move project to category…", hasSubmenu: true },
+    { id: "removeFromTimeline",  label: "Remove from timeline" },
+    { id: "delete",              label: "Delete", destructive: true },
+  ];
+}
+
+/* ─── v3 — status chip ─────────────────────────────────────────────── */
+
+// Returns null when no chip should render (on_track — the solid bar is the signal).
+export function statusChipFor(status: GanttTaskStatus): StatusChipData | null {
+  switch (status) {
+    case "on_track":
+      return null;
+    case "not_started":
+      return { label: "NS", fg: "var(--text-muted)", bg: "transparent", border: "var(--border)" };
+    case "at_risk":
+      return { label: "AR", fg: "#ffffff", bg: "var(--tl-at-risk)", border: null };
+    case "overdue":
+      return { label: "OD", fg: "#ffffff", bg: "var(--tl-overdue)", border: null };
+    case "completed":
+      return { label: "✓", fg: "#ffffff", bg: "var(--tl-completed)", border: null };
+    default:
+      return null;
+  }
+}
+
+// Darken a hex colour by a percentage (0-100) of each RGB channel.
+// Returns "#rrggbb". If the input isn't a valid hex, returns it unchanged.
+export function darken(hex: string, pct: number): string {
+  const rgb = parseHex(hex);
+  if (!rgb) return hex;
+  const factor = Math.max(0, 1 - pct / 100);
+  const r = Math.max(0, Math.min(255, Math.round(rgb.r * factor)));
+  const g = Math.max(0, Math.min(255, Math.round(rgb.g * factor)));
+  const b = Math.max(0, Math.min(255, Math.round(rgb.b * factor)));
+  const toHex = (n: number) => n.toString(16).padStart(2, "0");
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }

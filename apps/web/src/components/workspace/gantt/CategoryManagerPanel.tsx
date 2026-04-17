@@ -6,30 +6,30 @@ import { DEFAULT_CATEGORY_COLOUR } from "./gantt-types";
 
 interface Props {
   onClose: () => void;
-  onChanged: () => Promise<void> | void; // refetch timeline after any mutation
-  topOffset?: number;                     // sits below the outline header
+  onChanged: () => Promise<void> | void;
 }
+
+const DRAWER_WIDTH = 320;
 
 const iconBtnStyle: React.CSSProperties = {
   background: "transparent",
   border: 0,
   padding: 4,
   borderRadius: 4,
-  color: "var(--text-muted, #bdb7d0)",
+  color: "var(--text-muted)",
   cursor: "pointer",
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
 };
 
-export function CategoryManagerPanel({ onClose, onChanged, topOffset = 48 }: Props) {
+export function CategoryManagerPanel({ onClose, onChanged }: Props) {
   const [categories, setCategories] = useState<ProjectCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
   const editInputRef = useRef<HTMLInputElement>(null);
-  const creatingRef = useRef<HTMLInputElement>(null);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [newColour, setNewColour] = useState(DEFAULT_CATEGORY_COLOUR);
@@ -126,49 +126,46 @@ export function CategoryManagerPanel({ onClose, onChanged, topOffset = 48 }: Pro
       role="dialog"
       aria-label="Category manager"
       style={{
-        position: "absolute",
-        top: topOffset,
-        left: 0,
-        width: 280,
+        position: "fixed",
+        top: 0,
+        right: 0,
         bottom: 0,
-        background: "var(--surface, #fff)",
-        borderRight: "1px solid var(--border, #f0edfa)",
-        zIndex: 10,
-        padding: "14px",
-        boxShadow: "4px 0 12px rgba(0, 0, 0, 0.04)",
+        width: DRAWER_WIDTH,
+        background: "var(--surface)",
+        borderLeft: "1px solid var(--border)",
+        zIndex: 200,
+        boxShadow: "-4px 0 24px rgba(0,0,0,0.06)",
         display: "flex",
         flexDirection: "column",
-        gap: 12,
-        overflowY: "auto",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "14px 16px",
+        borderBottom: "1px solid var(--border)",
+      }}>
         <span style={{
-          fontSize: 11, fontWeight: 500, letterSpacing: "0.08em", textTransform: "uppercase",
-          color: "var(--text-2, #4b556b)",
+          fontSize: 11, fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase",
+          color: "var(--text-2)",
         }}>
           Categories
         </span>
-        <button
-          onClick={onClose}
-          aria-label="Close category manager"
-          style={{ ...iconBtnStyle, padding: 6 }}
-        >
+        <button onClick={onClose} aria-label="Close" style={{ ...iconBtnStyle, padding: 6 }}>
           <X size={14} />
         </button>
       </div>
 
-      {err && <div style={{ fontSize: 12, color: "#e84c6f" }}>{err}</div>}
-      {loading && <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Loading…</div>}
+      <div style={{ flex: 1, overflowY: "auto", padding: "8px 12px" }}>
+        {err && <div style={{ fontSize: 12, color: "#e84c6f", padding: "4px 0" }}>{err}</div>}
+        {loading && <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "8px 0" }}>Loading…</div>}
 
-      <div style={{ display: "flex", flexDirection: "column" }}>
         {categories.map((c) => (
           <div
             key={c.id}
             style={{
               display: "flex", alignItems: "center", gap: 8,
-              padding: "8px 0",
-              borderBottom: "1px solid var(--border, #f0edfa)",
+              padding: "10px 4px",
+              height: 48,
             }}
           >
             <input
@@ -193,95 +190,112 @@ export function CategoryManagerPanel({ onClose, onChanged, topOffset = 48 }: Pro
                   if (e.key === "Escape") setEditingId(null);
                 }}
                 style={{
-                  flex: 1, fontSize: 13, color: "var(--text-1)",
+                  flex: 1, fontSize: 14, color: "var(--text-1)",
                   border: "1px solid var(--border)",
-                  background: "var(--surface-2, #f6f2fc)",
-                  borderRadius: 4, padding: "2px 6px", outline: "none", minWidth: 0,
+                  background: "var(--surface-2)",
+                  borderRadius: 4, padding: "4px 6px", outline: "none", minWidth: 0,
                 }}
               />
             ) : (
               <span style={{
-                flex: 1, fontSize: 13, color: "var(--text-1)",
+                flex: 1, fontSize: 14, fontWeight: 500, color: "var(--text-1)",
                 whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
               }}>
                 {c.name}
               </span>
             )}
-            <button
-              onClick={() => startRename(c)}
-              aria-label={`Rename ${c.name}`}
-              style={iconBtnStyle}
-            >
+            <button onClick={() => startRename(c)} aria-label={`Rename ${c.name}`} style={iconBtnStyle}>
               <Pencil size={12} />
             </button>
-            <button
-              onClick={() => void handleDelete(c)}
-              aria-label={`Delete ${c.name}`}
-              style={iconBtnStyle}
-            >
+            <button onClick={() => void handleDelete(c)} aria-label={`Delete ${c.name}`} style={iconBtnStyle}>
               <Trash2 size={12} />
             </button>
           </div>
         ))}
-      </div>
 
-      {creating ? (
+        {/* Uncategorised — system row */}
         <div style={{
           display: "flex", alignItems: "center", gap: 8,
-          padding: "8px", border: "1px solid var(--border)",
-          borderRadius: 8, background: "var(--surface-2, #f6f2fc)",
+          padding: "10px 4px", height: 48, opacity: 0.7,
         }}>
-          <input
-            aria-label="New category colour"
-            type="color"
-            value={newColour}
-            onChange={(e) => setNewColour(e.target.value)}
-            style={{ width: 22, height: 22, border: "none", padding: 0, cursor: "pointer", background: "transparent", flexShrink: 0 }}
-          />
-          <input
-            ref={creatingRef}
-            autoFocus
-            placeholder="Category name…"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void handleCreate();
-              if (e.key === "Escape") { setCreating(false); setNewName(""); }
-            }}
-            style={{
-              flex: 1, fontSize: 13,
-              border: "1px solid var(--border)", borderRadius: 4,
-              padding: "2px 6px", outline: "none", minWidth: 0,
-              background: "var(--surface, #fff)", color: "var(--text-1)",
-            }}
-          />
+          <span style={{
+            width: 12, height: 12, borderRadius: "50%",
+            background: "var(--text-muted)",
+            flexShrink: 0,
+          }} />
+          <span style={{
+            flex: 1, fontSize: 14, fontStyle: "italic", color: "var(--text-2)",
+          }}>
+            Uncategorised
+          </span>
+          <span style={{
+            fontSize: 10, fontWeight: 500, textTransform: "uppercase",
+            color: "var(--text-muted)", letterSpacing: "0.04em",
+          }}>
+            system
+          </span>
+        </div>
+      </div>
+
+      <div style={{ padding: "12px 16px", borderTop: "1px solid var(--border)" }}>
+        {creating ? (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 8,
+            padding: "8px", border: "1px solid var(--border)",
+            borderRadius: 8, background: "var(--surface-2)",
+          }}>
+            <input
+              aria-label="New category colour"
+              type="color"
+              value={newColour}
+              onChange={(e) => setNewColour(e.target.value)}
+              style={{ width: 22, height: 22, border: "none", padding: 0, cursor: "pointer", background: "transparent", flexShrink: 0 }}
+            />
+            <input
+              autoFocus
+              placeholder="Category name…"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void handleCreate();
+                if (e.key === "Escape") { setCreating(false); setNewName(""); }
+              }}
+              style={{
+                flex: 1, fontSize: 13,
+                border: "1px solid var(--border)", borderRadius: 4,
+                padding: "4px 6px", outline: "none", minWidth: 0,
+                background: "var(--surface)", color: "var(--text-1)",
+              }}
+            />
+            <button
+              onClick={() => void handleCreate()}
+              style={{
+                background: "var(--brand)", color: "#fff", border: 0,
+                borderRadius: 4, padding: "4px 10px", fontSize: 12, cursor: "pointer", fontWeight: 500,
+              }}
+            >
+              Add
+            </button>
+          </div>
+        ) : (
           <button
-            onClick={() => void handleCreate()}
+            onClick={() => setCreating(true)}
             style={{
-              background: "#6c44f6", color: "#fff", border: 0,
-              borderRadius: 4, padding: "4px 8px", fontSize: 12, cursor: "pointer",
+              width: "100%",
+              height: 40,
+              background: "var(--brand)",
+              color: "#fff",
+              border: 0,
+              borderRadius: 8,
+              fontSize: 13,
+              fontWeight: 500,
+              cursor: "pointer",
             }}
           >
-            Add
+            + New category
           </button>
-        </div>
-      ) : (
-        <button
-          onClick={() => setCreating(true)}
-          style={{
-            width: "100%",
-            padding: "10px 0",
-            background: "transparent",
-            border: "1px dashed var(--border-2, #bdb7d0)",
-            borderRadius: 8,
-            fontSize: 12,
-            color: "var(--text-2, #4b556b)",
-            cursor: "pointer",
-          }}
-        >
-          + New category
-        </button>
-      )}
+        )}
+      </div>
     </div>
   );
 }

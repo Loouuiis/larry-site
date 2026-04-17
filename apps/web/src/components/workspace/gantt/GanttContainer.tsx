@@ -1,10 +1,11 @@
 "use client";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { CategoryColorMap, GanttNode, GanttTask, ZoomLevel } from "./gantt-types";
-import { computeRange, flattenVisible, dateToPct, injectInlineAdds } from "./gantt-utils";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import type { CategoryColorMap, ContextMenuAction, ContextMenuState, GanttNode, GanttTask, ZoomLevel } from "./gantt-types";
+import { computeRange, flattenVisible, dateToPct, contextMenuItemsFor } from "./gantt-utils";
 import { GanttOutline } from "./GanttOutline";
 import { GanttGrid } from "./GanttGrid";
 import { GanttToolbar } from "./GanttToolbar";
+import { GanttContextMenu, type CategoryOption } from "./GanttContextMenu";
 
 interface Props {
   root: GanttNode;
@@ -14,17 +15,25 @@ interface Props {
   addLabel?: string;
   categoryColorMap?: CategoryColorMap;
   rootCategoryColor?: string;
-  onInlineAdd?: (ctx: { mode: "category" | "project" | "task" | "subtask"; parentKey: string | null }) => void;
   outlineHeader?: ReactNode;
   outlineHeaderActions?: ReactNode;
   outlineFooter?: ReactNode;
   outlineOverlay?: ReactNode;
+  // v3
+  onCategoriesClick?: () => void;
+  categoriesOpen?: boolean;
+  onContextMenuAction?: (action: ContextMenuAction, args: { rowKey: string; rowKind: GanttNode["kind"]; categoryId?: string | null }) => void;
+  categoriesForSubmenu?: CategoryOption[];
+  onSelectionChange?: (selectedKey: string | null) => void;
 }
 
 export function GanttContainer({
   root, defaultZoom = "month", onOpenDetail, onAdd, addLabel = "+ Add",
   categoryColorMap, rootCategoryColor,
-  onInlineAdd, outlineHeader, outlineHeaderActions, outlineFooter, outlineOverlay,
+  outlineHeader, outlineHeaderActions, outlineFooter, outlineOverlay,
+  onCategoriesClick, categoriesOpen,
+  onContextMenuAction, categoriesForSubmenu = [],
+  onSelectionChange,
 }: Props) {
   const [zoom, setZoom] = useState<ZoomLevel>(defaultZoom);
   const [search, setSearch] = useState("");
@@ -32,6 +41,7 @@ export function GanttContainer({
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(() => collectAllKeys(root));
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
 
   const allTasks = useMemo(() => collectTasks(root), [root]);
@@ -39,39 +49,33 @@ export function GanttContainer({
 
   const rows = useMemo(() => {
     const base = flattenVisible(root, expanded, { categoryColorMap, rootCategoryColor });
-    const withSearch = (!search.trim())
-      ? base
-      : (() => {
-          const q = search.toLowerCase();
-          return base.map((r) => r.kind === "node"
-            ? { ...r, dimmed: !nodeLabel(r.node).toLowerCase().includes(q) }
-            : r);
-        })();
-    return onInlineAdd ? injectInlineAdds(withSearch, expanded) : withSearch;
-  }, [root, expanded, search, categoryColorMap, rootCategoryColor, onInlineAdd]);
+    if (!search.trim()) return base;
+    const q = search.toLowerCase();
+    return base.map((r) => ({ ...r, dimmed: !nodeLabel(r.node).toLowerCase().includes(q) }));
+  }, [root, expanded, search, categoryColorMap, rootCategoryColor]);
 
   const allCollapsed = expanded.size === 0;
 
-  function toggle(key: string) {
+  const toggle = useCallback((key: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
-  }
+  }, []);
 
-  function toggleCollapseAll() {
+  const toggleCollapseAll = useCallback(() => {
     if (allCollapsed) setExpanded(collectAllKeys(root));
     else setExpanded(new Set());
-  }
+  }, [allCollapsed, root]);
 
-  function jumpToToday() {
+  const jumpToToday = useCallback(() => {
     if (!gridRef.current) return;
     const pct = dateToPct(new Date(), range);
     const sw = gridRef.current.scrollWidth;
     const vw = gridRef.current.clientWidth;
     gridRef.current.scrollTo({ left: Math.max(0, (pct / 100) * sw - vw / 2), behavior: "smooth" });
-  }
+  }, [range]);
 
   useEffect(() => {
     setExpanded((prev) => {
@@ -82,6 +86,45 @@ export function GanttContainer({
     });
   }, [root]);
 
+  const handleSelect = useCallback((k: string | null) => {
+    setSelectedKey(k);
+    onSelectionChange?.(k);
+    if (k) onOpenDetail?.(k);
+  }, [onOpenDetail, onSelectionChange]);
+
+  const handleContextMenu = useCallback(
+    (rowKey: string, rowKind: GanttNode["kind"], e: React.MouseEvent) => {
+      if (rowKind === "subtask" || rowKind === "task" || rowKind === "project" || rowKind === "category") {
+        const isUncategorised = rowKey === "cat:uncat";
+        setContextMenu({
+          rowKey,
+          rowKind,
+          isUncategorised,
+          x: e.clientX,
+          y: e.clientY,
+        });
+      }
+    },
+    [],
+  );
+
+  const handleMenuSelect = useCallback(
+    (action: ContextMenuAction, payload?: { categoryId: string | null }) => {
+      if (!contextMenu) return;
+      onContextMenuAction?.(action, {
+        rowKey: contextMenu.rowKey,
+        rowKind: contextMenu.rowKind,
+        categoryId: payload?.categoryId,
+      });
+      setContextMenu(null);
+    },
+    [contextMenu, onContextMenuAction],
+  );
+
+  const menuItems = contextMenu
+    ? contextMenuItemsFor({ rowKind: contextMenu.rowKind, isUncategorised: contextMenu.isUncategorised })
+    : [];
+
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
       <GanttToolbar
@@ -91,19 +134,21 @@ export function GanttContainer({
         onAdd={() => onAdd?.({ selectedKey })}
         canAdd={Boolean(onAdd)}
         addLabel={addLabel}
+        onCategoriesClick={onCategoriesClick}
+        categoriesOpen={categoriesOpen}
       />
-      <div style={{ display: "flex", flex: 1, minHeight: 0, border: "1px solid var(--border, #f0edfa)", borderRadius: 12, background: "#fff", overflow: "hidden" }}>
+      <div style={{
+        display: "flex", flex: 1, minHeight: 0,
+        border: "1px solid var(--border)", borderRadius: 12, background: "var(--surface)", overflow: "hidden",
+      }}>
         <GanttOutline
-          rows={rows}
-          expanded={expanded}
-          selectedKey={selectedKey}
-          hoveredKey={hoveredKey}
-          width={outlineWidth}
-          onWidthChange={setOutlineWidth}
+          rows={rows} expanded={expanded}
+          selectedKey={selectedKey} hoveredKey={hoveredKey}
+          width={outlineWidth} onWidthChange={setOutlineWidth}
           onToggle={toggle}
-          onSelect={(k) => { setSelectedKey(k); onOpenDetail?.(k); }}
+          onSelect={handleSelect}
           onHover={setHoveredKey}
-          onInlineAdd={onInlineAdd}
+          onContextMenu={handleContextMenu}
           header={outlineHeader}
           headerActions={outlineHeaderActions}
           footer={outlineFooter}
@@ -111,15 +156,24 @@ export function GanttContainer({
         />
         <GanttGrid
           ref={gridRef}
-          rows={rows}
-          range={range}
-          zoom={zoom}
-          hoveredKey={hoveredKey}
-          selectedKey={selectedKey}
+          rows={rows} range={range} zoom={zoom}
+          hoveredKey={hoveredKey} selectedKey={selectedKey}
           onHoverKey={setHoveredKey}
-          onSelectKey={(k) => { setSelectedKey(k); if (k) onOpenDetail?.(k); }}
+          onSelectKey={handleSelect}
+          onContextMenu={handleContextMenu}
         />
       </div>
+
+      {contextMenu && (
+        <GanttContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={menuItems}
+          categories={categoriesForSubmenu}
+          onSelect={handleMenuSelect}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   );
 }

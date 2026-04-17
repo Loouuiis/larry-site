@@ -1,17 +1,22 @@
 "use client";
 import type { ZoomLevel } from "./gantt-types";
 import type { TimelineRange } from "./gantt-utils";
-import { generateDateAxis } from "./gantt-utils";
+import { generateDateAxis, dateToPct } from "./gantt-utils";
 
 interface Props {
   range: TimelineRange;
   zoom: ZoomLevel;
 }
 
-export const GANTT_HEADER_HEIGHT = 48;
+// 16px space above for the "Today" label + 48px axis band = 64px total
+export const GANTT_HEADER_HEIGHT = 64;
+const AXIS_BAND_HEIGHT = 48;
+const TODAY_LABEL_BAND = 16;
 
 export function GanttDateHeader({ range, zoom }: Props) {
   const axis = generateDateAxis(range, zoom);
+  const todayPct = dateToPct(new Date(), range);
+  const todayInRange = todayPct >= 0 && todayPct <= 100;
 
   return (
     <div
@@ -19,63 +24,106 @@ export function GanttDateHeader({ range, zoom }: Props) {
         position: "sticky",
         top: 0,
         height: GANTT_HEADER_HEIGHT,
-        background: "var(--surface, #fff)",
-        borderBottom: "1px solid var(--border, #f0edfa)",
-        zIndex: 2,
+        background: "var(--surface)",
+        zIndex: 3,
       }}
     >
-      {/* Month row */}
-      <div
-        style={{
-          position: "relative",
-          height: 20,
-          borderBottom: "1px solid var(--border, #f0edfa)",
-        }}
-      >
-        {axis.months.map((m, i) => (
-          <div
-            key={`${m.label}-${i}`}
+      {/* Today label band (top 16px) */}
+      <div style={{ position: "relative", height: TODAY_LABEL_BAND }}>
+        {todayInRange && (
+          <span
             style={{
               position: "absolute",
-              left: `${m.startPct}%`,
-              width: `${Math.max(0, m.endPct - m.startPct)}%`,
-              top: 0,
-              bottom: 0,
-              padding: "4px 0 0 8px",
-              fontSize: 11,
-              fontWeight: 500,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-              color: "var(--text-2, #4b556b)",
-              borderRight: i < axis.months.length - 1 ? "1px solid var(--border-2, #bdb7d0)" : "none",
-              boxSizing: "border-box",
+              left: `${todayPct}%`,
+              transform: "translateX(-50%)",
+              top: 2,
+              fontSize: 10,
+              fontWeight: 600,
+              color: "var(--brand)",
               whiteSpace: "nowrap",
-              overflow: "hidden",
+              pointerEvents: "none",
             }}
           >
-            {m.label}
-          </div>
-        ))}
+            Today
+          </span>
+        )}
       </div>
 
-      {/* Day row */}
-      <div style={{ position: "relative", height: 28 }}>
-        {axis.days.map((d, i) => (
-          <span
-            key={`${d.label}-${i}`}
-            style={{
-              position: "absolute",
-              left: `${d.pct}%`,
-              transform: "translateX(-50%)",
-              top: 8,
-              fontSize: 10,
-              color: "var(--text-2, #4b556b)",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {d.label}
-          </span>
-        ))}
+      {/* Axis band (48px) — month row (24px) + day row (24px) */}
+      <div
+        style={{
+          height: AXIS_BAND_HEIGHT,
+          position: "relative",
+          borderBottom: "1px solid var(--border)",
+        }}
+      >
+        {/* Month row */}
+        <div style={{ position: "relative", height: 24 }}>
+          {axis.months.map((m, i) => (
+            <div
+              key={`${m.label}-${i}`}
+              style={{
+                position: "absolute",
+                left: `${m.startPct}%`,
+                width: `${Math.max(0, m.endPct - m.startPct)}%`,
+                top: 0,
+                bottom: 0,
+                paddingTop: 6,
+                paddingLeft: 6,
+                fontSize: 11,
+                fontWeight: 500,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                color: "var(--text-2)",
+                borderLeft: i > 0 ? "1px solid var(--border-2)" : "none",
+                boxSizing: "border-box",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+              }}
+            >
+              {m.label}
+            </div>
+          ))}
+        </div>
+
+        {/* Day row — ticks + tabular numbers */}
+        <div style={{ position: "relative", height: 24 }}>
+          {axis.days.map((d, i) => (
+            <div
+              key={`day-${i}`}
+              style={{
+                position: "absolute",
+                left: `${d.pct}%`,
+                transform: "translateX(-50%)",
+                top: 0,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+              }}
+            >
+              <span
+                style={{
+                  display: "block",
+                  width: 1,
+                  height: 4,
+                  background: "var(--border-2)",
+                }}
+              />
+              <span
+                style={{
+                  marginTop: 4,
+                  fontSize: 11,
+                  fontWeight: 400,
+                  color: "var(--text-muted)",
+                  fontVariantNumeric: "tabular-nums",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {d.label.replace(/^[A-Za-z]+\s/, "")}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
