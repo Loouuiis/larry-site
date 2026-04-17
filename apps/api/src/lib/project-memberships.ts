@@ -80,9 +80,11 @@ export async function getProjectMembershipAccess(input: {
   const project = projectRows[0];
   const exists = Boolean(project);
   const projectStatus = project ? normalizeProjectStatus(project.status) : null;
-  const isAdmin = input.tenantRole === "admin";
-  const canRead = exists && (isAdmin || projectRole !== null);
-  const canManage = exists && (isAdmin || projectRole === "owner" || projectRole === "editor");
+  // Org owners and admins have implicit editor-level access to every project
+  // in their tenant, without needing an explicit project_memberships row.
+  const isOrgAdmin = input.tenantRole === "owner" || input.tenantRole === "admin";
+  const canRead = exists && (isOrgAdmin || projectRole !== null);
+  const canManage = exists && (isOrgAdmin || projectRole === "owner" || projectRole === "editor");
 
   return {
     projectExists: exists,
