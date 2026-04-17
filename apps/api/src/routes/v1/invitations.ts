@@ -14,6 +14,8 @@ import { emailSchema, passwordSchema } from "../../lib/validation.js";
 import { sendMemberInviteEmail } from "../../lib/email.js";
 import { writeAuditLog } from "../../lib/audit.js";
 import { hashPassword, issueAccessToken, issueRefreshToken } from "../../lib/auth.js";
+import { assertSeatAvailable, SeatCapReachedError } from "../../lib/seat-cap.js";
+import { assertMfaIfRequired, MfaEnrollmentRequiredError } from "../../lib/mfa-gate.js";
 
 const CreateBody = z.object({
   email: emailSchema,
@@ -41,6 +43,12 @@ export const invitationsRoutes: FastifyPluginAsync = async (fastify) => {
     if (!canInviteMembers(user.role)) {
       throw fastify.httpErrors.forbidden("Only admins can invite members.");
     }
+    try {
+      await assertMfaIfRequired(fastify.db, user.tenantId, user.userId, user.role);
+    } catch (e) {
+      if (e instanceof MfaEnrollmentRequiredError) throw fastify.httpErrors.forbidden(e.message);
+      throw e;
+    }
     const body = CreateBody.parse(request.body);
     if (!canInviteRoleAs(user.role, body.role)) {
       throw fastify.httpErrors.badRequest("Cannot invite a member with that role.");
@@ -66,6 +74,14 @@ export const invitationsRoutes: FastifyPluginAsync = async (fastify) => {
     );
     if (dup.length > 0) {
       throw fastify.httpErrors.conflict("A pending invite already exists for this email.");
+    }
+
+    // Seat cap check (counts memberships + pending invitations).
+    try {
+      await assertSeatAvailable(fastify.db, user.tenantId);
+    } catch (e) {
+      if (e instanceof SeatCapReachedError) throw fastify.httpErrors.conflict(e.message);
+      throw e;
     }
 
     const { invitation, rawToken } = await createInvitation(fastify.db, {

@@ -8,6 +8,8 @@ import { sendVerificationEmail, sendMemberInviteEmail } from "../../lib/email.js
 import { INVITABLE_TENANT_ROLES, canInviteMembers, canManageMembers } from "../../lib/permissions.js";
 import { assertTenantHasRemainingAdmin, LastAdminRequiredError } from "../../lib/last-admin-guard.js";
 import { createInvitation } from "../../lib/invitations.js";
+import { assertSeatAvailable, SeatCapReachedError } from "../../lib/seat-cap.js";
+import { findAutoJoinTenantForEmail } from "../../lib/tenant-domains.js";
 import { authPasswordResetRoutes } from "./auth-password-reset.js";
 import { authVerificationRoutes } from "./auth-verification.js";
 import { authGoogleRoutes } from "./auth-google.js";
@@ -105,6 +107,28 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
 
       return { newUser: user, tenantId: tId };
     });
+
+    // Auto-join: if a verified tenant_domains row with mode='auto_join' matches
+    // the user's email domain, add the user to that tenant as well (capped by
+    // seat_cap if set). Swallows errors — signup must still succeed.
+    try {
+      const autoJoin = await findAutoJoinTenantForEmail(fastify.db, body.email);
+      if (autoJoin && autoJoin.tenantId !== tenantId) {
+        try {
+          await assertSeatAvailable(fastify.db, autoJoin.tenantId);
+          await fastify.db.query(
+            `INSERT INTO memberships (tenant_id, user_id, role)
+             VALUES ($1, $2, $3::role_type)
+             ON CONFLICT (tenant_id, user_id) DO NOTHING`,
+            [autoJoin.tenantId, newUser.id, autoJoin.defaultRole],
+          );
+        } catch (e) {
+          if (!(e instanceof SeatCapReachedError)) throw e;
+        }
+      }
+    } catch (err) {
+      request.log.error({ err }, "[signup] auto-join check failed");
+    }
 
     // Issue tokens
     const accessToken = await issueAccessToken(fastify, {
@@ -515,6 +539,14 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       );
       if (dup.length > 0) {
         throw fastify.httpErrors.conflict("A pending invite already exists for this email.");
+      }
+
+      // Seat cap (memberships + pending invitations).
+      try {
+        await assertSeatAvailable(fastify.db, tenantId);
+      } catch (e) {
+        if (e instanceof SeatCapReachedError) throw fastify.httpErrors.conflict(e.message);
+        throw e;
       }
 
       // Create the pending invitation and send the email with a token link.
