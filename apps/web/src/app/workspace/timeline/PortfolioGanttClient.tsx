@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Plus } from "lucide-react";
 import type { PortfolioTimelineResponse, ContextMenuAction, GanttNode } from "@/components/workspace/gantt/gantt-types";
 import { buildPortfolioTree, buildCategoryColorMap, normalizePortfolioStatuses } from "@/components/workspace/gantt/gantt-utils";
 import { GanttContainer } from "@/components/workspace/gantt/GanttContainer";
@@ -247,6 +248,33 @@ export function PortfolioGanttClient() {
           categoriesOpen={managerOpen}
           onContextMenuAction={handleContextMenuAction}
           categoriesForSubmenu={categoriesForSubmenu}
+          outlineHeaderActions={
+            <button
+              type="button"
+              onClick={() => setAddCtx({ mode: "category" })}
+              aria-label="New category"
+              title="New category"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                height: 24,
+                padding: "0 8px",
+                fontSize: 11,
+                fontWeight: 600,
+                letterSpacing: "0.04em",
+                textTransform: "uppercase",
+                background: "var(--brand)",
+                color: "#fff",
+                border: 0,
+                borderRadius: 6,
+                cursor: "pointer",
+              }}
+            >
+              <Plus size={12} strokeWidth={2.5} />
+              Category
+            </button>
+          }
         />
       )}
 
