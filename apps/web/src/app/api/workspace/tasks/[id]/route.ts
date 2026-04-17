@@ -55,3 +55,21 @@ export async function PATCH(
 
   return NextResponse.json(result.body ?? {}, { status: result.status >= 400 ? result.status : 200 });
 }
+
+export async function DELETE(
+  _request: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
+  const session = await getSession();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id } = await context.params;
+  const result = await proxyApiRequest(session, `/v1/tasks/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+
+  if (result.session) await persistSession(result.session);
+  return new NextResponse(null, { status: result.status });
+}

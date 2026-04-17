@@ -190,7 +190,11 @@ export function PortfolioGanttClient() {
       if (rowKind === "project") {
         if (!window.confirm("Delete this project and all its tasks?")) return;
         try {
-          const res = await fetch(`/api/workspace/projects/${rowKey.slice(5)}`, { method: "DELETE" });
+          const res = await fetch(`/api/workspace/projects/${rowKey.slice(5)}/delete`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: "{}",
+          });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           await fetchTimeline();
         } catch (e) {
