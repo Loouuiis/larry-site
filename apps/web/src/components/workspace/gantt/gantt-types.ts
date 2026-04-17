@@ -24,3 +24,29 @@ export interface StatusChipData {
   bg: string;           // CSS colour
   border: string | null; // CSS colour or null (no border)
 }
+
+// v3 — right-click context menu
+export type ContextMenuAction =
+  | "openDetail"
+  | "moveToCategory"   // submenu → category id payload
+  | "removeFromTimeline"
+  | "addChild"
+  | "rename"
+  | "changeColour"
+  | "delete";
+
+export interface ContextMenuItem {
+  id: ContextMenuAction;
+  label: string;
+  hasSubmenu?: boolean;
+  destructive?: boolean;
+  disabled?: boolean;
+}
+
+export interface ContextMenuState {
+  rowKey: string;
+  rowKind: "category" | "project" | "task" | "subtask";
+  isUncategorised: boolean;
+  x: number;
+  y: number;
+}

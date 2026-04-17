@@ -249,7 +249,47 @@ describe("tinyTint", () => {
 
 /* ─── v3 additions ─────────────────────────────────────────────────── */
 
-import { darken, statusChipFor } from "./gantt-utils";
+import { darken, statusChipFor, contextMenuItemsFor } from "./gantt-utils";
+
+describe("contextMenuItemsFor", () => {
+  it("task row gets Open, Move, Remove from timeline, Delete", () => {
+    const items = contextMenuItemsFor({ rowKind: "task", isUncategorised: false });
+    expect(items.map((i) => i.id)).toEqual([
+      "openDetail", "moveToCategory", "removeFromTimeline", "delete",
+    ]);
+    expect(items.find((i) => i.id === "moveToCategory")?.hasSubmenu).toBe(true);
+    expect(items.find((i) => i.id === "delete")?.destructive).toBe(true);
+  });
+
+  it("subtask row gets same items as task", () => {
+    const items = contextMenuItemsFor({ rowKind: "subtask", isUncategorised: false });
+    expect(items.map((i) => i.id)).toEqual([
+      "openDetail", "moveToCategory", "removeFromTimeline", "delete",
+    ]);
+  });
+
+  it("project row gets Open, Move, Add task, Delete", () => {
+    const items = contextMenuItemsFor({ rowKind: "project", isUncategorised: false });
+    expect(items.map((i) => i.id)).toEqual([
+      "openDetail", "moveToCategory", "addChild", "delete",
+    ]);
+  });
+
+  it("category row gets Rename, Change colour, Delete", () => {
+    const items = contextMenuItemsFor({ rowKind: "category", isUncategorised: false });
+    expect(items.map((i) => i.id)).toEqual([
+      "rename", "changeColour", "delete",
+    ]);
+  });
+
+  it("uncategorised category row returns a single disabled sentinel", () => {
+    const items = contextMenuItemsFor({ rowKind: "category", isUncategorised: true });
+    expect(items).toHaveLength(1);
+    expect(items[0].disabled).toBe(true);
+    expect(items[0].label).toMatch(/default bucket/i);
+  });
+});
+
 
 describe("statusChipFor", () => {
   it("returns null for on_track (no chip shown)", () => {

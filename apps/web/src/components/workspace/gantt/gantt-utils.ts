@@ -1,5 +1,5 @@
 import type {
-  CategoryColorMap,
+  CategoryColorMap, ContextMenuItem,
   GanttNode, GanttTask, GanttTaskStatus, PortfolioTimelineResponse, StatusChipData, ZoomLevel,
 } from "./gantt-types";
 import { DEFAULT_CATEGORY_COLOUR } from "./gantt-types";
@@ -436,6 +436,43 @@ export function tinyTint(hex: string, alpha = 0.15): string {
   const rgb = parseHex(hex);
   if (!rgb) return `rgba(108, 68, 246, ${alpha})`;
   return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+}
+
+/* ─── v3 — context menu items ──────────────────────────────────────── */
+
+export function contextMenuItemsFor(args: {
+  rowKind: "category" | "project" | "task" | "subtask";
+  isUncategorised: boolean;
+}): ContextMenuItem[] {
+  if (args.rowKind === "category") {
+    if (args.isUncategorised) {
+      return [{
+        id: "rename",
+        label: "Uncategorised is the default bucket; not editable.",
+        disabled: true,
+      }];
+    }
+    return [
+      { id: "rename",       label: "Rename" },
+      { id: "changeColour", label: "Change colour" },
+      { id: "delete",       label: "Delete", destructive: true },
+    ];
+  }
+  if (args.rowKind === "project") {
+    return [
+      { id: "openDetail",     label: "Open project" },
+      { id: "moveToCategory", label: "Move to category…", hasSubmenu: true },
+      { id: "addChild",       label: "Add task" },
+      { id: "delete",         label: "Delete", destructive: true },
+    ];
+  }
+  // task or subtask
+  return [
+    { id: "openDetail",          label: "Open task" },
+    { id: "moveToCategory",      label: "Move project to category…", hasSubmenu: true },
+    { id: "removeFromTimeline",  label: "Remove from timeline" },
+    { id: "delete",              label: "Delete", destructive: true },
+  ];
 }
 
 /* ─── v3 — status chip ─────────────────────────────────────────────── */
