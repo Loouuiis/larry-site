@@ -4,7 +4,7 @@ import { getSession } from "@/lib/auth";
 import { persistSession, proxyApiRequest } from "@/lib/workspace-proxy";
 
 const UpdateRoleSchema = z.object({
-  role: z.enum(["admin", "member", "viewer"]),
+  role: z.enum(["admin", "pm", "member"]),
 });
 
 export async function PATCH(
