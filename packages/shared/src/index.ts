@@ -1,4 +1,9 @@
-export type Role = "admin" | "pm" | "member" | "executive";
+export type Role = "owner" | "admin" | "pm" | "member" | "executive";
+
+export const ACTIVE_TENANT_ROLES = ["owner", "admin", "pm", "member"] as const;
+export const INVITABLE_TENANT_ROLES = ["admin", "pm", "member"] as const;
+export type ActiveTenantRole = (typeof ACTIVE_TENANT_ROLES)[number];
+export type InvitableTenantRole = (typeof INVITABLE_TENANT_ROLES)[number];
 
 export interface AuthUser {
   userId: string;
