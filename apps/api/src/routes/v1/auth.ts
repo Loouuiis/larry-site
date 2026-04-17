@@ -7,6 +7,7 @@ import { emailSchema, passwordSchema } from "../../lib/validation.js";
 import { sendVerificationEmail, sendMemberInviteEmail } from "../../lib/email.js";
 import { INVITABLE_TENANT_ROLES, canInviteMembers, canManageMembers } from "../../lib/permissions.js";
 import { assertTenantHasRemainingAdmin, LastAdminRequiredError } from "../../lib/last-admin-guard.js";
+import { createInvitation } from "../../lib/invitations.js";
 import { authPasswordResetRoutes } from "./auth-password-reset.js";
 import { authVerificationRoutes } from "./auth-verification.js";
 import { authGoogleRoutes } from "./auth-google.js";
@@ -492,81 +493,79 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         throw fastify.httpErrors.forbidden("Only admins can invite members.");
       }
 
-      // Check if user already exists in this tenant
+      // Already a member of this tenant?
       const existing = await fastify.db.queryTenant<{ id: string }>(
         tenantId,
         `SELECT u.id FROM users u
          JOIN memberships m ON m.user_id = u.id
-         WHERE u.email = $1 AND m.tenant_id = $2
+         WHERE lower(u.email) = lower($1) AND m.tenant_id = $2
          LIMIT 1`,
         [body.email, tenantId]
       );
-
       if (existing.length > 0) {
         throw fastify.httpErrors.conflict("This email is already a member of this workspace.");
       }
 
-      // Check if user exists globally (add them to tenant)
-      const existingUser = await fastify.db.query<{ id: string; display_name: string | null }>(
-        "SELECT id, display_name FROM users WHERE email = $1 LIMIT 1",
-        [body.email]
+      // Pending invitation already exists?
+      const dup = await fastify.db.queryTenant<{ id: string }>(
+        tenantId,
+        `SELECT id FROM invitations
+          WHERE tenant_id = $1 AND lower(email) = lower($2) AND status = 'pending' LIMIT 1`,
+        [tenantId, body.email]
       );
+      if (dup.length > 0) {
+        throw fastify.httpErrors.conflict("A pending invite already exists for this email.");
+      }
 
-      let userId: string;
+      // Create the pending invitation and send the email with a token link.
+      const { invitation, rawToken } = await createInvitation(fastify.db, {
+        tenantId,
+        email: body.email,
+        role: body.role,
+        invitedByUserId: request.user.userId,
+      });
 
-      if (existingUser.length > 0) {
-        userId = existingUser[0].id;
-        // Add membership
-        await fastify.db.query(
-          `INSERT INTO memberships (tenant_id, user_id, role) VALUES ($1, $2, $3)
-           ON CONFLICT (tenant_id, user_id) DO NOTHING`,
-          [tenantId, userId, body.role]
+      const tenantRows = await fastify.db.query<{ name: string }>(
+        `SELECT name FROM tenants WHERE id = $1 LIMIT 1`,
+        [tenantId]
+      );
+      const inviterRows = await fastify.db.query<{ display_name: string | null }>(
+        `SELECT display_name FROM users WHERE id = $1 LIMIT 1`,
+        [request.user.userId]
+      );
+      try {
+        await sendMemberInviteEmail(
+          body.email,
+          body.displayName?.trim() || body.email.split("@")[0],
+          {
+            tenantId,
+            rawToken,
+            orgName: tenantRows[0]?.name ?? "your team",
+            inviterName: inviterRows[0]?.display_name ?? undefined,
+          }
         );
-      } else {
-        // Create new user with temp password
-        const tempPassword = randomBytes(10).toString("base64url");
-        const passwordHash = await hashPassword(tempPassword);
-        const displayName = body.displayName?.trim() || body.email.split("@")[0];
-
-        const userRows = await fastify.db.query<{ id: string }>(
-          `INSERT INTO users (email, password_hash, display_name, verification_grace_deadline)
-           VALUES ($1, $2, $3, NOW() + INTERVAL '7 days') RETURNING id`,
-          [body.email, passwordHash, displayName]
-        );
-        userId = userRows[0].id;
-
-        await fastify.db.query(
-          `INSERT INTO memberships (tenant_id, user_id, role) VALUES ($1, $2, $3)`,
-          [tenantId, userId, body.role]
-        );
-
-        // Send invite email (graceful — don't fail the invite if email fails).
-        // tenantId drives the per-tenant invite cap (20/hour) and the daily
-        // 200/tenant global cap.
-        try {
-          await sendMemberInviteEmail(body.email, displayName, { tenantId });
-        } catch (emailErr) {
-          console.error("[invite] Failed to send invite email:", emailErr);
-        }
+      } catch (emailErr) {
+        fastify.log.error({ err: emailErr }, "[invite] email send failed");
       }
 
       await writeAuditLog(fastify.db, {
         tenantId,
         actorUserId: request.user.userId,
-        actionType: "member.invited",
-        objectType: "user",
-        objectId: userId,
-        details: { email: body.email, role: body.role },
+        actionType: "invitation.created",
+        objectType: "invitation",
+        objectId: invitation.id,
+        details: { email: body.email, role: body.role, via: "legacy-shim" },
       });
 
-      // Return updated member list
+      // Return current members list (for compat with old frontend) plus
+      // the new invitation row so new clients can display pending state.
       const rows = await fastify.db.queryTenant<{ id: string; name: string; email: string; role: string }>(
         tenantId,
         `SELECT u.id, COALESCE(NULLIF(u.display_name, ''), split_part(u.email, '@', 1)) AS name, u.email, m.role
          FROM users u JOIN memberships m ON m.user_id = u.id WHERE m.tenant_id = $1 ORDER BY name`,
         [tenantId]
       );
-      return reply.code(201).send({ members: rows });
+      return reply.code(201).send({ members: rows, invitation });
     }
   );
 

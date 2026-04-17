@@ -1,5 +1,7 @@
 import { FastifyPluginAsync } from "fastify";
+import { getApiEnv } from "@larry/config";
 import { authRoutes } from "./auth.js";
+import { invitationsRoutes } from "./invitations.js";
 import { projectRoutes } from "./projects.js";
 import { taskRoutes } from "./tasks.js";
 import { categoryRoutes } from "./categories.js";
@@ -26,6 +28,9 @@ import { timelineRoutes } from "./timeline.js";
 
 export const v1Routes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(authRoutes, { prefix: "/auth" });
+  if (getApiEnv().RBAC_V2_ENABLED) {
+    await fastify.register(invitationsRoutes, { prefix: "/orgs/invitations" });
+  }
   await fastify.register(projectRoutes, { prefix: "/projects" });
   await fastify.register(projectIntakeRoutes, { prefix: "/projects" });
   await fastify.register(documentRoutes, { prefix: "/documents" });
