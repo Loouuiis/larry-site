@@ -1,5 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { buildPortfolioTree, buildProjectTree, flattenVisible, normalizeGanttStatus, rollUpBar } from "./gantt-utils";
+import {
+  buildCategoryColorMap,
+  buildPortfolioTree, buildProjectTree,
+  contrastTextFor,
+  computeRange,
+  flattenVisible,
+  generateDateAxis,
+  normalizeGanttStatus,
+  resolveCategoryColor,
+  rollUpBar,
+  tinyTint,
+} from "./gantt-utils";
 import type { PortfolioTimelineResponse, GanttTask, GanttNode } from "./gantt-types";
 
 const baseTask = (over: Partial<GanttTask> = {}): GanttTask => ({
@@ -112,5 +123,126 @@ describe("rollUpBar", () => {
     expect(r).not.toBeNull();
     expect(r!.start).toBeTruthy();
     expect(r!.end).toBe(futureIso);
+  });
+});
+
+/* ─── Category colour map + resolution ─────────────────────────────── */
+
+describe("buildCategoryColorMap", () => {
+  it("maps real categories by id and the synthetic Uncategorised bucket by 'uncat'", () => {
+    const map = buildCategoryColorMap([
+      { id: "c1", colour: "#ff0000" },
+      { id: "c2", colour: "#00ff00" },
+      { id: null, colour: null },
+    ]);
+    expect(map.get("cat:c1")).toBe("#ff0000");
+    expect(map.get("cat:c2")).toBe("#00ff00");
+    expect(map.get("cat:uncat")).toBe("#6c44f6");
+  });
+
+  it("falls back to Larry purple when a category has null colour", () => {
+    const map = buildCategoryColorMap([{ id: "c1", colour: null }]);
+    expect(map.get("cat:c1")).toBe("#6c44f6");
+  });
+});
+
+describe("resolveCategoryColor", () => {
+  const task1: GanttNode = { kind: "task", id: "t1", task: baseTask({ id: "t1" }), children: [] };
+  const project: GanttNode = { kind: "project", id: "p1", name: "P", status: "active", children: [task1] };
+  const category: GanttNode = { kind: "category", id: "c1", name: "Marketing", colour: "#ff0000", children: [project] };
+  const root: GanttNode = { kind: "category", id: "__root__", name: "", colour: null, children: [category] };
+
+  it("walks up to find the ancestor category's colour", () => {
+    expect(resolveCategoryColor("task:t1", root)).toBe("#ff0000");
+  });
+
+  it("prefers the categoryColorMap entry over the tree's inline colour", () => {
+    const map = buildCategoryColorMap([{ id: "c1", colour: "#0000ff" }]);
+    expect(resolveCategoryColor("task:t1", root, map)).toBe("#0000ff");
+  });
+
+  it("returns the Larry purple default when the node isn't in the tree", () => {
+    expect(resolveCategoryColor("task:missing", root)).toBe("#6c44f6");
+  });
+});
+
+describe("flattenVisible populates categoryColor", () => {
+  const sub: GanttNode = { kind: "subtask", id: "t2", task: baseTask({ id: "t2", parentTaskId: "t1" }) };
+  const task1: GanttNode = { kind: "task", id: "t1", task: baseTask({ id: "t1" }), children: [sub] };
+  const project: GanttNode = { kind: "project", id: "p1", name: "P", status: "active", children: [task1] };
+  const category: GanttNode = { kind: "category", id: "c1", name: "C", colour: "#123456", children: [project] };
+  const syntheticRoot: GanttNode = { kind: "category", id: "__root__", name: "", colour: null, children: [category] };
+
+  it("inherits the resolved category colour down to tasks and subtasks", () => {
+    const expanded = new Set<string>(["cat:c1", "proj:p1", "task:t1"]);
+    const map = buildCategoryColorMap([{ id: "c1", colour: "#abcdef" }]);
+    const rows = flattenVisible(syntheticRoot, expanded, { categoryColorMap: map });
+    for (const r of rows) expect(r.categoryColor).toBe("#abcdef");
+  });
+
+  it("uses rootCategoryColor when the root is a bare project node", () => {
+    const proj: GanttNode = { kind: "project", id: "p1", name: "P", status: "active", children: [task1] };
+    const rows = flattenVisible(proj, new Set(["proj:p1"]), { rootCategoryColor: "#ff00aa" });
+    expect(rows.every((r) => r.categoryColor === "#ff00aa")).toBe(true);
+  });
+});
+
+/* ─── Date axis ────────────────────────────────────────────────────── */
+
+describe("generateDateAxis", () => {
+  const range = computeRange(
+    [baseTask({ id: "x", startDate: "2026-04-01", endDate: "2026-06-30", dueDate: "2026-06-30" })],
+    "month",
+  );
+
+  it("month zoom produces month spans plus weekly day markers", () => {
+    const axis = generateDateAxis(range, "month");
+    expect(axis.months.length).toBeGreaterThan(0);
+    expect(axis.months[0].label).toMatch(/^[A-Z]{3} \d{4}$/);
+    // Months must cover the full axis width in order and non-overlapping.
+    let prevEnd = 0;
+    for (const m of axis.months) {
+      expect(m.endPct).toBeGreaterThan(m.startPct);
+      expect(m.startPct).toBeGreaterThanOrEqual(prevEnd - 0.001);
+      prevEnd = m.endPct;
+    }
+    expect(axis.days.length).toBeGreaterThan(2);
+  });
+
+  it("week zoom produces one marker per day", () => {
+    const axis = generateDateAxis(range, "week");
+    // Every marker label is in "Mon 23" / "Tue 24" format (a weekday short + number).
+    for (const d of axis.days) expect(d.label).toMatch(/^\w{3} \d{1,2}$/);
+    // Should be roughly `totalDays + 1` markers.
+    expect(axis.days.length).toBeGreaterThan(range.totalDays - 2);
+  });
+
+  it("quarter zoom produces biweekly markers", () => {
+    const axis = generateDateAxis(range, "quarter");
+    for (const d of axis.days) expect(d.label).toMatch(/^\d{1,2}$/);
+    // Biweekly → fewer markers than daily.
+    expect(axis.days.length).toBeLessThan(range.totalDays / 10);
+  });
+});
+
+/* ─── Colour helpers ───────────────────────────────────────────────── */
+
+describe("contrastTextFor", () => {
+  it("returns white for dark background colours", () => {
+    expect(contrastTextFor("#000000")).toBe("#ffffff");
+    expect(contrastTextFor("#6c44f6")).toBe("#ffffff");
+    expect(contrastTextFor("#123456")).toBe("#ffffff");
+  });
+
+  it("returns dark text for light background colours", () => {
+    expect(contrastTextFor("#ffffff")).toBe("#11172c");
+    expect(contrastTextFor("#ffe47a")).toBe("#11172c");
+  });
+});
+
+describe("tinyTint", () => {
+  it("returns an rgba() string with the given alpha", () => {
+    expect(tinyTint("#ff0000", 0.2)).toBe("rgba(255, 0, 0, 0.2)");
+    expect(tinyTint("#6c44f6")).toMatch(/^rgba\(108, 68, 246, 0\.15\)$/);
   });
 });

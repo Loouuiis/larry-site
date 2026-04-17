@@ -3,10 +3,12 @@ import type { FlatRow } from "./gantt-utils";
 import { ROW_HEIGHT } from "./gantt-types";
 import { GanttBar } from "./GanttBar";
 import { rollUpBar, type TimelineRange } from "./gantt-utils";
-import type { GanttTask } from "./gantt-types";
+import type { GanttNode, GanttTask } from "./gantt-types";
+
+type NodeRow = Extract<FlatRow, { kind: "node" }>;
 
 interface Props {
-  row: FlatRow;
+  row: NodeRow;
   range: TimelineRange;
   hoveredKey: string | null;
   selectedKey: string | null;
@@ -14,13 +16,13 @@ interface Props {
   onSelectKey: (k: string | null) => void;
 }
 
-function gatherDescendantTasks(row: FlatRow["node"]): GanttTask[] {
+function gatherDescendantTasks(node: GanttNode): GanttTask[] {
   const out: GanttTask[] = [];
-  function walk(n: FlatRow["node"]) {
+  function walk(n: GanttNode) {
     if (n.kind === "task" || n.kind === "subtask") out.push(n.task);
     if (n.kind !== "subtask") for (const c of n.children) walk(c);
   }
-  walk(row);
+  walk(node);
   return out;
 }
 
@@ -28,13 +30,13 @@ export function GanttRow({ row, range, hoveredKey, selectedKey, onHoverKey, onSe
   const n = row.node;
   const highlighted = hoveredKey === row.key;
   const selected = selectedKey === row.key;
+  const isCategory = n.kind === "category";
 
   let content: React.ReactNode = null;
   if (n.kind === "task" || n.kind === "subtask") {
     const t = n.task;
     const todayIso = new Date().toISOString().slice(0, 10);
     const end = t.endDate ?? t.dueDate;
-    // Normalize end to yyyy-mm-dd (API can return full ISO timestamps like 2026-04-16T00:00:00.000Z)
     const endNorm = end ? String(end).slice(0, 10) : null;
     const startNorm = t.startDate
       ? String(t.startDate).slice(0, 10)
@@ -47,9 +49,12 @@ export function GanttRow({ row, range, hoveredKey, selectedKey, onHoverKey, onSe
           end={endNorm}
           progressPercent={t.progressPercent}
           range={range}
+          categoryColor={row.categoryColor}
+          status={t.status}
           label={t.title}
           task={t}
           highlighted={highlighted}
+          selected={selected}
           dimmed={row.dimmed ?? false}
           onClick={() => onSelectKey(row.key)}
           onMouseEnter={() => onHoverKey(row.key)}
@@ -57,7 +62,7 @@ export function GanttRow({ row, range, hoveredKey, selectedKey, onHoverKey, onSe
         />
       );
     }
-  } else {
+  } else if (n.kind === "category" || n.kind === "project") {
     const r = rollUpBar(gatherDescendantTasks(n));
     if (r) {
       content = (
@@ -67,8 +72,10 @@ export function GanttRow({ row, range, hoveredKey, selectedKey, onHoverKey, onSe
           end={r.end}
           progressPercent={r.progressPercent}
           range={range}
-          label={n.kind === "category" ? n.name : n.kind === "project" ? n.name : ""}
+          categoryColor={row.categoryColor}
+          label={n.name}
           highlighted={highlighted}
+          selected={selected}
           dimmed={row.dimmed ?? false}
           onMouseEnter={() => onHoverKey(row.key)}
           onMouseLeave={() => onHoverKey(null)}
@@ -81,8 +88,12 @@ export function GanttRow({ row, range, hoveredKey, selectedKey, onHoverKey, onSe
     <div style={{
       height: ROW_HEIGHT,
       position: "relative",
-      borderBottom: "1px solid var(--border, #eaeaea)",
-      background: selected ? "rgba(108, 68, 246, 0.04)" : "transparent",
+      borderBottom: "1px solid var(--border, #f0edfa)",
+      background: isCategory
+        ? "var(--surface-2, #f6f2fc)"
+        : selected
+          ? "rgba(108, 68, 246, 0.04)"
+          : "transparent",
     }}>
       {content}
     </div>

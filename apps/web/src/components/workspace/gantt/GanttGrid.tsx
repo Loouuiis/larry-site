@@ -3,8 +3,10 @@ import { forwardRef, useMemo } from "react";
 import type { FlatRow } from "./gantt-utils";
 import type { ZoomLevel } from "./gantt-types";
 import type { TimelineRange } from "./gantt-utils";
-import { dateToPct } from "./gantt-utils";
+import { dateToPct, generateDateAxis } from "./gantt-utils";
 import { GanttRow } from "./GanttRow";
+import { GanttDateHeader, GANTT_HEADER_HEIGHT } from "./GanttDateHeader";
+import { ROW_HEIGHT } from "./gantt-types";
 
 interface Props {
   rows: FlatRow[];
@@ -19,64 +21,103 @@ interface Props {
 export const GanttGrid = forwardRef<HTMLDivElement, Props>(function GanttGrid(
   { rows, range, zoom, hoveredKey, selectedKey, onHoverKey, onSelectKey }, ref,
 ) {
-  const markers = useMemo(() => generateMarkers(range, zoom), [range, zoom]);
+  const axis = useMemo(() => generateDateAxis(range, zoom), [range, zoom]);
   const todayPct = dateToPct(new Date(), range);
+  const todayInRange = todayPct >= 0 && todayPct <= 100;
 
   return (
     <div ref={ref} style={{ position: "relative", overflowX: "auto", flex: 1, minHeight: 0 }}>
       <div style={{ minWidth: "max-content", position: "relative" }}>
-        {/* Header */}
-        <div style={{ position: "sticky", top: 0, height: 34, background: "#fff", borderBottom: "1px solid var(--border, #eaeaea)", zIndex: 1 }}>
-          {markers.map((m, i) => (
-            <span key={i} style={{ position: "absolute", left: `${m.pct}%`, top: 10, fontSize: 10, color: "var(--text-muted)" }}>
-              {m.label}
-            </span>
+        <GanttDateHeader range={range} zoom={zoom} />
+
+        {/* Vertical gridlines — render before rows so row content stacks on top */}
+        <div style={{ position: "absolute", top: GANTT_HEADER_HEIGHT, left: 0, right: 0, bottom: 0, pointerEvents: "none", zIndex: 0 }}>
+          {axis.days.map((d, i) => (
+            <div
+              key={`grid-${i}`}
+              style={{
+                position: "absolute",
+                left: `${d.pct}%`,
+                top: 0,
+                bottom: 0,
+                width: 1,
+                background: d.isMonthStart
+                  ? "var(--border-2, #bdb7d0)"
+                  : "var(--surface-2, #f6f2fc)",
+                opacity: d.isMonthStart ? 0.6 : 1,
+              }}
+            />
           ))}
         </div>
 
-        {/* Today line */}
-        <div style={{ position: "absolute", left: `${todayPct}%`, top: 34, bottom: 0, width: 1, background: "rgba(108, 68, 246, 0.4)", pointerEvents: "none", zIndex: 1 }} />
+        {/* Today line (below the header, runs full height of rows) */}
+        {todayInRange && (
+          <>
+            <div
+              style={{
+                position: "absolute",
+                left: `${todayPct}%`,
+                top: GANTT_HEADER_HEIGHT,
+                bottom: 0,
+                width: 1,
+                background: "rgba(108, 68, 246, 0.4)",
+                pointerEvents: "none",
+                zIndex: 1,
+              }}
+            />
+            {/* Today pill */}
+            <div
+              style={{
+                position: "absolute",
+                left: `${todayPct}%`,
+                top: GANTT_HEADER_HEIGHT - 18,
+                transform: "translateX(-50%)",
+                padding: "2px 6px",
+                fontSize: 10,
+                fontWeight: 600,
+                color: "#6c44f6",
+                background: "var(--surface, #fff)",
+                border: "1px solid rgba(108, 68, 246, 0.35)",
+                borderRadius: 4,
+                pointerEvents: "none",
+                zIndex: 3,
+                whiteSpace: "nowrap",
+              }}
+            >
+              Today
+            </div>
+          </>
+        )}
 
         {/* Rows */}
-        {rows.map((r) => (
-          <GanttRow key={r.key} row={r} range={range} hoveredKey={hoveredKey} selectedKey={selectedKey}
-            onHoverKey={onHoverKey} onSelectKey={onSelectKey} />
-        ))}
+        <div style={{ position: "relative", zIndex: 1 }}>
+          {rows.map((r) => {
+            if (r.kind === "add") {
+              return (
+                <div
+                  key={r.key}
+                  style={{
+                    height: r.height,
+                    borderBottom: "1px solid var(--border, #f0edfa)",
+                  }}
+                />
+              );
+            }
+            return (
+              <div key={r.key} style={{ height: r.height ?? ROW_HEIGHT }}>
+                <GanttRow
+                  row={r}
+                  range={range}
+                  hoveredKey={hoveredKey}
+                  selectedKey={selectedKey}
+                  onHoverKey={onHoverKey}
+                  onSelectKey={onSelectKey}
+                />
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
 });
-
-function generateMarkers(range: TimelineRange, zoom: ZoomLevel): Array<{ pct: number; label: string }> {
-  const markers: Array<{ pct: number; label: string }> = [];
-  const cursor = new Date(range.start);
-
-  if (zoom === "week") {
-    while (cursor <= range.end) {
-      markers.push({
-        pct: dateToPct(cursor, range),
-        label: cursor.toLocaleDateString("en-GB", { weekday: "short", day: "numeric" }),
-      });
-      cursor.setDate(cursor.getDate() + 1);
-    }
-  } else if (zoom === "month") {
-    cursor.setDate(cursor.getDate() + ((8 - cursor.getDay()) % 7 || 7));
-    while (cursor <= range.end) {
-      markers.push({
-        pct: dateToPct(cursor, range),
-        label: cursor.toLocaleDateString("en-GB", { day: "numeric", month: "short" }),
-      });
-      cursor.setDate(cursor.getDate() + 7);
-    }
-  } else {
-    cursor.setDate(1); cursor.setMonth(cursor.getMonth() + 1);
-    while (cursor <= range.end) {
-      markers.push({
-        pct: dateToPct(cursor, range),
-        label: cursor.toLocaleDateString("en-GB", { month: "short", year: "2-digit" }),
-      });
-      cursor.setMonth(cursor.getMonth() + 1);
-    }
-  }
-  return markers;
-}
