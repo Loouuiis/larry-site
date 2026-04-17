@@ -5,6 +5,8 @@ import { generateSecureToken, hashPassword, hashToken, issueAccessToken, issueRe
 import { writeAuditLog } from "../../lib/audit.js";
 import { emailSchema, passwordSchema } from "../../lib/validation.js";
 import { sendVerificationEmail, sendMemberInviteEmail } from "../../lib/email.js";
+import { INVITABLE_TENANT_ROLES, canInviteMembers, canManageMembers } from "../../lib/permissions.js";
+import { assertTenantHasRemainingAdmin, LastAdminRequiredError } from "../../lib/last-admin-guard.js";
 import { authPasswordResetRoutes } from "./auth-password-reset.js";
 import { authVerificationRoutes } from "./auth-verification.js";
 import { authGoogleRoutes } from "./auth-google.js";
@@ -474,7 +476,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
   // ── Invite a new member by email ──────────────────────────────────
   const InviteSchema = z.object({
     email: emailSchema,
-    role: z.enum(["admin", "member", "viewer"]).default("member"),
+    role: z.enum(INVITABLE_TENANT_ROLES).default("member"),
     displayName: z.string().max(200).optional(),
   });
 
@@ -485,9 +487,8 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       const tenantId = request.user.tenantId;
       const body = InviteSchema.parse(request.body);
 
-      // Check caller is admin
-      const callerRole = request.user.role;
-      if (callerRole !== "admin") {
+      // Check caller is admin/owner.
+      if (!canInviteMembers(request.user.role)) {
         throw fastify.httpErrors.forbidden("Only admins can invite members.");
       }
 
@@ -571,7 +572,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
 
   // ── Update member role ────────────────────────────────────────────
   const UpdateMemberSchema = z.object({
-    role: z.enum(["admin", "member", "viewer"]),
+    role: z.enum(INVITABLE_TENANT_ROLES),
   });
 
   fastify.patch(
@@ -582,12 +583,33 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       const { userId } = z.object({ userId: z.string().uuid() }).parse(request.params);
       const body = UpdateMemberSchema.parse(request.body);
 
-      if (request.user.role !== "admin") {
+      if (!canManageMembers(request.user.role)) {
         throw fastify.httpErrors.forbidden("Only admins can update member roles.");
       }
 
       if (userId === request.user.userId) {
         throw fastify.httpErrors.badRequest("You cannot change your own role.");
+      }
+
+      // If the target is currently an admin/owner and we're demoting them,
+      // ensure the org still has at least one admin/owner afterwards.
+      if (body.role !== "admin") {
+        const targetRows = await fastify.db.queryTenant<{ role: string }>(
+          tenantId,
+          `SELECT role FROM memberships WHERE tenant_id = $1 AND user_id = $2 LIMIT 1`,
+          [tenantId, userId]
+        );
+        const targetRole = targetRows[0]?.role;
+        if (targetRole === "admin" || targetRole === "owner") {
+          try {
+            await assertTenantHasRemainingAdmin(fastify.db, tenantId, userId);
+          } catch (e) {
+            if (e instanceof LastAdminRequiredError) {
+              throw fastify.httpErrors.conflict(e.message);
+            }
+            throw e;
+          }
+        }
       }
 
       await fastify.db.query(
@@ -622,7 +644,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       const tenantId = request.user.tenantId;
       const { userId } = z.object({ userId: z.string().uuid() }).parse(request.params);
 
-      if (request.user.role !== "admin") {
+      if (!canManageMembers(request.user.role)) {
         throw fastify.httpErrors.forbidden("Only admins can remove members.");
       }
 
@@ -630,10 +652,26 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         throw fastify.httpErrors.badRequest("You cannot remove yourself.");
       }
 
-      await fastify.db.query(
-        `DELETE FROM memberships WHERE tenant_id = $1 AND user_id = $2`,
-        [tenantId, userId]
-      );
+      // Guard: never allow the org to be left without an admin/owner.
+      try {
+        await assertTenantHasRemainingAdmin(fastify.db, tenantId, userId);
+      } catch (e) {
+        if (e instanceof LastAdminRequiredError) {
+          throw fastify.httpErrors.conflict(e.message);
+        }
+        throw e;
+      }
+
+      await fastify.db.tx(async (client) => {
+        await client.query(
+          `DELETE FROM project_memberships WHERE tenant_id = $1 AND user_id = $2`,
+          [tenantId, userId]
+        );
+        await client.query(
+          `DELETE FROM memberships WHERE tenant_id = $1 AND user_id = $2`,
+          [tenantId, userId]
+        );
+      });
 
       await writeAuditLog(fastify.db, {
         tenantId,
