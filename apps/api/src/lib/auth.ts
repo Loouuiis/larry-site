@@ -25,7 +25,7 @@ export function generateSecureToken(): { raw: string; hash: string } {
 
 export async function issueAccessToken(
   app: FastifyInstance,
-  payload: { userId: string; tenantId: string; role: "admin" | "pm" | "member" | "executive"; email?: string }
+  payload: { userId: string; tenantId: string; role: "owner" | "admin" | "pm" | "member" | "executive"; email?: string }
 ): Promise<string> {
   return app.jwt.sign(
     {
@@ -47,7 +47,7 @@ export async function issueAccessToken(
  */
 export async function issueRefreshToken(
   app: FastifyInstance,
-  payload: { userId: string; tenantId: string; role: "admin" | "pm" | "member" | "executive"; email?: string },
+  payload: { userId: string; tenantId: string; role: "owner" | "admin" | "pm" | "member" | "executive"; email?: string },
   dbClient?: PoolClient,
   meta?: { ipAddress?: string; userAgent?: string }
 ): Promise<string> {

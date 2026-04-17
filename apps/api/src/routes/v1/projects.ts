@@ -872,4 +872,72 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.code(201).send({ note });
     }
   );
+
+  // ── POST /:id/transfer — transfer project ownership ─────────────────
+  // Allowed: org owner/admin, or the current project owner.
+  fastify.post(
+    "/:id/transfer",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const { id: projectId } = z.object({ id: z.string().uuid() }).parse(request.params);
+      const { newOwnerUserId } = z
+        .object({ newOwnerUserId: z.string().uuid() })
+        .parse(request.body);
+      const user = request.user;
+      const tenantId = user.tenantId;
+
+      const isOrgAdmin = user.role === "owner" || user.role === "admin";
+      if (!isOrgAdmin) {
+        const myProjectRole = await getProjectMembershipRole(
+          fastify.db,
+          tenantId,
+          projectId,
+          user.userId
+        );
+        if (myProjectRole !== "owner") {
+          throw fastify.httpErrors.forbidden(
+            "Only the project owner or an org admin can transfer project ownership."
+          );
+        }
+      }
+
+      if (!(await hasTenantMembership(fastify.db, tenantId, newOwnerUserId))) {
+        throw fastify.httpErrors.badRequest(
+          "New owner must be a member of this organisation."
+        );
+      }
+
+      await fastify.db.tx(async (client) => {
+        await client.query(
+          `UPDATE project_memberships
+              SET role = 'editor', updated_at = NOW()
+            WHERE tenant_id = $1 AND project_id = $2 AND role = 'owner'`,
+          [tenantId, projectId]
+        );
+        await client.query(
+          `INSERT INTO project_memberships (tenant_id, project_id, user_id, role)
+           VALUES ($1, $2, $3, 'owner')
+           ON CONFLICT (tenant_id, project_id, user_id)
+           DO UPDATE SET role = 'owner', updated_at = NOW()`,
+          [tenantId, projectId, newOwnerUserId]
+        );
+        await client.query(
+          `UPDATE projects SET owner_user_id = $3, updated_at = NOW()
+            WHERE tenant_id = $1 AND id = $2`,
+          [tenantId, projectId, newOwnerUserId]
+        );
+      });
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId: user.userId,
+        actionType: "project.ownership_transferred",
+        objectType: "project",
+        objectId: projectId,
+        details: { newOwnerUserId },
+      });
+
+      return reply.code(200).send({ projectId, newOwnerUserId });
+    }
+  );
 };

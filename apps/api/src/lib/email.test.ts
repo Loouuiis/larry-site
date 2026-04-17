@@ -88,7 +88,11 @@ describe("email.ts FROM mapping", () => {
 
   it("sendMemberInviteEmail uses larry sender", async () => {
     const mod = await import("./email.js");
-    await mod.sendMemberInviteEmail("u@example.com", "Anna");
+    await mod.sendMemberInviteEmail("u@example.com", "Anna", {
+      tenantId: "tenant-1",
+      rawToken: "tok",
+      orgName: "Acme",
+    });
     expect(sendMock.mock.calls[0][0].from).toBe(LARRY);
   });
 });
@@ -147,7 +151,11 @@ describe("email.ts suppression and quota", () => {
 
   it("member invite quota is scoped by tenant", async () => {
     const mod = await import("./email.js");
-    await mod.sendMemberInviteEmail("invitee@example.com", "Anna", { tenantId: "tenant-1" });
+    await mod.sendMemberInviteEmail("invitee@example.com", "Anna", {
+      tenantId: "tenant-1",
+      rawToken: "tok",
+      orgName: "Acme",
+    });
     expect(checkEmailQuotaMock).toHaveBeenCalledWith({
       kind: "member_invite",
       recipient: "invitee@example.com",

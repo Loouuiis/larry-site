@@ -163,7 +163,9 @@ export const documentRoutes: FastifyPluginAsync = async (fastify) => {
                         d.updated_at as "updatedAt"
                    FROM documents d`;
 
-      if (request.user.role !== "admin") {
+      // Owners and admins see every document in their tenant. Other roles
+      // are gated to documents in projects where they have a membership row.
+      if (request.user.role !== "admin" && request.user.role !== "owner") {
         values.push(actorUserId);
         sql += ` JOIN project_memberships pm
                    ON pm.tenant_id = d.tenant_id
