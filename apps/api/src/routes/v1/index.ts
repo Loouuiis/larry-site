@@ -17,6 +17,7 @@ import { activityRoutes } from "./activity.js";
 import { notificationRoutes } from "./notifications.js";
 import { meetingRoutes } from "./meetings.js";
 import { orgRoutes } from "./orgs.js";
+import { orgsAdminRoutes } from "./orgs-admin.js";
 import { projectIntakeRoutes } from "./project-intake.js";
 import { documentRoutes } from "./documents.js";
 import { folderRoutes } from "./folders.js";
@@ -49,6 +50,7 @@ export const v1Routes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(notificationRoutes);
   await fastify.register(meetingRoutes);
   await fastify.register(orgRoutes);
+  await fastify.register(orgsAdminRoutes, { prefix: "/orgs" });
   await fastify.register(settingsRoutes, { prefix: "/settings" });
   await fastify.register(searchRoutes);
   await fastify.register(adminRoutes, { prefix: "/admin" });
