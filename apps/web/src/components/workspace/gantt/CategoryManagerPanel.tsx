@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { X, Pencil, Trash2 } from "lucide-react";
 import type { ProjectCategory } from "./gantt-types";
 import { DEFAULT_CATEGORY_COLOUR } from "./gantt-types";
+import { CategorySwatchPicker, DEFAULT_SWATCH_HEX } from "./CategorySwatchPicker";
 
 interface Props {
   onClose: () => void;
@@ -32,7 +33,9 @@ export function CategoryManagerPanel({ onClose, onChanged }: Props) {
   const editInputRef = useRef<HTMLInputElement>(null);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
-  const [newColour, setNewColour] = useState(DEFAULT_CATEGORY_COLOUR);
+  const [newColour, setNewColour] = useState(DEFAULT_SWATCH_HEX);
+  const [pickerOpenFor, setPickerOpenFor] = useState<string | null>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setErr(null);
@@ -50,8 +53,26 @@ export function CategoryManagerPanel({ onClose, onChanged }: Props) {
 
   useEffect(() => { void load(); }, [load]);
 
+  // Close the inline swatch popover on outside-click / ESC.
+  useEffect(() => {
+    if (!pickerOpenFor) return;
+    function onDown(e: MouseEvent) {
+      if (!popoverRef.current?.contains(e.target as Node)) setPickerOpenFor(null);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setPickerOpenFor(null);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [pickerOpenFor]);
+
   async function handleRecolour(id: string, colour: string) {
     setCategories((prev) => prev.map((c) => c.id === id ? { ...c, colour } : c));
+    setPickerOpenFor(null);
     try {
       const res = await fetch(`/api/workspace/categories/${id}`, {
         method: "PATCH",
@@ -113,7 +134,7 @@ export function CategoryManagerPanel({ onClose, onChanged }: Props) {
         body: JSON.stringify({ name, colour: newColour }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setNewName(""); setNewColour(DEFAULT_CATEGORY_COLOUR); setCreating(false);
+      setNewName(""); setNewColour(DEFAULT_SWATCH_HEX); setCreating(false);
       await load();
       await onChanged();
     } catch (e) {
@@ -159,59 +180,93 @@ export function CategoryManagerPanel({ onClose, onChanged }: Props) {
         {err && <div style={{ fontSize: 12, color: "#e84c6f", padding: "4px 0" }}>{err}</div>}
         {loading && <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "8px 0" }}>Loading…</div>}
 
-        {categories.map((c) => (
-          <div
-            key={c.id}
-            style={{
-              display: "flex", alignItems: "center", gap: 8,
-              padding: "10px 4px",
-              height: 48,
-            }}
-          >
-            <input
-              aria-label={`Colour for ${c.name}`}
-              type="color"
-              value={c.colour ?? DEFAULT_CATEGORY_COLOUR}
-              onChange={(e) => void handleRecolour(c.id, e.target.value)}
-              style={{
-                width: 22, height: 22, border: "none", borderRadius: 4,
-                cursor: "pointer", padding: 0, background: "transparent",
-                flexShrink: 0,
-              }}
-            />
-            {editingId === c.id ? (
-              <input
-                ref={editInputRef}
-                value={editingName}
-                onChange={(e) => setEditingName(e.target.value)}
-                onBlur={() => void saveRename(c.id)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void saveRename(c.id);
-                  if (e.key === "Escape") setEditingId(null);
-                }}
+        {categories.map((c) => {
+          const currentColour = c.colour ?? DEFAULT_CATEGORY_COLOUR;
+          const pickerOpen = pickerOpenFor === c.id;
+          return (
+            <div key={c.id} style={{ position: "relative" }}>
+              <div
                 style={{
-                  flex: 1, fontSize: 14, color: "var(--text-1)",
-                  border: "1px solid var(--border)",
-                  background: "var(--surface-2)",
-                  borderRadius: 4, padding: "4px 6px", outline: "none", minWidth: 0,
+                  display: "flex", alignItems: "center", gap: 8,
+                  padding: "10px 4px",
+                  height: 48,
                 }}
-              />
-            ) : (
-              <span style={{
-                flex: 1, fontSize: 14, fontWeight: 500, color: "var(--text-1)",
-                whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-              }}>
-                {c.name}
-              </span>
-            )}
-            <button onClick={() => startRename(c)} aria-label={`Rename ${c.name}`} style={iconBtnStyle}>
-              <Pencil size={12} />
-            </button>
-            <button onClick={() => void handleDelete(c)} aria-label={`Delete ${c.name}`} style={iconBtnStyle}>
-              <Trash2 size={12} />
-            </button>
-          </div>
-        ))}
+              >
+                <button
+                  type="button"
+                  aria-label={`Change colour of ${c.name}`}
+                  onClick={() => setPickerOpenFor(pickerOpen ? null : c.id)}
+                  style={{
+                    width: 22, height: 22, borderRadius: "50%",
+                    background: currentColour,
+                    border: "2px solid transparent",
+                    boxShadow: pickerOpen
+                      ? `0 0 0 2px var(--surface), 0 0 0 4px ${currentColour}`
+                      : "inset 0 0 0 1px rgba(0,0,0,0.08)",
+                    cursor: "pointer", padding: 0, flexShrink: 0,
+                    transition: "box-shadow 120ms ease-out",
+                  }}
+                />
+                {editingId === c.id ? (
+                  <input
+                    ref={editInputRef}
+                    value={editingName}
+                    onChange={(e) => setEditingName(e.target.value)}
+                    onBlur={() => void saveRename(c.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void saveRename(c.id);
+                      if (e.key === "Escape") setEditingId(null);
+                    }}
+                    style={{
+                      flex: 1, fontSize: 14, color: "var(--text-1)",
+                      border: "1px solid var(--border)",
+                      background: "var(--surface-2)",
+                      borderRadius: 4, padding: "4px 6px", outline: "none", minWidth: 0,
+                    }}
+                  />
+                ) : (
+                  <span style={{
+                    flex: 1, fontSize: 14, fontWeight: 500, color: "var(--text-1)",
+                    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                  }}>
+                    {c.name}
+                  </span>
+                )}
+                <button onClick={() => startRename(c)} aria-label={`Rename ${c.name}`} style={iconBtnStyle}>
+                  <Pencil size={12} />
+                </button>
+                <button onClick={() => void handleDelete(c)} aria-label={`Delete ${c.name}`} style={iconBtnStyle}>
+                  <Trash2 size={12} />
+                </button>
+              </div>
+              {pickerOpen && (
+                <div
+                  ref={popoverRef}
+                  role="dialog"
+                  aria-label={`Colour picker for ${c.name}`}
+                  style={{
+                    position: "absolute",
+                    top: 46,
+                    left: 4,
+                    right: 4,
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 8,
+                    padding: 10,
+                    boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
+                    zIndex: 10,
+                  }}
+                >
+                  <CategorySwatchPicker
+                    value={currentColour}
+                    onChange={(hex) => void handleRecolour(c.id, hex)}
+                    aria-label="Category colour"
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
 
         {/* Uncategorised — system row */}
         <div style={{
@@ -240,17 +295,10 @@ export function CategoryManagerPanel({ onClose, onChanged }: Props) {
       <div style={{ padding: "12px 16px", borderTop: "1px solid var(--border)" }}>
         {creating ? (
           <div style={{
-            display: "flex", alignItems: "center", gap: 8,
-            padding: "8px", border: "1px solid var(--border)",
+            display: "flex", flexDirection: "column", gap: 10,
+            padding: "10px", border: "1px solid var(--border)",
             borderRadius: 8, background: "var(--surface-2)",
           }}>
-            <input
-              aria-label="New category colour"
-              type="color"
-              value={newColour}
-              onChange={(e) => setNewColour(e.target.value)}
-              style={{ width: 22, height: 22, border: "none", padding: 0, cursor: "pointer", background: "transparent", flexShrink: 0 }}
-            />
             <input
               autoFocus
               placeholder="Category name…"
@@ -261,21 +309,36 @@ export function CategoryManagerPanel({ onClose, onChanged }: Props) {
                 if (e.key === "Escape") { setCreating(false); setNewName(""); }
               }}
               style={{
-                flex: 1, fontSize: 13,
+                width: "100%", fontSize: 14,
                 border: "1px solid var(--border)", borderRadius: 4,
-                padding: "4px 6px", outline: "none", minWidth: 0,
+                padding: "6px 8px", outline: "none", minWidth: 0,
                 background: "var(--surface)", color: "var(--text-1)",
+                boxSizing: "border-box",
               }}
             />
-            <button
-              onClick={() => void handleCreate()}
-              style={{
-                background: "var(--brand)", color: "#fff", border: 0,
-                borderRadius: 4, padding: "4px 10px", fontSize: 12, cursor: "pointer", fontWeight: 500,
-              }}
-            >
-              Add
-            </button>
+            <CategorySwatchPicker value={newColour} onChange={setNewColour} />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button
+                onClick={() => { setCreating(false); setNewName(""); }}
+                style={{
+                  background: "transparent", color: "var(--text-2)", border: "1px solid var(--border)",
+                  borderRadius: 6, padding: "6px 10px", fontSize: 12, cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleCreate()}
+                disabled={!newName.trim()}
+                style={{
+                  background: "var(--brand)", color: "#fff", border: 0,
+                  borderRadius: 6, padding: "6px 12px", fontSize: 12, cursor: "pointer", fontWeight: 500,
+                  opacity: newName.trim() ? 1 : 0.5,
+                }}
+              >
+                Add
+              </button>
+            </div>
           </div>
         ) : (
           <button
