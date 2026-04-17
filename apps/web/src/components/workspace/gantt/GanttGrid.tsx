@@ -5,7 +5,7 @@ import type { ZoomLevel, GanttNode } from "./gantt-types";
 import type { TimelineRange } from "./gantt-utils";
 import { dateToPct, generateDateAxis } from "./gantt-utils";
 import { GanttRow } from "./GanttRow";
-import { GanttDateHeader, GANTT_HEADER_HEIGHT } from "./GanttDateHeader";
+import { GanttDateHeader, GANTT_HEADER_HEIGHT, PX_PER_DAY_BY_ZOOM } from "./GanttDateHeader";
 
 interface Props {
   rows: FlatRow[];
@@ -25,9 +25,15 @@ export const GanttGrid = forwardRef<HTMLDivElement, Props>(function GanttGrid(
   const todayPct = dateToPct(new Date(), range);
   const todayInRange = todayPct >= 0 && todayPct <= 100;
 
+  // Explicit horizontal scale keyed on zoom so the axis is wide enough that
+  // day + month labels never overlap. Grid viewport scrolls horizontally when
+  // the axis exceeds the available width (almost always at W zoom).
+  const pxPerDay = PX_PER_DAY_BY_ZOOM[zoom];
+  const axisMinWidth = Math.max(600, pxPerDay * range.totalDays);
+
   return (
     <div ref={ref} style={{ position: "relative", overflowX: "auto", flex: 1, minHeight: 0 }}>
-      <div style={{ minWidth: "max-content", position: "relative" }}>
+      <div style={{ minWidth: axisMinWidth, position: "relative" }}>
         <GanttDateHeader range={range} zoom={zoom} />
 
         {/* Gridlines — below the axis band, down to grid bottom */}

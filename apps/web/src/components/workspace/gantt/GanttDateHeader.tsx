@@ -13,6 +13,18 @@ export const GANTT_HEADER_HEIGHT = 64;
 const AXIS_BAND_HEIGHT = 48;
 const TODAY_LABEL_BAND = 16;
 
+// Horizontal scale: px-per-day per zoom. Drives the grid minWidth so day-
+// number labels and month labels never overlap. Tuned so adjacent ticks are
+// spaced comfortably wider than their labels (~16px for "23" at 11px tabular):
+//   - week:    daily ticks × 36px = 36px between labels (20px gap)
+//   - month:   weekly ticks × 14px per day = 98px between labels
+//   - quarter: biweekly ticks × 8px per day = 112px between labels
+export const PX_PER_DAY_BY_ZOOM: Record<ZoomLevel, number> = {
+  week:    36,
+  month:   14,
+  quarter:  8,
+};
+
 export function GanttDateHeader({ range, zoom }: Props) {
   const axis = generateDateAxis(range, zoom);
   const todayPct = dateToPct(new Date(), range);
@@ -79,6 +91,7 @@ export function GanttDateHeader({ range, zoom }: Props) {
                 boxSizing: "border-box",
                 whiteSpace: "nowrap",
                 overflow: "hidden",
+                textOverflow: "ellipsis",
               }}
             >
               {m.label}
