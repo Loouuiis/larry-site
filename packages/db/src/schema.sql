@@ -1535,28 +1535,12 @@ END $$;
 
 UPDATE memberships SET role = 'member' WHERE role = 'executive';
 
-WITH first_admin AS (
-  SELECT DISTINCT ON (tenant_id) tenant_id, user_id
-  FROM memberships
-  WHERE role = 'admin'
-  ORDER BY tenant_id, created_at ASC
-),
-tenants_without_owner AS (
-  SELECT t.id
-  FROM tenants t
-  LEFT JOIN memberships m ON m.tenant_id = t.id AND m.role = 'owner'
-  WHERE m.tenant_id IS NULL
-)
-UPDATE memberships m
-SET role = 'owner'
-FROM first_admin fa
-WHERE m.tenant_id = fa.tenant_id
-  AND m.user_id = fa.user_id
-  AND m.tenant_id IN (SELECT id FROM tenants_without_owner);
-
-CREATE UNIQUE INDEX IF NOT EXISTS idx_memberships_one_owner_per_tenant
-  ON memberships (tenant_id)
-  WHERE role = 'owner';
+-- Note: the first-admin → owner promotion and the partial unique index
+--       (CREATE UNIQUE INDEX ... WHERE role = 'owner') cannot live in this
+--       schema.sql because Postgres rejects using a newly-added enum value
+--       in the same statement batch as the ALTER TYPE ADD VALUE that added
+--       it ("unsafe use of new value 'owner'"). Both are applied via a
+--       separate post-deploy migration once the enum catalog has committed.
 
 CREATE TABLE IF NOT EXISTS invitations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
