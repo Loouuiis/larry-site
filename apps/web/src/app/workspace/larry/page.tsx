@@ -496,7 +496,7 @@ export default function AskLarryPage() {
           for await (const streamEvent of parseLarrySseStream(response.body)) {
             switch (streamEvent.type) {
               case "token":
-                updateStreamingMessage((previous) => ({ content: previous.content + streamEvent.delta }));
+                updateStreamingMessage((previous) => ({ content: previous.content + String(streamEvent.delta ?? "") }));
                 break;
               case "done":
                 finalConversationId = streamEvent.conversationId;

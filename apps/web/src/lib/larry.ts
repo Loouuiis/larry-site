@@ -110,9 +110,15 @@ export async function sendLarryChat(input: {
 }
 
 /**
- * Remove inline function-call markup that some models emit as plain text,
- * e.g. `<function=get_task_list{"filter":"all"}>`.
+ * Remove inline function-call markup that some models emit as plain text.
+ * Handles both formats the model may produce:
+ *   Format A: <function=toolname{...json...}</function>   (no > before args)
+ *   Format B: <function=toolname>{"filter":"all"}</function>  (> between name and args)
+ * The old regex /<function=[^>]*>/ only matched up to the first >, so Format B
+ * left {"filter":"all"}</function> visible in the bubble.
  */
 export function stripFunctionCallMarkup(text: string): string {
-  return text.replace(/<function=[^>]*>/g, "");
+  return text
+    .replace(/<function=[^>]*>(?:[\s\S]*?<\/function>)?/g, "")
+    .replace(/<\/function>/g, ""); // clean up any orphaned closing tags
 }
