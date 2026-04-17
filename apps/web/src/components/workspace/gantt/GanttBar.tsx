@@ -1,7 +1,7 @@
 "use client";
-import type { CSSProperties } from "react";
 import type { GanttTask, GanttTaskStatus } from "./gantt-types";
-import { contrastTextFor, dateToPct, type TimelineRange } from "./gantt-utils";
+import { dateToPct, darken, type TimelineRange } from "./gantt-utils";
+import { GanttStatusChip } from "./GanttStatusChip";
 
 export type GanttBarVariant = "category" | "project" | "task" | "subtask";
 
@@ -12,29 +12,47 @@ interface Props {
   progressPercent: number;
   range: TimelineRange;
   categoryColor: string;
-  status?: GanttTaskStatus; // only meaningful for task/subtask
+  status?: GanttTaskStatus;
   label?: string;
   task?: GanttTask;
   highlighted?: boolean;
   selected?: boolean;
   dimmed?: boolean;
   onClick?: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
 }
 
 const HEIGHT_BY_VARIANT: Record<GanttBarVariant, number> = {
-  category: 6,
-  project: 10,
-  task: 16,
-  subtask: 10,
+  category: 18,
+  project:  16,
+  task:     14,
+  subtask:  10,
 };
 
-const ROLLUP_OPACITY = 0.45;
+const RADIUS_BY_VARIANT: Record<GanttBarVariant, number> = {
+  category: 3,
+  project:  3,
+  task:     3,
+  subtask:  2,
+};
+
+function rgbaFromHex(hex: string, alpha: number): string {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex);
+  if (!m) return `rgba(108, 68, 246, ${alpha})`;
+  let s = m[1];
+  if (s.length === 3) s = s[0] + s[0] + s[1] + s[1] + s[2] + s[2];
+  const r = parseInt(s.slice(0, 2), 16);
+  const g = parseInt(s.slice(2, 4), 16);
+  const b = parseInt(s.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
 
 export function GanttBar({
-  variant, start, end, progressPercent, range, categoryColor, status, label, highlighted, selected, dimmed,
-  onClick, onMouseEnter, onMouseLeave,
+  variant, start, end, progressPercent, range, categoryColor, status,
+  highlighted, selected, dimmed, label,
+  onClick, onContextMenu, onMouseEnter, onMouseLeave,
 }: Props) {
   const s = new Date(start);
   const e = new Date(end);
@@ -43,35 +61,18 @@ export function GanttBar({
   const width = Math.max(right - left, 0.5);
 
   const height = HEIGHT_BY_VARIANT[variant];
-  const isRollup = variant === "category" || variant === "project";
-
-  const effectiveStatus: GanttTaskStatus | undefined = isRollup ? undefined : (status ?? "on_track");
-
-  // Base fill — transparent for not_started, categoryColor otherwise.
-  let background: string = categoryColor;
-  if (effectiveStatus === "not_started") background = "transparent";
-
-  // Status-driven border.
-  let border: CSSProperties["border"] = "none";
-  if (effectiveStatus === "not_started") border = `1.5px dashed ${categoryColor}`;
-  else if (effectiveStatus === "overdue") border = "2px solid var(--tl-overdue, #e87878)";
-
-  // Opacity.
-  let opacity = 1;
-  if (isRollup) opacity = ROLLUP_OPACITY;
-  else if (effectiveStatus === "completed") opacity = 0.5;
-  if (dimmed) opacity *= 0.35;
-
-  const ring = highlighted || selected ? "0 0 0 2px #6c44f6" : undefined;
-  const textColor = contrastTextFor(categoryColor);
-
-  const showLabel = !isRollup && variant !== "subtask" && label;
-  const labelSuffix = effectiveStatus === "completed" ? " ✓" : "";
+  const radius = RADIUS_BY_VARIANT[variant];
+  const isLeaf = variant === "task" || variant === "subtask";
   const progressClamped = Math.min(100, Math.max(0, progressPercent));
+
+  const rgbRing = (highlighted || selected)
+    ? `0 0 0 2px ${rgbaFromHex(categoryColor, 0.25)}`
+    : undefined;
 
   return (
     <div
       onClick={onClick}
+      onContextMenu={onContextMenu}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       title={label}
@@ -81,90 +82,45 @@ export function GanttBar({
         width: `${width}%`,
         top: `calc(50% - ${height / 2}px)`,
         height,
+        display: "flex",
+        alignItems: "center",
         cursor: onClick ? "pointer" : "default",
-        boxShadow: ring,
-        opacity,
-        transition: "box-shadow 120ms",
+        opacity: dimmed ? 0.35 : 1,
+        pointerEvents: "auto",
       }}
     >
-      {/* Base fill + border (status modifier) */}
+      {/* Solid category-colour bar */}
       <div
         style={{
-          position: "absolute",
-          inset: 0,
-          background,
-          border,
-          borderRadius: height >= 14 ? 4 : 3,
-          boxSizing: "border-box",
+          position: "relative",
+          width: "100%",
+          height,
+          background: categoryColor,
+          borderRadius: radius,
+          boxShadow: rgbRing ?? "0 1px 2px rgba(0,0,0,0.04)",
+          transition: "box-shadow 150ms ease-out",
+          overflow: "hidden",
         }}
-      />
-      {/* Progress fill for task bars with solid background */}
-      {variant === "task" && effectiveStatus !== "not_started" && (
-        <div
-          style={{
-            position: "absolute",
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: `${progressClamped}%`,
-            background: "rgba(255, 255, 255, 0.18)",
-            mixBlendMode: "screen",
-            borderTopLeftRadius: height >= 14 ? 4 : 3,
-            borderBottomLeftRadius: height >= 14 ? 4 : 3,
-            pointerEvents: "none",
-          }}
-        />
-      )}
-      {/* at_risk top stripe */}
-      {effectiveStatus === "at_risk" && (
-        <div
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 3,
-            background: "var(--tl-at-risk, #d4b84a)",
-            borderTopLeftRadius: height >= 14 ? 4 : 3,
-            borderTopRightRadius: height >= 14 ? 4 : 3,
-            pointerEvents: "none",
-          }}
-        />
-      )}
-      {/* Overdue right-end dot */}
-      {effectiveStatus === "overdue" && (
-        <div
-          style={{
-            position: "absolute",
-            right: -3,
-            top: `calc(50% - 3px)`,
-            width: 6,
-            height: 6,
-            borderRadius: "50%",
-            background: "var(--tl-overdue, #e87878)",
-            pointerEvents: "none",
-          }}
-        />
-      )}
-      {/* Label */}
-      {showLabel && (
-        <span
-          style={{
-            position: "absolute",
-            left: 8,
-            top: "50%",
-            transform: "translateY(-50%)",
-            fontSize: 11,
-            fontWeight: 500,
-            color: effectiveStatus === "not_started" ? "var(--text-2, #4b556b)" : textColor,
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            maxWidth: "calc(100% - 16px)",
-            pointerEvents: "none",
-          }}
-        >
-          {label}{labelSuffix}
+      >
+        {/* Progress overlay — darker inner fill up to progress% */}
+        {progressClamped > 0 && (
+          <div
+            style={{
+              position: "absolute",
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: `${progressClamped}%`,
+              background: darken(categoryColor, 12),
+            }}
+          />
+        )}
+      </div>
+
+      {/* Trailing status chip — leaf rows only */}
+      {isLeaf && status && (
+        <span style={{ marginLeft: 4, flexShrink: 0 }}>
+          <GanttStatusChip status={status} />
         </span>
       )}
     </div>

@@ -1,7 +1,6 @@
 "use client";
 import { ChevronRight } from "lucide-react";
 import type { FlatRow } from "./gantt-utils";
-import { ROW_HEIGHT } from "./gantt-types";
 import { CategoryDot, type CategoryDotTier } from "./CategoryDot";
 
 type NodeRow = Extract<FlatRow, { kind: "node" }>;
@@ -13,6 +12,7 @@ interface Props {
   hovered: boolean;
   onToggle?: () => void;
   onSelect?: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
   onHover?: (hovered: boolean) => void;
 }
 
@@ -20,51 +20,55 @@ type Tier = CategoryDotTier;
 
 const TYPOGRAPHY_BY_TIER: Record<Tier, React.CSSProperties> = {
   category: {
-    fontSize: 11,
-    fontWeight: 500,
-    letterSpacing: "0.06em",
+    fontSize: 13,
+    fontWeight: 600,
+    letterSpacing: "0.03em",
     textTransform: "uppercase",
     color: "var(--text-1)",
   },
   project: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 500,
     color: "var(--text-1)",
   },
   task: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: 400,
     color: "var(--text-1)",
   },
   subtask: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: 400,
     color: "var(--text-2)",
   },
 };
 
-function tierOf(kind: NodeRow["node"]["kind"]): Tier {
-  return kind;
+function tierOf(kind: NodeRow["node"]["kind"]): Tier { return kind; }
+
+function labelFor(n: NodeRow["node"]): string {
+  if (n.kind === "category") {
+    if (n.id === null || n.id === "uncat") return n.name || "Uncategorised";
+    return n.name;
+  }
+  if (n.kind === "project") return n.name;
+  return n.task.title;
 }
 
-export function GanttOutlineRow({ row, expanded, selected, hovered, onToggle, onSelect, onHover }: Props) {
+export function GanttOutlineRow({
+  row, expanded, selected, hovered, onToggle, onSelect, onContextMenu, onHover,
+}: Props) {
   const n = row.node;
   const tier = tierOf(n.kind);
   const indent = 14 + row.depth * 14;
-  const label =
-    n.kind === "category" ? n.name :
-    n.kind === "project"  ? n.name :
-    n.task.title;
-
+  const label = labelFor(n);
   const isCategory = n.kind === "category";
+  const isUncategorised = isCategory && (n.id === null || n.id === "uncat");
 
-  const background = isCategory
-    ? "var(--surface-2, #f6f2fc)"
-    : selected
-      ? "rgba(108, 68, 246, 0.04)"
-      : hovered
-        ? "var(--surface-2, #f6f2fc)"
-        : "transparent";
+  const background = selected
+    ? "var(--surface-2)"
+    : hovered
+      ? "var(--surface-2)"
+      : "transparent";
 
   return (
     <div
@@ -72,19 +76,20 @@ export function GanttOutlineRow({ row, expanded, selected, hovered, onToggle, on
       onMouseEnter={() => onHover?.(true)}
       onMouseLeave={() => onHover?.(false)}
       onClick={onSelect}
+      onContextMenu={onContextMenu}
       style={{
-        height: ROW_HEIGHT,
+        height: row.height,
         display: "flex",
         alignItems: "center",
         gap: 8,
         paddingLeft: indent,
         paddingRight: 14,
-        borderBottom: "1px solid var(--border, #f0edfa)",
-        borderLeft: selected ? "3px solid #6c44f6" : "3px solid transparent",
+        borderLeft: selected ? "2px solid var(--brand)" : "2px solid transparent",
         background,
         cursor: onSelect ? "pointer" : "default",
         opacity: row.dimmed ? 0.35 : 1,
         userSelect: "none",
+        transition: "background-color 150ms ease-out",
       }}
     >
       {row.hasChildren ? (
@@ -92,27 +97,31 @@ export function GanttOutlineRow({ row, expanded, selected, hovered, onToggle, on
           onClick={(e) => { e.stopPropagation(); onToggle?.(); }}
           aria-label={expanded ? "Collapse" : "Expand"}
           style={{
-            width: 16, height: 16, flexShrink: 0,
+            width: 12, height: 12, flexShrink: 0,
             background: "transparent", border: 0, padding: 0,
             display: "inline-flex", alignItems: "center", justifyContent: "center",
-            color: "var(--text-muted, #bdb7d0)",
+            color: "var(--text-muted)",
             transform: expanded ? "rotate(90deg)" : "rotate(0deg)",
-            transition: "transform 120ms",
+            transition: "transform 150ms ease-out",
             cursor: "pointer",
           }}
         >
-          <ChevronRight size={10} />
+          <ChevronRight size={10} strokeWidth={1.5} />
         </button>
       ) : (
-        <span style={{ width: 16, flexShrink: 0 }} />
+        <span style={{ width: 12, flexShrink: 0 }} />
       )}
 
-      <CategoryDot color={row.categoryColor} tier={tier} />
+      <CategoryDot
+        color={isUncategorised ? "var(--text-muted)" : row.categoryColor}
+        tier={tier}
+      />
 
       <span
         title={label}
         style={{
           ...TYPOGRAPHY_BY_TIER[tier],
+          fontStyle: isUncategorised ? "italic" : "normal",
           flex: 1,
           minWidth: 0,
           whiteSpace: "nowrap",
