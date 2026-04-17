@@ -9,7 +9,8 @@ export type GanttNode =
   | { kind: "subtask";  id: string; task: GanttTask };
 
 export type ZoomLevel = "week" | "month" | "quarter";
-export const ROW_HEIGHT = 36;
+export const ROW_HEIGHT = 32;            // category + project (v3)
+export const ROW_HEIGHT_TASK = 28;       // task + subtask (v3)
 
 // Key format: "cat:<uuid>" for a real category, "cat:uncat" for the synthetic bucket.
 export type CategoryColorMap = Map<string, string>;

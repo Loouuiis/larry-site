@@ -2,7 +2,7 @@ import type {
   CategoryColorMap, ContextMenuItem,
   GanttNode, GanttTask, GanttTaskStatus, PortfolioTimelineResponse, StatusChipData, ZoomLevel,
 } from "./gantt-types";
-import { DEFAULT_CATEGORY_COLOUR } from "./gantt-types";
+import { DEFAULT_CATEGORY_COLOUR, ROW_HEIGHT, ROW_HEIGHT_TASK } from "./gantt-types";
 
 /* ─── DB status normalisation ──────────────────────────────────────── */
 
@@ -145,7 +145,10 @@ export function flattenVisible(
     const key = keyOf(node);
     const categoryColor = colourFor(node, inherited);
 
-    if (!isSyntheticRoot) rows.push({ kind: "node", key, depth, node, hasChildren, categoryColor });
+    if (!isSyntheticRoot) {
+      const height = (node.kind === "task" || node.kind === "subtask") ? ROW_HEIGHT_TASK : ROW_HEIGHT;
+      rows.push({ kind: "node", key, depth, node, hasChildren, categoryColor, height });
+    }
 
     if (!isSyntheticRoot && !expanded.has(key)) return;
     for (const child of children) {

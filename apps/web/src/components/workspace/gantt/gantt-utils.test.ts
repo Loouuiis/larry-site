@@ -12,6 +12,7 @@ import {
   tinyTint,
 } from "./gantt-utils";
 import type { PortfolioTimelineResponse, GanttTask, GanttNode } from "./gantt-types";
+import { ROW_HEIGHT, ROW_HEIGHT_TASK } from "./gantt-types";
 
 const baseTask = (over: Partial<GanttTask> = {}): GanttTask => ({
   id: "t", projectId: "p", parentTaskId: null, title: "T",
@@ -287,6 +288,25 @@ describe("contextMenuItemsFor", () => {
     expect(items).toHaveLength(1);
     expect(items[0].disabled).toBe(true);
     expect(items[0].label).toMatch(/default bucket/i);
+  });
+});
+
+describe("flattenVisible assigns per-level heights", () => {
+  it("category/project rows use ROW_HEIGHT=32 and task/subtask use 28", () => {
+    const sub: GanttNode = { kind: "subtask", id: "t2", task: baseTask({ id: "t2", parentTaskId: "t1" }) };
+    const task1: GanttNode = { kind: "task", id: "t1", task: baseTask({ id: "t1" }), children: [sub] };
+    const project: GanttNode = { kind: "project", id: "p1", name: "P", status: "active", children: [task1] };
+    const category: GanttNode = { kind: "category", id: "c1", name: "C", colour: null, children: [project] };
+    const syntheticRoot: GanttNode = { kind: "category", id: "__root__", name: "", colour: null, children: [category] };
+
+    const expanded = new Set<string>(["cat:c1", "proj:p1", "task:t1"]);
+    const rows = flattenVisible(syntheticRoot, expanded);
+    const byKey = Object.fromEntries(rows.map((r) => [r.key, r]));
+
+    expect((byKey["cat:c1"] as { height: number }).height).toBe(ROW_HEIGHT);
+    expect((byKey["proj:p1"] as { height: number }).height).toBe(ROW_HEIGHT);
+    expect((byKey["task:t1"] as { height: number }).height).toBe(ROW_HEIGHT_TASK);
+    expect((byKey["sub:t2"] as { height: number }).height).toBe(ROW_HEIGHT_TASK);
   });
 });
 
