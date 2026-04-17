@@ -246,3 +246,32 @@ describe("tinyTint", () => {
     expect(tinyTint("#6c44f6")).toMatch(/^rgba\(108, 68, 246, 0\.15\)$/);
   });
 });
+
+/* ─── v3 additions ─────────────────────────────────────────────────── */
+
+import { darken } from "./gantt-utils";
+
+describe("darken", () => {
+  it("returns a lower-RGB hex for the given percentage", () => {
+    // #808080 (128) → -12% of 128 ≈ -15 → 113 (0x71)
+    expect(darken("#808080", 12)).toBe("#717171");
+  });
+
+  it("floors at #000000", () => {
+    expect(darken("#000000", 50)).toBe("#000000");
+  });
+
+  it("normalises 3-digit hex", () => {
+    // #abc → #aabbcc → each channel × 0.88 = (150, 165, 180) = #96a5b4
+    expect(darken("#abc", 12)).toBe("#96a5b4");
+  });
+
+  it("handles Larry brand purple", () => {
+    // #6c44f6 = (108, 68, 246). × 0.88 → (95, 60, 216) = #5f3cd8
+    expect(darken("#6c44f6", 12)).toBe("#5f3cd8");
+  });
+
+  it("returns the input when the hex is invalid", () => {
+    expect(darken("not-a-hex", 12)).toBe("not-a-hex");
+  });
+});

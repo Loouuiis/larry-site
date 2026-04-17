@@ -437,3 +437,16 @@ export function tinyTint(hex: string, alpha = 0.15): string {
   if (!rgb) return `rgba(108, 68, 246, ${alpha})`;
   return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
 }
+
+// Darken a hex colour by a percentage (0-100) of each RGB channel.
+// Returns "#rrggbb". If the input isn't a valid hex, returns it unchanged.
+export function darken(hex: string, pct: number): string {
+  const rgb = parseHex(hex);
+  if (!rgb) return hex;
+  const factor = Math.max(0, 1 - pct / 100);
+  const r = Math.max(0, Math.min(255, Math.round(rgb.r * factor)));
+  const g = Math.max(0, Math.min(255, Math.round(rgb.g * factor)));
+  const b = Math.max(0, Math.min(255, Math.round(rgb.b * factor)));
+  const toHex = (n: number) => n.toString(16).padStart(2, "0");
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
