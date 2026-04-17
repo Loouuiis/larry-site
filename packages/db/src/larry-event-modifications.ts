@@ -13,7 +13,7 @@ export type ModifiableActionType =
   | "email_draft";
 
 const FIELDS_BY_ACTION_TYPE: Record<string, readonly string[]> = {
-  task_create:     ["title", "description", "dueDate", "assigneeName", "priority"],
+  task_create:     ["title", "description", "startDate", "dueDate", "assigneeName", "priority"],
   status_update:   ["newStatus", "newRiskLevel"],
   risk_flag:       ["riskLevel"],
   deadline_change: ["newDeadline"],

@@ -58,6 +58,7 @@ export function isUuidShape(value: string): boolean {
 interface TaskCreatePayload {
   title: string;
   description: string | null;
+  startDate: string | null;
   dueDate: string | null;
   assigneeName: string | null;
   priority: "low" | "medium" | "high" | "critical";
@@ -749,11 +750,20 @@ export async function executeTaskCreate(
   const rows = await db.queryTenant<Record<string, unknown>>(
     tenantId,
     `INSERT INTO tasks
-       (tenant_id, project_id, title, description, status, priority, assignee_user_id, due_date)
-     VALUES ($1, $2, $3, $4, 'not_started', $5, $6, $7)
+       (tenant_id, project_id, title, description, status, priority, assignee_user_id, start_date, due_date)
+     VALUES ($1, $2, $3, $4, 'not_started', $5, $6, $7, $8)
      RETURNING id, tenant_id, project_id, title, description, status, priority,
-               assignee_user_id, progress_percent, risk_score, risk_level, due_date, created_at`,
-    [tenantId, projectId, payload.title, payload.description ?? null, payload.priority, assigneeId, payload.dueDate ?? null]
+               assignee_user_id, progress_percent, risk_score, risk_level, start_date, due_date, created_at`,
+    [
+      tenantId,
+      projectId,
+      payload.title,
+      payload.description ?? null,
+      payload.priority,
+      assigneeId,
+      payload.startDate ?? null,
+      payload.dueDate ?? null,
+    ]
   );
   const task = rows[0];
   const taskId = task.id as string;
@@ -997,6 +1007,7 @@ export async function executeProjectCreate(
       const task = await executeTaskCreate(db, tenantId, projectId, {
         title: taskSpec.title,
         description: null,
+        startDate: null,
         dueDate: taskSpec.dueDate ?? null,
         assigneeName: taskSpec.assigneeName ?? null,
         priority: "medium",

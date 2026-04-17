@@ -1284,6 +1284,7 @@ export const projectIntakeRoutes: FastifyPluginAsync = async (fastify) => {
             await executeTaskCreate(fastify.db, tenantId, finalizedProjectId, {
               title: task.title,
               description: task.description ?? null,
+              startDate: null,
               dueDate: task.dueDate ?? null,
               assigneeName: task.assigneeName ?? null,
               priority: task.priority ?? "medium",
