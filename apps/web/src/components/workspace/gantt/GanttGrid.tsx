@@ -6,7 +6,6 @@ import type { TimelineRange } from "./gantt-utils";
 import { dateToPct, generateDateAxis } from "./gantt-utils";
 import { GanttRow } from "./GanttRow";
 import { GanttDateHeader, GANTT_HEADER_HEIGHT } from "./GanttDateHeader";
-import { ROW_HEIGHT } from "./gantt-types";
 
 interface Props {
   rows: FlatRow[];
@@ -91,31 +90,18 @@ export const GanttGrid = forwardRef<HTMLDivElement, Props>(function GanttGrid(
 
         {/* Rows */}
         <div style={{ position: "relative", zIndex: 1 }}>
-          {rows.map((r) => {
-            if (r.kind === "add") {
-              return (
-                <div
-                  key={r.key}
-                  style={{
-                    height: r.height,
-                    borderBottom: "1px solid var(--border, #f0edfa)",
-                  }}
-                />
-              );
-            }
-            return (
-              <div key={r.key} style={{ height: r.height ?? ROW_HEIGHT }}>
-                <GanttRow
-                  row={r}
-                  range={range}
-                  hoveredKey={hoveredKey}
-                  selectedKey={selectedKey}
-                  onHoverKey={onHoverKey}
-                  onSelectKey={onSelectKey}
-                />
-              </div>
-            );
-          })}
+          {rows.map((r) => (
+            <div key={r.key} style={{ height: r.height }}>
+              <GanttRow
+                row={r}
+                range={range}
+                hoveredKey={hoveredKey}
+                selectedKey={selectedKey}
+                onHoverKey={onHoverKey}
+                onSelectKey={onSelectKey}
+              />
+            </div>
+          ))}
         </div>
       </div>
     </div>

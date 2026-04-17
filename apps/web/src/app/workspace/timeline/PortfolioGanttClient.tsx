@@ -6,7 +6,6 @@ import { buildPortfolioTree, buildCategoryColorMap, normalizePortfolioStatuses }
 import { GanttContainer } from "@/components/workspace/gantt/GanttContainer";
 import { AddNodeModal } from "@/components/workspace/gantt/AddNodeModal";
 import { CategoryManagerPanel } from "@/components/workspace/gantt/CategoryManagerPanel";
-import type { InlineAddMode } from "@/components/workspace/gantt/gantt-utils";
 
 type AddCtx =
   | { mode: "category" }
@@ -52,38 +51,6 @@ export function PortfolioGanttClient() {
     }
   }
 
-  function findProjectIdForTaskKey(taskKey: string): string | null {
-    const taskId = taskKey.slice("task:".length);
-    for (const cat of normalized.categories) {
-      for (const proj of cat.projects) {
-        if (proj.tasks.some((t) => t.id === taskId)) return proj.id;
-      }
-    }
-    return null;
-  }
-
-  function handleInlineAdd(ctx: { mode: InlineAddMode; parentKey: string | null }) {
-    if (ctx.mode === "category") {
-      setAddCtx({ mode: "category" });
-      return;
-    }
-    if (ctx.mode === "project" && ctx.parentKey?.startsWith("cat:")) {
-      const id = ctx.parentKey.slice("cat:".length);
-      setAddCtx({ mode: "project", parentCategoryId: id === "uncat" ? undefined : id });
-      return;
-    }
-    if (ctx.mode === "task" && ctx.parentKey?.startsWith("proj:")) {
-      const id = ctx.parentKey.slice("proj:".length);
-      setAddCtx({ mode: "task", parentProjectId: id });
-      return;
-    }
-    if (ctx.mode === "subtask" && ctx.parentKey?.startsWith("task:")) {
-      const taskId = ctx.parentKey.slice("task:".length);
-      const projectId = findProjectIdForTaskKey(ctx.parentKey);
-      if (projectId) setAddCtx({ mode: "subtask", parentProjectId: projectId, parentTaskId: taskId });
-    }
-  }
-
   const addLabel =
     addCtx?.mode === "project" ? "+ Project"
       : addCtx?.mode === "task" ? "+ Task"
@@ -103,7 +70,6 @@ export function PortfolioGanttClient() {
         addLabel={addLabel}
         onAdd={handleAdd}
         categoryColorMap={categoryColorMap}
-        onInlineAdd={handleInlineAdd}
         outlineHeaderActions={
           <button
             aria-label="Manage categories"
@@ -121,26 +87,6 @@ export function PortfolioGanttClient() {
             }}
           >
             <Settings size={14} />
-          </button>
-        }
-        outlineFooter={
-          <button
-            onClick={() => setAddCtx({ mode: "category" })}
-            style={{
-              textAlign: "left",
-              height: 36,
-              padding: "0 14px 0 34px",
-              background: "transparent",
-              border: 0,
-              borderTop: "1px solid var(--border, #f0edfa)",
-              fontSize: 11,
-              fontStyle: "italic",
-              color: "var(--text-muted, #bdb7d0)",
-              cursor: "pointer",
-              width: "100%",
-            }}
-          >
-            + Add category
           </button>
         }
         outlineOverlay={

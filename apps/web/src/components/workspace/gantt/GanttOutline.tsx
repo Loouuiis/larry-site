@@ -1,9 +1,7 @@
 "use client";
 import { useRef, useCallback, useEffect, type ReactNode } from "react";
-import type { FlatRow, InlineAddMode } from "./gantt-utils";
+import type { FlatRow } from "./gantt-utils";
 import { GanttOutlineRow } from "./GanttOutlineRow";
-import { GanttInlineAdd } from "./GanttInlineAdd";
-import { ROW_HEIGHT } from "./gantt-types";
 import { GANTT_HEADER_HEIGHT } from "./GanttDateHeader";
 
 interface Props {
@@ -16,7 +14,6 @@ interface Props {
   onToggle: (key: string) => void;
   onSelect: (key: string) => void;
   onHover: (key: string | null) => void;
-  onInlineAdd?: (ctx: { mode: InlineAddMode; parentKey: string | null }) => void;
   header?: ReactNode;        // optional: full replacement for the default header
   headerActions?: ReactNode; // optional: right-aligned actions inside default header (e.g. gear icon)
   footer?: ReactNode;
@@ -28,7 +25,7 @@ const MAX_WIDTH = 420;
 
 export function GanttOutline({
   rows, expanded, selectedKey, hoveredKey, width, onWidthChange,
-  onToggle, onSelect, onHover, onInlineAdd, header, headerActions, footer, overlay,
+  onToggle, onSelect, onHover, header, headerActions, footer, overlay,
 }: Props) {
   const dragging = useRef(false);
   const startX = useRef(0);
@@ -93,34 +90,19 @@ export function GanttOutline({
         </div>
       )}
       <div style={{ flex: 1, overflow: "hidden" }}>
-        {rows.map((row) => {
-          if (row.kind === "add") {
-            return (
-              <GanttInlineAdd
-                key={row.key}
-                mode={row.mode}
-                parentKey={row.parentKey}
-                depth={row.depth}
-                categoryColor={row.categoryColor}
-                height={row.height}
-                onClick={() => onInlineAdd?.({ mode: row.mode, parentKey: row.parentKey })}
-              />
-            );
-          }
-          return (
-            <div key={row.key} style={{ height: row.height ?? ROW_HEIGHT }}>
-              <GanttOutlineRow
-                row={row}
-                expanded={expanded.has(row.key)}
-                selected={selectedKey === row.key}
-                hovered={hoveredKey === row.key}
-                onToggle={() => onToggle(row.key)}
-                onSelect={() => onSelect(row.key)}
-                onHover={(h) => onHover(h ? row.key : null)}
-              />
-            </div>
-          );
-        })}
+        {rows.map((row) => (
+          <div key={row.key} style={{ height: row.height }}>
+            <GanttOutlineRow
+              row={row}
+              expanded={expanded.has(row.key)}
+              selected={selectedKey === row.key}
+              hovered={hoveredKey === row.key}
+              onToggle={() => onToggle(row.key)}
+              onSelect={() => onSelect(row.key)}
+              onHover={(h) => onHover(h ? row.key : null)}
+            />
+          </div>
+        ))}
       </div>
       {footer}
       {overlay}

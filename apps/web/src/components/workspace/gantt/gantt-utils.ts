@@ -86,28 +86,16 @@ function buildTaskForest(tasks: GanttTask[]): GanttNode[] {
 
 /* ─── Flatten for rendering ────────────────────────────────────────── */
 
-export type InlineAddMode = "category" | "project" | "task" | "subtask";
-
-export type FlatRow =
-  | {
-      kind: "node";
-      key: string;         // stable id, e.g. "cat:c1", "proj:p1", "task:t1", "sub:t2"
-      depth: number;       // 0..3
-      node: GanttNode;
-      hasChildren: boolean;
-      categoryColor: string; // resolved category colour; fallback to Larry purple
-      dimmed?: boolean;
-      height?: number;     // optional override; defaults to ROW_HEIGHT
-    }
-  | {
-      kind: "add";
-      key: string;         // e.g. "add:cat:c1", "add:proj:p1", "add:root"
-      depth: number;
-      mode: InlineAddMode;
-      parentKey: string | null;
-      categoryColor: string;
-      height: number;      // typically 28
-    };
+export type FlatRow = {
+  kind: "node";
+  key: string;         // stable id, e.g. "cat:c1", "proj:p1", "task:t1", "sub:t2"
+  depth: number;       // 0..3
+  node: GanttNode;
+  hasChildren: boolean;
+  categoryColor: string; // resolved category colour; fallback to Larry purple
+  dimmed?: boolean;
+  height: number;      // per-level (ROW_HEIGHT for cat/proj, ROW_HEIGHT_TASK for task/sub)
+};
 
 export interface FlattenOptions {
   categoryColorMap?: CategoryColorMap;
@@ -158,46 +146,6 @@ export function flattenVisible(
 
   walk(root, 0, true, rootColour);
   return rows;
-}
-
-/* ─── Inline add-row injection ─────────────────────────────────────── */
-
-const INLINE_ADD_HEIGHT = 28;
-
-// Inject "+ Add project / task" rows under expanded Category / Project rows.
-// The injection preserves the row-alignment invariant by being consumed by
-// both GanttOutline (which renders the affordance) and GanttGrid (which
-// renders a blank spacer of the same height).
-export function injectInlineAdds(rows: FlatRow[], expanded: Set<string>): FlatRow[] {
-  const out: FlatRow[] = [];
-  for (const r of rows) {
-    out.push(r);
-    if (r.kind !== "node") continue;
-    if (!expanded.has(r.key)) continue;
-    const n = r.node;
-    if (n.kind === "category" && n.id !== "__root__") {
-      out.push({
-        kind: "add",
-        key: `add:${r.key}`,
-        depth: r.depth + 1,
-        mode: "project",
-        parentKey: r.key,
-        categoryColor: r.categoryColor,
-        height: INLINE_ADD_HEIGHT,
-      });
-    } else if (n.kind === "project") {
-      out.push({
-        kind: "add",
-        key: `add:${r.key}`,
-        depth: r.depth + 1,
-        mode: "task",
-        parentKey: r.key,
-        categoryColor: r.categoryColor,
-        height: INLINE_ADD_HEIGHT,
-      });
-    }
-  }
-  return out;
 }
 
 /* ─── Category colour resolution ───────────────────────────────────── */

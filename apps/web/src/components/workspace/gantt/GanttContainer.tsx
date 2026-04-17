@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { CategoryColorMap, GanttNode, GanttTask, ZoomLevel } from "./gantt-types";
-import { computeRange, flattenVisible, dateToPct, injectInlineAdds } from "./gantt-utils";
+import { computeRange, flattenVisible, dateToPct } from "./gantt-utils";
 import { GanttOutline } from "./GanttOutline";
 import { GanttGrid } from "./GanttGrid";
 import { GanttToolbar } from "./GanttToolbar";
@@ -14,7 +14,6 @@ interface Props {
   addLabel?: string;
   categoryColorMap?: CategoryColorMap;
   rootCategoryColor?: string;
-  onInlineAdd?: (ctx: { mode: "category" | "project" | "task" | "subtask"; parentKey: string | null }) => void;
   outlineHeader?: ReactNode;
   outlineHeaderActions?: ReactNode;
   outlineFooter?: ReactNode;
@@ -24,7 +23,7 @@ interface Props {
 export function GanttContainer({
   root, defaultZoom = "month", onOpenDetail, onAdd, addLabel = "+ Add",
   categoryColorMap, rootCategoryColor,
-  onInlineAdd, outlineHeader, outlineHeaderActions, outlineFooter, outlineOverlay,
+  outlineHeader, outlineHeaderActions, outlineFooter, outlineOverlay,
 }: Props) {
   const [zoom, setZoom] = useState<ZoomLevel>(defaultZoom);
   const [search, setSearch] = useState("");
@@ -39,16 +38,10 @@ export function GanttContainer({
 
   const rows = useMemo(() => {
     const base = flattenVisible(root, expanded, { categoryColorMap, rootCategoryColor });
-    const withSearch = (!search.trim())
-      ? base
-      : (() => {
-          const q = search.toLowerCase();
-          return base.map((r) => r.kind === "node"
-            ? { ...r, dimmed: !nodeLabel(r.node).toLowerCase().includes(q) }
-            : r);
-        })();
-    return onInlineAdd ? injectInlineAdds(withSearch, expanded) : withSearch;
-  }, [root, expanded, search, categoryColorMap, rootCategoryColor, onInlineAdd]);
+    if (!search.trim()) return base;
+    const q = search.toLowerCase();
+    return base.map((r) => ({ ...r, dimmed: !nodeLabel(r.node).toLowerCase().includes(q) }));
+  }, [root, expanded, search, categoryColorMap, rootCategoryColor]);
 
   const allCollapsed = expanded.size === 0;
 
@@ -103,7 +96,6 @@ export function GanttContainer({
           onToggle={toggle}
           onSelect={(k) => { setSelectedKey(k); onOpenDetail?.(k); }}
           onHover={setHoveredKey}
-          onInlineAdd={onInlineAdd}
           header={outlineHeader}
           headerActions={outlineHeaderActions}
           footer={outlineFooter}
