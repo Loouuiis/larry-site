@@ -58,6 +58,7 @@ export function isUuidShape(value: string): boolean {
 interface TaskCreatePayload {
   title: string;
   description: string | null;
+  startDate: string | null;
   dueDate: string | null;
   assigneeName: string | null;
   priority: "low" | "medium" | "high" | "critical";
@@ -997,6 +998,7 @@ export async function executeProjectCreate(
       const task = await executeTaskCreate(db, tenantId, projectId, {
         title: taskSpec.title,
         description: null,
+        startDate: null,
         dueDate: taskSpec.dueDate ?? null,
         assigneeName: taskSpec.assigneeName ?? null,
         priority: "medium",
