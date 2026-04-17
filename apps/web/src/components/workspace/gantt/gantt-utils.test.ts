@@ -249,7 +249,39 @@ describe("tinyTint", () => {
 
 /* ─── v3 additions ─────────────────────────────────────────────────── */
 
-import { darken } from "./gantt-utils";
+import { darken, statusChipFor } from "./gantt-utils";
+
+describe("statusChipFor", () => {
+  it("returns null for on_track (no chip shown)", () => {
+    expect(statusChipFor("on_track")).toBeNull();
+  });
+
+  it("returns NS chip for not_started with a muted outline", () => {
+    const chip = statusChipFor("not_started");
+    expect(chip).not.toBeNull();
+    expect(chip!.label).toBe("NS");
+    expect(chip!.bg).toBe("transparent");
+    expect(chip!.border).not.toBeNull();
+  });
+
+  it("returns AR chip for at_risk with amber fill", () => {
+    const chip = statusChipFor("at_risk");
+    expect(chip!.label).toBe("AR");
+    expect(chip!.bg).toBe("var(--tl-at-risk)");
+    expect(chip!.fg).toBe("#ffffff");
+    expect(chip!.border).toBeNull();
+  });
+
+  it("returns OD chip for overdue with red fill", () => {
+    expect(statusChipFor("overdue")!.bg).toBe("var(--tl-overdue)");
+  });
+
+  it("returns ✓ chip for completed with green fill", () => {
+    const chip = statusChipFor("completed");
+    expect(chip!.label).toBe("✓");
+    expect(chip!.bg).toBe("var(--tl-completed)");
+  });
+});
 
 describe("darken", () => {
   it("returns a lower-RGB hex for the given percentage", () => {

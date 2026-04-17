@@ -1,6 +1,6 @@
 import type {
   CategoryColorMap,
-  GanttNode, GanttTask, GanttTaskStatus, PortfolioTimelineResponse, ZoomLevel,
+  GanttNode, GanttTask, GanttTaskStatus, PortfolioTimelineResponse, StatusChipData, ZoomLevel,
 } from "./gantt-types";
 import { DEFAULT_CATEGORY_COLOUR } from "./gantt-types";
 
@@ -436,6 +436,26 @@ export function tinyTint(hex: string, alpha = 0.15): string {
   const rgb = parseHex(hex);
   if (!rgb) return `rgba(108, 68, 246, ${alpha})`;
   return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+}
+
+/* ─── v3 — status chip ─────────────────────────────────────────────── */
+
+// Returns null when no chip should render (on_track — the solid bar is the signal).
+export function statusChipFor(status: GanttTaskStatus): StatusChipData | null {
+  switch (status) {
+    case "on_track":
+      return null;
+    case "not_started":
+      return { label: "NS", fg: "var(--text-muted)", bg: "transparent", border: "var(--border)" };
+    case "at_risk":
+      return { label: "AR", fg: "#ffffff", bg: "var(--tl-at-risk)", border: null };
+    case "overdue":
+      return { label: "OD", fg: "#ffffff", bg: "var(--tl-overdue)", border: null };
+    case "completed":
+      return { label: "✓", fg: "#ffffff", bg: "var(--tl-completed)", border: null };
+    default:
+      return null;
+  }
 }
 
 // Darken a hex colour by a percentage (0-100) of each RGB channel.
