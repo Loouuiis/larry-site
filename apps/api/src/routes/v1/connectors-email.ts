@@ -537,19 +537,23 @@ export const emailConnectorRoutes: FastifyPluginAsync = async (fastify) => {
           const resendKey = fastify.config.RESEND_API_KEY;
           if (resendKey) {
             try {
-              await fetch("https://api.resend.com/emails", {
+              const res = await fetch("https://api.resend.com/emails", {
                 method: "POST",
                 headers: {
                   "Authorization": `Bearer ${resendKey}`,
                   "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                  from: "Larry <noreply@larry.app>",
+                  from: fastify.config.RESEND_FROM_LARRY,
                   to: [body.to],
                   subject: body.subject,
                   text: body.body,
                 }),
               });
+              if (!res.ok) {
+                const errBody = await res.text().catch(() => "<unreadable>");
+                throw new Error(`Resend responded ${res.status}: ${errBody.slice(0, 500)}`);
+              }
             } catch (err) {
               fastify.log.warn({ err }, "Resend email delivery failed — draft saved anyway");
             }

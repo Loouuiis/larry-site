@@ -38,6 +38,9 @@ async function createTestApp(params: {
     {
       MODEL_PROVIDER: "mock",
       EMAIL_CONNECTOR_PROVIDER: "generic",
+      RESEND_API_KEY: "re_test_key",
+      RESEND_FROM_LARRY: "Larry <larry@larry-pm.com>",
+      RESEND_FROM_NOREPLY: "Larry <noreply@larry-pm.com>",
     } as unknown as ApiEnv
   );
   app.decorate(
@@ -118,5 +121,100 @@ describe("POST /connectors/email/draft/send", () => {
       expect.stringContaining("INSERT INTO documents"),
       expect.any(Array)
     );
+  });
+
+  it("sends via Resend using the configured RESEND_FROM_LARRY address (regression: no hardcoded sender)", async () => {
+    const queryTenant = vi.fn(async (_tenantId: string, sql: string) => {
+      if (sql.includes("INSERT INTO email_outbound_drafts")) return [{ id: "draft-2" }];
+      if (sql.includes("INSERT INTO documents")) return [{ id: "doc-2" }];
+      return [];
+    });
+    const db = { queryTenant, tx: vi.fn() } as unknown as Db;
+    const queue = {
+      publish: vi.fn().mockResolvedValue(undefined),
+      close: vi.fn().mockResolvedValue(undefined),
+    } as unknown as QueuePublisher;
+
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response(JSON.stringify({ id: "resend-1" }), { status: 200 }));
+
+    const app = await createTestApp({ db, queue });
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/connectors/email/draft/send",
+      payload: {
+        projectId: PROJECT_ID,
+        actionId: ACTION_ID,
+        to: "recipient@example.com",
+        subject: "Regression: sender address",
+        body: "Body",
+        sendNow: true,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ success: true, state: "sent" });
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "https://api.resend.com/emails",
+      expect.objectContaining({ method: "POST" })
+    );
+    const sentPayload = JSON.parse(
+      (fetchSpy.mock.calls[0][1] as RequestInit).body as string
+    );
+    expect(sentPayload.from).toBe("Larry <larry@larry-pm.com>");
+    expect(sentPayload.from).not.toMatch(/larry\.app/);
+    expect(sentPayload.to).toEqual(["recipient@example.com"]);
+    expect(sentPayload.subject).toBe("Regression: sender address");
+
+    fetchSpy.mockRestore();
+  });
+
+  it("logs a warning when Resend responds non-ok (regression: no silent 403 swallow)", async () => {
+    const queryTenant = vi.fn(async (_tenantId: string, sql: string) => {
+      if (sql.includes("INSERT INTO email_outbound_drafts")) return [{ id: "draft-3" }];
+      if (sql.includes("INSERT INTO documents")) return [{ id: "doc-3" }];
+      return [];
+    });
+    const db = { queryTenant, tx: vi.fn() } as unknown as Db;
+    const queue = {
+      publish: vi.fn().mockResolvedValue(undefined),
+      close: vi.fn().mockResolvedValue(undefined),
+    } as unknown as QueuePublisher;
+
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ statusCode: 403, message: "domain not verified" }),
+          { status: 403 }
+        )
+      );
+
+    const app = await createTestApp({ db, queue });
+    appsToClose.push(app);
+    const warnSpy = vi.spyOn(app.log, "warn");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/connectors/email/draft/send",
+      payload: {
+        projectId: PROJECT_ID,
+        to: "recipient@example.com",
+        subject: "Regression: non-ok must warn",
+        body: "Body",
+        sendNow: true,
+      },
+    });
+
+    expect(response.statusCode).toBe(200); // draft still saved
+    const warnCalls = warnSpy.mock.calls.map((c) => JSON.stringify(c));
+    expect(warnCalls.some((c) => c.includes("Resend email delivery failed"))).toBe(true);
+
+    fetchSpy.mockRestore();
+    warnSpy.mockRestore();
   });
 });
