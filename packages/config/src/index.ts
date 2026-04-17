@@ -83,6 +83,13 @@ const ApiSchema = SharedSchema.extend({
     .string()
     .default("true")
     .transform((v) => v !== "false"),
+  // RBAC V2 feature flag — gates the new pending-invite flow, admin org-wide
+  // project visibility, transfer-ownership, domain auto-join, seat caps, and
+  // MFA enforcement. Defaults off so a fresh deploy is a no-op until flipped.
+  RBAC_V2_ENABLED: z
+    .string()
+    .default("false")
+    .transform((v) => v === "true" || v === "1"),
 });
 
 const WorkerSchema = SharedSchema.extend({

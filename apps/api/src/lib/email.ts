@@ -269,31 +269,43 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
+export interface MemberInviteEmailOpts extends EmailSendContext {
+  /** Raw (unhashed) invitation token — embedded in the accept link. */
+  rawToken: string;
+  /** Display name for the org, shown in the email body and subject. */
+  orgName: string;
+  /** Optional name of the admin who issued the invite. */
+  inviterName?: string;
+}
+
 export async function sendMemberInviteEmail(
   to: string,
   displayName: string,
-  ctx?: EmailSendContext,
+  opts: MemberInviteEmailOpts,
 ): Promise<void> {
   if (!isResendConfigured()) {
     console.log("[email] RESEND_API_KEY not configured. Invite email for %s skipped.", to);
     return;
   }
-  if (!(await guard("member_invite", to, ctx))) return;
+  if (!(await guard("member_invite", to, opts))) return;
   const resend = getResend();
   const frontendUrl = getFrontendUrl();
   const safeName = escapeHtml(displayName);
+  const safeOrg = escapeHtml(opts.orgName);
+  const safeInviter = escapeHtml(opts.inviterName ?? "");
+  const acceptUrl = `${frontendUrl}/invite/accept?token=${encodeURIComponent(opts.rawToken)}`;
   const { error } = await resend.emails.send({
     from: FROM_LARRY,
     to,
-    subject: "You've been invited to Larry",
+    subject: `You've been invited to ${opts.orgName} on Larry`,
     html: wrapHtml(`
-      <h1 style="font-size: 22px; font-weight: 700; letter-spacing: -0.03em; margin: 0 0 12px;">You're invited!</h1>
-      <p style="font-size: 15px; color: #555; line-height: 1.6; margin: 0 0 28px;">
-        Hi ${safeName}, you've been invited to join a workspace on Larry — the AI-powered project management tool. Sign in to get started.
+      <h1 style="font-size: 22px; font-weight: 700; letter-spacing: -0.03em; margin: 0 0 12px;">You're invited to ${safeOrg}</h1>
+      <p style="font-size: 15px; color: #555; line-height: 1.6; margin: 0 0 24px;">
+        Hi ${safeName || "there"}, ${safeInviter || "an admin"} has invited you to join <strong>${safeOrg}</strong> on Larry — the AI-powered project management tool.
       </p>
-      ${ctaButton(`${frontendUrl}/login`, "Sign in to Larry")}
+      ${ctaButton(acceptUrl, "Accept invitation")}
       <p style="margin-top: 28px; font-size: 13px; color: #888; line-height: 1.5;">
-        If you don't have a password yet, use the "Forgot password" link on the sign-in page to set one up.
+        This invitation expires in 7 days. If you weren't expecting it, you can safely ignore this email.
       </p>
     `),
   });
