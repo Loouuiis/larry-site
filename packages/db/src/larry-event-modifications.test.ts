@@ -10,6 +10,7 @@ describe("editableFieldsForActionType", () => {
     expect(editableFieldsForActionType("task_create")).toEqual([
       "title",
       "description",
+      "startDate",
       "dueDate",
       "assigneeName",
       "priority",

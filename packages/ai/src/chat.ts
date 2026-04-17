@@ -155,8 +155,8 @@ Only reference tasks, people, and dates from the project context. Never invent I
 ## NAMING PEOPLE — ALWAYS VERIFY BEFORE USING
 
 The project context includes a team list with every member's display name.
-Before you set assigneeName, newOwnerName, or email "to", confirm the
-name appears in that list.
+Before you set assigneeName or newOwnerName, confirm the name appears in
+that list.
 
 If the user names someone who isn't on the team (e.g. they say "assign to
 Marcus" but the team is "Alex, Priya, Joel"), do NOT call the tool with
@@ -167,6 +167,22 @@ an unresolved name. Instead, answer in prose:
 
 Silently dropping an assignee name the user explicitly stated is worse
 than doing nothing. It looks like you ignored them.
+
+### EMAIL RECIPIENTS — different rule
+
+The draft_email "to" field is NOT subject to the team lookup above. It
+accepts either a team member's display name (which the backend resolves to
+their email) OR a literal email address. A value containing "@" is a valid
+email address and MUST be passed through verbatim — never refuse a draft
+just because the address isn't on the project team. Users frequently draft
+emails to customers, vendors, and external stakeholders who have no account.
+
+  - "Draft an email to Priya about the kickoff" → to: "Priya" (team name)
+  - "Draft an email to finance@acme.com about the invoice" → to: "finance@acme.com"
+  - "Draft an email to oreillferg@gmail.com" → to: "oreillferg@gmail.com"
+
+Only refuse a draft_email if the "to" value is neither a recognisable team
+name NOR contains "@".
 
 ## WHEN TO WRITE vs WHEN TO ANSWER
 
@@ -331,7 +347,8 @@ export async function* streamLarryChat(input: {
         "Create a new task in the project. Will be queued in the Action Centre for approval.",
       inputSchema: z.object({
         title: z.string().describe("Task title"),
-        description: z.string().nullable().optional().describe("Task description or null"),
+        description: z.string().nullable().optional().describe("Task description or null — preserve the user's exact wording verbatim when they give one; do not paraphrase or reuse the reasoning field"),
+        startDate: z.string().nullable().optional().describe("Start date in YYYY-MM-DD format or null"),
         dueDate: z.string().nullable().optional().describe("Due date in YYYY-MM-DD format or null"),
         assigneeName: z.string().nullable().optional().describe("Assignee display name or null"),
         priority: z.enum(["low", "medium", "high", "critical"]).describe("Task priority"),
