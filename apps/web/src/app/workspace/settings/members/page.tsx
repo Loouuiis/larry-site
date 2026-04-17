@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Mail, Shield, ShieldCheck, Eye, UserPlus, X, RefreshCw, Trash2 } from "lucide-react";
+import { UserPlus, RefreshCw, Trash2 } from "lucide-react";
 import { SettingsSubnav } from "../SettingsSubnav";
+import { InviteModal } from "@/components/members/InviteModal";
+import { PendingInvitationsPanel } from "@/components/members/PendingInvitationsPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -19,26 +21,18 @@ interface OrgMember {
   role: string;
 }
 
-type OrgRole = "admin" | "member" | "viewer";
+type OrgRole = "admin" | "pm" | "member";
 
-const ROLE_OPTIONS: { value: OrgRole; label: string; description: string; icon: React.ElementType }[] = [
-  { value: "admin", label: "Admin", description: "Full access, can manage members and settings", icon: ShieldCheck },
-  { value: "member", label: "Member", description: "Can create and edit projects", icon: Shield },
-  { value: "viewer", label: "Viewer", description: "Can view projects they're added to", icon: Eye },
-];
-
-function formatRole(role: string): string {
-  return role.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function getRoleBadgeStyle(role: string): React.CSSProperties {
+function getRoleBadgeStyle(role: string): React.CSSProperties & { borderColor: string } {
   switch (role) {
+    case "owner":
+      return { background: "#fef3c7", color: "#92400e", borderColor: "#fde68a" };
     case "admin":
       return { background: "#f5f3ff", color: "#6c44f6", borderColor: "#ddd6fe" };
-    case "member":
+    case "pm":
       return { background: "#eff6ff", color: "#1d4ed8", borderColor: "#bfdbfe" };
-    case "viewer":
-      return { background: "#f0fdf4", color: "#15803d", borderColor: "#bbf7d0" };
+    case "member":
+      return { background: "#f1f5f9", color: "#334155", borderColor: "#e2e8f0" };
     default:
       return { background: "var(--surface-2)", color: "var(--text-2)", borderColor: "var(--border)" };
   }
@@ -53,14 +47,9 @@ export default function MembersSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // Invite form
+  // Invite modal open/close + pending-panel refresh trigger.
   const [showInvite, setShowInvite] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteName, setInviteName] = useState("");
-  const [inviteRole, setInviteRole] = useState<OrgRole>("member");
-  const [inviting, setInviting] = useState(false);
-  const [inviteError, setInviteError] = useState("");
-  const [inviteSuccess, setInviteSuccess] = useState("");
+  const [refreshPending, setRefreshPending] = useState(0);
 
   // Role editing
   const [editingRole, setEditingRole] = useState<Record<string, OrgRole>>({});
@@ -84,48 +73,6 @@ export default function MembersSettingsPage() {
   useEffect(() => {
     void loadMembers();
   }, [loadMembers]);
-
-  const handleInvite = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inviteEmail.trim()) return;
-
-    setInviting(true);
-    setInviteError("");
-    setInviteSuccess("");
-
-    try {
-      const res = await fetch("/api/workspace/members/invite", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: inviteEmail.trim(),
-          role: inviteRole,
-          displayName: inviteName.trim() || undefined,
-        }),
-      });
-      const data = await readJson<{ members?: OrgMember[]; error?: string }>(res);
-
-      if (!res.ok) {
-        setInviteError(data.error ?? "Failed to invite member.");
-        return;
-      }
-
-      setMembers(Array.isArray(data.members) ? data.members : members);
-      // U-1: dismiss the modal on success. Previously it stayed open with
-      // cleared fields and a disabled Send button, making it look like the
-      // invite had failed silently.
-      setShowInvite(false);
-      setInviteEmail("");
-      setInviteName("");
-      setInviteRole("member");
-      setInviteSuccess(`Invitation sent to ${inviteEmail.trim()}`);
-      setTimeout(() => setInviteSuccess(""), 4000);
-    } catch {
-      setInviteError("Network error. Please try again.");
-    } finally {
-      setInviting(false);
-    }
-  };
 
   const updateRole = async (userId: string) => {
     const newRole = editingRole[userId];
@@ -226,7 +173,7 @@ export default function MembersSettingsPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setShowInvite(!showInvite)}
+                onClick={() => setShowInvite(true)}
                 className="inline-flex h-9 items-center gap-2 rounded-full px-4 text-[12px] font-semibold text-white"
                 style={{ background: "#6c44f6" }}
               >
@@ -235,132 +182,9 @@ export default function MembersSettingsPage() {
               </button>
             </div>
           </div>
-
-          {/* Invite form */}
-          {showInvite && (
-            <div
-              className="mt-4 rounded-xl border p-4"
-              style={{ borderColor: "#ddd6fe", background: "#faf8ff" }}
-            >
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
-                  Invite a new member
-                </p>
-                <button
-                  type="button"
-                  onClick={() => { setShowInvite(false); setInviteError(""); }}
-                  style={{ color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}
-                >
-                  <X size={16} />
-                </button>
-              </div>
-
-              <form onSubmit={(e) => void handleInvite(e)} className="space-y-3">
-                <div className="flex gap-3">
-                  <div className="flex-1">
-                    <label className="block text-[12px] font-medium mb-1" style={{ color: "var(--text-muted)" }}>
-                      Email address *
-                    </label>
-                    <div className="relative">
-                      <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--text-disabled)" }} />
-                      <input
-                        type="email"
-                        value={inviteEmail}
-                        onChange={(e) => setInviteEmail(e.target.value)}
-                        placeholder="colleague@company.com"
-                        required
-                        className="h-10 w-full rounded-lg border pl-9 pr-3 text-[13px]"
-                        style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-1)", outline: "none" }}
-                        onFocus={(e) => (e.currentTarget.style.borderColor = "#6c44f6")}
-                        onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
-                      />
-                    </div>
-                  </div>
-                  <div style={{ width: 180 }}>
-                    <label className="block text-[12px] font-medium mb-1" style={{ color: "var(--text-muted)" }}>
-                      Name (optional)
-                    </label>
-                    <input
-                      type="text"
-                      value={inviteName}
-                      onChange={(e) => setInviteName(e.target.value)}
-                      placeholder="John Smith"
-                      className="h-10 w-full rounded-lg border px-3 text-[13px]"
-                      style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-1)", outline: "none" }}
-                      onFocus={(e) => (e.currentTarget.style.borderColor = "#6c44f6")}
-                      onBlur={(e) => (e.currentTarget.style.borderColor = "var(--border)")}
-                    />
-                  </div>
-                </div>
-
-                {/* Role selector */}
-                <div>
-                  <label className="block text-[12px] font-medium mb-2" style={{ color: "var(--text-muted)" }}>
-                    Role
-                  </label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {ROLE_OPTIONS.map((opt) => {
-                      const isSelected = inviteRole === opt.value;
-                      const Icon = opt.icon;
-                      return (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => setInviteRole(opt.value)}
-                          className="rounded-lg border p-3 text-left transition-all"
-                          style={{
-                            borderColor: isSelected ? "#6c44f6" : "var(--border)",
-                            background: isSelected ? "rgba(108,68,246,0.05)" : "var(--surface)",
-                          }}
-                        >
-                          <div className="flex items-center gap-2">
-                            <Icon size={14} style={{ color: isSelected ? "#6c44f6" : "var(--text-muted)" }} />
-                            <span className="text-[13px] font-semibold" style={{ color: isSelected ? "#6c44f6" : "var(--text-1)" }}>
-                              {opt.label}
-                            </span>
-                          </div>
-                          <p className="mt-1 text-[11px]" style={{ color: "var(--text-muted)" }}>
-                            {opt.description}
-                          </p>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {inviteError && (
-                  <div className="rounded-lg border px-3 py-2 text-[12px]" style={{ borderColor: "#fecaca", background: "#fef2f2", color: "#b91c1c" }}>
-                    {inviteError}
-                  </div>
-                )}
-                {inviteSuccess && (
-                  <div className="rounded-lg border px-3 py-2 text-[12px]" style={{ borderColor: "#bbf7d0", background: "#f0fdf4", color: "#15803d" }}>
-                    {inviteSuccess}
-                  </div>
-                )}
-
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => { setShowInvite(false); setInviteError(""); }}
-                    className="h-9 rounded-full border px-4 text-[12px] font-semibold"
-                    style={{ borderColor: "var(--border)", color: "var(--text-2)" }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={inviting || !inviteEmail.trim()}
-                    className="h-9 rounded-full px-4 text-[12px] font-semibold text-white"
-                    style={{ background: "#6c44f6", opacity: inviting ? 0.6 : 1 }}
-                  >
-                    {inviting ? "Sending invite..." : "Send invite"}
-                  </button>
-                </div>
-              </form>
-            </div>
-          )}
         </section>
+
+        <PendingInvitationsPanel refreshKey={refreshPending} />
 
         {/* Error */}
         {error && (
@@ -416,6 +240,7 @@ export default function MembersSettingsPage() {
               const currentRole = editingRole[member.id] ?? member.role;
               const hasChanged = editingRole[member.id] && editingRole[member.id] !== member.role;
               const isLastAdmin = member.role === "admin" && adminCount <= 1;
+              const isOwner = member.role === "owner";
 
               return (
                 <div
@@ -449,18 +274,19 @@ export default function MembersSettingsPage() {
                     <select
                       value={currentRole as string}
                       onChange={(e) => setEditingRole((prev) => ({ ...prev, [member.id]: e.target.value as OrgRole }))}
-                      disabled={isLastAdmin || busyAction === `role:${member.id}` || busyAction === `remove:${member.id}`}
+                      disabled={isOwner || isLastAdmin || busyAction === `role:${member.id}` || busyAction === `remove:${member.id}`}
                       className="rounded-full border px-3 py-1.5 text-[12px] font-semibold"
                       style={{
                         ...getRoleBadgeStyle(currentRole as string),
                         border: `1px solid ${getRoleBadgeStyle(currentRole as string).borderColor}`,
-                        cursor: isLastAdmin ? "not-allowed" : "pointer",
+                        cursor: isOwner || isLastAdmin ? "not-allowed" : "pointer",
                         outline: "none",
                       }}
                     >
+                      {isOwner && <option value="owner">Owner</option>}
                       <option value="admin">Admin</option>
+                      <option value="pm">PM</option>
                       <option value="member">Member</option>
-                      <option value="viewer">Viewer</option>
                     </select>
                   </div>
 
@@ -491,7 +317,7 @@ export default function MembersSettingsPage() {
 
                   {/* Remove */}
                   <div className="flex justify-end">
-                    {!isLastAdmin && (
+                    {!isLastAdmin && !isOwner && (
                       <button
                         type="button"
                         onClick={() => void removeMember(member.id, member.name)}
@@ -512,6 +338,15 @@ export default function MembersSettingsPage() {
           )}
         </section>
       </div>
+
+      <InviteModal
+        open={showInvite}
+        onClose={() => setShowInvite(false)}
+        onInvited={() => {
+          void loadMembers();
+          setRefreshPending((n) => n + 1);
+        }}
+      />
     </div>
   );
 }
