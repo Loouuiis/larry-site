@@ -1,5 +1,7 @@
 "use client";
+import { useMemo } from "react";
 import { ChevronRight } from "lucide-react";
+import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { FlatRow } from "./gantt-utils";
 import { CategoryDot, type CategoryDotTier } from "./CategoryDot";
 
@@ -54,6 +56,13 @@ function labelFor(n: NodeRow["node"]): string {
   return n.task.title;
 }
 
+// v4 Slice 3C-3 — a category row is draggable if it's a real org-level
+// category (not the synthetic Uncategorised bucket, not a null id).
+// Project / task / subtask rows are not drag-enabled in this slice.
+function isDraggableCategory(n: NodeRow["node"]): n is Extract<NodeRow["node"], { kind: "category" }> {
+  return n.kind === "category" && n.id !== null && n.id !== "uncat" && n.id !== "__root__";
+}
+
 export function GanttOutlineRow({
   row, expanded, selected, hovered, onToggle, onSelect, onContextMenu, onHover,
 }: Props) {
@@ -64,19 +73,46 @@ export function GanttOutlineRow({
   const isCategory = n.kind === "category";
   const isUncategorised = isCategory && (n.id === null || n.id === "uncat");
 
-  const background = selected
-    ? "var(--surface-2)"
-    : hovered
+  // Stable unique id for @dnd-kit — always provide one even when disabled,
+  // otherwise dupe ids collide across rows.
+  const dndId = useMemo(() => {
+    if (n.kind === "category") return `dnd-cat:${n.id ?? "uncat"}`;
+    if (n.kind === "project")  return `dnd-proj:${n.id}`;
+    if (n.kind === "task")     return `dnd-task:${n.task.id}`;
+    return `dnd-sub:${n.task.id}`;
+  }, [n]);
+
+  const dndEnabled = isDraggableCategory(n);
+
+  const { attributes, listeners, setNodeRef: setDragRef, isDragging } =
+    useDraggable({ id: dndId, disabled: !dndEnabled });
+  const { isOver, setNodeRef: setDropRef } =
+    useDroppable({ id: dndId, disabled: !dndEnabled });
+
+  const setRef = (node: HTMLDivElement | null) => {
+    setDragRef(node);
+    setDropRef(node);
+  };
+
+  const background = isOver
+    ? "var(--brand-tint, rgba(108,68,246,0.10))"
+    : selected
       ? "var(--surface-2)"
-      : "transparent";
+      : hovered
+        ? "var(--surface-2)"
+        : "transparent";
+
+  const dndDomProps = dndEnabled ? { ...attributes, ...listeners } : {};
 
   return (
     <div
+      ref={dndEnabled ? setRef : undefined}
       role="row"
       onMouseEnter={() => onHover?.(true)}
       onMouseLeave={() => onHover?.(false)}
       onClick={onSelect}
       onContextMenu={onContextMenu}
+      {...dndDomProps}
       style={{
         height: row.height,
         display: "flex",
@@ -85,9 +121,12 @@ export function GanttOutlineRow({
         paddingLeft: indent,
         paddingRight: 14,
         borderLeft: selected ? "2px solid var(--brand)" : "2px solid transparent",
+        // Drop target outline when another category is hovering over this row.
+        outline: isOver && dndEnabled ? "2px dashed var(--brand)" : "none",
+        outlineOffset: "-2px",
         background,
-        cursor: onSelect ? "pointer" : "default",
-        opacity: row.dimmed ? 0.35 : 1,
+        cursor: dndEnabled ? (isDragging ? "grabbing" : "grab") : (onSelect ? "pointer" : "default"),
+        opacity: isDragging ? 0.4 : (row.dimmed ? 0.35 : 1),
         userSelect: "none",
         transition: "background-color 150ms ease-out",
       }}

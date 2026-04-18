@@ -1,7 +1,11 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { Plus, X } from "lucide-react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import {
+  DndContext, PointerSensor, useSensor, useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
 import type { PortfolioTimelineResponse, ContextMenuAction, GanttNode } from "@/components/workspace/gantt/gantt-types";
 import { buildPortfolioTree, buildCategoryColorMap, normalizePortfolioStatuses } from "@/components/workspace/gantt/gantt-utils";
 import { GanttContainer } from "@/components/workspace/gantt/GanttContainer";
@@ -62,6 +66,94 @@ export function PortfolioGanttClient() {
   // CategoryManagerPanel onChanged). Invalidate + rely on React Query to
   // refetch, rather than the old per-page `fetchTimeline()` ad-hoc refetch.
   const fetchTimeline = async () => { invalidateAll(); };
+
+  // v4 Slice 3C-3 — drag-and-drop for category reparenting. Sensors with a
+  // 5px activation distance so ordinary clicks on rows don't accidentally
+  // start a drag.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  );
+
+  // Walk upward from `categoryId` via parentCategoryId. Used to reject a drop
+  // that would make the source a descendant of itself (cycle).
+  const ancestorIds = (categories: PortfolioTimelineResponse["categories"], startId: string): Set<string> => {
+    const byId = new Map(categories.filter((c) => c.id != null).map((c) => [c.id as string, c]));
+    const out = new Set<string>();
+    let cursor: string | null = startId;
+    while (cursor && !out.has(cursor)) {
+      out.add(cursor);
+      const row = byId.get(cursor);
+      cursor = row?.parentCategoryId ?? null;
+    }
+    return out;
+  };
+
+  const moveCategoryMutation = useMutation({
+    mutationFn: async (vars: { id: string; parentCategoryId: string | null; sortOrder: number }) => {
+      const res = await fetch(`/api/workspace/categories/${vars.id}/move`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          parentCategoryId: vars.parentCategoryId,
+          projectId: null,
+          sortOrder: vars.sortOrder,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        const msg = (body as { message?: string; error?: string }).message
+          ?? (body as { message?: string; error?: string }).error
+          ?? `HTTP ${res.status}`;
+        throw new Error(msg);
+      }
+      return res.json();
+    },
+    onMutate: async (vars) => {
+      await qc.cancelQueries({ queryKey: QK_TIMELINE_ORG });
+      const previous = qc.getQueryData<PortfolioTimelineResponse>(QK_TIMELINE_ORG);
+      // Optimistic flat-array mutation: flip parentCategoryId on the source
+      // row. buildPortfolioTree rebuilds the nested tree from this flat
+      // array every render, so the outline re-renders immediately.
+      qc.setQueryData<PortfolioTimelineResponse>(QK_TIMELINE_ORG, (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          categories: old.categories.map((c) =>
+            c.id === vars.id
+              ? { ...c, parentCategoryId: vars.parentCategoryId, projectId: null }
+              : c,
+          ),
+        };
+      });
+      return { previous };
+    },
+    onError: (err, _vars, ctx) => {
+      if (ctx?.previous) qc.setQueryData(QK_TIMELINE_ORG, ctx.previous);
+      setMutationError(err instanceof Error ? err.message : "Couldn't move category");
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: QK_TIMELINE_ORG });
+    },
+  });
+
+  function handleDragEnd(e: DragEndEvent) {
+    if (!e.over || !data) return;
+    const sourceKey = String(e.active.id);
+    const targetKey = String(e.over.id);
+    if (sourceKey === targetKey) return;
+    // Only category→category drops are wired in this slice.
+    if (!sourceKey.startsWith("dnd-cat:") || !targetKey.startsWith("dnd-cat:")) return;
+    const sourceId = sourceKey.slice("dnd-cat:".length);
+    const targetId = targetKey.slice("dnd-cat:".length);
+    if (sourceId === "uncat" || targetId === "uncat") return;  // synthetic bucket is not a valid drag/drop peer
+    // Cycle guard: the target cannot be a descendant of the source.
+    const targetAncestors = ancestorIds(data.categories, targetId);
+    if (targetAncestors.has(sourceId)) {
+      setMutationError("Can't move a category under its own descendant.");
+      return;
+    }
+    moveCategoryMutation.mutate({ id: sourceId, parentCategoryId: targetId, sortOrder: 0 });
+  }
 
   const categoryColorMap = useMemo(
     () => data ? buildCategoryColorMap(data.categories.map((c) => ({ id: c.id, colour: c.colour }))) : undefined,
@@ -381,6 +473,7 @@ export function PortfolioGanttClient() {
           onCreate={() => setAddCtx({ mode: "category" })}
         />
       ) : (
+        <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
         <GanttContainer
           root={root}
           defaultZoom="month"
@@ -420,6 +513,7 @@ export function PortfolioGanttClient() {
             </button>
           }
         />
+        </DndContext>
       )}
 
       {managerOpen && (
