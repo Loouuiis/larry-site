@@ -1,6 +1,7 @@
-﻿"use client";
+"use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   WorkspaceHealth,
   WorkspaceMeeting,
@@ -23,6 +24,10 @@ interface ProjectDataState {
   refresh: () => Promise<void>;
 }
 
+// Exposed so mutation handlers can invalidate this hook's cache by key.
+export const projectOverviewQueryKey = (projectId: string) =>
+  ["project", "overview", projectId] as const;
+
 async function readJson<T>(response: Response): Promise<T> {
   const text = await response.text();
   if (!text) return {} as T;
@@ -34,77 +39,54 @@ async function readJson<T>(response: Response): Promise<T> {
 }
 
 export function useProjectData(projectId: string): ProjectDataState {
-  const [project, setProject] = useState<WorkspaceProject | null>(null);
-  const [tasks, setTasks] = useState<WorkspaceTask[]>([]);
-  const [health, setHealth] = useState<WorkspaceHealth | null>(null);
-  const [meetings, setMeetings] = useState<WorkspaceMeeting[]>([]);
-  const [timeline, setTimeline] = useState<WorkspaceTimeline | null>(null);
-  const [outcomes, setOutcomes] = useState<WorkspaceOutcomes | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const qc = useQueryClient();
 
-  const load = useCallback(async (silent = false) => {
-    if (!silent) {
-      setLoading(true);
-    }
-
-    try {
+  const query = useQuery({
+    queryKey: projectOverviewQueryKey(projectId),
+    queryFn: async (): Promise<WorkspaceProjectOverview> => {
       const response = await fetch(
         `/api/workspace/projects/${encodeURIComponent(projectId)}/overview`,
         { cache: "no-store" },
       );
-
       const overview = await readJson<WorkspaceProjectOverview>(response);
       if (!response.ok) {
         throw new Error(overview.error ?? "Failed to load project workspace.");
       }
+      return overview;
+    },
+  });
 
-      setProject(overview.project ?? null);
-      setTasks(Array.isArray(overview.tasks) ? overview.tasks : []);
-      setHealth(overview.health ?? null);
-      setTimeline(overview.timeline ?? null);
-      setOutcomes(overview.outcomes ?? null);
-      setMeetings(Array.isArray(overview.meetings) ? overview.meetings : []);
-      setError(overview.error ?? null);
-    } catch (fetchError) {
-      const message = fetchError instanceof Error ? fetchError.message : "Failed to load project data.";
-      setError(message);
-    } finally {
-      if (!silent) {
-        setLoading(false);
-      }
-    }
-  }, [projectId]);
-
+  // Legacy bridge — some parts of the app dispatch a custom
+  // "larry:refresh-snapshot" event to force a manual refresh (e.g. after a
+  // Larry chat action). Keep honouring it by invalidating this query.
   useEffect(() => {
-    void load();
-
-    const interval = window.setInterval(() => {
-      void load(true);
-    }, 30_000);
-
     function onRefresh() {
-      void load(true);
+      void qc.invalidateQueries({ queryKey: projectOverviewQueryKey(projectId) });
     }
-
     window.addEventListener("larry:refresh-snapshot", onRefresh);
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("larry:refresh-snapshot", onRefresh);
-    };
-  }, [load]);
+    return () => window.removeEventListener("larry:refresh-snapshot", onRefresh);
+  }, [qc, projectId]);
+
+  const overview = query.data;
 
   return {
-    project,
-    tasks,
-    health,
-    meetings,
-    timeline,
-    outcomes,
-    loading,
-    error,
+    project: overview?.project ?? null,
+    tasks: Array.isArray(overview?.tasks) ? overview!.tasks : [],
+    health: overview?.health ?? null,
+    meetings: Array.isArray(overview?.meetings) ? overview!.meetings : [],
+    timeline: overview?.timeline ?? null,
+    outcomes: overview?.outcomes ?? null,
+    loading: query.isLoading,
+    error:
+      overview?.error
+      ?? (query.isError
+        ? (query.error instanceof Error ? query.error.message : "Failed to load project data.")
+        : null),
     refresh: async () => {
-      await load();
+      // Force a fresh fetch. Use refetch so callers that await it are blocked
+      // until the network round-trip completes (existing behaviour of the
+      // legacy `refresh()`).
+      await query.refetch();
     },
   };
 }
