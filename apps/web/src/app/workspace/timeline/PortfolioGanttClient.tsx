@@ -127,6 +127,28 @@ export function PortfolioGanttClient() {
     setAddCtx({ mode: "category" });
   }
 
+  // Lookup a project's archived status by id, for preflight on write actions.
+  const projectStatusById = new Map<string, string>();
+  for (const cat of data.categories) {
+    for (const p of cat.projects) projectStatusById.set(p.id, p.status);
+  }
+  const isArchived = (projectId: string | null | undefined): boolean =>
+    !!projectId && projectStatusById.get(projectId) === "archived";
+
+  // Shared error-extraction for API responses, so the archived-project message
+  // (HTTP 409 + { message: ARCHIVED_PROJECT_WRITE_LOCK_MESSAGE }) surfaces
+  // verbatim instead of "HTTP 409".
+  async function extractApiError(res: Response, fallback: string): Promise<string> {
+    try {
+      const body = (await res.json()) as { message?: unknown; error?: unknown };
+      const msg = typeof body.message === "string" ? body.message
+                : typeof body.error   === "string" ? body.error
+                : null;
+      if (msg) return msg;
+    } catch { /* body wasn't JSON */ }
+    return `${fallback} (HTTP ${res.status})`;
+  }
+
   async function handleContextMenuAction(
     action: ContextMenuAction,
     args: { rowKey: string; rowKind: GanttNode["kind"]; categoryId?: string | null },
@@ -137,13 +159,20 @@ export function PortfolioGanttClient() {
       const taskId = rowKey.startsWith("task:") ? rowKey.slice(5) : rowKey.slice(4);
       const projectId = taskProjectLookup.get(taskId);
       if (!projectId) return;
+      if (isArchived(projectId)) {
+        setError("That task's project is archived — unarchive it first to move it between categories.");
+        return;
+      }
       try {
         const res = await fetch(`/api/workspace/projects/${projectId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ categoryId: categoryId ?? null }),
         });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+          setError(await extractApiError(res, "Couldn't move this project"));
+          return;
+        }
         await fetchTimeline();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to move project");
@@ -153,13 +182,20 @@ export function PortfolioGanttClient() {
 
     if (action === "moveToCategory" && rowKind === "project") {
       const projectId = rowKey.slice(5);
+      if (isArchived(projectId)) {
+        setError("That project is archived — unarchive it first to move it between categories.");
+        return;
+      }
       try {
         const res = await fetch(`/api/workspace/projects/${projectId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ categoryId: categoryId ?? null }),
         });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+          setError(await extractApiError(res, "Couldn't move this project"));
+          return;
+        }
         await fetchTimeline();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to move project");
@@ -169,13 +205,21 @@ export function PortfolioGanttClient() {
 
     if (action === "removeFromTimeline" && (rowKind === "task" || rowKind === "subtask")) {
       const taskId = rowKey.startsWith("task:") ? rowKey.slice(5) : rowKey.slice(4);
+      const projectId = taskProjectLookup.get(taskId);
+      if (isArchived(projectId)) {
+        setError("That task's project is archived — unarchive it first to edit task dates.");
+        return;
+      }
       try {
         const res = await fetch(`/api/workspace/tasks/${taskId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ startDate: null, dueDate: null }),
         });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) {
+          setError(await extractApiError(res, "Couldn't remove this task from the timeline"));
+          return;
+        }
         await fetchTimeline();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to remove task from timeline");
