@@ -152,6 +152,13 @@ export function TaskCenter({ projectId, tasks, refresh, openTaskId }: TaskCenter
   const titleInputRef = useRef<HTMLInputElement>(null);
   const dueDateInputRef = useRef<HTMLInputElement>(null);
 
+  /* ── quick-add state ───────────────────────────────────── */
+
+  const [quickTitle, setQuickTitle] = useState("");
+  const [quickSaving, setQuickSaving] = useState(false);
+  const [pendingTasks, setPendingTasks] = useState<Array<{ id: string; title: string }>>([]);
+  const quickInputRef = useRef<HTMLInputElement>(null);
+
   /* ── inline editing state ─────────────────────────────── */
 
   const [expandedTasks, setExpandedTasks] = useState<Record<string, boolean>>(
@@ -210,6 +217,49 @@ export function TaskCenter({ projectId, tasks, refresh, openTaskId }: TaskCenter
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [openDropdown]);
+
+  /* ── C key shortcut to focus quick-add ────────────────── */
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "c" && e.key !== "C") return;
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement).isContentEditable) return;
+      e.preventDefault();
+      quickInputRef.current?.focus();
+      quickInputRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  /* ── quick-add function ────────────────────────────────── */
+
+  const quickAdd = async () => {
+    const title = quickTitle.trim();
+    if (!title || quickSaving) return;
+    const tempId = `pending-${Date.now()}`;
+    setPendingTasks((prev) => [...prev, { id: tempId, title }]);
+    setQuickTitle("");
+    quickInputRef.current?.focus();
+    setQuickSaving(true);
+    try {
+      const res = await fetch("/api/workspace/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, title, priority: "medium" }),
+      });
+      if (!res.ok) {
+        setPendingTasks((prev) => prev.filter((t) => t.id !== tempId));
+      }
+    } catch {
+      setPendingTasks((prev) => prev.filter((t) => t.id !== tempId));
+    } finally {
+      setQuickSaving(false);
+      await refresh();
+      setPendingTasks((prev) => prev.filter((t) => t.id !== tempId));
+    }
+  };
 
   /* ── creation helpers ──────────────────────────────────── */
 
@@ -392,6 +442,65 @@ export function TaskCenter({ projectId, tasks, refresh, openTaskId }: TaskCenter
         <span className="w-[110px] text-right text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#4b556b", flexShrink: 0 }}>
           Assignee
         </span>
+      </div>
+
+      {/* ── persistent quick-add ─────────────────────────── */}
+      <div
+        className="flex items-center gap-3 px-4 py-2"
+        style={{
+          borderBottom: "1px solid var(--border)",
+          background: "var(--surface)",
+        }}
+      >
+        <span style={{ width: 18, flexShrink: 0 }} />
+        <span
+          style={{
+            width: 14,
+            height: 14,
+            borderRadius: "50%",
+            border: "1.5px solid var(--text-disabled)",
+            flexShrink: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Plus size={9} style={{ color: "var(--text-disabled)" }} />
+        </span>
+        <input
+          ref={quickInputRef}
+          type="text"
+          value={quickTitle}
+          onChange={(e) => setQuickTitle(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); void quickAdd(); }
+          }}
+          placeholder="Add a task..."
+          aria-label="Add a task"
+          disabled={quickSaving}
+          className="flex-1 text-[13px] outline-none"
+          style={{
+            background: "transparent",
+            border: "none",
+            color: "var(--text-1)",
+            padding: 0,
+            minWidth: 0,
+          }}
+        />
+        {quickTitle.trim() && (
+          <kbd
+            className="hidden sm:flex items-center rounded px-1.5 py-0.5 text-[10px]"
+            style={{
+              background: "var(--surface-2)",
+              border: "1px solid var(--border)",
+              color: "var(--text-disabled)",
+              fontFamily: "inherit",
+              flexShrink: 0,
+            }}
+          >
+            ↵
+          </kbd>
+        )}
       </div>
 
       {grouped.map((group) => {
@@ -1013,6 +1122,33 @@ export function TaskCenter({ projectId, tasks, refresh, openTaskId }: TaskCenter
                 })}
               </div>
             )}
+
+            {/* ── optimistic pending tasks ─────────────── */}
+            {!isCollapsed && pendingTasks.length > 0 && group.id === "not_started" && pendingTasks.map((pt) => (
+              <div
+                key={pt.id}
+                className="flex items-center gap-3 px-4 py-2"
+                style={{
+                  borderBottom: "1px solid var(--border-subtle, #faf8ff)",
+                  opacity: 0.5,
+                  minHeight: 38,
+                }}
+              >
+                <span style={{ width: 18, flexShrink: 0 }} />
+                <span
+                  style={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: "50%",
+                    border: `1.5px solid ${STATUS_DOT_COLOURS["not_started"]}`,
+                    flexShrink: 0,
+                  }}
+                />
+                <span className="flex-1 truncate text-[13px] italic" style={{ color: "var(--text-2)" }}>
+                  {pt.title}
+                </span>
+              </div>
+            ))}
 
             {/* ── inline creation row ──────────────────── */}
             {!isCollapsed && creatingInGroup === group.id && (
