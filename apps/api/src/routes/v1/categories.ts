@@ -5,17 +5,28 @@ import {
   deleteCategory, reorderCategories,
 } from "../../lib/categories.js";
 
-const CreateSchema = z.object({
-  name: z.string().min(1).max(120),
-  colour: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).nullable().optional(),
-  sortOrder: z.number().int().min(0).optional(),
-});
+const SINGLE_PARENT_MSG =
+  "A category may have parentCategoryId or projectId set, but not both (exactly one or neither).";
 
-const UpdateSchema = z.object({
-  name: z.string().min(1).max(120).optional(),
-  colour: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).nullable().optional(),
-  sortOrder: z.number().int().min(0).optional(),
-});
+const CreateSchema = z
+  .object({
+    name: z.string().min(1).max(120),
+    colour: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).nullable().optional(),
+    sortOrder: z.number().int().min(0).optional(),
+    parentCategoryId: z.string().uuid().nullable().optional(),
+    projectId: z.string().uuid().nullable().optional(),
+  })
+  .refine((v) => !(v.parentCategoryId && v.projectId), { message: SINGLE_PARENT_MSG });
+
+const UpdateSchema = z
+  .object({
+    name: z.string().min(1).max(120).optional(),
+    colour: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).nullable().optional(),
+    sortOrder: z.number().int().min(0).optional(),
+    parentCategoryId: z.string().uuid().nullable().optional(),
+    projectId: z.string().uuid().nullable().optional(),
+  })
+  .refine((v) => !(v.parentCategoryId && v.projectId), { message: SINGLE_PARENT_MSG });
 
 const IdSchema = z.object({ id: z.string().uuid() });
 const ReorderSchema = z.object({ ids: z.array(z.string().uuid()).min(1) });
@@ -36,6 +47,8 @@ export const categoryRoutes: FastifyPluginAsync = async (fastify) => {
       name: body.name,
       colour: body.colour ?? null,
       sortOrder: body.sortOrder ?? 0,
+      parentCategoryId: body.parentCategoryId ?? null,
+      projectId: body.projectId ?? null,
     });
     reply.code(201);
     return { category };
