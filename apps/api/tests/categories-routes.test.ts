@@ -139,6 +139,70 @@ describe("DELETE /categories/:id", () => {
   });
 });
 
+describe("POST /categories/:id/move", () => {
+  it("moves a category under a new parentCategoryId", async () => {
+    const app = await buildApp(); apps.push(app);
+    const NEW_PARENT = "33333333-3333-4333-8333-333333333333";
+    const ID = "c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1";
+    const row = { id: ID, tenantId: TENANT_ID, name: "X", colour: null, sortOrder: 2, parentCategoryId: NEW_PARENT, projectId: null, createdAt: "x", updatedAt: "x" };
+    vi.mocked(repo.moveCategory).mockResolvedValue(row);
+    const res = await app.inject({
+      method: "POST",
+      url: `/categories/${ID}/move`,
+      payload: { parentCategoryId: NEW_PARENT, sortOrder: 2 },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().category.parentCategoryId).toBe(NEW_PARENT);
+    expect(repo.moveCategory).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ID, {
+      parentCategoryId: NEW_PARENT, projectId: null, sortOrder: 2,
+    });
+  });
+
+  it("moves a category into a project (scoped)", async () => {
+    const app = await buildApp(); apps.push(app);
+    const PROJECT_ID = "44444444-4444-4444-8444-444444444444";
+    const ID = "c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1";
+    const row = { id: ID, tenantId: TENANT_ID, name: "X", colour: null, sortOrder: 0, parentCategoryId: null, projectId: PROJECT_ID, createdAt: "x", updatedAt: "x" };
+    vi.mocked(repo.moveCategory).mockResolvedValue(row);
+    const res = await app.inject({
+      method: "POST",
+      url: `/categories/${ID}/move`,
+      payload: { projectId: PROJECT_ID, sortOrder: 0 },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().category.projectId).toBe(PROJECT_ID);
+  });
+
+  it("rejects both parentCategoryId and projectId set", async () => {
+    const app = await buildApp(); apps.push(app);
+    const res = await app.inject({
+      method: "POST",
+      url: "/categories/c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1/move",
+      payload: {
+        parentCategoryId: "33333333-3333-4333-8333-333333333333",
+        projectId: "44444444-4444-4444-8444-444444444444",
+        sortOrder: 0,
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(repo.moveCategory).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when moveCategory rejects a cycle", async () => {
+    const app = await buildApp(); apps.push(app);
+    vi.mocked(repo.moveCategory).mockRejectedValue(
+      new Error("moveCategory: cannot move a category under itself or its descendant."),
+    );
+    const res = await app.inject({
+      method: "POST",
+      url: "/categories/c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1/move",
+      payload: { parentCategoryId: "33333333-3333-4333-8333-333333333333", sortOrder: 0 },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message ?? res.json().error).toMatch(/cannot move/i);
+  });
+});
+
 describe("POST /categories/reorder", () => {
   it("calls repo with ids", async () => {
     const app = await buildApp(); apps.push(app);
