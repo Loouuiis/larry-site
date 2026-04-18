@@ -2,7 +2,7 @@ import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import {
   listCategoriesForTenant, insertCategory, updateCategory,
-  deleteCategory, reorderCategories,
+  deleteCategory, reorderCategories, moveCategory,
 } from "../../lib/categories.js";
 
 const SINGLE_PARENT_MSG =
@@ -30,6 +30,17 @@ const UpdateSchema = z
 
 const IdSchema = z.object({ id: z.string().uuid() });
 const ReorderSchema = z.object({ ids: z.array(z.string().uuid()).min(1) });
+
+// v4 Slice 3C — move payload. Exactly one of parentCategoryId / projectId may
+// be non-null; both null means "top-level category". sortOrder is the target
+// position among the new parent's children.
+const MoveSchema = z
+  .object({
+    parentCategoryId: z.string().uuid().nullable().optional(),
+    projectId: z.string().uuid().nullable().optional(),
+    sortOrder: z.number().int().min(0),
+  })
+  .refine((v) => !(v.parentCategoryId && v.projectId), { message: SINGLE_PARENT_MSG });
 
 export const categoryRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get("/", { preHandler: [fastify.authenticate] }, async (request) => {
@@ -85,5 +96,33 @@ export const categoryRoutes: FastifyPluginAsync = async (fastify) => {
     }
     await reorderCategories(fastify.db, request.user.tenantId, parsed.data.ids);
     return { ok: true };
+  });
+
+  // v4 Slice 3C — commit path for DnD + programmatic reparent. Atomic
+  // reparent + reorder in one request. Cycle detection in moveCategory()
+  // rejects self-ancestry moves with 400.
+  fastify.post("/:id/move", { preHandler: [fastify.authenticate] }, async (request) => {
+    const params = IdSchema.safeParse(request.params);
+    if (!params.success) {
+      throw fastify.httpErrors.badRequest(params.error.issues[0]?.message ?? "Invalid params.");
+    }
+    const body = MoveSchema.safeParse(request.body);
+    if (!body.success) {
+      throw fastify.httpErrors.badRequest(body.error.issues[0]?.message ?? "Invalid request payload.");
+    }
+    try {
+      const category = await moveCategory(fastify.db, request.user.tenantId, params.data.id, {
+        parentCategoryId: body.data.parentCategoryId ?? null,
+        projectId: body.data.projectId ?? null,
+        sortOrder: body.data.sortOrder,
+      });
+      if (!category) throw fastify.httpErrors.notFound("Category not found");
+      return { category };
+    } catch (e) {
+      if (e instanceof Error && e.message.includes("cannot move a category under itself")) {
+        throw fastify.httpErrors.badRequest(e.message);
+      }
+      throw e;
+    }
   });
 };

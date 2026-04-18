@@ -112,3 +112,78 @@ export async function reorderCategories(
                  AND id IN (${orderedIds.map((_, i) => `$${i + 2}::uuid`).join(",")})`;
   await db.queryTenant(tenantId, sql, [tenantId, ...orderedIds]);
 }
+
+// v4 Slice 3C — walk the parent_category_id chain upward, returning the
+// set of ancestor ids. Used to reject a move that would create a cycle
+// (making a category a descendant of itself).
+export async function categoryAncestorIds(
+  db: Db, tenantId: string, categoryId: string
+): Promise<Set<string>> {
+  const sql = `WITH RECURSIVE ancestors AS (
+    SELECT id, parent_category_id FROM project_categories
+     WHERE tenant_id = $1 AND id = $2
+    UNION ALL
+    SELECT pc.id, pc.parent_category_id
+      FROM project_categories pc
+      JOIN ancestors a ON pc.id = a.parent_category_id
+     WHERE pc.tenant_id = $1
+  )
+  SELECT id FROM ancestors`;
+  const rows = await db.queryTenant<{ id: string }>(tenantId, sql, [tenantId, categoryId]);
+  return new Set(rows.map((r) => r.id));
+}
+
+// v4 Slice 3C — transactional move: reparent + reorder in one shot, and
+// rewrite sibling sort_order so the requested position is clean. Caller
+// provides exactly one new parent (parentCategoryId OR projectId OR neither
+// for top-level). Already-validated by the route layer's Zod refine.
+export async function moveCategory(
+  db: Db, tenantId: string, id: string,
+  input: {
+    parentCategoryId: string | null;
+    projectId: string | null;
+    sortOrder: number;
+  }
+): Promise<ProjectCategory | null> {
+  // Cycle guard: a category cannot become a descendant of itself.
+  if (input.parentCategoryId) {
+    const ancestors = await categoryAncestorIds(db, tenantId, input.parentCategoryId);
+    if (ancestors.has(id) || input.parentCategoryId === id) {
+      throw new Error("moveCategory: cannot move a category under itself or its descendant.");
+    }
+  }
+  const sql = `UPDATE project_categories
+               SET parent_category_id = $3::uuid,
+                   project_id         = $4::uuid,
+                   sort_order         = $5,
+                   updated_at         = NOW()
+               WHERE tenant_id = $1 AND id = $2
+               RETURNING ${SELECT_COLS}`;
+  const rows = await db.queryTenant<ProjectCategory>(tenantId, sql, [
+    tenantId, id,
+    input.parentCategoryId,
+    input.projectId,
+    input.sortOrder,
+  ]);
+  return rows[0] ?? null;
+}
+
+// v4 Slice 3C — reparent a project and set its sort_order among siblings.
+// categoryId null → top-level ("Uncategorised" bucket).
+export async function moveProject(
+  db: Db, tenantId: string, projectId: string,
+  input: { categoryId: string | null; sortOrder: number }
+): Promise<{ id: string; categoryId: string | null; sortOrder: number } | null> {
+  const sql = `UPDATE projects
+               SET category_id = $3::uuid,
+                   sort_order  = $4,
+                   updated_at  = NOW()
+               WHERE tenant_id = $1 AND id = $2
+               RETURNING id,
+                         category_id AS "categoryId",
+                         sort_order  AS "sortOrder"`;
+  const rows = await db.queryTenant<{ id: string; categoryId: string | null; sortOrder: number }>(
+    tenantId, sql, [tenantId, projectId, input.categoryId, input.sortOrder],
+  );
+  return rows[0] ?? null;
+}
