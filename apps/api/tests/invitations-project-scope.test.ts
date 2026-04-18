@@ -30,6 +30,7 @@ vi.mock("../src/lib/project-memberships.js", async () => {
   return {
     ...actual,
     getProjectMembershipAccess: vi.fn(),
+    upsertProjectMembership: vi.fn().mockResolvedValue(undefined),
   };
 });
 
@@ -214,6 +215,64 @@ describe("POST /orgs/invitations with project scope", () => {
       },
     });
     expect(res.statusCode).toBe(400);
+  });
+});
+
+describe("POST /orgs/invitations with existing workspace member + project", () => {
+  it("adds existing workspace member directly to project (no invitation email)", async () => {
+    const app = await buildApp("admin");
+    apps.push(app);
+
+    // hasTenantMembership query: invitee is already in the tenant.
+    (app.db.queryTenant as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      { id: "99999999-9999-4999-8999-999999999999" },
+    ]);
+    vi.mocked(projectMembershipsLib.getProjectMembershipAccess).mockResolvedValue({
+      projectExists: true,
+      projectStatus: "active",
+      projectRole: null,
+      canRead: true,
+      canManage: true,
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/orgs/invitations",
+      payload: {
+        email: "already-there@y.com",
+        role: "member",
+        projectId: PROJECT,
+        projectRole: "editor",
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { added: boolean; projectId: string; projectRole: string };
+    expect(body.added).toBe(true);
+    expect(body.projectId).toBe(PROJECT);
+    expect(body.projectRole).toBe("editor");
+    expect(vi.mocked(projectMembershipsLib.upsertProjectMembership)).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT,
+      PROJECT,
+      "99999999-9999-4999-8999-999999999999",
+      "editor",
+    );
+    // Did NOT create an invitation email/row.
+    expect(vi.mocked(invitationsLib.createInvitation)).not.toHaveBeenCalled();
+  });
+
+  it("still returns 409 when invitee is already a member and no project scope is given", async () => {
+    const app = await buildApp("admin");
+    apps.push(app);
+    (app.db.queryTenant as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{ id: "user-1" }]);
+    const res = await app.inject({
+      method: "POST",
+      url: "/orgs/invitations",
+      payload: { email: "already-there@y.com", role: "member" },
+    });
+    expect(res.statusCode).toBe(409);
+    expect(vi.mocked(projectMembershipsLib.upsertProjectMembership)).not.toHaveBeenCalled();
   });
 });
 

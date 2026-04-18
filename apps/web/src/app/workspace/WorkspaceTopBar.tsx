@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, Search } from "lucide-react";
+import { WorkspaceSwitcher } from "@/components/workspace/WorkspaceSwitcher";
 
 type WorkspaceTopBarProps = {
   userEmail?: string | null;
@@ -99,6 +100,8 @@ export function WorkspaceTopBar({ userEmail: _userEmail, workspaceName = "Larry 
       </button>
 
       <div className="flex-1" />
+
+      <WorkspaceSwitcher />
 
       {/* Cmd+K hint — hidden on mobile */}
       <button

@@ -16,7 +16,7 @@ import { writeAuditLog } from "../../lib/audit.js";
 import { hashPassword, issueAccessToken, issueRefreshToken } from "../../lib/auth.js";
 import { assertSeatAvailable, SeatCapReachedError } from "../../lib/seat-cap.js";
 import { assertMfaIfRequired, MfaEnrollmentRequiredError } from "../../lib/mfa-gate.js";
-import { getProjectMembershipAccess } from "../../lib/project-memberships.js";
+import { getProjectMembershipAccess, upsertProjectMembership } from "../../lib/project-memberships.js";
 
 const ProjectRoleEnum = z.enum(["owner", "editor", "viewer"]);
 
@@ -64,13 +64,64 @@ export const invitationsRoutes: FastifyPluginAsync = async (fastify) => {
       throw fastify.httpErrors.badRequest("Cannot invite a member with that role.");
     }
 
-    // Already a member?
+    // Already a tenant member?
     const existing = await fastify.db.queryTenant<{ id: string }>(
       user.tenantId,
       `SELECT u.id FROM users u JOIN memberships m ON m.user_id = u.id
         WHERE lower(u.email) = lower($1) AND m.tenant_id = $2 LIMIT 1`,
       [body.email, user.tenantId],
     );
+
+    // Project-scoped invite to an existing tenant member → skip the invitation
+    // email flow entirely and add them straight to the project. Without this
+    // short-circuit admins see a confusing "already in workspace" 409 when
+    // trying to grant project access to a teammate who's already in the org
+    // but not yet on this specific project.
+    if (existing.length > 0 && body.projectId && body.projectRole) {
+      const access = await getProjectMembershipAccess({
+        db: fastify.db,
+        tenantId: user.tenantId,
+        projectId: body.projectId,
+        userId: user.userId,
+        tenantRole: user.role,
+      });
+      if (!access.projectExists) {
+        throw fastify.httpErrors.notFound("Project not found.");
+      }
+      if (!access.canManage) {
+        throw fastify.httpErrors.forbidden(
+          "Project collaborator management requires owner or editor access.",
+        );
+      }
+      const targetUserId = existing[0].id;
+      await upsertProjectMembership(
+        fastify.db,
+        user.tenantId,
+        body.projectId,
+        targetUserId,
+        body.projectRole,
+      );
+      await writeAuditLog(fastify.db, {
+        tenantId: user.tenantId,
+        actorUserId: user.userId,
+        actionType: "project.member.added_via_invite",
+        objectType: "project_membership",
+        objectId: `${body.projectId}:${targetUserId}`,
+        details: {
+          projectId: body.projectId,
+          userId: targetUserId,
+          role: body.projectRole,
+          invitedEmail: body.email,
+        },
+      });
+      return reply.code(200).send({
+        added: true,
+        userId: targetUserId,
+        projectId: body.projectId,
+        projectRole: body.projectRole,
+      });
+    }
+
     if (existing.length > 0) {
       throw fastify.httpErrors.conflict("This email is already a member of this workspace.");
     }
