@@ -128,3 +128,169 @@ describe("executeAction task_create — payload preservation (regression)", () =
     expect(captured.values?.[7]).toBeNull();
   });
 });
+
+describe("executeAction task_create — source linkage from memory entry (#92)", () => {
+  const MEMORY_ENTRY_ID = "66666666-6666-4666-8666-666666666666";
+  const GMAIL_THREAD_ID = "thread-abc123xyz";
+
+  function buildMockDb(params: {
+    memoryEntryFound: boolean;
+    memorySourceKind?: string;
+    memorySourceRecordId?: string | null;
+    capturedInsert: { sql?: string; values?: unknown[] };
+  }): Db {
+    const queryTenant = vi.fn(async (_tenantId: string, sql: string, values?: unknown[]) => {
+      if (sql.includes("FROM users u") && sql.includes("JOIN memberships")) {
+        return [{ id: ASSIGNEE_USER_ID }];
+      }
+      if (sql.includes("FROM project_memory_entries") && sql.includes("WHERE tenant_id")) {
+        return params.memoryEntryFound
+          ? [{
+              source_kind: params.memorySourceKind ?? "email",
+              source_record_id: params.memorySourceRecordId ?? GMAIL_THREAD_ID,
+            }]
+          : [];
+      }
+      if (sql.includes("INSERT INTO tasks")) {
+        params.capturedInsert.sql = sql;
+        params.capturedInsert.values = values;
+        return [
+          {
+            id: NEW_TASK_ID,
+            tenant_id: TENANT_ID,
+            project_id: PROJECT_ID,
+            title: (values?.[2] as string) ?? "",
+            description: (values?.[3] as string | null) ?? null,
+            status: "not_started",
+            priority: (values?.[4] as string) ?? "medium",
+            assignee_user_id: (values?.[5] as string | null) ?? null,
+            progress_percent: 0,
+            risk_score: 0,
+            risk_level: "low",
+            start_date: (values?.[6] as string | null) ?? null,
+            due_date: (values?.[7] as string | null) ?? null,
+            source_kind: (values?.[8] as string | null) ?? null,
+            source_record_id: (values?.[9] as string | null) ?? null,
+            created_at: "2026-04-18T00:00:00.000Z",
+          },
+        ];
+      }
+      if (sql.includes("INSERT INTO activities")) return [];
+      if (sql.includes("SELECT") && sql.includes("tenant_policies")) return [];
+      if (sql.includes("INSERT INTO larry_events")) return [{ id: "ev-1" }];
+      return [];
+    });
+    return { queryTenant, tx: vi.fn() } as unknown as Db;
+  }
+
+  it("copies source_kind + source_record_id from the cited memory entry onto the task", async () => {
+    const captured: { sql?: string; values?: unknown[] } = {};
+    const db = buildMockDb({
+      memoryEntryFound: true,
+      memorySourceKind: "email",
+      memorySourceRecordId: GMAIL_THREAD_ID,
+      capturedInsert: captured,
+    });
+
+    await executeAction(
+      db,
+      TENANT_ID,
+      PROJECT_ID,
+      "task_create",
+      {
+        title: "Reply to Acme about RFP",
+        description: "Draft a response to the Acme RFP question.",
+        priority: "high",
+        assigneeName: "Anna",
+        sourceMemoryEntryId: MEMORY_ENTRY_ID,
+        reasoning: "Inbound email from Acme requires a response.",
+        displayText: "Create task: Reply to Acme",
+      } as unknown as Parameters<typeof executeAction>[4],
+      ACTOR_USER_ID
+    );
+
+    expect(captured.sql).toContain("source_kind");
+    expect(captured.sql).toContain("source_record_id");
+    // Params layout: [tenantId, projectId, title, description, priority, assigneeId, startDate, dueDate, sourceKind, sourceRecordId]
+    expect(captured.values?.[8]).toBe("email");
+    expect(captured.values?.[9]).toBe(GMAIL_THREAD_ID);
+  });
+
+  it("silently drops the source when the cited memory entry does not exist", async () => {
+    const captured: { sql?: string; values?: unknown[] } = {};
+    const db = buildMockDb({ memoryEntryFound: false, capturedInsert: captured });
+
+    await executeAction(
+      db,
+      TENANT_ID,
+      PROJECT_ID,
+      "task_create",
+      {
+        title: "Some task",
+        description: "Whatever.",
+        priority: "medium",
+        assigneeName: "Anna",
+        sourceMemoryEntryId: "99999999-9999-4999-8999-999999999999",
+        reasoning: "Testing hallucinated memory id.",
+        displayText: "Create task",
+      } as unknown as Parameters<typeof executeAction>[4],
+      ACTOR_USER_ID
+    );
+
+    expect(captured.values?.[8]).toBeNull();
+    expect(captured.values?.[9]).toBeNull();
+  });
+
+  it("stores null source fields when sourceMemoryEntryId is omitted", async () => {
+    const captured: { sql?: string; values?: unknown[] } = {};
+    const db = buildMockDb({ memoryEntryFound: true, capturedInsert: captured });
+
+    await executeAction(
+      db,
+      TENANT_ID,
+      PROJECT_ID,
+      "task_create",
+      {
+        title: "Unlinked task",
+        description: "No memory source cited.",
+        priority: "low",
+        assigneeName: "Anna",
+        reasoning: "No source.",
+        displayText: "Create task",
+      } as unknown as Parameters<typeof executeAction>[4],
+      ACTOR_USER_ID
+    );
+
+    expect(captured.values?.[8]).toBeNull();
+    expect(captured.values?.[9]).toBeNull();
+  });
+
+  it("rejects a malformed sourceMemoryEntryId without querying the DB", async () => {
+    const captured: { sql?: string; values?: unknown[] } = {};
+    const db = buildMockDb({ memoryEntryFound: true, capturedInsert: captured });
+
+    await executeAction(
+      db,
+      TENANT_ID,
+      PROJECT_ID,
+      "task_create",
+      {
+        title: "Malformed id task",
+        description: "Hallucinated id that is not a UUID.",
+        priority: "low",
+        assigneeName: "Anna",
+        sourceMemoryEntryId: "not-a-uuid",
+        reasoning: "Testing bad UUID guard.",
+        displayText: "Create task",
+      } as unknown as Parameters<typeof executeAction>[4],
+      ACTOR_USER_ID
+    );
+
+    // Guard rejects before the SELECT runs
+    const calls = (db.queryTenant as ReturnType<typeof vi.fn>).mock.calls;
+    const memorySelectCalls = calls.filter((c) => String(c[1]).includes("FROM project_memory_entries"));
+    expect(memorySelectCalls.length).toBe(0);
+    expect(captured.values?.[8]).toBeNull();
+    expect(captured.values?.[9]).toBeNull();
+  });
+});

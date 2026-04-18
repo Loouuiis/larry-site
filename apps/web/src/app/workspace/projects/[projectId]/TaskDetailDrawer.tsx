@@ -23,6 +23,9 @@ interface TaskDetail {
   assigneeUserId: string | null;
   sourceType?: string | null;
   sourceRef?: string | null;
+  /** #92: source linkage copied from the project_memory_entries row that triggered this task. */
+  sourceKind?: string | null;
+  sourceRecordId?: string | null;
 }
 
 interface TaskDetailDrawerProps {
@@ -75,6 +78,8 @@ function sourceLabel(type: string | null | undefined): string {
   switch (type) {
     case "meeting":     return "Meeting transcript";
     case "slack":       return "Slack message";
+    case "email":       return "Email thread";
+    case "calendar":    return "Calendar event";
     case "manual":      return "Created manually";
     case "larry":       return "Larry suggestion";
     default:            return "Manual creation";
@@ -423,9 +428,33 @@ export function TaskDetailDrawer({ task, onClose }: TaskDetailDrawerProps) {
             }}
           >
             <span className="text-[13px]" style={{ color: "var(--text-2)" }}>
-              {sourceLabel(detail?.sourceType)}
+              {detail?.sourceKind
+                ? sourceLabel(detail.sourceKind)
+                : sourceLabel(detail?.sourceType)}
             </span>
           </div>
+          {/* #92: Reply-in-Gmail deep link when the task came from an email thread. */}
+          {detail?.sourceKind === "email" && detail?.sourceRecordId && (
+            <a
+              href={`https://mail.google.com/mail/u/0/#inbox/${encodeURIComponent(detail.sourceRecordId)}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 mt-2 px-3 py-2 text-[13px]"
+              style={{
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius-btn)",
+                background: "var(--surface)",
+                color: "var(--text-1)",
+                textDecoration: "none",
+                fontWeight: 500,
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-2)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "var(--surface)"; }}
+            >
+              <MessageSquare size={12} />
+              Reply in Gmail →
+            </a>
+          )}
         </div>
 
         {/* Attachments */}

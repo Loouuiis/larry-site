@@ -1644,3 +1644,12 @@ ALTER TABLE projects
 
 CREATE INDEX IF NOT EXISTS idx_projects_tenant_category_sort
   ON projects (tenant_id, category_id, sort_order);
+
+-- Migration 025: task source linkage (#92)
+ALTER TABLE tasks
+  ADD COLUMN IF NOT EXISTS source_kind TEXT,
+  ADD COLUMN IF NOT EXISTS source_record_id TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_tasks_source
+  ON tasks (tenant_id, source_kind, source_record_id)
+  WHERE source_record_id IS NOT NULL;

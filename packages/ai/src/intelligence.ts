@@ -258,7 +258,9 @@ Every action: { type, displayText, reasoning, payload }.
 ### Action type payloads
 
 "task_create" [ACTION CENTRE ONLY]
-  payload: { "title": string, "description": string|null, "dueDate": "YYYY-MM-DD"|null, "assigneeName": string|null, "priority": "low"|"medium"|"high"|"critical" }
+  payload: { "title": string, "description": string|null, "dueDate": "YYYY-MM-DD"|null, "assigneeName": string|null, "priority": "low"|"medium"|"high"|"critical", "sourceMemoryEntryId": string|null }
+
+  If this task was triggered by a specific PROJECT MEMORY entry (e.g. an inbound email, Slack message, calendar event), set "sourceMemoryEntryId" to the UUID after "memory:" in that entry's [memory:<uuid>] tag. This lets the user jump back to the source thread. Only set it when the task is directly caused by a specific memory entry; otherwise omit or set null.
 
 "status_update" [auto or action centre]
   payload: { "taskId": string (use ID from snapshot), "taskTitle": string, "newStatus": "backlog"|"not_started"|"in_progress"|"waiting"|"completed"|"blocked", "newRiskLevel": "low"|"medium"|"high" }
@@ -521,7 +523,7 @@ function buildUserPrompt(snapshot: ProjectSnapshot, hint: string | null): string
           const wrappedBody = EXTERNAL_SOURCE_KINDS.has(e.sourceKind)
             ? `<UNTRUSTED>${body}</UNTRUSTED>`
             : body;
-          return `  [${e.createdAt.slice(0, 10)}] [${e.sourceKind}] ${wrappedBody}`;
+          return `  [memory:${e.id}] [${e.createdAt.slice(0, 10)}] [${e.sourceKind}] ${wrappedBody}`;
         })
       : [];
 
