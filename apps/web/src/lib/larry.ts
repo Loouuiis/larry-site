@@ -34,6 +34,8 @@ export interface LarryChatResponse {
   requiresClarification?: boolean;
   clarifications?: LarryClarification[];
   error?: string;
+  errorCode?: string;
+  retryAfter?: number;
 }
 
 export async function readJson<T>(response: Response): Promise<T> {

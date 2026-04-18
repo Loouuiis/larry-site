@@ -40,6 +40,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
       // The scan runs every 30 min. Anything under 60 min old is healthy.
       const alive = ageMinutes < 60;
 
+      const isProd = process.env.NODE_ENV === "production";
       return reply.code(200).send({
         jobName: row.job_name,
         alive,
@@ -48,7 +49,9 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
         lastRunDurationMs: row.last_run_duration_ms,
         lastRunProcessed: row.last_run_processed,
         lastRunFailed: row.last_run_failed,
-        lastRunError: row.last_run_error,
+        ...(isProd
+          ? { hadError: row.last_run_error !== null }
+          : { lastRunError: row.last_run_error }),
         ageMinutes,
       });
     } catch (err) {
@@ -57,7 +60,6 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
         jobName: "larry.scan",
         alive: false,
         reason: "status table unavailable — migration may be pending",
-        error: err instanceof Error ? err.message : String(err),
       });
     }
   });

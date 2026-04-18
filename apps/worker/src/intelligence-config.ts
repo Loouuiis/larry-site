@@ -16,3 +16,13 @@ export function buildWorkerIntelligenceConfig(): IntelligenceConfig {
   }
   return { provider: "mock", model: "mock" };
 }
+
+export function buildWorkerFallbackIntelligenceConfig(): IntelligenceConfig | undefined {
+  if (env.MODEL_PROVIDER === "gemini" && env.GROQ_API_KEY) {
+    return { provider: "groq", apiKey: env.GROQ_API_KEY, model: env.GROQ_MODEL };
+  }
+  if (env.MODEL_PROVIDER === "groq" && env.GEMINI_API_KEY) {
+    return { provider: "gemini", apiKey: env.GEMINI_API_KEY, model: env.GEMINI_MODEL };
+  }
+  return undefined;
+}

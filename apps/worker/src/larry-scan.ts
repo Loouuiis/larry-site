@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { getProjectSnapshot, runAutoActions, storeSuggestions, updateProjectLarryContext } from "@larry/db";
-import { runIntelligence } from "@larry/ai";
+import { runIntelligence, ProviderError } from "@larry/ai";
 import { db } from "./context.js";
-import { buildWorkerIntelligenceConfig } from "./intelligence-config.js";
+import { buildWorkerIntelligenceConfig, buildWorkerFallbackIntelligenceConfig } from "./intelligence-config.js";
 import { reserveTokens, LLMQuotaError } from "./llm-budget.js";
 
 // Per-project estimated token cost for runIntelligence. Empirically ~9k
@@ -59,6 +59,7 @@ export async function runLarryScan(): Promise<void> {
   const startTime = Date.now();
   const startedAt = new Date(startTime);
   const config = buildWorkerIntelligenceConfig();
+  const fallbackConfig = buildWorkerFallbackIntelligenceConfig();
 
   // Load all active projects across all tenants using system bypass identity.
   // This mirrors the pattern established by escalation.ts.
@@ -114,7 +115,7 @@ export async function runLarryScan(): Promise<void> {
         }
 
         const snapshot = await getProjectSnapshot(db, tenantId, projectId);
-        const result = await runIntelligence(config, snapshot, "scheduled health scan");
+        const result = await runIntelligence(config, snapshot, "scheduled health scan", fallbackConfig);
         const ledgerContext = { sourceKind: "project_review", sourceRecordId: randomUUID() } as const;
 
         if (result.contextUpdate) {
@@ -130,6 +131,13 @@ export async function runLarryScan(): Promise<void> {
         totalExecuted += autoResult.executedCount;
         totalSuggested += suggestResult.suggestedCount + autoResult.suggestedCount;
       } catch (err) {
+        if (err instanceof ProviderError && err.code === "quota_exhausted_daily") {
+          // All providers exhausted — skip without counting as failure; next cron tick retries.
+          console.warn(
+            `[larry-scan] provider quota exhausted (${err.provider}), skipping project ${projectId} (tenant ${tenantId})`
+          );
+          continue;
+        }
         failed++;
         const message = err instanceof Error ? err.message : String(err);
         failureSummaries.push(`project ${projectId} (tenant ${tenantId}): ${message}`);

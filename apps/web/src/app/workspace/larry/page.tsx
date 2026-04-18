@@ -22,6 +22,13 @@ import {
   stripFunctionCallMarkup,
 } from "@/lib/larry";
 import { parseLarrySseStream } from "@/lib/larry-stream";
+
+function getLarryErrorMessage(code?: string): string {
+  if (code === "quota_exhausted_daily") return "Larry's AI quota has been reached for today. Scans and chat will resume tomorrow.";
+  if (code === "billing_blocked") return "Larry's AI provider is billing-blocked. Contact your workspace admin.";
+  if (code === "transient") return "Larry's AI provider is temporarily unavailable. Please try again in a moment.";
+  return "Larry is temporarily unavailable. Please try again.";
+}
 import { ChatInput, type AttachedFile } from "@/components/larry/ChatInput";
 import { useSmartScroll } from "@/hooks/useSmartScroll";
 import { PageState } from "@/components/PageState";
@@ -526,7 +533,7 @@ export default function AskLarryPage() {
                 break;
               case "error":
                 updateStreamingMessage((previous) => ({
-                  content: previous.content || streamEvent.message,
+                  content: previous.content || getLarryErrorMessage(streamEvent.code),
                   streaming: false,
                 }));
                 break;
@@ -558,7 +565,8 @@ export default function AskLarryPage() {
         if (!response.ok) {
           setMessages((current) =>
             current.filter((m) => m.id !== streamingLarryId).concat({
-              id: crypto.randomUUID(), role: "larry", content: data.error ?? "Something went wrong.",
+              id: crypto.randomUUID(), role: "larry",
+              content: getLarryErrorMessage(data.errorCode as string | undefined),
               createdAt: new Date().toISOString(), reasoning: null, actorUserId: null, actorDisplayName: null, linkedActions: [],
             })
           );

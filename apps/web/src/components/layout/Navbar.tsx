@@ -13,14 +13,11 @@ interface NavLink {
   sectionId?: string;
 }
 
-// sectionId maps each anchor link to its corresponding section element.
-// Non-anchor links (Blog) have no sectionId and are never highlighted.
 const NAV_LINKS: NavLink[] = [
   { label: "How It Works",  href: "#solution",      sectionId: "solution"      },
   { label: "Why Larry",     href: "#differentiator", sectionId: "differentiator" },
   { label: "Who It's For",  href: "#audience",       sectionId: "audience"      },
   { label: "Pricing",       href: "#pricing",        sectionId: "pricing"       },
-  { label: "Blog",          href: "/blog"                                        },
 ];
 
 const EASE = [0.22, 1, 0.36, 1] as const;
