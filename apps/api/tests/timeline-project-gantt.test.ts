@@ -64,8 +64,8 @@ describe("GET /projects/:id/timeline includes parentTaskId", () => {
             assigneeUserId: null,
             assigneeName: null,
             progressPercent: 0,
-            startDate: null,
-            dueDate: null,
+            startDate: "2026-04-01",
+            dueDate: "2026-04-10",
             riskLevel: "low",
           },
           {
@@ -77,8 +77,8 @@ describe("GET /projects/:id/timeline includes parentTaskId", () => {
             assigneeUserId: null,
             assigneeName: null,
             progressPercent: 50,
-            startDate: null,
-            dueDate: null,
+            startDate: "2026-04-05",
+            dueDate: "2026-04-15",
             riskLevel: "low",
           },
         ];
@@ -110,6 +110,47 @@ describe("GET /projects/:id/timeline includes parentTaskId", () => {
 
     const topLevel = tasks.find((t) => t.parentTaskId === null);
     expect(topLevel).toBeDefined();
+  });
+
+  it("gantt array excludes tasks with null start_date or due_date; kanban keeps them", async () => {
+    const queryTenant = vi.fn(async (_tenantId: string, sql: string) => {
+      if (/FROM projects/.test(sql) && /WHERE tenant_id/.test(sql)) {
+        return [{ id: PROJECT_ID, status: "active" }];
+      }
+      if (/FROM project_memberships/.test(sql)) return [{ role: "owner" }];
+      if (/FROM tasks/.test(sql) && /parent_task_id/i.test(sql)) {
+        return [
+          { id: "t-dated",    title: "Dated",    status: "not_started", priority: "medium",
+            parentTaskId: null, assigneeUserId: null, assigneeName: null, progressPercent: 0,
+            startDate: "2026-04-01", dueDate: "2026-04-10", riskLevel: "low" },
+          { id: "t-no-start", title: "No start", status: "in_progress", priority: "medium",
+            parentTaskId: null, assigneeUserId: null, assigneeName: null, progressPercent: 0,
+            startDate: null, dueDate: "2026-04-10", riskLevel: "low" },
+          { id: "t-no-end",   title: "No end",   status: "blocked",     priority: "medium",
+            parentTaskId: null, assigneeUserId: null, assigneeName: null, progressPercent: 0,
+            startDate: "2026-04-01", dueDate: null, riskLevel: "low" },
+        ];
+      }
+      if (/FROM task_dependencies/.test(sql)) return [];
+      return [];
+    });
+
+    const app = await buildApp(queryTenant);
+    const res = await app.inject({ method: "GET", url: `/projects/${PROJECT_ID}/timeline` });
+    await app.close();
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+
+    const ganttIds = (body.gantt as Array<{ id: string }>).map((t) => t.id);
+    expect(ganttIds).toEqual(["t-dated"]);
+
+    // Kanban still holds every task regardless of dates.
+    const kanbanIds = Object.values(body.kanban as Record<string, Array<{ id: string }>>)
+      .flat()
+      .map((t) => t.id)
+      .sort();
+    expect(kanbanIds).toEqual(["t-dated", "t-no-end", "t-no-start"]);
   });
 
   it("includes parent_task_id in the SQL sent to the database", async () => {

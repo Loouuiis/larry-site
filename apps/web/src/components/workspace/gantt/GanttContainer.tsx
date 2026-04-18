@@ -54,8 +54,6 @@ export function GanttContainer({
     return base.map((r) => ({ ...r, dimmed: !nodeLabel(r.node).toLowerCase().includes(q) }));
   }, [root, expanded, search, categoryColorMap, rootCategoryColor]);
 
-  const allCollapsed = expanded.size === 0;
-
   const toggle = useCallback((key: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -63,11 +61,6 @@ export function GanttContainer({
       return next;
     });
   }, []);
-
-  const toggleCollapseAll = useCallback(() => {
-    if (allCollapsed) setExpanded(collectAllKeys(root));
-    else setExpanded(new Set());
-  }, [allCollapsed, root]);
 
   const jumpToToday = useCallback(() => {
     if (!gridRef.current) return;
@@ -128,8 +121,8 @@ export function GanttContainer({
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
       <GanttToolbar
-        zoom={zoom} allCollapsed={allCollapsed} search={search}
-        onZoom={setZoom} onToggleCollapseAll={toggleCollapseAll} onJumpToToday={jumpToToday}
+        zoom={zoom} search={search}
+        onZoom={setZoom} onJumpToToday={jumpToToday}
         onSearch={setSearch}
         onAdd={() => onAdd?.({ selectedKey })}
         canAdd={Boolean(onAdd)}

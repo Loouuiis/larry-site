@@ -46,13 +46,49 @@ describe("POST /categories", () => {
     const res = await app.inject({ method: "POST", url: "/categories", payload: { name: "Internal" } });
     expect(res.statusCode).toBe(201);
     expect(res.json()).toEqual({ category: row });
-    expect(repo.insertCategory).toHaveBeenCalledWith(expect.anything(), TENANT_ID, { name: "Internal", colour: null, sortOrder: 0 });
+    expect(repo.insertCategory).toHaveBeenCalledWith(expect.anything(), TENANT_ID, { name: "Internal", colour: null, sortOrder: 0, parentCategoryId: null, projectId: null });
   });
 
   it("rejects empty name with 400", async () => {
     const app = await buildApp(); apps.push(app);
     const res = await app.inject({ method: "POST", url: "/categories", payload: { name: "" } });
     expect(res.statusCode).toBe(400);
+  });
+
+  it("passes parentCategoryId to the repo", async () => {
+    const app = await buildApp(); apps.push(app);
+    const PARENT_ID = "33333333-3333-4333-8333-333333333333";
+    const row = { id: "c1", tenantId: TENANT_ID, name: "Child", colour: null, sortOrder: 0, parentCategoryId: PARENT_ID, projectId: null, createdAt: "x", updatedAt: "x" };
+    vi.mocked(repo.insertCategory).mockResolvedValue(row);
+    const res = await app.inject({ method: "POST", url: "/categories", payload: { name: "Child", parentCategoryId: PARENT_ID } });
+    expect(res.statusCode).toBe(201);
+    expect(repo.insertCategory).toHaveBeenCalledWith(expect.anything(), TENANT_ID, {
+      name: "Child", colour: null, sortOrder: 0, parentCategoryId: PARENT_ID, projectId: null,
+    });
+  });
+
+  it("passes projectId to the repo", async () => {
+    const app = await buildApp(); apps.push(app);
+    const PROJECT_ID = "44444444-4444-4444-8444-444444444444";
+    const row = { id: "c1", tenantId: TENANT_ID, name: "Design", colour: "#6c44f6", sortOrder: 0, parentCategoryId: null, projectId: PROJECT_ID, createdAt: "x", updatedAt: "x" };
+    vi.mocked(repo.insertCategory).mockResolvedValue(row);
+    const res = await app.inject({ method: "POST", url: "/categories", payload: { name: "Design", colour: "#6c44f6", projectId: PROJECT_ID } });
+    expect(res.statusCode).toBe(201);
+    expect(repo.insertCategory).toHaveBeenCalledWith(expect.anything(), TENANT_ID, {
+      name: "Design", colour: "#6c44f6", sortOrder: 0, parentCategoryId: null, projectId: PROJECT_ID,
+    });
+  });
+
+  it("returns 400 when both parentCategoryId and projectId are set", async () => {
+    const app = await buildApp(); apps.push(app);
+    const res = await app.inject({ method: "POST", url: "/categories", payload: {
+      name: "Bad",
+      parentCategoryId: "33333333-3333-4333-8333-333333333333",
+      projectId: "44444444-4444-4444-8444-444444444444",
+    } });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message ?? res.json().error).toMatch(/exactly one or neither/i);
+    expect(repo.insertCategory).not.toHaveBeenCalled();
   });
 });
 
@@ -71,6 +107,26 @@ describe("PATCH /categories/:id", () => {
     vi.mocked(repo.updateCategory).mockResolvedValue(null);
     const res = await app.inject({ method: "PATCH", url: "/categories/11111111-1111-4111-8111-111111111111", payload: { name: "X" } });
     expect(res.statusCode).toBe(404);
+  });
+
+  it("accepts parentCategoryId on PATCH", async () => {
+    const app = await buildApp(); apps.push(app);
+    const PARENT_ID = "33333333-3333-4333-8333-333333333333";
+    const row = { id: "c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1", tenantId: TENANT_ID, name: "Child", colour: null, sortOrder: 0, parentCategoryId: PARENT_ID, projectId: null, createdAt: "x", updatedAt: "x" };
+    vi.mocked(repo.updateCategory).mockResolvedValue(row);
+    const res = await app.inject({ method: "PATCH", url: "/categories/c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1", payload: { parentCategoryId: PARENT_ID } });
+    expect(res.statusCode).toBe(200);
+    expect(repo.updateCategory).toHaveBeenCalledWith(expect.anything(), TENANT_ID, "c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1", { parentCategoryId: PARENT_ID });
+  });
+
+  it("returns 400 when PATCH sets both parentCategoryId and projectId", async () => {
+    const app = await buildApp(); apps.push(app);
+    const res = await app.inject({ method: "PATCH", url: "/categories/c1c1c1c1-c1c1-4c1c-8c1c-c1c1c1c1c1c1", payload: {
+      parentCategoryId: "33333333-3333-4333-8333-333333333333",
+      projectId: "44444444-4444-4444-8444-444444444444",
+    } });
+    expect(res.statusCode).toBe(400);
+    expect(repo.updateCategory).not.toHaveBeenCalled();
   });
 });
 

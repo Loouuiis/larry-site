@@ -1,13 +1,11 @@
 "use client";
-import { Calendar, ChevronsDownUp, ChevronsUpDown, Plus, Search, Tag } from "lucide-react";
+import { Calendar, Plus, Search, Tag } from "lucide-react";
 import type { ZoomLevel } from "./gantt-types";
 
 interface Props {
   zoom: ZoomLevel;
-  allCollapsed: boolean;
   search: string;
   onZoom: (z: ZoomLevel) => void;
-  onToggleCollapseAll: () => void;
   onJumpToToday: () => void;
   onSearch: (s: string) => void;
   onAdd: () => void;
@@ -25,7 +23,7 @@ const btn: React.CSSProperties = {
 };
 
 export function GanttToolbar({
-  zoom, allCollapsed, search, onZoom, onToggleCollapseAll, onJumpToToday, onSearch,
+  zoom, search, onZoom, onJumpToToday, onSearch,
   onAdd, canAdd, addLabel, onCategoriesClick, categoriesOpen,
 }: Props) {
   return (
@@ -41,10 +39,6 @@ export function GanttToolbar({
       </div>
 
       <button style={btn} onClick={onJumpToToday}><Calendar size={14} />Today</button>
-      <button style={btn} onClick={onToggleCollapseAll}>
-        {allCollapsed ? <ChevronsUpDown size={14} /> : <ChevronsDownUp size={14} />}
-        {allCollapsed ? "Expand all" : "Collapse all"}
-      </button>
 
       {onCategoriesClick && (
         <button

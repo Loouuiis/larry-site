@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import type { PortfolioTimelineResponse, ContextMenuAction, GanttNode } from "@/components/workspace/gantt/gantt-types";
 import { buildPortfolioTree, buildCategoryColorMap, normalizePortfolioStatuses } from "@/components/workspace/gantt/gantt-utils";
 import { GanttContainer } from "@/components/workspace/gantt/GanttContainer";
@@ -27,7 +27,11 @@ export function PortfolioGanttClient() {
       const res = await fetch("/api/workspace/timeline", { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setData(await res.json());
+      setError(null);
     } catch (e) {
+      // Never blank the Gantt on fetch error — surface the message in the
+      // dismissible banner and keep the last good `data` mounted. A transient
+      // 409/5xx no longer wipes the user's view.
       setError(e instanceof Error ? e.message : "Failed to load");
     }
   }, []);
@@ -47,7 +51,13 @@ export function PortfolioGanttClient() {
     return [...real, { id: null, name: "Uncategorised", colour: "#bdb7d0" }];
   }, [data]);
 
-  if (error) return <div style={{ padding: 24 }}>Couldn&apos;t load timeline: {error}</div>;
+  if (!data && error) {
+    return (
+      <div style={{ padding: 24 }}>
+        <ErrorBanner message={error} onDismiss={() => setError(null)} onRetry={() => void fetchTimeline()} />
+      </div>
+    );
+  }
   if (!data) return <div style={{ padding: 24 }}>Loading…</div>;
 
   const normalized = normalizePortfolioStatuses(data);
@@ -66,12 +76,14 @@ export function PortfolioGanttClient() {
   }
 
   function selectionContextAddLabel(): string {
-    if (!selectedKey) return "+ Category";
+    // Label text only — the GanttToolbar renders a <Plus /> icon alongside
+    // this string. Do NOT include a leading "+" here or it doubles up.
+    if (!selectedKey) return "Category";
     if (selectedKey.startsWith("cat:")) {
       const id = selectedKey.slice(4);
       const cat = data?.categories.find((c) => c.id === (id === "uncat" ? null : id));
       const name = cat?.name ?? "";
-      return `+ Project${name ? " in " + name : ""}`;
+      return `Project${name ? " in " + name : ""}`;
     }
     if (selectedKey.startsWith("proj:")) {
       const id = selectedKey.slice(5);
@@ -80,7 +92,7 @@ export function PortfolioGanttClient() {
         const p = cat.projects.find((pp) => pp.id === id);
         if (p) { pname = p.name; break; }
       }
-      return `+ Task${pname ? " in " + pname : ""}`;
+      return `Task${pname ? " in " + pname : ""}`;
     }
     if (selectedKey.startsWith("task:")) {
       const taskId = selectedKey.slice(5);
@@ -89,9 +101,9 @@ export function PortfolioGanttClient() {
         const t = p.tasks.find((tt) => tt.id === taskId);
         if (t) { tname = t.title; break; }
       }
-      return `+ Subtask${tname ? " in " + tname : ""}`;
+      return `Subtask${tname ? " in " + tname : ""}`;
     }
-    return "+ Category";
+    return "Category";
   }
 
   function handleAdd(context: { selectedKey: string | null }) {
@@ -231,6 +243,12 @@ export function PortfolioGanttClient() {
         Everything across your workspace. Click a row to select it.
       </p>
 
+      {error && (
+        <div style={{ marginBottom: 12 }}>
+          <ErrorBanner message={error} onDismiss={() => setError(null)} onRetry={() => void fetchTimeline()} />
+        </div>
+      )}
+
       {isTrulyEmpty ? (
         <GanttEmptyState
           kind="noCategories"
@@ -295,6 +313,62 @@ export function PortfolioGanttClient() {
           onCreated={async () => { await fetchTimeline(); }}
         />
       )}
+    </div>
+  );
+}
+
+function ErrorBanner({
+  message, onDismiss, onRetry,
+}: { message: string; onDismiss: () => void; onRetry?: () => void }) {
+  return (
+    <div
+      role="alert"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+        padding: "10px 14px",
+        borderRadius: 8,
+        background: "#fdecef",
+        border: "1px solid #f5c1cb",
+        color: "#8a1f33",
+        fontSize: 13,
+      }}
+    >
+      <span style={{ flex: 1 }}>Couldn&apos;t load timeline: {message}</span>
+      {onRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          style={{
+            background: "transparent",
+            border: "1px solid #d97a8b",
+            color: "#8a1f33",
+            padding: "4px 10px",
+            borderRadius: 6,
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
+        >
+          Retry
+        </button>
+      )}
+      <button
+        type="button"
+        aria-label="Dismiss error"
+        onClick={onDismiss}
+        style={{
+          background: "transparent",
+          border: 0,
+          color: "#8a1f33",
+          cursor: "pointer",
+          display: "inline-flex",
+          padding: 2,
+        }}
+      >
+        <X size={14} />
+      </button>
     </div>
   );
 }

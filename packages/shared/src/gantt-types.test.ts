@@ -5,7 +5,8 @@ describe("gantt types", () => {
   it("ProjectCategory has the required fields", () => {
     const c: ProjectCategory = {
       id: "c1", tenantId: "t1", name: "Client work", colour: null,
-      sortOrder: 0, createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z",
+      sortOrder: 0, parentCategoryId: null, projectId: null,
+      createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z",
     };
     expect(c.name).toBe("Client work");
   });
