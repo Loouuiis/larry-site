@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { Plus, X, Mail, UserPlus } from "lucide-react";
+import { Plus, X, Mail, UserPlus, Link2 } from "lucide-react";
 import Link from "next/link";
 import type {
   ProjectMembershipRole,
   WorkspaceProjectMembers,
 } from "@/app/dashboard/types";
+import { InviteModal } from "@/components/members/InviteModal";
 
 interface TenantMember {
   id: string;
@@ -32,7 +33,13 @@ async function readJson<T>(response: Response): Promise<T> {
   }
 }
 
-export function CollaboratorsPanel({ projectId }: { projectId: string }) {
+export function CollaboratorsPanel({
+  projectId,
+  projectName,
+}: {
+  projectId: string;
+  projectName?: string;
+}) {
   const [membersPayload, setMembersPayload] = useState<WorkspaceProjectMembers | null>(null);
   const [tenantMembers, setTenantMembers] = useState<TenantMember[]>([]);
   const [roleDrafts, setRoleDrafts] = useState<Record<string, ProjectMembershipRole>>({});
@@ -48,6 +55,7 @@ export function CollaboratorsPanel({ projectId }: { projectId: string }) {
   const [inviteRole, setInviteRole] = useState<ProjectMembershipRole>("viewer");
   const [inviteBusy, setInviteBusy] = useState(false);
   const [inviteSuccess, setInviteSuccess] = useState("");
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"list" | "tree">("list");
 
   const canManage = membersPayload?.canManage ?? false;
@@ -296,7 +304,7 @@ export function CollaboratorsPanel({ projectId }: { projectId: string }) {
             <div className="space-y-3">
               {/* Action buttons */}
               {!showAddForm && !showEmailInvite && (
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                   <button
                     type="button"
                     onClick={() => setShowAddForm(true)}
@@ -315,6 +323,16 @@ export function CollaboratorsPanel({ projectId }: { projectId: string }) {
                   >
                     <Mail size={14} />
                     Invite by email
+                  </button>
+                  <span style={{ color: "var(--text-disabled)", fontSize: 12 }}>or</span>
+                  <button
+                    type="button"
+                    onClick={() => setInviteModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 text-[13px] font-semibold"
+                    style={{ color: "var(--cta)", background: "transparent", border: "none", cursor: "pointer", padding: 0 }}
+                  >
+                    <Link2 size={14} />
+                    Create invite link
                   </button>
                   <Link
                     href="/workspace/settings/members"
@@ -398,7 +416,7 @@ export function CollaboratorsPanel({ projectId }: { projectId: string }) {
                 )
               )}
 
-              {/* Email invite form */}
+              {/* Email invite form — scoped to this project */}
               {showEmailInvite && (
                 <form
                   onSubmit={async (e: FormEvent) => {
@@ -408,14 +426,21 @@ export function CollaboratorsPanel({ projectId }: { projectId: string }) {
                     setInlineError(null);
                     setInviteSuccess("");
                     try {
-                      const res = await fetch("/api/workspace/members/invite", {
+                      // Use the project-scoped invite path: tenant role defaults to
+                      // "member", project role matches what the admin picked.
+                      const res = await fetch("/api/workspace/invitations", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ email: inviteEmail.trim(), role: inviteRole === "owner" ? "admin" : inviteRole === "editor" ? "member" : "viewer" }),
+                        body: JSON.stringify({
+                          email: inviteEmail.trim(),
+                          role: "member",
+                          projectId,
+                          projectRole: inviteRole,
+                        }),
                       });
-                      const data = await readJson<{ error?: string }>(res);
+                      const data = await readJson<{ error?: string; message?: string }>(res);
                       if (!res.ok) {
-                        setInlineError(data.error ?? "Failed to send invite.");
+                        setInlineError(data.error ?? data.message ?? "Failed to send invite.");
                         return;
                       }
                       setInviteSuccess(`Invited ${inviteEmail.trim()}`);
@@ -621,6 +646,14 @@ export function CollaboratorsPanel({ projectId }: { projectId: string }) {
           )}
         </div>
       )}
+
+      <InviteModal
+        open={inviteModalOpen}
+        onClose={() => setInviteModalOpen(false)}
+        onInvited={() => void refresh()}
+        projectId={projectId}
+        projectName={projectName}
+      />
     </div>
   );
 }

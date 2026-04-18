@@ -1,18 +1,17 @@
-import { getSession } from "@/lib/auth";
-import { MailX, Clock, CheckCircle2, AlertCircle } from "lucide-react";
-import { AcceptForm } from "./AcceptForm";
+import { MailX, Clock, AlertCircle } from "lucide-react";
+import { RedeemForm } from "./RedeemForm";
 
 export const dynamic = "force-dynamic";
 
 interface Preview {
-  email: string;
-  role: string;
-  expiresAt: string;
   tenantName: string | null;
   tenantSlug: string | null;
-  projectId: string | null;
-  projectRole: "owner" | "editor" | "viewer" | null;
+  defaultRole: string;
+  defaultProjectId: string | null;
+  defaultProjectRole: "owner" | "editor" | "viewer" | null;
   projectName: string | null;
+  expiresAt: string | null;
+  usesRemaining: number | null;
 }
 
 type PreviewResult =
@@ -25,13 +24,13 @@ async function fetchPreview(token: string): Promise<PreviewResult> {
   const base = process.env.LARRY_API_BASE_URL ?? "http://localhost:8080";
   try {
     const res = await fetch(
-      `${base}/v1/orgs/invitations/${encodeURIComponent(token)}`,
+      `${base}/v1/orgs/invite-links/by-token/${encodeURIComponent(token)}`,
       { cache: "no-store" },
     );
     if (res.status === 404) return { kind: "notFound" };
     if (res.status === 410) {
       const data = (await res.json().catch(() => ({}))) as { code?: string };
-      return { kind: "gone", code: data.code ?? "invite_unavailable" };
+      return { kind: "gone", code: data.code ?? "invite_link_unavailable" };
     }
     if (!res.ok) return { kind: "error" };
     const data = (await res.json()) as Preview;
@@ -88,28 +87,12 @@ function StateCard({
   );
 }
 
-export default async function AcceptInvitationPage({
-  searchParams,
+export default async function InviteLinkPage({
+  params,
 }: {
-  searchParams: Promise<{ token?: string }>;
+  params: Promise<{ token: string }>;
 }) {
-  const { token } = await searchParams;
-  const session = await getSession();
-  const currentUserEmail = session?.email ?? null;
-
-  if (!token) {
-    return (
-      <Shell>
-        <StateCard
-          icon={<AlertCircle size={40} color="#b45309" />}
-          title="No invitation token"
-          body="The link you followed is missing its token. Ask the person who invited you to resend it."
-          cta={{ href: "/", label: "Go to larry-pm.com" }}
-        />
-      </Shell>
-    );
-  }
-
+  const { token } = await params;
   const result = await fetchPreview(token);
 
   if (result.kind === "notFound") {
@@ -117,8 +100,8 @@ export default async function AcceptInvitationPage({
       <Shell>
         <StateCard
           icon={<MailX size={40} color="#b91c1c" />}
-          title="Invitation not found"
-          body="This link doesn't match any invitation. Double-check the URL or ask for a new one."
+          title="Invite link not found"
+          body="This link doesn't match any invite. Double-check the URL or ask the sender for a new one."
           cta={{ href: "/", label: "Go to larry-pm.com" }}
         />
       </Shell>
@@ -127,24 +110,24 @@ export default async function AcceptInvitationPage({
 
   if (result.kind === "gone") {
     const msg =
-      result.code === "invite_accepted"
+      result.code === "invite_link_revoked"
         ? {
-            icon: <CheckCircle2 size={40} color="#15803d" />,
-            title: "This invitation was already accepted",
-            body: "You should already have access. Try signing in.",
-            cta: { href: "/login", label: "Sign in" },
+            icon: <MailX size={40} color="#b91c1c" />,
+            title: "This link was revoked",
+            body: "The admin cancelled this link. Ask them to send a new one.",
+            cta: { href: "/", label: "Go to larry-pm.com" },
           }
-        : result.code === "invite_revoked"
+        : result.code === "invite_link_exhausted"
           ? {
-              icon: <MailX size={40} color="#b91c1c" />,
-              title: "This invitation was revoked",
-              body: "The admin cancelled this invitation. Ask them to send a new one.",
+              icon: <AlertCircle size={40} color="#b45309" />,
+              title: "This link is fully used",
+              body: "It reached its maximum number of uses. Ask the admin for a new link.",
               cta: { href: "/", label: "Go to larry-pm.com" },
             }
           : {
               icon: <Clock size={40} color="#b45309" />,
-              title: "This invitation has expired",
-              body: "Invitations are valid for 7 days. Ask the admin to resend it.",
+              title: "This link has expired",
+              body: "Ask the admin to issue a new one.",
               cta: { href: "/", label: "Go to larry-pm.com" },
             };
     return (
@@ -159,14 +142,15 @@ export default async function AcceptInvitationPage({
       <Shell>
         <StateCard
           icon={<AlertCircle size={40} color="#b91c1c" />}
-          title="Couldn't load your invitation"
+          title="Couldn't load this invite"
           body="Something went wrong on our side. Please try again in a minute."
         />
       </Shell>
     );
   }
 
-  const { email, role, tenantName, expiresAt, projectName, projectRole } = result.data;
+  const { tenantName, defaultRole, projectName, defaultProjectRole, expiresAt, usesRemaining } =
+    result.data;
 
   return (
     <Shell>
@@ -177,40 +161,29 @@ export default async function AcceptInvitationPage({
         <div className="text-center space-y-2">
           <div
             className="mx-auto flex h-12 w-12 items-center justify-center rounded-full"
-            style={{
-              background: "#f5f3ff",
-              color: "#6c44f6",
-              fontWeight: 700,
-              fontSize: 20,
-            }}
+            style={{ background: "#f5f3ff", color: "#6c44f6", fontWeight: 700, fontSize: 20 }}
           >
             L
           </div>
-          <h1
-            className="text-[20px] font-semibold"
-            style={{ color: "var(--text-1)" }}
-          >
-            You're invited to {tenantName ?? "a Larry workspace"}
+          <h1 className="text-[20px] font-semibold" style={{ color: "var(--text-1)" }}>
+            Join {tenantName ?? "a Larry workspace"}
           </h1>
           {projectName && (
             <p className="text-[13px]" style={{ color: "var(--text-2)" }}>
               Project: <strong>{projectName}</strong>
-              {projectRole ? ` · ${projectRole}` : ""}
+              {defaultProjectRole ? ` · ${defaultProjectRole}` : ""}
             </p>
           )}
           <p className="text-[13px]" style={{ color: "var(--text-2)" }}>
-            Joining as <strong>{email}</strong> · Role <strong>{role}</strong>
+            You'll join as <strong>{defaultRole}</strong>
           </p>
           <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-            Invitation expires {new Date(expiresAt).toLocaleString()}
+            {usesRemaining !== null ? `${usesRemaining} use${usesRemaining === 1 ? "" : "s"} remaining` : "Unlimited uses"}
+            {expiresAt ? ` · Expires ${new Date(expiresAt).toLocaleString()}` : ""}
           </p>
         </div>
 
-        <AcceptForm
-          token={token}
-          email={email}
-          currentUserEmail={currentUserEmail}
-        />
+        <RedeemForm token={token} />
       </div>
     </Shell>
   );

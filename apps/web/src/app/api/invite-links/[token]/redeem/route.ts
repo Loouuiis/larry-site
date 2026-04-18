@@ -3,12 +3,9 @@ import { createSessionToken, sessionCookieOptions } from "@/lib/auth";
 
 const API_BASE = process.env.LARRY_API_BASE_URL ?? "http://localhost:8080";
 
-interface ApiAcceptResponse {
+interface ApiRedeemResponse {
   userId: string;
   tenantId: string;
-  role: string;
-  email: string;
-  displayName?: string | null;
   accessToken: string;
   refreshToken?: string;
 }
@@ -19,10 +16,11 @@ export async function POST(
 ) {
   const { token } = await params;
   const body = await request.text();
+
   let upstream: Response;
   try {
     upstream = await fetch(
-      `${API_BASE}/v1/orgs/invitations/${encodeURIComponent(token)}/accept`,
+      `${API_BASE}/v1/orgs/invite-links/by-token/${encodeURIComponent(token)}/redeem`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -34,30 +32,35 @@ export async function POST(
   }
 
   const responseBody = (await upstream.json().catch(() => ({}))) as
-    | ApiAcceptResponse
+    | ApiRedeemResponse
     | { error?: string; message?: string };
 
-  // Non-200: pass through untouched — the accept form surfaces the message.
   if (!upstream.ok) {
     return NextResponse.json(responseBody, { status: upstream.status });
   }
 
-  const payload = responseBody as ApiAcceptResponse;
+  const payload = responseBody as ApiRedeemResponse;
   if (!payload.userId || !payload.tenantId || !payload.accessToken) {
     return NextResponse.json(
-      { error: "Invalid response from invitation service." },
+      { error: "Invalid response from invite-link service." },
       { status: 502 },
     );
   }
 
-  // Mint the iron-session cookie so the invitee lands logged in on /workspace.
-  // Mirrors apps/web/src/app/api/auth/login/route.ts:104-115.
+  // Parse the email out of the original request body so we can seed the
+  // session with a friendly label; fallback to undefined if absent.
+  let email: string | undefined;
+  try {
+    const parsed = JSON.parse(body || "{}") as { email?: string };
+    email = typeof parsed.email === "string" ? parsed.email : undefined;
+  } catch {
+    email = undefined;
+  }
+
   const sessionToken = await createSessionToken({
     userId: payload.userId,
-    email: payload.email,
+    email,
     tenantId: payload.tenantId,
-    role: payload.role,
-    displayName: payload.displayName ?? null,
     apiAccessToken: payload.accessToken,
     apiRefreshToken: payload.refreshToken,
     authMode: "api",

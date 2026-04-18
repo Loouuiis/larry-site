@@ -16,12 +16,22 @@ import { writeAuditLog } from "../../lib/audit.js";
 import { hashPassword, issueAccessToken, issueRefreshToken } from "../../lib/auth.js";
 import { assertSeatAvailable, SeatCapReachedError } from "../../lib/seat-cap.js";
 import { assertMfaIfRequired, MfaEnrollmentRequiredError } from "../../lib/mfa-gate.js";
+import { getProjectMembershipAccess } from "../../lib/project-memberships.js";
 
-const CreateBody = z.object({
-  email: emailSchema,
-  role: z.enum(INVITABLE_TENANT_ROLES).default("member"),
-  displayName: z.string().max(200).optional(),
-});
+const ProjectRoleEnum = z.enum(["owner", "editor", "viewer"]);
+
+const CreateBody = z
+  .object({
+    email: emailSchema,
+    role: z.enum(INVITABLE_TENANT_ROLES).default("member"),
+    displayName: z.string().max(200).optional(),
+    projectId: z.string().uuid().optional(),
+    projectRole: ProjectRoleEnum.optional(),
+  })
+  .refine(
+    (v) => (v.projectId === undefined) === (v.projectRole === undefined),
+    { message: "projectId and projectRole must be supplied together.", path: ["projectRole"] },
+  );
 
 const AcceptBody = z.object({
   password: passwordSchema.optional(),
@@ -84,11 +94,33 @@ export const invitationsRoutes: FastifyPluginAsync = async (fastify) => {
       throw e;
     }
 
+    // If the invite is scoped to a project, the inviter must be able to
+    // manage that project (owner/editor, or tenant admin/owner).
+    if (body.projectId && body.projectRole) {
+      const access = await getProjectMembershipAccess({
+        db: fastify.db,
+        tenantId: user.tenantId,
+        projectId: body.projectId,
+        userId: user.userId,
+        tenantRole: user.role,
+      });
+      if (!access.projectExists) {
+        throw fastify.httpErrors.notFound("Project not found.");
+      }
+      if (!access.canManage) {
+        throw fastify.httpErrors.forbidden(
+          "Project collaborator management requires owner or editor access.",
+        );
+      }
+    }
+
     const { invitation, rawToken } = await createInvitation(fastify.db, {
       tenantId: user.tenantId,
       email: body.email,
       role: body.role,
       invitedByUserId: user.userId,
+      projectId: body.projectId ?? null,
+      projectRole: body.projectRole ?? null,
     });
 
     // Org + inviter context for the email body.
@@ -166,12 +198,24 @@ export const invitationsRoutes: FastifyPluginAsync = async (fastify) => {
       `SELECT name, slug FROM tenants WHERE id = $1 LIMIT 1`,
       [inv.tenantId],
     );
+    let projectName: string | null = null;
+    if (inv.projectId) {
+      const projectRows = await fastify.db.queryTenant<{ name: string }>(
+        inv.tenantId,
+        `SELECT name FROM projects WHERE tenant_id = $1 AND id = $2 LIMIT 1`,
+        [inv.tenantId, inv.projectId],
+      );
+      projectName = projectRows[0]?.name ?? null;
+    }
     return {
       email: inv.email,
       role: inv.role,
       expiresAt: inv.expiresAt,
       tenantName: tenant[0]?.name ?? null,
       tenantSlug: tenant[0]?.slug ?? null,
+      projectId: inv.projectId,
+      projectRole: inv.projectRole,
+      projectName,
     };
   });
 
@@ -232,6 +276,19 @@ export const invitationsRoutes: FastifyPluginAsync = async (fastify) => {
         [inv.tenantId, userId, inv.role],
       );
 
+      // Project-scoped invite: atomically land the invitee in the project.
+      // project_memberships is RLS-protected, so set app.tenant_id first.
+      if (inv.projectId && inv.projectRole) {
+        await client.query(`SELECT set_config('app.tenant_id', $1, true)`, [inv.tenantId]);
+        await client.query(
+          `INSERT INTO project_memberships (tenant_id, project_id, user_id, role)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (tenant_id, project_id, user_id)
+           DO UPDATE SET role = EXCLUDED.role, updated_at = NOW()`,
+          [inv.tenantId, inv.projectId, userId, inv.projectRole],
+        );
+      }
+
       const marked = await markInvitationAccepted(client, inv.id, userId);
       if (!marked) {
         throw fastify.httpErrors.gone("Invitation has already been used.");
@@ -259,9 +316,16 @@ export const invitationsRoutes: FastifyPluginAsync = async (fastify) => {
       role: inv.role as "admin" | "pm" | "member" | "owner" | "executive",
       email: inv.email,
     });
+    const displayNameRows = await fastify.db.query<{ display_name: string | null }>(
+      `SELECT display_name FROM users WHERE id = $1 LIMIT 1`,
+      [result.userId],
+    );
     return reply.code(200).send({
       userId: result.userId,
       tenantId: inv.tenantId,
+      role: inv.role,
+      email: inv.email,
+      displayName: displayNameRows[0]?.display_name ?? null,
       accessToken,
       refreshToken,
     });
