@@ -8,6 +8,7 @@ import type { WorkspaceProject, WorkspaceHomeData, WorkspaceTask } from "@/app/d
 import { StartProjectFlow } from "@/components/dashboard/StartProjectFlow";
 import { useWorkspaceChrome } from "./WorkspaceChromeContext";
 import { PageState, SkeletonCard } from "@/components/PageState";
+import { PollingCard } from "@/components/workspace/PollingCard";
 
 interface LarryBriefingProject {
   projectId: string;
@@ -294,6 +295,9 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
       style={{ background: "var(--page-bg)" }}
     >
       <div className="mx-auto max-w-[960px] px-6 py-8 space-y-6">
+
+        {/* Post-signup polling card (#86) — self-hides if completed/dismissed */}
+        <PollingCard />
 
         {/* Header */}
         <header className="text-center">
