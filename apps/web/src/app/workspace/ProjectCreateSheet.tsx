@@ -57,9 +57,11 @@ export function ProjectCreateSheet({
         }),
       });
 
-      const payload = await readJson<{ id?: string; error?: string }>(response);
+      const payload = await readJson<{ id?: string; error?: string; message?: string }>(response);
       if (!response.ok || !payload.id) {
-        throw new Error(payload.error ?? "Could not create project.");
+        // Fastify error bodies look like { statusCode, error: "Forbidden", message: "..." }
+        // The human sentence lives in `message`; `error` is just the HTTP reason phrase.
+        throw new Error(payload.message ?? payload.error ?? "Could not create project.");
       }
 
       window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));

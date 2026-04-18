@@ -59,6 +59,7 @@ type IntakeDraft = {
 type IntakeDraftResponse = {
   draft?: IntakeDraft;
   error?: string;
+  message?: string;
 };
 
 type WorkspaceProjectOption = {
@@ -133,7 +134,7 @@ async function upsertIntakeDraft(payload: UpsertDraftPayload): Promise<IntakeDra
   handleAuthRedirect(response);
   const data = await readJson<IntakeDraftResponse>(response);
   if (!response.ok || !data.draft) {
-    throw new Error(data.error ?? "Failed to save intake draft.");
+    throw new Error(data.message ?? data.error ?? "Failed to save intake draft.");
   }
   return data.draft;
 }
@@ -145,7 +146,7 @@ async function bootstrapIntakeDraft(draftId: string): Promise<IntakeDraft> {
   handleAuthRedirect(response);
   const data = await readJson<IntakeDraftResponse>(response);
   if (!response.ok || !data.draft) {
-    throw new Error(data.error ?? "Failed to generate bootstrap preview.");
+    throw new Error(data.message ?? data.error ?? "Failed to generate bootstrap preview.");
   }
   return data.draft;
 }
@@ -157,7 +158,7 @@ async function finalizeIntakeDraft(draftId: string): Promise<IntakeDraft> {
   handleAuthRedirect(response);
   const data = await readJson<IntakeDraftResponse>(response);
   if (!response.ok || !data.draft) {
-    throw new Error(data.error ?? "Failed to finalize intake draft.");
+    throw new Error(data.message ?? data.error ?? "Failed to finalize intake draft.");
   }
   return data.draft;
 }
@@ -554,7 +555,7 @@ export function WorkspaceProjectIntake() {
       });
       const draftData = await readJson<IntakeDraftResponse>(draftRes);
       if (!draftRes.ok) {
-        setManualError(draftData.error ?? "Failed to start import.");
+        setManualError(draftData.message ?? draftData.error ?? "Failed to start import.");
         return;
       }
 
@@ -570,7 +571,7 @@ export function WorkspaceProjectIntake() {
       );
       const bootstrapData = await readJson<IntakeDraftResponse>(bootstrapRes);
       if (!bootstrapRes.ok) {
-        setManualError(bootstrapData.error ?? "Failed to process document.");
+        setManualError(bootstrapData.message ?? bootstrapData.error ?? "Failed to process document.");
         return;
       }
 
