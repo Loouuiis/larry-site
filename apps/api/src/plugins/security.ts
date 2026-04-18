@@ -25,10 +25,20 @@ export const securityPlugin = fp(async (fastify: FastifyInstance) => {
   });
 
   fastify.decorate("requireRole", (roles: Role[]) => {
+    // Owner is a strict superset of admin (RBAC v2 design: owners can do
+    // anything admins can). Route call-sites written before RBAC v2 still
+    // pass ["admin", ...] without listing "owner", so admit owners implicitly
+    // wherever admin is allowed. Same treatment for legacy "executive" ==
+    // "member" (matches effective() in lib/permissions.ts).
+    const effectiveRoles = new Set<Role>(roles);
+    if (effectiveRoles.has("admin")) effectiveRoles.add("owner");
+    if (effectiveRoles.has("member")) effectiveRoles.add("executive");
     return async (request: FastifyRequest, _reply: FastifyReply) => {
       const user = request.user as AuthUser | undefined;
-      if (!user || !roles.includes(user.role)) {
-        throw fastify.httpErrors.forbidden("Insufficient role permissions for this action.");
+      if (!user || !effectiveRoles.has(user.role)) {
+        throw fastify.httpErrors.forbidden(
+          "You don't have permission to perform this action.",
+        );
       }
     };
   });
