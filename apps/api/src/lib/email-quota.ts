@@ -9,6 +9,7 @@ export type EmailKind =
   | "email_change_notify"
   | "new_device_alert"
   | "member_invite"
+  | "briefing_digest"
   | "generic";
 
 export interface EmailQuotaContext {
@@ -51,6 +52,7 @@ const LIMITS: Record<EmailKind, { hour: number; day: number }> = {
   email_change_notify:  { hour: 5,  day: 15 },
   new_device_alert:     { hour: 10, day: 30 },
   member_invite:        { hour: 0,  day: 0 },
+  briefing_digest:      { hour: 5,  day: 10 },
   generic:              { hour: 10, day: 30 },
 };
 

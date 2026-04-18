@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus, Search, ChevronDown, ChevronRight, ArchiveRestore, Trash2 } from "lucide-react";
+import { Plus, Search, ChevronDown, ChevronRight, ArchiveRestore, Trash2, Mail } from "lucide-react";
 import type { WorkspaceProject, WorkspaceHomeData, WorkspaceTask } from "@/app/dashboard/types";
 import { StartProjectFlow } from "@/components/dashboard/StartProjectFlow";
 import { useWorkspaceChrome } from "./WorkspaceChromeContext";
@@ -161,6 +161,9 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [deleteConfirmName, setDeleteConfirmName] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  // #93: Email-me-this-briefing state
+  const [emailingBriefing, setEmailingBriefing] = useState(false);
+  const [briefingEmailResult, setBriefingEmailResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   const loadWorkspace = useCallback(async () => {
     try {
@@ -369,6 +372,76 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
               overflow: "hidden",
             }}
           >
+            {/* #93: Briefing header with Email-me-this differentiator */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "12px",
+                padding: "12px 20px",
+                borderBottom: "1px solid #f0edfa",
+                background: "var(--surface-2)",
+              }}
+            >
+              <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Today's briefing
+              </span>
+              <button
+                type="button"
+                disabled={emailingBriefing}
+                onClick={async () => {
+                  setEmailingBriefing(true);
+                  setBriefingEmailResult(null);
+                  try {
+                    const res = await fetch("/api/workspace/larry/briefing/email-me", { method: "POST" });
+                    const json = await res.json().catch(() => ({})) as { success?: boolean; error?: string; recipient?: string };
+                    if (res.ok && json.success) {
+                      setBriefingEmailResult({ ok: true, message: `Sent to ${json.recipient ?? "your inbox"}.` });
+                    } else {
+                      setBriefingEmailResult({ ok: false, message: json.error ?? "Couldn't send the briefing. Try again." });
+                    }
+                  } catch {
+                    setBriefingEmailResult({ ok: false, message: "Network error — try again." });
+                  } finally {
+                    setEmailingBriefing(false);
+                  }
+                }}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  height: "28px",
+                  padding: "0 12px",
+                  borderRadius: "var(--radius-btn)",
+                  border: "1px solid var(--border)",
+                  background: "var(--surface)",
+                  color: "var(--text-1)",
+                  fontSize: "12px",
+                  fontWeight: 500,
+                  cursor: emailingBriefing ? "default" : "pointer",
+                  opacity: emailingBriefing ? 0.6 : 1,
+                }}
+              >
+                <Mail size={12} />
+                {emailingBriefing ? "Sending…" : "Email me this"}
+              </button>
+            </div>
+
+            {briefingEmailResult && (
+              <div
+                style={{
+                  padding: "8px 20px",
+                  borderBottom: "1px solid #f0edfa",
+                  fontSize: "12px",
+                  color: briefingEmailResult.ok ? "#065f46" : "#c0392b",
+                  background: briefingEmailResult.ok ? "#ecfdf5" : "#fef2f2",
+                }}
+              >
+                {briefingEmailResult.message}
+              </div>
+            )}
+
             {briefing.projects.map((bp, i) => (
               <div
                 key={bp.projectId}
@@ -406,12 +479,16 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
 
                 {/* Summary */}
                 <div className="flex-1 min-w-0">
-                  <p
+                  {/* #93: Project name is now clickable — citation for the claim. */}
+                  <Link
+                    href={`/workspace/projects/${bp.projectId}`}
                     className="text-[13px] font-semibold leading-snug truncate"
-                    style={{ color: "var(--text-1)" }}
+                    style={{ color: "var(--text-1)", textDecoration: "none", display: "block" }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = "var(--cta)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-1)"; }}
                   >
                     {bp.name}
-                  </p>
+                  </Link>
                   <p className="text-body-sm mt-0.5 line-clamp-2" style={{ color: "var(--text-2)" }}>
                     {bp.summary}
                   </p>
