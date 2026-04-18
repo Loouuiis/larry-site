@@ -173,9 +173,13 @@ describe("POST /connectors/email/draft/send", () => {
     fetchSpy.mockRestore();
   });
 
-  it("logs a warning when Resend responds non-ok (regression: no silent 403 swallow)", async () => {
-    const queryTenant = vi.fn(async (_tenantId: string, sql: string) => {
-      if (sql.includes("INSERT INTO email_outbound_drafts")) return [{ id: "draft-3" }];
+  it("returns 502 with structured error and keeps draft editable when Resend rejects the domain (issue #84)", async () => {
+    const draftInsertCalls: unknown[][] = [];
+    const queryTenant = vi.fn(async (_tenantId: string, sql: string, params: unknown[]) => {
+      if (sql.includes("INSERT INTO email_outbound_drafts")) {
+        draftInsertCalls.push(params);
+        return [{ id: "draft-3" }];
+      }
       if (sql.includes("INSERT INTO documents")) return [{ id: "doc-3" }];
       return [];
     });
@@ -196,7 +200,6 @@ describe("POST /connectors/email/draft/send", () => {
 
     const app = await createTestApp({ db, queue });
     appsToClose.push(app);
-    const warnSpy = vi.spyOn(app.log, "warn");
 
     const response = await app.inject({
       method: "POST",
@@ -204,17 +207,108 @@ describe("POST /connectors/email/draft/send", () => {
       payload: {
         projectId: PROJECT_ID,
         to: "recipient@example.com",
-        subject: "Regression: non-ok must warn",
+        subject: "Regression: non-ok must surface error",
         body: "Body",
         sendNow: true,
       },
     });
 
-    expect(response.statusCode).toBe(200); // draft still saved
-    const warnCalls = warnSpy.mock.calls.map((c) => JSON.stringify(c));
-    expect(warnCalls.some((c) => c.includes("Resend email delivery failed"))).toBe(true);
+    expect(response.statusCode).toBe(502);
+    const json = response.json();
+    expect(json).toMatchObject({
+      success: false,
+      draftId: "draft-3",
+      state: "draft",
+      errorCode: "domain_not_verified",
+    });
+    expect(typeof json.error).toBe("string");
+    expect(json.error.length).toBeGreaterThan(0);
+
+    // Draft persisted with state='draft' so the user can retry
+    expect(draftInsertCalls.length).toBe(1);
+    const draftParams = draftInsertCalls[0];
+    // params[7] is the state column per the INSERT VALUES clause
+    expect(draftParams[7]).toBe("draft");
 
     fetchSpy.mockRestore();
-    warnSpy.mockRestore();
+  });
+
+  it("returns 502 with gmail_send_failed when Gmail throws and Resend is unconfigured", async () => {
+    const queryTenant = vi.fn(async (_tenantId: string, sql: string) => {
+      if (sql.includes("INSERT INTO email_outbound_drafts")) return [{ id: "draft-4" }];
+      if (sql.includes("INSERT INTO documents")) return [{ id: "doc-4" }];
+      if (sql.includes("FROM email_connector_installations")) {
+        return [
+          {
+            tenant_id: TENANT_ID,
+            account_email: "pm@example.com",
+            access_token_enc: "enc",
+            refresh_token_enc: "enc",
+            expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+          },
+        ];
+      }
+      return [];
+    });
+    const db = { queryTenant, tx: vi.fn() } as unknown as Db;
+    const queue = {
+      publish: vi.fn().mockResolvedValue(undefined),
+      close: vi.fn().mockResolvedValue(undefined),
+    } as unknown as QueuePublisher;
+
+    const app = Fastify({ logger: false });
+    app.decorate("db", db);
+    app.decorate("queue", queue);
+    app.decorate(
+      "config",
+      {
+        MODEL_PROVIDER: "mock",
+        EMAIL_CONNECTOR_PROVIDER: "gmail",
+        RESEND_API_KEY: "",
+        RESEND_FROM_LARRY: "Larry <larry@larry-pm.com>",
+        RESEND_FROM_NOREPLY: "Larry <noreply@larry-pm.com>",
+        GOOGLE_CLIENT_ID: "gid",
+        GOOGLE_CLIENT_SECRET: "gsecret",
+        GOOGLE_REDIRECT_URI: "https://example.com/cb",
+      } as unknown as ApiEnv
+    );
+    app.decorate(
+      "authenticate",
+      async (request: Parameters<(typeof app)["authenticate"]>[0]) => {
+        (
+          request as typeof request & {
+            user: { tenantId: string; userId: string; role: "pm"; email: string };
+          }
+        ).user = {
+          tenantId: TENANT_ID,
+          userId: USER_ID,
+          role: "pm",
+          email: "pm@example.com",
+        };
+      }
+    );
+    app.decorate("requireRole", () => async () => undefined);
+    await app.register(sensible);
+    await app.register(emailConnectorRoutes, { prefix: "/connectors/email" });
+    await app.ready();
+    appsToClose.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/connectors/email/draft/send",
+      payload: {
+        to: "recipient@example.com",
+        subject: "Gmail failure",
+        body: "Body",
+        sendNow: true,
+      },
+    });
+
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toMatchObject({
+      success: false,
+      state: "draft",
+      errorCode: expect.stringMatching(/^(gmail_send_failed|no_provider_configured)$/),
+    });
   });
 });

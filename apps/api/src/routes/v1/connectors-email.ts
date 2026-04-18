@@ -461,9 +461,109 @@ export const emailConnectorRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     "/draft/send",
     { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
-    async (request) => {
+    async (request, reply) => {
       const body = EmailDraftSendBodySchema.parse(request.body);
       const tenantId = request.user.tenantId;
+
+      type SendOutcome =
+        | { ok: true; channel: "gmail" | "resend" }
+        | { ok: false; code: string; message: string };
+
+      // Attempt delivery FIRST so the final draft row reflects the real state.
+      // A failed send must leave the draft editable and retryable — not sealed
+      // as "sent" with a silent log warning (issue #84).
+      let outcome: SendOutcome | null = null;
+
+      if (body.sendNow) {
+        let gmailAttempted = false;
+        let gmailError: Error | null = null;
+
+        if (fastify.config.EMAIL_CONNECTOR_PROVIDER === "gmail") {
+          const installation = await loadEmailInstallation(fastify, tenantId);
+          if (installation) {
+            gmailAttempted = true;
+            try {
+              const oauthConfig = requireGmailOauthConfig(fastify);
+              const accessToken = await ensureFreshEmailToken(fastify, tenantId, installation, oauthConfig);
+              await sendGmailMessage({
+                accessToken,
+                to: body.to,
+                subject: body.subject,
+                body: body.body,
+              });
+              outcome = { ok: true, channel: "gmail" };
+            } catch (err) {
+              gmailError = err instanceof Error ? err : new Error(String(err));
+              fastify.log.warn({ err: gmailError }, "Gmail email delivery failed — trying fallback");
+            }
+          }
+        }
+
+        if (!outcome) {
+          const resendKey = fastify.config.RESEND_API_KEY;
+          if (resendKey) {
+            try {
+              const res = await fetch("https://api.resend.com/emails", {
+                method: "POST",
+                headers: {
+                  "Authorization": `Bearer ${resendKey}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  from: fastify.config.RESEND_FROM_LARRY,
+                  to: [body.to],
+                  subject: body.subject,
+                  text: body.body,
+                }),
+              });
+              if (res.ok) {
+                outcome = { ok: true, channel: "resend" };
+              } else {
+                const errBody = await res.text().catch(() => "");
+                fastify.log.warn(
+                  { status: res.status, body: errBody.slice(0, 500) },
+                  "Resend email delivery failed"
+                );
+                if (res.status === 403 || res.status === 422) {
+                  outcome = {
+                    ok: false,
+                    code: "domain_not_verified",
+                    message: "We couldn't send this email: the sender domain isn't verified with Resend. Your draft is saved — retry once the domain is set up.",
+                  };
+                } else {
+                  outcome = {
+                    ok: false,
+                    code: "resend_send_failed",
+                    message: `Resend rejected the send (status ${res.status}). Your draft is saved — tap Send now to retry.`,
+                  };
+                }
+              }
+            } catch (err) {
+              fastify.log.warn({ err }, "Resend transport error");
+              outcome = {
+                ok: false,
+                code: "resend_send_failed",
+                message: "We couldn't reach the email provider. Your draft is saved — tap Send now to retry.",
+              };
+            }
+          } else if (gmailAttempted && gmailError) {
+            outcome = {
+              ok: false,
+              code: "gmail_send_failed",
+              message: `We couldn't send via Gmail: ${gmailError.message.slice(0, 200)}. Your draft is saved — tap Send now to retry.`,
+            };
+          } else {
+            outcome = {
+              ok: false,
+              code: "no_provider_configured",
+              message: "No email provider is connected for this workspace. Connect Gmail or configure Resend, then retry.",
+            };
+          }
+        }
+      }
+
+      const sendSucceeded = !body.sendNow || (outcome != null && outcome.ok);
+      const draftState: "sent" | "draft" = body.sendNow && sendSucceeded ? "sent" : "draft";
 
       const rows = await fastify.db.queryTenant<{ id: string }>(
         tenantId,
@@ -480,13 +580,12 @@ export const emailConnectorRoutes: FastifyPluginAsync = async (fastify) => {
           body.to,
           body.subject,
           body.body,
-          body.sendNow ? "sent" : "draft",
+          draftState,
           JSON.stringify({ provider: fastify.config.EMAIL_CONNECTOR_PROVIDER }),
         ]
       );
 
       const draftId = rows[0].id;
-      const draftState = body.sendNow ? "sent" : "draft";
       await fastify.db.queryTenant<{ id: string }>(
         tenantId,
         `INSERT INTO documents
@@ -510,56 +609,7 @@ export const emailConnectorRoutes: FastifyPluginAsync = async (fastify) => {
         ]
       );
 
-      if (body.sendNow) {
-        let gmailUsed = false;
-
-        if (fastify.config.EMAIL_CONNECTOR_PROVIDER === "gmail") {
-          const installation = await loadEmailInstallation(fastify, tenantId);
-          if (installation) {
-            try {
-              const oauthConfig = requireGmailOauthConfig(fastify);
-              const accessToken = await ensureFreshEmailToken(fastify, tenantId, installation, oauthConfig);
-              await sendGmailMessage({
-                accessToken,
-                to: body.to,
-                subject: body.subject,
-                body: body.body,
-              });
-              gmailUsed = true;
-            } catch (err) {
-              fastify.log.warn({ err }, "Gmail email delivery failed — draft saved anyway");
-            }
-          }
-        }
-
-        if (!gmailUsed) {
-          // Fallback to Resend when Gmail is not configured or has no installation
-          const resendKey = fastify.config.RESEND_API_KEY;
-          if (resendKey) {
-            try {
-              const res = await fetch("https://api.resend.com/emails", {
-                method: "POST",
-                headers: {
-                  "Authorization": `Bearer ${resendKey}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  from: fastify.config.RESEND_FROM_LARRY,
-                  to: [body.to],
-                  subject: body.subject,
-                  text: body.body,
-                }),
-              });
-              if (!res.ok) {
-                const errBody = await res.text().catch(() => "<unreadable>");
-                throw new Error(`Resend responded ${res.status}: ${errBody.slice(0, 500)}`);
-              }
-            } catch (err) {
-              fastify.log.warn({ err }, "Resend email delivery failed — draft saved anyway");
-            }
-          }
-        }
-
+      if (body.sendNow && sendSucceeded && outcome?.ok) {
         await fastify.db.queryTenant(
           tenantId,
           `INSERT INTO notifications (tenant_id, user_id, channel, subject, body, sent_at, metadata)
@@ -568,7 +618,7 @@ export const emailConnectorRoutes: FastifyPluginAsync = async (fastify) => {
             tenantId,
             body.subject,
             body.body,
-            JSON.stringify({ recipient: body.to, draftId: rows[0].id, gmailUsed }),
+            JSON.stringify({ recipient: body.to, draftId, channel: outcome.channel }),
           ]
         );
       }
@@ -576,11 +626,29 @@ export const emailConnectorRoutes: FastifyPluginAsync = async (fastify) => {
       await writeAuditLog(fastify.db, {
         tenantId,
         actorUserId: request.user.userId,
-        actionType: body.sendNow ? "connector.email.send" : "connector.email.draft",
+        actionType: body.sendNow
+          ? sendSucceeded
+            ? "connector.email.send"
+            : "connector.email.send_failed"
+          : "connector.email.draft",
         objectType: "email_outbound_draft",
-        objectId: rows[0].id,
-        details: { recipient: body.to, projectId: body.projectId ?? null },
+        objectId: draftId,
+        details: {
+          recipient: body.to,
+          projectId: body.projectId ?? null,
+          ...(!sendSucceeded && outcome && !outcome.ok ? { errorCode: outcome.code } : {}),
+        },
       });
+
+      if (body.sendNow && outcome && !outcome.ok) {
+        return reply.code(502).send({
+          success: false,
+          draftId,
+          state: draftState,
+          errorCode: outcome.code,
+          error: outcome.message,
+        });
+      }
 
       return {
         success: true,
