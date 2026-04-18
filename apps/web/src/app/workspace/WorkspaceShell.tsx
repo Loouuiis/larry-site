@@ -9,6 +9,8 @@ import type { WorkspaceProject } from "@/app/dashboard/types";
 import { MeetingTranscriptModal } from "./MeetingTranscriptModal";
 import { WorkspaceChromeProvider } from "./WorkspaceChromeContext";
 import { WorkspaceTopBar } from "./WorkspaceTopBar";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { getQueryClient } from "@/lib/query-client";
 import { ToastProvider } from "@/components/toast/ToastContext";
 import { ToastContainer } from "@/components/toast/ToastContainer";
 import { triggerBoundedWorkspaceRefresh } from "./refresh";
@@ -146,6 +148,7 @@ export function WorkspaceShell({ children, userEmail, emailVerified, avatarUrl, 
   }, [chatProjectId, startTranscriptProcessing, transcript]);
 
   return (
+    <QueryClientProvider client={getQueryClient()}>
     <ToastProvider>
     <WorkspaceChromeProvider
       value={{
@@ -242,5 +245,6 @@ export function WorkspaceShell({ children, userEmail, emailVerified, avatarUrl, 
     <ToastContainer />
     <GlobalSearch />
     </ToastProvider>
+    </QueryClientProvider>
   );
 }
