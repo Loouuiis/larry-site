@@ -66,6 +66,7 @@ export interface WorkspaceProjectNotesResponse {
 export interface WorkspaceTask {
   id: string;
   projectId: string;
+  parentTaskId?: string | null;  // v4 — subtask parent (one level deep; API rejects grandchildren)
   title: string;
   description?: string | null;
   status: TaskStatus;

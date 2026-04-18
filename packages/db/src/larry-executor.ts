@@ -62,6 +62,13 @@ interface TaskCreatePayload {
   dueDate: string | null;
   assigneeName: string | null;
   priority: "low" | "medium" | "high" | "critical";
+  /**
+   * Optional UUID of the project_memory_entries row that triggered this task.
+   * When set and valid, the executor copies that entry's source_kind +
+   * source_record_id onto the new task so the UI can link back to the
+   * originating email/Slack thread (#92).
+   */
+  sourceMemoryEntryId?: string | null;
 }
 
 interface StatusUpdatePayload {
@@ -747,13 +754,35 @@ export async function executeTaskCreate(
     ? await resolveUserByName(db, tenantId, payload.assigneeName)
     : null;
 
+  // #92: if the LLM cited a memory entry as the trigger, look it up and copy
+  // the source linkage to the new task. Invalid citations silently drop the
+  // link rather than fabricate one.
+  let sourceKind: string | null = null;
+  let sourceRecordId: string | null = null;
+  const memoryEntryId = payload.sourceMemoryEntryId;
+  if (typeof memoryEntryId === "string" && /^[0-9a-f-]{36}$/i.test(memoryEntryId)) {
+    const memRows = await db.queryTenant<{ source_kind: string; source_record_id: string | null }>(
+      tenantId,
+      `SELECT source_kind, source_record_id
+       FROM project_memory_entries
+       WHERE tenant_id = $1 AND project_id = $2 AND id = $3
+       LIMIT 1`,
+      [tenantId, projectId, memoryEntryId]
+    );
+    if (memRows[0]) {
+      sourceKind = memRows[0].source_kind;
+      sourceRecordId = memRows[0].source_record_id;
+    }
+  }
+
   const rows = await db.queryTenant<Record<string, unknown>>(
     tenantId,
     `INSERT INTO tasks
-       (tenant_id, project_id, title, description, status, priority, assignee_user_id, start_date, due_date)
-     VALUES ($1, $2, $3, $4, 'not_started', $5, $6, $7, $8)
+       (tenant_id, project_id, title, description, status, priority, assignee_user_id, start_date, due_date, source_kind, source_record_id)
+     VALUES ($1, $2, $3, $4, 'not_started', $5, $6, $7, $8, $9, $10)
      RETURNING id, tenant_id, project_id, title, description, status, priority,
-               assignee_user_id, progress_percent, risk_score, risk_level, start_date, due_date, created_at`,
+               assignee_user_id, progress_percent, risk_score, risk_level, start_date, due_date,
+               source_kind, source_record_id, created_at`,
     [
       tenantId,
       projectId,
@@ -763,6 +792,8 @@ export async function executeTaskCreate(
       assigneeId,
       payload.startDate ?? null,
       payload.dueDate ?? null,
+      sourceKind,
+      sourceRecordId,
     ]
   );
   const task = rows[0];

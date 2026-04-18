@@ -29,6 +29,7 @@ import {
   isProjectWriteLocked,
   loadProjectWriteState,
 } from "../../lib/project-write-lock.js";
+import { moveProject } from "../../lib/categories.js";
 
 const CreateProjectSchema = z.object({
   name: z.string().min(1).max(200),
@@ -943,6 +944,51 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
       });
 
       return reply.code(200).send({ projectId, newOwnerUserId });
+    }
+  );
+
+  // v4 Slice 3C — commit path for DnD + programmatic project reparent/reorder.
+  // Moves the project to a new category (or top-level null) and sets its
+  // sort_order among siblings. Archived projects are still writable here
+  // because re-bucketing a project isn't a functional mutation — we just
+  // change its position in the tree.
+  fastify.post(
+    "/:id/move",
+    { preHandler: [fastify.authenticate] },
+    async (request) => {
+      const { id: projectId } = z.object({ id: z.string().uuid() }).parse(request.params);
+      const body = z.object({
+        categoryId: z.string().uuid().nullable(),
+        sortOrder: z.number().int().min(0),
+      }).safeParse(request.body);
+      if (!body.success) {
+        throw fastify.httpErrors.badRequest(body.error.issues[0]?.message ?? "Invalid request payload.");
+      }
+      const tenantId = request.user.tenantId;
+
+      const existing = await fastify.db.queryTenant<{ id: string }>(
+        tenantId,
+        `SELECT id FROM projects WHERE tenant_id = $1 AND id = $2 LIMIT 1`,
+        [tenantId, projectId],
+      );
+      if (!existing[0]) throw fastify.httpErrors.notFound("Project not found.");
+
+      const result = await moveProject(fastify.db, tenantId, projectId, {
+        categoryId: body.data.categoryId,
+        sortOrder: body.data.sortOrder,
+      });
+      if (!result) throw fastify.httpErrors.notFound("Project not found.");
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId: request.user.userId,
+        actionType: "project.moved",
+        objectType: "project",
+        objectId: projectId,
+        details: { categoryId: body.data.categoryId, sortOrder: body.data.sortOrder },
+      });
+
+      return result;
     }
   );
 };

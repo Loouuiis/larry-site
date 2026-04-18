@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import type { LarryActionType } from "@larry/shared";
 import {
   applyPatch,
   assertPatchIsAllowed,
   editableFieldsForActionType,
+  isModifiableActionType,
 } from "./larry-event-modifications.js";
 
 describe("editableFieldsForActionType", () => {
@@ -47,6 +49,142 @@ describe("editableFieldsForActionType", () => {
     a.push("injected");
     const b = editableFieldsForActionType("task_create");
     expect(b).not.toContain("injected");
+  });
+
+  // ── New action types added 2026-04-18 (issue #109) ──
+  it("exposes editable fields for scope_change", () => {
+    expect(editableFieldsForActionType("scope_change")).toEqual(["newDescription"]);
+  });
+
+  it("exposes editable fields for project_create", () => {
+    expect(editableFieldsForActionType("project_create")).toEqual(["name", "description"]);
+  });
+
+  it("exposes editable fields for collaborator_add", () => {
+    expect(editableFieldsForActionType("collaborator_add")).toEqual(["role"]);
+  });
+
+  it("exposes editable fields for collaborator_role_update", () => {
+    expect(editableFieldsForActionType("collaborator_role_update")).toEqual(["role"]);
+  });
+
+  it("returns empty array for collaborator_remove (no editable fields, but valid)", () => {
+    // Modifiable but with no editable fields — frontend renders a no-op panel.
+    expect(editableFieldsForActionType("collaborator_remove")).toEqual([]);
+  });
+
+  it("exposes editable fields for project_note_send", () => {
+    expect(editableFieldsForActionType("project_note_send")).toEqual(["visibility", "content"]);
+  });
+
+  it("exposes editable fields for calendar_event_create", () => {
+    expect(editableFieldsForActionType("calendar_event_create")).toEqual([
+      "summary",
+      "startDateTime",
+      "endDateTime",
+    ]);
+  });
+
+  it("exposes editable fields for calendar_event_update", () => {
+    expect(editableFieldsForActionType("calendar_event_update")).toEqual([
+      "summary",
+      "startDateTime",
+      "endDateTime",
+    ]);
+  });
+
+  it("exposes editable fields for slack_message_draft", () => {
+    expect(editableFieldsForActionType("slack_message_draft")).toEqual([
+      "channelName",
+      "message",
+    ]);
+  });
+});
+
+describe("isModifiableActionType", () => {
+  it("is true for the original 6 supported types", () => {
+    for (const t of [
+      "task_create",
+      "status_update",
+      "risk_flag",
+      "deadline_change",
+      "owner_change",
+      "email_draft",
+    ]) {
+      expect(isModifiableActionType(t)).toBe(true);
+    }
+  });
+
+  it("is true for collaborator_remove even though it has no editable fields", () => {
+    expect(isModifiableActionType("collaborator_remove")).toBe(true);
+  });
+
+  it("is true for the 9 newly-added types (issue #109)", () => {
+    for (const t of [
+      "scope_change",
+      "project_create",
+      "collaborator_add",
+      "collaborator_role_update",
+      "collaborator_remove",
+      "project_note_send",
+      "calendar_event_create",
+      "calendar_event_update",
+      "slack_message_draft",
+    ]) {
+      expect(isModifiableActionType(t)).toBe(true);
+    }
+  });
+
+  it("is false for reminder_send (intentionally not modifiable)", () => {
+    expect(isModifiableActionType("reminder_send")).toBe(false);
+  });
+
+  it("is false for unknown action types", () => {
+    expect(isModifiableActionType("does_not_exist")).toBe(false);
+  });
+});
+
+describe("LarryActionType exhaustiveness", () => {
+  // Anything in INTENTIONALLY_NOT_MODIFIABLE is excluded by design.
+  // Adding a new LarryActionType without registering it here OR in
+  // FIELDS_BY_ACTION_TYPE will fail this test, surfacing the drift that
+  // caused issue #109 in the first place.
+  const INTENTIONALLY_NOT_MODIFIABLE: ReadonlySet<LarryActionType> = new Set([
+    "reminder_send", // auto-executes; never appears as a suggestion
+    "other",         // free-form catch-all; nothing meaningful to edit
+  ]);
+
+  const ALL_TYPES: readonly LarryActionType[] = [
+    "task_create",
+    "status_update",
+    "risk_flag",
+    "reminder_send",
+    "deadline_change",
+    "owner_change",
+    "scope_change",
+    "email_draft",
+    "project_create",
+    "collaborator_add",
+    "collaborator_role_update",
+    "collaborator_remove",
+    "project_note_send",
+    "calendar_event_create",
+    "calendar_event_update",
+    "slack_message_draft",
+    "other",
+  ];
+
+  it("every LarryActionType is either modifiable or explicitly excluded", () => {
+    for (const t of ALL_TYPES) {
+      const modifiable = isModifiableActionType(t);
+      const excluded = INTENTIONALLY_NOT_MODIFIABLE.has(t);
+      expect(
+        modifiable || excluded,
+        `LarryActionType '${t}' is neither modifiable nor intentionally excluded — ` +
+          `add it to FIELDS_BY_ACTION_TYPE in larry-event-modifications.ts ` +
+          `or to INTENTIONALLY_NOT_MODIFIABLE in this test.`
+      ).toBe(true);
+    }
   });
 });
 

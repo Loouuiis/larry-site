@@ -16,6 +16,7 @@ import {
   applyPatch,
   assertPatchIsAllowed,
   editableFieldsForActionType,
+  isModifiableActionType,
   getCanonicalEventRuntimeEntryById,
   getCanonicalEventRuntimeSummary,
   listCanonicalEventRetryCandidates,
@@ -1966,12 +1967,12 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         throw fastify.httpErrors.conflict("Only suggested events can be modified.");
       }
 
-      const editableFields = editableFieldsForActionType(event.actionType);
-      if (editableFields.length === 0) {
+      if (!isModifiableActionType(event.actionType)) {
         throw fastify.httpErrors.unprocessableEntity(
           `Action type '${event.actionType}' is not modifiable.`
         );
       }
+      const editableFields = editableFieldsForActionType(event.actionType);
 
       const teamMembers = await fastify.db.queryTenant<{
         userId: string;
@@ -2276,12 +2277,12 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         );
       }
 
-      const editableFields = editableFieldsForActionType(event.actionType);
-      if (editableFields.length === 0) {
+      if (!isModifiableActionType(event.actionType)) {
         throw fastify.httpErrors.unprocessableEntity(
           `Action type '${event.actionType}' is not modifiable.`
         );
       }
+      const editableFields = editableFieldsForActionType(event.actionType);
 
       // Resolve or create the conversation for this modify session.
       let conversationId = providedConvId ?? null;
@@ -2646,6 +2647,110 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           degraded: stage,
         });
       }
+    }
+  );
+
+  // ── Briefing email-me-this (#93) ─────────────────────────────────────────
+  // Sends the user's current Larry briefing to their account email as an HTML
+  // digest. Differentiator: no competitor mails a personalised daily digest
+  // of your projects with per-project CTAs back into the app.
+  fastify.post(
+    "/briefing/email-me",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
+    async (request, reply) => {
+      const tenantId = request.user.tenantId;
+      const userId = request.user.userId;
+
+      const userRows = await fastify.db.queryTenant<{ display_name: string | null; email: string }>(
+        tenantId,
+        `SELECT u.display_name, u.email
+           FROM users u
+           JOIN memberships m ON m.user_id = u.id AND m.tenant_id = $1
+          WHERE u.id = $2
+          LIMIT 1`,
+        [tenantId, userId]
+      );
+      const user = userRows[0];
+      if (!user) {
+        throw fastify.httpErrors.notFound("User not found.");
+      }
+      const displayName = user.display_name?.trim() || user.email.split("@")[0] || "there";
+
+      // Reuse getOrGenerateBriefing so the digest reflects the same briefing
+      // the user sees on their workspace home. A cached one is fine — the
+      // briefing is a best-effort snapshot, not a live query.
+      const config = buildIntelligenceConfig(fastify.config);
+      let briefingContent;
+      try {
+        const result = await getOrGenerateBriefing(
+          fastify.db,
+          config,
+          userId,
+          tenantId,
+          displayName
+        );
+        briefingContent = result.content;
+      } catch (error) {
+        request.log.error(
+          { err: error instanceof Error ? error.message : error, tenantId, userId },
+          "briefing/email-me: getOrGenerateBriefing failed"
+        );
+        return reply.code(502).send({
+          success: false,
+          errorCode: "briefing_unavailable",
+          error: "Larry couldn't assemble a briefing right now. Try again in a few minutes.",
+        });
+      }
+
+      try {
+        const { sendBriefingDigestEmail, EmailQuotaError } = await import("../../lib/email.js");
+        try {
+          await sendBriefingDigestEmail(user.email, {
+            greeting: briefingContent.greeting,
+            projects: briefingContent.projects.map((p) => ({
+              projectId: p.projectId,
+              name: p.name,
+              statusLabel: p.statusLabel,
+              summary: p.summary,
+              needsYou: p.needsYou,
+              suggestionCount: p.suggestionCount,
+            })),
+            totalNeedsYou: briefingContent.totalNeedsYou,
+            userId,
+            tenantId,
+          });
+        } catch (sendErr) {
+          if (sendErr instanceof EmailQuotaError) {
+            return reply.code(429).send({
+              success: false,
+              errorCode: "quota_exceeded",
+              error: "You've already emailed yourself a briefing recently. Try again later.",
+            });
+          }
+          throw sendErr;
+        }
+      } catch (error) {
+        request.log.error(
+          { err: error instanceof Error ? error.message : error, tenantId, userId },
+          "briefing/email-me: send failed"
+        );
+        return reply.code(502).send({
+          success: false,
+          errorCode: "send_failed",
+          error: "We couldn't deliver the briefing email. Try again in a moment.",
+        });
+      }
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId: userId,
+        actionType: "briefing.email_me",
+        objectType: "briefing",
+        objectId: userId,
+        details: { recipient: user.email, projectCount: briefingContent.projects.length },
+      });
+
+      return { success: true, recipient: user.email };
     }
   );
 

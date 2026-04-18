@@ -4,7 +4,14 @@ import type {
   PortfolioTimelineProject, GanttTask,
 } from "@larry/shared";
 
-type CatRow = { id: string; name: string; colour: string | null; sortOrder: number };
+type CatRow = {
+  id: string;
+  name: string;
+  colour: string | null;
+  sortOrder: number;
+  parentCategoryId: string | null;
+  projectId: string | null;
+};
 type ProjRow = {
   id: string; name: string; status: "active" | "archived";
   startDate: string | null; targetDate: string | null; categoryId: string | null;
@@ -16,7 +23,9 @@ export const timelineRoutes: FastifyPluginAsync = async (fastify) => {
 
     const [categoriesRaw, projectsRaw, tasksRaw, depsRaw] = await Promise.all([
       fastify.db.queryTenant<CatRow>(tenantId,
-        `SELECT id, name, colour, sort_order AS "sortOrder"
+        `SELECT id, name, colour, sort_order AS "sortOrder",
+                parent_category_id AS "parentCategoryId",
+                project_id         AS "projectId"
            FROM project_categories WHERE tenant_id = $1
            ORDER BY sort_order ASC, created_at ASC`, [tenantId]),
       fastify.db.queryTenant<ProjRow>(tenantId,
@@ -70,6 +79,8 @@ export const timelineRoutes: FastifyPluginAsync = async (fastify) => {
 
     const categories: PortfolioTimelineCategory[] = categoriesRaw.map(c => ({
       id: c.id, name: c.name, colour: c.colour, sortOrder: c.sortOrder,
+      parentCategoryId: c.parentCategoryId,
+      projectId: c.projectId,
       projects: projectsByCategory.get(c.id) ?? [],
     }));
 

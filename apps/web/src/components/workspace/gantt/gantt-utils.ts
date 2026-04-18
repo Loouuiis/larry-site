@@ -39,20 +39,50 @@ export function normalizePortfolioStatuses(data: PortfolioTimelineResponse): Por
   };
 }
 
+// v4 Slice 3C-2 — nested portfolio tree.
+//
+// Categories can now live at three places in the tree:
+//   • Top level (parentCategoryId=null, projectId=null) — "root" categories.
+//   • Under another category (parentCategoryId set) — subcategories, rendered
+//     as indented siblings of the parent's projects.
+//   • Scoped to a project (projectId set) — rendered in the project timeline,
+//     not the portfolio. Skipped from this function's output.
+//
+// Uncategorised (id=null) is a synthetic top-level bucket from the server and
+// never has a parentCategoryId, so it always lands top-level.
 export function buildPortfolioTree(resp: PortfolioTimelineResponse): GanttNode {
-  const categoryChildren: GanttNode[] = resp.categories.map((c) => ({
-    kind: "category",
-    id: c.id,
-    name: c.name,
-    colour: c.colour,
-    children: c.projects.map((p) => ({
+  // Index categories by id (skip project-scoped — not our view) and precompute
+  // each one's child-category list for O(N) tree construction.
+  const orgCategories = resp.categories.filter((c) => !c.projectId);
+  const childrenByParent = new Map<string | null, typeof orgCategories>();
+  for (const c of orgCategories) {
+    const key = c.parentCategoryId ?? null;
+    const list = childrenByParent.get(key) ?? [];
+    list.push(c);
+    childrenByParent.set(key, list);
+  }
+
+  function buildCategoryNode(c: typeof orgCategories[number]): GanttNode {
+    const projectNodes: GanttNode[] = c.projects.map((p) => ({
       kind: "project",
       id: p.id,
       name: p.name,
       status: p.status,
       children: buildTaskForest(p.tasks),
-    })),
-  }));
+    }));
+    const subcategoryNodes: GanttNode[] = (c.id != null ? (childrenByParent.get(c.id) ?? []) : []).map(buildCategoryNode);
+    return {
+      kind: "category",
+      id: c.id,
+      name: c.name,
+      colour: c.colour,
+      // Subcategories render above projects to match Asana/Linear ordering.
+      children: [...subcategoryNodes, ...projectNodes],
+    };
+  }
+
+  const topLevel = childrenByParent.get(null) ?? [];
+  const categoryChildren: GanttNode[] = topLevel.map(buildCategoryNode);
   return { kind: "category", id: "__root__", name: "", colour: null, children: categoryChildren };
 }
 
@@ -404,9 +434,10 @@ export function contextMenuItemsFor(args: {
       }];
     }
     return [
-      { id: "rename",       label: "Rename" },
-      { id: "changeColour", label: "Change colour" },
-      { id: "delete",       label: "Delete", destructive: true },
+      { id: "addSubcategory", label: "Add subcategory" },
+      { id: "rename",         label: "Rename" },
+      { id: "changeColour",   label: "Change colour" },
+      { id: "delete",         label: "Delete", destructive: true },
     ];
   }
   if (args.rowKind === "project") {

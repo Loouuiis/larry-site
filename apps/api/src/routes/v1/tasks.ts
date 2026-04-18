@@ -196,11 +196,13 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
         status: string; priority: string; assignee_user_id: string | null;
         progress_percent: number; risk_score: number; risk_level: string;
         start_date: string | null; due_date: string | null; created_at: string; updated_at: string;
+        source_kind: string | null; source_record_id: string | null;
       }>(
         tenantId,
         `SELECT id, project_id, parent_task_id, title, description, status, priority,
                 assignee_user_id, progress_percent, risk_score, risk_level,
-                start_date, due_date, created_at, updated_at
+                start_date, due_date, created_at, updated_at,
+                source_kind, source_record_id
          FROM tasks WHERE tenant_id = $1 AND id = $2 LIMIT 1`,
         [tenantId, params.id]
       );
@@ -214,6 +216,7 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
         status: r.status, priority: r.priority, assigneeUserId: r.assignee_user_id,
         progressPercent: r.progress_percent, riskScore: r.risk_score, riskLevel: r.risk_level,
         startDate: r.start_date, dueDate: r.due_date, createdAt: r.created_at, updatedAt: r.updated_at,
+        sourceKind: r.source_kind, sourceRecordId: r.source_record_id,
       };
     }
   );

@@ -315,5 +315,98 @@ export async function sendMemberInviteEmail(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Briefing digest email (#93)
+// ---------------------------------------------------------------------------
+
+export interface BriefingDigestProject {
+  projectId: string;
+  name: string;
+  statusLabel: "At Risk" | "Needs Attention" | "On Track";
+  summary: string;
+  needsYou: boolean;
+  suggestionCount: number;
+}
+
+export interface BriefingDigestOpts extends EmailSendContext {
+  greeting: string;
+  projects: BriefingDigestProject[];
+  totalNeedsYou: number;
+}
+
+function statusPillHtml(label: BriefingDigestProject["statusLabel"]): string {
+  const styles =
+    label === "At Risk"
+      ? "background:#fff6f7; color:#dc2626"
+      : label === "Needs Attention"
+        ? "background:#fff7ed; color:#d97706"
+        : "background:#f3f4f6; color:#6b7280";
+  return `<span style="${styles}; font-size:11px; font-weight:600; padding:3px 8px; border-radius:9999px; display:inline-block;">${escapeHtml(label)}</span>`;
+}
+
+export async function sendBriefingDigestEmail(
+  to: string,
+  opts: BriefingDigestOpts,
+): Promise<void> {
+  if (!isResendConfigured()) {
+    console.log("[email] RESEND_API_KEY not configured. Skipping briefing digest for %s", to);
+    return;
+  }
+  if (!(await guard("briefing_digest", to, opts))) return;
+  const resend = getResend();
+  const frontendUrl = getFrontendUrl();
+
+  const projectRows = opts.projects.length > 0
+    ? opts.projects
+        .map((p) => {
+          const projectUrl = `${frontendUrl}/workspace/projects/${encodeURIComponent(p.projectId)}`;
+          const needsBadge = p.needsYou
+            ? `<span style="background:#6c44f6; color:#fff; font-size:11px; font-weight:600; padding:3px 8px; border-radius:9999px; margin-left:8px;">Needs you</span>`
+            : "";
+          return `
+            <tr>
+              <td style="padding:14px 0; border-bottom:1px solid #f0edfa; vertical-align:top;">
+                <div style="margin-bottom:4px;">${statusPillHtml(p.statusLabel)}${needsBadge}</div>
+                <div style="font-size:14px; font-weight:600; color:#111; margin-bottom:4px;">
+                  <a href="${projectUrl}" style="color:#111; text-decoration:none;">${escapeHtml(p.name)}</a>
+                </div>
+                <div style="font-size:13px; color:#4b5563; line-height:1.55;">${escapeHtml(p.summary)}</div>
+                <div style="margin-top:8px; font-size:12px;">
+                  <a href="${projectUrl}" style="color:#6c44f6; text-decoration:none; font-weight:500;">Open project →</a>
+                </div>
+              </td>
+            </tr>`;
+        })
+        .join("")
+    : `<tr><td style="padding:14px 0; font-size:13px; color:#6b7280;">No active projects need your attention right now.</td></tr>`;
+
+  const subject = opts.totalNeedsYou > 0
+    ? `Your Larry briefing — ${opts.totalNeedsYou} ${opts.totalNeedsYou === 1 ? "project needs" : "projects need"} you`
+    : "Your Larry briefing";
+
+  const { error } = await resend.emails.send({
+    from: FROM_LARRY,
+    to,
+    subject,
+    html: wrapHtml(`
+      <h1 style="font-size: 22px; font-weight: 700; letter-spacing: -0.03em; margin: 0 0 12px;">${escapeHtml(opts.greeting)}</h1>
+      <p style="font-size: 14px; color: #555; line-height: 1.6; margin: 0 0 24px;">
+        Here's your current Larry briefing across ${opts.projects.length} active ${opts.projects.length === 1 ? "project" : "projects"}${opts.totalNeedsYou > 0 ? ` — ${opts.totalNeedsYou} need your attention.` : "."}
+      </p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin-bottom: 28px;">
+        ${projectRows}
+      </table>
+      ${ctaButton(`${frontendUrl}/workspace`, "Open workspace")}
+      <p style="margin-top: 28px; font-size: 12px; color: #9ca3af; line-height: 1.5;">
+        This is a one-off digest you asked Larry to send. We won't email you again unless you request it.
+      </p>
+    `),
+  });
+  if (error) {
+    console.error("[email] sendBriefingDigestEmail failed:", error);
+    throw new Error(`Failed to send briefing digest: ${error.message}`);
+  }
+}
+
 // Re-export the quota error so callers can detect it for enumeration-safe flows.
 export { EmailQuotaError } from "./email-quota.js";
