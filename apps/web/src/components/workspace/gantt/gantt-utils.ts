@@ -404,9 +404,10 @@ export function contextMenuItemsFor(args: {
       }];
     }
     return [
-      { id: "rename",       label: "Rename" },
-      { id: "changeColour", label: "Change colour" },
-      { id: "delete",       label: "Delete", destructive: true },
+      { id: "addSubcategory", label: "Add subcategory" },
+      { id: "rename",         label: "Rename" },
+      { id: "changeColour",   label: "Change colour" },
+      { id: "delete",         label: "Delete", destructive: true },
     ];
   }
   if (args.rowKind === "project") {

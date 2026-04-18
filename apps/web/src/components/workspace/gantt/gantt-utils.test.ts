@@ -276,10 +276,10 @@ describe("contextMenuItemsFor", () => {
     ]);
   });
 
-  it("category row gets Rename, Change colour, Delete", () => {
+  it("category row gets Add subcategory, Rename, Change colour, Delete", () => {
     const items = contextMenuItemsFor({ rowKind: "category", isUncategorised: false });
     expect(items.map((i) => i.id)).toEqual([
-      "rename", "changeColour", "delete",
+      "addSubcategory", "rename", "changeColour", "delete",
     ]);
   });
 

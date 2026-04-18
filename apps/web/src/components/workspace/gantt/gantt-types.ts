@@ -32,6 +32,7 @@ export type ContextMenuAction =
   | "moveToCategory"   // submenu → category id payload
   | "removeFromTimeline"
   | "addChild"
+  | "addSubcategory"   // v4 — only on category rows; creates category with parentCategoryId
   | "rename"
   | "changeColour"
   | "delete";
