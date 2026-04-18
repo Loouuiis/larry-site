@@ -2,10 +2,17 @@
 import { useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import {
+  DndContext, PointerSensor, useSensor, useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
 import type { WorkspaceTimelineTask, WorkspaceTimeline } from "@/app/dashboard/types";
 import type { GanttTask, ProjectCategory, ContextMenuAction, GanttNode } from "./gantt-types";
 import { NEUTRAL_ROW_COLOUR } from "./gantt-types";
-import { buildProjectTree, buildCategoryColorMap, normalizeGanttStatus } from "./gantt-utils";
+import {
+  buildProjectTree, buildCategoryColorMap, normalizeGanttStatus,
+  validateDrop, type DropContext,
+} from "./gantt-utils";
 import { GanttContainer } from "./GanttContainer";
 import { AddNodeModal } from "./AddNodeModal";
 import { CategoryColourPopover } from "./CategoryColourPopover";
@@ -120,6 +127,113 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
     void qc.invalidateQueries({ queryKey: QK_CATEGORIES });
     void qc.invalidateQueries({ queryKey: ["timeline", "org"] });
   };
+
+  // v4 Slice 4.5 — DnD on the project timeline. Same sensor config +
+  // validateDrop dispatch as PortfolioGanttClient. Most relevant combinations
+  // here are task↔task (reorder/reparent inside the project) and
+  // category→category (nest a project-scoped subcategory); others still route
+  // through validateDrop so unsupported drops reject with a toast.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  );
+
+  const moveCategoryMutation = useMutation({
+    mutationFn: async (vars: { id: string; parentCategoryId: string | null; projectId: string | null }) => {
+      const res = await fetch(`/api/workspace/categories/${vars.id}/move`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          parentCategoryId: vars.parentCategoryId,
+          projectId: vars.projectId,
+          sortOrder: 0,
+        }),
+      });
+      if (!res.ok) throw new Error(await extractApiError(res, "Couldn't move category"));
+      return res.json();
+    },
+    onSuccess: () => invalidateCategoryCaches(),
+    onError: (err: unknown) => setMutationError(err instanceof Error ? err.message : "Couldn't move category"),
+  });
+
+  const moveProjectMutation = useMutation({
+    mutationFn: async (vars: { id: string; categoryId: string | null }) => {
+      const res = await fetch(`/api/workspace/projects/${vars.id}/move`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ categoryId: vars.categoryId, sortOrder: 0 }),
+      });
+      if (!res.ok) throw new Error(await extractApiError(res, "Couldn't move project"));
+      return res.json();
+    },
+    onSuccess: async () => {
+      invalidateCategoryCaches();
+      void qc.invalidateQueries({ queryKey: QK_PROJECTS });
+    },
+    onError: (err: unknown) => setMutationError(err instanceof Error ? err.message : "Couldn't move project"),
+  });
+
+  const moveTaskMutation = useMutation({
+    mutationFn: async (vars: { id: string; projectId: string | null; parentTaskId: string | null }) => {
+      const body: Record<string, unknown> = { parentTaskId: vars.parentTaskId };
+      if (vars.projectId !== null) body.projectId = vars.projectId;
+      const res = await fetch(`/api/workspace/tasks/${vars.id}/move`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(await extractApiError(res, "Couldn't move task"));
+      return res.json();
+    },
+    onSuccess: async () => {
+      await refresh();                // refetch the project-scoped task list
+      invalidateCategoryCaches();
+    },
+    onError: (err: unknown) => setMutationError(err instanceof Error ? err.message : "Couldn't move task"),
+  });
+
+  function handleDragEnd(e: DragEndEvent) {
+    if (!e.over) return;
+    const sourceKey = String(e.active.id);
+    const targetKey = String(e.over.id);
+
+    const categoriesById = new Map<string, { parentCategoryId: string | null; projectId: string | null }>();
+    for (const c of allCategories) {
+      categoriesById.set(c.id, { parentCategoryId: c.parentCategoryId ?? null, projectId: c.projectId ?? null });
+    }
+    const tasksById = new Map<string, { projectId: string; parentTaskId: string | null }>();
+    for (const t of ganttTasks) {
+      tasksById.set(t.id, { projectId: t.projectId || projectId, parentTaskId: t.parentTaskId ?? null });
+    }
+    const ctx: DropContext = { categoriesById, tasksById };
+
+    const validation = validateDrop(sourceKey, targetKey, ctx);
+    if (!validation.ok) {
+      if (sourceKey !== targetKey) setMutationError(validation.reason);
+      return;
+    }
+    switch (validation.effect.kind) {
+      case "moveCategory":
+        moveCategoryMutation.mutate({
+          id: validation.effect.sourceId,
+          parentCategoryId: validation.effect.newParentCategoryId,
+          projectId: validation.effect.newProjectId,
+        });
+        return;
+      case "moveProject":
+        moveProjectMutation.mutate({
+          id: validation.effect.sourceId,
+          categoryId: validation.effect.newCategoryId,
+        });
+        return;
+      case "moveTask":
+        moveTaskMutation.mutate({
+          id: validation.effect.sourceId,
+          projectId: validation.effect.newProjectId,
+          parentTaskId: validation.effect.newParentTaskId,
+        });
+        return;
+    }
+  }
 
   // Keep the refresh() contract for the parent page so tasks still re-render
   // after task-level mutations; chain React Query invalidation alongside.
@@ -314,43 +428,45 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
           </button>
         </div>
       )}
-      <GanttContainer
-        root={root}
-        defaultZoom="month"
-        addLabel={addLabel}
-        onAdd={handleAdd}
-        onSelectionChange={setSelectedKey}
-        rootCategoryColor={categoryColour ?? NEUTRAL_ROW_COLOUR}
-        onContextMenuAction={handleContextMenuAction}
-        categoriesForSubmenu={categoriesForSubmenu}
-        outlineHeaderActions={
-          <button
-            type="button"
-            onClick={() => setAddCtx({ mode: "category" })}
-            aria-label="New category in this project"
-            title="New category in this project"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              height: 24,
-              padding: "0 8px",
-              fontSize: 11,
-              fontWeight: 600,
-              letterSpacing: "0.04em",
-              textTransform: "uppercase",
-              background: "var(--brand)",
-              color: "#fff",
-              border: 0,
-              borderRadius: 6,
-              cursor: "pointer",
-            }}
-          >
-            <Plus size={12} strokeWidth={2.5} />
-            Category
-          </button>
-        }
-      />
+      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+        <GanttContainer
+          root={root}
+          defaultZoom="month"
+          addLabel={addLabel}
+          onAdd={handleAdd}
+          onSelectionChange={setSelectedKey}
+          rootCategoryColor={categoryColour ?? NEUTRAL_ROW_COLOUR}
+          onContextMenuAction={handleContextMenuAction}
+          categoriesForSubmenu={categoriesForSubmenu}
+          outlineHeaderActions={
+            <button
+              type="button"
+              onClick={() => setAddCtx({ mode: "category" })}
+              aria-label="New category in this project"
+              title="New category in this project"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                height: 24,
+                padding: "0 8px",
+                fontSize: 11,
+                fontWeight: 600,
+                letterSpacing: "0.04em",
+                textTransform: "uppercase",
+                background: "var(--brand)",
+                color: "#fff",
+                border: 0,
+                borderRadius: 6,
+                cursor: "pointer",
+              }}
+            >
+              <Plus size={12} strokeWidth={2.5} />
+              Category
+            </button>
+          }
+        />
+      </DndContext>
       {addCtx && (
         <AddNodeModal
           // subcategory mode reuses the category modal with parentCategoryId set.
