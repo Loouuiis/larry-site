@@ -355,10 +355,16 @@ async function runOne(ctx, cookieHeader, fixture) {
       return result;
     }
   }
-  // modify-chat (don't actually run a chat turn, just probe the route opens)
+  // modify-chat (full request body) — exercises the modify-chat allow-list AND
+  // schema validation. Endpoint will 409 if the prior /modify/save already
+  // resolved the event; 200 means LLM round-trip succeeded; anything else
+  // (except 422 "not modifiable") proves the type passes the modifiable guard.
   const chat = await callApi(`/api/workspace/larry/events/${eventId}/modify-chat`, {
     method: "POST",
-    body: { message: "verify-109 ping" },
+    body: {
+      message: "verify-109: no change requested, just probe",
+      currentPayload: { ...(fixture.payload ?? {}), ...(fixture.patch ?? {}) },
+    },
     cookieHeader,
   });
   // 409 ConflictError is the expected response if the event was already
