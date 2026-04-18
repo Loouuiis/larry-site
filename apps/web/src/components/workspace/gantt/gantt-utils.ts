@@ -86,14 +86,106 @@ export function buildPortfolioTree(resp: PortfolioTimelineResponse): GanttNode {
   return { kind: "category", id: "__root__", name: "", colour: null, children: categoryChildren };
 }
 
+// v4 Slice 4 — project timeline can now render project-scoped categories.
+//
+// The optional `categories` argument carries every category the API returned for
+// the tenant; this function picks out the ones scoped to this project (either
+// directly via `projectId === project.id`, or as a subcategory nested under
+// another project-scoped category) and renders them as rows above the tasks.
+//
+// Tasks are not (yet) attached to categories — the task→category link lives on
+// the DB only via `projects.category_id`, not `tasks.category_id`. So tasks
+// keep their existing flat placement under the project root. What this change
+// unlocks is *right-clicking a category row* on the project timeline, which
+// previously was impossible because no category rows were rendered at all.
+//
+// When `categories` is absent or empty, this function behaves exactly as before.
 export function buildProjectTree(
   project: { id: string; name: string; status: string },
   tasks: GanttTask[],
+  categories?: ReadonlyArray<{
+    id: string;
+    name: string;
+    colour: string | null;
+    sortOrder: number;
+    parentCategoryId: string | null;
+    projectId: string | null;
+  }>,
 ): Extract<GanttNode, { kind: "project" }> {
+  const taskNodes = buildTaskForest(tasks);
+  const catNodes = buildProjectScopedCategoryForest(project.id, categories ?? []);
   return {
     kind: "project", id: project.id, name: project.name, status: project.status,
-    children: buildTaskForest(tasks),
+    children: [...catNodes, ...taskNodes],
   };
+}
+
+type ProjectScopedCategoryInput = {
+  id: string;
+  name: string;
+  colour: string | null;
+  sortOrder: number;
+  parentCategoryId: string | null;
+  projectId: string | null;
+};
+
+function buildProjectScopedCategoryForest(
+  projectId: string,
+  categories: ReadonlyArray<ProjectScopedCategoryInput>,
+): GanttNode[] {
+  if (categories.length === 0) return [];
+
+  // Step 1: find every category directly scoped to this project.
+  const direct = categories.filter((c) => c.projectId === projectId);
+  if (direct.length === 0) return [];
+
+  // Step 2: walk descendants (subcategories of those project-scoped categories)
+  // so a `projectId=null, parentCategoryId=<project-scoped>` child still renders
+  // here. That's how "Add subcategory" on a project-scoped category round-trips
+  // — the server stores child with parentCategoryId set and projectId null (the
+  // DB's single-parent CHECK constraint).
+  const keep = new Set<string>(direct.map((c) => c.id));
+  let frontier: ProjectScopedCategoryInput[] = direct;
+  while (frontier.length > 0) {
+    const next: ProjectScopedCategoryInput[] = [];
+    for (const parent of frontier) {
+      for (const c of categories) {
+        if (c.parentCategoryId === parent.id && !keep.has(c.id)) {
+          keep.add(c.id);
+          next.push(c);
+        }
+      }
+    }
+    frontier = next;
+  }
+  const relevant = categories.filter((c) => keep.has(c.id));
+
+  // Step 3: index by parent for O(N) tree construction. Anything whose parent
+  // is NOT in the keep-set (typically top-level direct children with
+  // parentCategoryId === null) roots under the project node.
+  const childrenByParent = new Map<string | null, ProjectScopedCategoryInput[]>();
+  for (const c of relevant) {
+    const parentInScope = c.parentCategoryId && keep.has(c.parentCategoryId) ? c.parentCategoryId : null;
+    const list = childrenByParent.get(parentInScope) ?? [];
+    list.push(c);
+    childrenByParent.set(parentInScope, list);
+  }
+  for (const list of childrenByParent.values()) {
+    list.sort((a, b) => a.sortOrder - b.sortOrder);
+  }
+
+  function buildNode(c: ProjectScopedCategoryInput): GanttNode {
+    const subs = (childrenByParent.get(c.id) ?? []).map(buildNode);
+    return {
+      kind: "category",
+      id: c.id,
+      name: c.name,
+      colour: c.colour,
+      children: subs,
+    };
+  }
+
+  return (childrenByParent.get(null) ?? []).map(buildNode);
 }
 
 function buildTaskForest(tasks: GanttTask[]): GanttNode[] {

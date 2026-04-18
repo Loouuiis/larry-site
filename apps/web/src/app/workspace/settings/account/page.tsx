@@ -522,7 +522,7 @@ export default function AccountSettingsPage() {
               Profile photo
             </h2>
             <p className="mt-1 text-[13px]" style={{ color: "var(--text-2)" }}>
-              This photo will appear in the sidebar and across the app.
+              This photo will appear in the sidebar and across the app
             </p>
             <div className="mt-4 flex items-center gap-4">
               {avatarUrl ? (
@@ -617,8 +617,8 @@ export default function AccountSettingsPage() {
               style={{ color: "var(--text-2)" }}
             >
               {hasPassword
-                ? "Update your password. All other sessions will be logged out."
-                : "Set a password for your account so you can log in with email and password."}
+                ? "Update your password — all other sessions will be logged out"
+                : "Set a password for your account so you can log in with email and password"}
             </p>
 
             <form
@@ -871,7 +871,7 @@ export default function AccountSettingsPage() {
               className="mt-1 text-[13px]"
               style={{ color: "var(--text-2)" }}
             >
-              Devices where you are currently logged in.
+              Devices where you are currently logged in
             </p>
 
             {sessionsLoading ? (
