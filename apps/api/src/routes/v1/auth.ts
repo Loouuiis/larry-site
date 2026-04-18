@@ -501,6 +501,126 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     }
   );
 
+  // ── GET /tenants — list every tenant the caller belongs to ───────────
+  // Users with multiple memberships (e.g. a tester seeded into several dev
+  // tenants) need a way to pick which workspace to view. Login always
+  // lands them in their oldest tenant, which is wrong when a collaborator
+  // has just added them to a project in a newer tenant. Pair this with
+  // POST /switch-tenant below.
+  fastify.get(
+    "/tenants",
+    { preHandler: [fastify.authenticate] },
+    async (request) => {
+      const userId = request.user.userId;
+      const currentTenantId = request.user.tenantId;
+      const rows = await fastify.db.query<{
+        tenantId: string;
+        name: string;
+        slug: string;
+        role: "owner" | "admin" | "pm" | "member" | "executive";
+        createdAt: string;
+      }>(
+        `SELECT m.tenant_id     AS "tenantId",
+                t.name,
+                t.slug,
+                m.role,
+                m.created_at::text AS "createdAt"
+           FROM memberships m
+           JOIN tenants t ON t.id = m.tenant_id
+          WHERE m.user_id = $1
+          ORDER BY m.created_at ASC`,
+        [userId],
+      );
+      return {
+        tenants: rows.map((r) => ({
+          ...r,
+          current: r.tenantId === currentTenantId,
+        })),
+      };
+    },
+  );
+
+  // ── POST /switch-tenant — mint tokens for another tenant the user owns ──
+  // Verifies membership before issuing; revokes the current refresh token so
+  // the old session can't keep polling the old tenant. Returns the fresh
+  // {accessToken, refreshToken} which the web layer uses to re-mint the
+  // iron-session cookie (mirrors /login response shape).
+  fastify.post(
+    "/switch-tenant",
+    { preHandler: [fastify.authenticate] },
+    async (request, reply) => {
+      const body = z
+        .object({ tenantId: z.string().uuid() })
+        .parse(request.body);
+
+      const userId = request.user.userId;
+      if (body.tenantId === request.user.tenantId) {
+        return reply.badRequest("Already on this tenant.");
+      }
+
+      const rows = await fastify.db.query<{
+        role: "owner" | "admin" | "pm" | "member" | "executive";
+        email: string;
+        display_name: string | null;
+      }>(
+        `SELECT m.role, u.email, u.display_name
+           FROM memberships m
+           JOIN users u ON u.id = m.user_id
+          WHERE m.user_id = $1 AND m.tenant_id = $2
+          LIMIT 1`,
+        [userId, body.tenantId],
+      );
+      const row = rows[0];
+      if (!row) {
+        throw fastify.httpErrors.forbidden(
+          "You are not a member of that workspace.",
+        );
+      }
+
+      const accessToken = await issueAccessToken(fastify, {
+        userId,
+        tenantId: body.tenantId,
+        role: row.role,
+        email: row.email,
+      });
+      const refreshToken = await issueRefreshToken(
+        fastify,
+        {
+          userId,
+          tenantId: body.tenantId,
+          role: row.role,
+          email: row.email,
+        },
+        undefined,
+        {
+          ipAddress: request.ip,
+          userAgent: request.headers["user-agent"] ?? undefined,
+        },
+      );
+
+      await writeAuditLog(fastify.db, {
+        tenantId: body.tenantId,
+        actorUserId: userId,
+        actionType: "auth.tenant_switched",
+        objectType: "session",
+        objectId: userId,
+        details: { fromTenantId: request.user.tenantId },
+      });
+
+      return reply.send({
+        accessToken,
+        refreshToken,
+        user: {
+          id: userId,
+          email: row.email,
+          role: row.role,
+          tenantId: body.tenantId,
+          displayName: row.display_name ?? null,
+        },
+      });
+    },
+  );
+
   // ── Invite a new member by email ──────────────────────────────────
   const InviteSchema = z.object({
     email: emailSchema,
