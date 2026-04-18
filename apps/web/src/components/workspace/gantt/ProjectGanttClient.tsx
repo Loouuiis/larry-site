@@ -193,6 +193,7 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
           parentProjectId={addCtx.mode === "task" || addCtx.mode === "subtask" ? projectId : undefined}
           parentTaskId={addCtx.mode === "subtask" ? addCtx.parentTaskId : undefined}
           scopedProjectId={addCtx.mode === "category" ? projectId : undefined}
+          requireDates={addCtx.mode === "task" || addCtx.mode === "subtask"}
           onClose={() => setAddCtx(null)}
           onCreated={async () => { await refresh(); }}
         />

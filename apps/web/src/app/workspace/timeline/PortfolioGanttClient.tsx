@@ -419,6 +419,7 @@ export function PortfolioGanttClient() {
           }
           parentProjectId={addCtx.mode === "task" || addCtx.mode === "subtask" ? addCtx.parentProjectId : undefined}
           parentTaskId={addCtx.mode === "subtask" ? addCtx.parentTaskId : undefined}
+          requireDates={addCtx.mode === "task" || addCtx.mode === "subtask"}
           onClose={() => setAddCtx(null)}
           onCreated={async () => { await fetchTimeline(); }}
         />
