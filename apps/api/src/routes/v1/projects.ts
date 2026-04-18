@@ -537,6 +537,18 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
             deleteAndCount("larry_conversations"),
           ]);
 
+        // Invalidate any cached briefings that include this project so the
+        // deleted project no longer appears in "Today's Briefing".
+        await client.query(
+          `DELETE FROM larry_briefings
+           WHERE tenant_id = $1
+             AND EXISTS (
+               SELECT 1 FROM jsonb_array_elements(content->'projects') AS elem
+               WHERE elem->>'projectId' = $2
+             )`,
+          [tenantId, params.id]
+        );
+
         const deletedProjectRows = await client.query<{ id: string }>(
           `DELETE FROM projects
             WHERE tenant_id = $1

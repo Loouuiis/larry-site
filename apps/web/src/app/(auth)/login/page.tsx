@@ -6,6 +6,31 @@ import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
 import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 
+function DevLoginButton() {
+  const router = useRouter();
+  const [loading, setLoading] = useState(false);
+
+  async function handleDevLogin() {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/dev-login", { method: "POST" });
+      if (res.ok) router.push("/workspace");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <button
+      onClick={handleDevLogin}
+      disabled={loading}
+      className="mt-4 w-full rounded-lg border border-dashed border-[var(--border)] py-2 text-xs text-[var(--text-disabled)] transition-colors hover:border-[var(--border-2)] hover:text-[var(--text-2)] disabled:pointer-events-none disabled:opacity-50"
+    >
+      {loading ? "Logging in..." : "Dev Login (bypass)"}
+    </button>
+  );
+}
+
 const GOOGLE_ERROR_MESSAGES: Record<string, string> = {
   google_missing_code: "Google sign-in failed: no authorisation code received.",
   google_invalid_code: "Google sign-in failed: token verification error. Please try again.",
@@ -139,6 +164,8 @@ function LoginForm() {
         </p>
 
       </form>
+
+      {process.env.NODE_ENV !== "production" && <DevLoginButton />}
     </>
   );
 }
