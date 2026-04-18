@@ -417,6 +417,11 @@ export interface PortfolioTimelineCategory {
   name: string;
   colour: string | null;
   sortOrder: number;
+  // v4 — nesting. parentCategoryId !== null: child of another category.
+  // projectId !== null: scoped to a specific project (rendered in the project
+  // timeline, skipped from the org portfolio view).
+  parentCategoryId?: string | null;
+  projectId?: string | null;
   projects: PortfolioTimelineProject[];
 }
 

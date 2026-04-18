@@ -59,6 +59,37 @@ describe("buildPortfolioTree", () => {
     expect(t1.children).toHaveLength(1);
     expect((t1.children[0] as Extract<GanttNode, { kind: "subtask" }>).task.id).toBe("t2");
   });
+
+  it("nests subcategories under their parent category (v4)", () => {
+    const resp: PortfolioTimelineResponse = {
+      categories: [
+        { id: "c-parent", name: "Parent", colour: null, sortOrder: 0, parentCategoryId: null, projectId: null, projects: [] },
+        { id: "c-child",  name: "Child",  colour: null, sortOrder: 0, parentCategoryId: "c-parent", projectId: null, projects: [] },
+        { id: "c-peer",   name: "Peer",   colour: null, sortOrder: 1, parentCategoryId: null, projectId: null, projects: [] },
+      ],
+      dependencies: [],
+    };
+    const tree = buildPortfolioTree(resp);
+    const topLevel = (tree as Extract<GanttNode, { kind: "category" }>).children as Array<Extract<GanttNode, { kind: "category" }>>;
+    // Two top-level categories — the child is not here, it's under Parent.
+    expect(topLevel.map((n) => n.id)).toEqual(["c-parent", "c-peer"]);
+    const parent = topLevel.find((n) => n.id === "c-parent")!;
+    expect(parent.children).toHaveLength(1);
+    expect((parent.children[0] as Extract<GanttNode, { kind: "category" }>).id).toBe("c-child");
+  });
+
+  it("skips project-scoped categories (projectId set) from the portfolio tree (v4)", () => {
+    const resp: PortfolioTimelineResponse = {
+      categories: [
+        { id: "c-org",   name: "Org",          colour: null, sortOrder: 0, parentCategoryId: null, projectId: null,    projects: [] },
+        { id: "c-proj",  name: "Project-scoped", colour: null, sortOrder: 0, parentCategoryId: null, projectId: "p1",    projects: [] },
+      ],
+      dependencies: [],
+    };
+    const tree = buildPortfolioTree(resp);
+    const topLevel = (tree as Extract<GanttNode, { kind: "category" }>).children as Array<Extract<GanttNode, { kind: "category" }>>;
+    expect(topLevel.map((n) => n.id)).toEqual(["c-org"]);
+  });
 });
 
 describe("buildProjectTree", () => {
