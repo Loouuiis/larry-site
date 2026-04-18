@@ -16,6 +16,7 @@ import {
   applyPatch,
   assertPatchIsAllowed,
   editableFieldsForActionType,
+  isModifiableActionType,
   getCanonicalEventRuntimeEntryById,
   getCanonicalEventRuntimeSummary,
   listCanonicalEventRetryCandidates,
@@ -1966,12 +1967,12 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         throw fastify.httpErrors.conflict("Only suggested events can be modified.");
       }
 
-      const editableFields = editableFieldsForActionType(event.actionType);
-      if (editableFields.length === 0) {
+      if (!isModifiableActionType(event.actionType)) {
         throw fastify.httpErrors.unprocessableEntity(
           `Action type '${event.actionType}' is not modifiable.`
         );
       }
+      const editableFields = editableFieldsForActionType(event.actionType);
 
       const teamMembers = await fastify.db.queryTenant<{
         userId: string;
@@ -2276,12 +2277,12 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         );
       }
 
-      const editableFields = editableFieldsForActionType(event.actionType);
-      if (editableFields.length === 0) {
+      if (!isModifiableActionType(event.actionType)) {
         throw fastify.httpErrors.unprocessableEntity(
           `Action type '${event.actionType}' is not modifiable.`
         );
       }
+      const editableFields = editableFieldsForActionType(event.actionType);
 
       // Resolve or create the conversation for this modify session.
       let conversationId = providedConvId ?? null;
