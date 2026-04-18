@@ -13,6 +13,8 @@ export function hashInvitationToken(rawToken: string): string {
 
 export type InvitationStatus = "pending" | "accepted" | "revoked" | "expired";
 
+export type ProjectInvitationRole = "owner" | "editor" | "viewer";
+
 export interface InvitationRow {
   id: string;
   tenantId: string;
@@ -25,6 +27,8 @@ export interface InvitationRow {
   acceptedByUserId: string | null;
   revokedAt: string | null;
   createdAt: string;
+  projectId: string | null;
+  projectRole: ProjectInvitationRole | null;
 }
 
 export interface CreateInvitationInput {
@@ -33,6 +37,8 @@ export interface CreateInvitationInput {
   role: InvitableTenantRole;
   invitedByUserId: string;
   expiresInDays?: number;
+  projectId?: string | null;
+  projectRole?: ProjectInvitationRole | null;
 }
 
 export interface CreateInvitationResult {
@@ -51,7 +57,9 @@ const SELECT_COLUMNS = `
   accepted_at::text  AS "acceptedAt",
   accepted_by_user_id AS "acceptedByUserId",
   revoked_at::text   AS "revokedAt",
-  created_at::text   AS "createdAt"
+  created_at::text   AS "createdAt",
+  project_id         AS "projectId",
+  project_role       AS "projectRole"
 `;
 
 export async function createInvitation(
@@ -61,12 +69,26 @@ export async function createInvitation(
   const rawToken = generateInvitationToken();
   const tokenHash = hashInvitationToken(rawToken);
   const days = input.expiresInDays ?? 7;
+  const projectId = input.projectId ?? null;
+  const projectRole = input.projectRole ?? null;
+  if ((projectId === null) !== (projectRole === null)) {
+    throw new Error("projectId and projectRole must be provided together.");
+  }
   const rows = await db.queryTenant<InvitationRow>(
     input.tenantId,
-    `INSERT INTO invitations (tenant_id, email, role, token_hash, invited_by_user_id, expires_at)
-     VALUES ($1, lower($2), $3::role_type, $4, $5, NOW() + ($6 || ' days')::interval)
+    `INSERT INTO invitations (tenant_id, email, role, token_hash, invited_by_user_id, expires_at, project_id, project_role)
+     VALUES ($1, lower($2), $3::role_type, $4, $5, NOW() + ($6 || ' days')::interval, $7, $8)
      RETURNING ${SELECT_COLUMNS}`,
-    [input.tenantId, input.email, input.role, tokenHash, input.invitedByUserId, String(days)],
+    [
+      input.tenantId,
+      input.email,
+      input.role,
+      tokenHash,
+      input.invitedByUserId,
+      String(days),
+      projectId,
+      projectRole,
+    ],
   );
   return { invitation: rows[0], rawToken };
 }
