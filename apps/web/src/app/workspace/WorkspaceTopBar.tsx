@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu } from "lucide-react";
+import { Menu, Search } from "lucide-react";
 
 type WorkspaceTopBarProps = {
   userEmail?: string | null;
@@ -82,6 +82,10 @@ function Breadcrumb({ workspaceName }: { workspaceName: string }) {
 }
 
 export function WorkspaceTopBar({ userEmail: _userEmail, workspaceName = "Larry Workspace", onMobileMenuOpen }: WorkspaceTopBarProps) {
+  function openSearch() {
+    window.dispatchEvent(new Event("larry:search-open"));
+  }
+
   return (
     <header className="flex h-12 shrink-0 items-center px-6 gap-4" style={{ height: 48 }}>
       {/* Mobile: hamburger */}
@@ -92,6 +96,30 @@ export function WorkspaceTopBar({ userEmail: _userEmail, workspaceName = "Larry 
         aria-label="Open menu"
       >
         <Menu size={18} />
+      </button>
+
+      <div className="flex-1" />
+
+      {/* Cmd+K hint — hidden on mobile */}
+      <button
+        type="button"
+        onClick={openSearch}
+        aria-label="Open search"
+        className="hidden sm:flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12px] transition-opacity hover:opacity-80"
+        style={{
+          background: "var(--surface-2)",
+          border: "1px solid var(--border)",
+          color: "var(--text-muted)",
+        }}
+      >
+        <Search size={12} />
+        <span>Search</span>
+        <kbd
+          className="flex items-center rounded px-1 py-0.5 text-[10px] ml-1"
+          style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-disabled)", fontFamily: "inherit" }}
+        >
+          ⌘K
+        </kbd>
       </button>
     </header>
   );
