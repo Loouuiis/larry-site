@@ -193,7 +193,6 @@ async function lookupContext() {
          JOIN project_memberships pm ON pm.project_id = p.id
         WHERE pm.tenant_id = $1
           AND pm.user_id = $2
-          AND p.is_archived IS NOT TRUE
         ORDER BY p.created_at DESC
         LIMIT 1`,
       [tenantId, userId],
@@ -202,7 +201,7 @@ async function lookupContext() {
     if (!projectId) {
       // create a verify project
       const createP = await client.query(
-        `INSERT INTO projects (tenant_id, name, description, created_by_user_id)
+        `INSERT INTO projects (tenant_id, name, description, owner_user_id)
          VALUES ($1, $2, $3, $4) RETURNING id`,
         [tenantId, `Verify-109 ${RUN_ID}`, "Auto-created for issue #109 verification", userId],
       );
@@ -228,7 +227,7 @@ async function lookupContext() {
     // pick or create a task in the project (for status_update/risk_flag/etc.)
     const t = await client.query(
       `SELECT id FROM tasks
-        WHERE tenant_id = $1 AND project_id = $2 AND is_archived IS NOT TRUE
+        WHERE tenant_id = $1 AND project_id = $2
         ORDER BY created_at DESC LIMIT 1`,
       [tenantId, projectId],
     );
