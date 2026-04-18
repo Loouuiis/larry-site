@@ -199,7 +199,7 @@ export function ReliabilityPage() {
       >
         <h1 className="text-h1">Settings</h1>
         <p className="text-body-sm" style={{ marginTop: "4px" }}>
-          Operator recovery for canonical event processing retries and dead-letter triage.
+          Operator recovery for canonical event processing retries and dead-letter triage
         </p>
         <SettingsSubnav active="reliability" />
       </div>

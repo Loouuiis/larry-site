@@ -237,7 +237,7 @@ export default function LarrySettingsPage() {
           Larry Autonomy
         </h2>
         <p className="mt-1 text-[13px]" style={{ color: "var(--text-2)" }}>
-          Control how much autonomy Larry has when executing actions on your behalf.
+          Control how much autonomy Larry has when executing actions on your behalf
         </p>
       </div>
 
@@ -319,7 +319,7 @@ export default function LarrySettingsPage() {
                   Manual Larry rules
                 </h3>
                 <p className="mt-0.5 text-[12px]" style={{ color: "var(--text-2)" }}>
-                  Add custom behavior rules Larry must follow for your workspace.
+                  Add custom behavior rules Larry must follow for your workspace
                 </p>
               </div>
               <button

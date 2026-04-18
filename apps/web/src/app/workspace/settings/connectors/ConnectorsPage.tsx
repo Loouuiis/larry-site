@@ -292,7 +292,7 @@ export function ConnectorsPage() {
       >
         <h1 className="text-h1">Settings</h1>
         <p className="text-body-sm" style={{ marginTop: "4px" }}>
-          Manage your workspace preferences and integrations.
+          Connect your tools and manage integrations
         </p>
         <SettingsSubnav active="connectors" />
       </div>
@@ -307,90 +307,11 @@ export function ConnectorsPage() {
           gap: "24px",
         }}
       >
-        {/* Workspace Settings section */}
-        <section
-          style={{
-            border: "1px solid var(--border)",
-            borderRadius: "var(--radius-card)",
-            padding: "20px",
-            background: "var(--surface)",
-          }}
-        >
-          <h2 className="text-h2">Workspace Settings</h2>
-          <p className="text-body-sm" style={{ marginTop: "4px" }}>
-            Configure your workspace preferences.
-          </p>
-          <div style={{ marginTop: "16px", display: "flex", flexDirection: "column", gap: "10px" }}>
-            {/* Workspace name */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "12px",
-                border: "1px solid var(--border)",
-                borderRadius: "8px",
-                background: "var(--surface)",
-              }}
-            >
-              <div>
-                <p style={{ fontSize: "14px", fontWeight: 500, color: "var(--text-1)" }}>
-                  Workspace name
-                </p>
-                <p className="text-body-sm">Larry Workspace</p>
-              </div>
-              <button className="pm-btn pm-btn-secondary pm-btn-sm">Edit</button>
-            </div>
-
-            {/* Timezone */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "12px",
-                border: "1px solid var(--border)",
-                borderRadius: "8px",
-                background: "var(--surface)",
-              }}
-            >
-              <div>
-                <p style={{ fontSize: "14px", fontWeight: 500, color: "var(--text-1)" }}>
-                  Timezone
-                </p>
-                <p className="text-body-sm">UTC (default)</p>
-              </div>
-              <button className="pm-btn pm-btn-secondary pm-btn-sm">Change</button>
-            </div>
-
-            {/* Notification preferences */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "12px",
-                border: "1px solid var(--border)",
-                borderRadius: "8px",
-                background: "var(--surface)",
-              }}
-            >
-              <div>
-                <p style={{ fontSize: "14px", fontWeight: 500, color: "var(--text-1)" }}>
-                  Notification preferences
-                </p>
-                <p className="text-body-sm">Email notifications for approvals</p>
-              </div>
-              <button className="pm-btn pm-btn-secondary pm-btn-sm">Configure</button>
-            </div>
-          </div>
-        </section>
-
         {/* Connectors section */}
         <section>
           <h2 className="text-h2" style={{ marginBottom: "4px" }}>Connectors</h2>
           <p className="text-body-sm" style={{ marginBottom: "16px" }}>
-            Connect your tools so Larry can read signals and take action across your stack.
+            Connect your tools so Larry can read signals and take action across your stack
           </p>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -523,7 +444,7 @@ export function ConnectorsPage() {
                         </button>
                       </div>
                       {slackChannels.length === 0 && (
-                        <p className="text-body-sm">No channels found. Make sure the bot has been added to at least one channel.</p>
+                        <p className="text-body-sm">No channels found — make sure the bot has been added to at least one channel</p>
                       )}
                       {slackMappingMessage && (
                         <p className="text-body-sm" style={{ color: "#166534" }}>{slackMappingMessage}</p>
@@ -631,7 +552,7 @@ export function ConnectorsPage() {
                       </div>
                       {projects.length === 0 && (
                         <p className="text-body-sm">
-                          No projects found yet. Create a project to enable calendar linking.
+                          No projects found yet — create a project to enable calendar linking
                         </p>
                       )}
                       {calendarLinkMessage && (
@@ -699,7 +620,7 @@ export function ConnectorsPage() {
                         color: "var(--text-muted)",
                       }}
                     >
-                      No recent events from this connector yet.
+                      No recent events from this connector yet
                     </p>
                   )}
                 </div>
