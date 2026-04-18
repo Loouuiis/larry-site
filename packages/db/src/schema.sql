@@ -1595,3 +1595,23 @@ ALTER TABLE tenants
 
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS mfa_enrolled_at TIMESTAMPTZ;
+
+-- ── 023_user_role_and_profile.sql ─────────────────────────────────
+-- Role captured at signup (#86).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT;
+
+-- Work/discovery/tools captured post-signup from the workspace PollingCard.
+CREATE TABLE IF NOT EXISTS user_profiles (
+  user_id       UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  work_types    TEXT[] NOT NULL DEFAULT '{}',
+  discovery     TEXT[] NOT NULL DEFAULT '{}',
+  tools         TEXT[] NOT NULL DEFAULT '{}',
+  completed_at  TIMESTAMPTZ,
+  dismissed_at  TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS user_profiles_pending_idx
+  ON user_profiles (user_id)
+  WHERE completed_at IS NULL AND dismissed_at IS NULL;

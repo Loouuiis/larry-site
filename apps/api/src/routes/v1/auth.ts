@@ -34,6 +34,9 @@ const SignupSchema = z.object({
   fullName: z.string().max(200).optional(),
   orgName: z.string().max(200).optional(),
   tenantId: z.string().uuid().optional(),
+  // 3-step signup (#86): role chip is captured on step 1 and persisted
+  // into users.role for later personalization / analytics.
+  role: z.string().max(100).optional(),
 });
 
 export const authRoutes: FastifyPluginAsync = async (fastify) => {
@@ -92,10 +95,10 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       const tId = (tenantResult.rows[0] as { id: string }).id;
 
       const userResult = await client.query(
-        `INSERT INTO users (email, password_hash, display_name, verification_grace_deadline, email_verified_at)
-         VALUES ($1, $2, $3, NOW() + INTERVAL '7 days', NULL)
+        `INSERT INTO users (email, password_hash, display_name, role, verification_grace_deadline, email_verified_at)
+         VALUES ($1, $2, $3, $4, NOW() + INTERVAL '7 days', NULL)
          RETURNING id, email`,
-        [body.email, passwordHash, displayName],
+        [body.email, passwordHash, displayName, body.role?.trim() || null],
       );
 
       const user = userResult.rows[0] as { id: string; email: string };
