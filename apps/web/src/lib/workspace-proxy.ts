@@ -14,14 +14,28 @@ interface ProxyApiRequestOptions {
 async function parseApiBody(response: Response): Promise<unknown> {
   const contentType = response.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
+    let json: unknown;
     try {
-      return await response.json();
+      json = await response.json();
     } catch {
       return { error: "Invalid JSON response from API." };
     }
+    // Fastify error responses look like:
+    //   { statusCode, error: "Forbidden", message: "You don't have permission ..." }
+    // Historically most UI call sites read `error` verbatim and display it, so
+    // they would surface the bare HTTP reason phrase ("Forbidden", "Not Found")
+    // instead of the human sentence. Swap in the message so every existing
+    // caller renders readable text without having to update 29 call sites.
+    if (!response.ok && json && typeof json === "object") {
+      const j = json as { error?: unknown; message?: unknown };
+      if (typeof j.message === "string" && j.message.trim().length > 0) {
+        return { ...json, error: j.message };
+      }
+    }
+    return json;
   }
   const text = await response.text();
-  return text.length > 0 ? { message: text } : {};
+  return text.length > 0 ? { message: text, error: text } : {};
 }
 
 // ── Session helpers ─────────────────────────────────────────────────────────
