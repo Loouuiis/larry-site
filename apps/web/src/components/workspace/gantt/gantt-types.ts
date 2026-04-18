@@ -39,6 +39,7 @@ export type ContextMenuAction =
   | "removeFromTimeline"
   | "addChild"
   | "addSubcategory"   // v4 — only on category rows; creates category with parentCategoryId
+  | "addCategory"      // v4 Slice 4.5 — only on project rows; creates a project-scoped category
   | "rename"
   | "changeColour"
   | "delete";

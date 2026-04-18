@@ -537,6 +537,7 @@ export function contextMenuItemsFor(args: {
       { id: "openDetail",     label: "Open project" },
       { id: "moveToCategory", label: "Move to category…", hasSubmenu: true },
       { id: "addChild",       label: "Add task" },
+      { id: "addCategory",    label: "Add category in this project" },
       { id: "delete",         label: "Delete", destructive: true },
     ];
   }
