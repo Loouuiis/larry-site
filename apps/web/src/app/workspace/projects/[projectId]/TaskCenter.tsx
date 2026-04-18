@@ -170,6 +170,10 @@ export function TaskCenter({ projectId, tasks, refresh, openTaskId }: TaskCenter
   const [editingDueDate, setEditingDueDate] = useState<string | null>(null);
   const [descriptions, setDescriptions] = useState<Record<string, string>>({});
   const [members, setMembers] = useState<Array<{ userId: string; name: string }>>([]);
+  // v4 subtask state — only one inline "+ Subtask" row is open at a time
+  const [addingSubtaskFor, setAddingSubtaskFor] = useState<string | null>(null);
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
+  const [subtaskSaving, setSubtaskSaving] = useState(false);
 
   /* ── fetch project members ─────────────────────────────── */
 
@@ -310,6 +314,29 @@ export function TaskCenter({ projectId, tasks, refresh, openTaskId }: TaskCenter
     setExpandedTasks((prev) => ({ ...prev, [taskId]: !prev[taskId] }));
   };
 
+  // v4 — create a subtask under a specific parent task. Defaults to medium
+  // priority + same default status as quick-add. Backend rejects deeper nesting.
+  const createSubtask = async (parentTaskId: string) => {
+    const title = newSubtaskTitle.trim();
+    if (!title || subtaskSaving) return;
+    setSubtaskSaving(true);
+    try {
+      const res = await fetch("/api/workspace/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, parentTaskId, title, priority: "medium" }),
+      });
+      if (!res.ok) console.error("Failed to create subtask:", res.status);
+      else {
+        setNewSubtaskTitle("");
+        // Leave the input open so the user can rapid-fire multiple subtasks
+      }
+    } finally {
+      setSubtaskSaving(false);
+      await refresh();
+    }
+  };
+
   const saveTask = async () => {
     if (!newTitle.trim() || saving || !creatingInGroup) return;
     setSaving(true);
@@ -372,11 +399,23 @@ export function TaskCenter({ projectId, tasks, refresh, openTaskId }: TaskCenter
     setCollapsed((prev) => ({ ...prev, [groupId]: !prev[groupId] }));
   };
 
-  /* ── group tasks ──────────────────────────────────────── */
+  /* ── group tasks (parents only in status groups; subtasks nest in parent) ── */
+
+  const subtasksByParent = (() => {
+    const map: Record<string, WorkspaceTask[]> = {};
+    for (const t of tasks) {
+      if (t.parentTaskId) {
+        (map[t.parentTaskId] ??= []).push(t);
+      }
+    }
+    return map;
+  })();
 
   const grouped = STATUS_GROUPS.map((group) => ({
     ...group,
-    tasks: tasks.filter((t) => group.statuses.includes(t.status)),
+    tasks: tasks.filter(
+      (t) => group.statuses.includes(t.status) && !t.parentTaskId,
+    ),
   }));
 
   /* ── empty state ──────────────────────────────────────── */
@@ -1096,7 +1135,104 @@ export function TaskCenter({ projectId, tasks, refresh, openTaskId }: TaskCenter
                             />
                           </div>
 
-                          <div className="flex justify-start mt-2">
+                          {/* ── subtasks (v4) ─────────────── */}
+                          <div className="mt-4">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--text-muted)" }}>
+                                Subtasks
+                                {subtasksByParent[task.id]?.length ? ` (${subtasksByParent[task.id].length})` : ""}
+                              </span>
+                              {addingSubtaskFor !== task.id && (
+                                <button
+                                  onClick={() => { setAddingSubtaskFor(task.id); setNewSubtaskTitle(""); }}
+                                  className="inline-flex items-center gap-1 text-[11px] font-semibold"
+                                  style={{ color: "var(--brand)", background: "transparent", border: 0, cursor: "pointer", padding: 0 }}
+                                >
+                                  <Plus size={11} />
+                                  Subtask
+                                </button>
+                              )}
+                            </div>
+
+                            {(subtasksByParent[task.id] ?? []).map((sub) => (
+                              <div
+                                key={sub.id}
+                                className="flex items-center gap-2 py-1.5"
+                                style={{ borderBottom: "1px solid var(--border-subtle, #faf8ff)" }}
+                              >
+                                <div
+                                  style={{
+                                    width: 14, height: 14, borderRadius: "50%", flexShrink: 0,
+                                    border: `1.5px solid ${STATUS_DOT_COLOURS[sub.status] ?? "#6c44f6"}`,
+                                    background: sub.status === "completed" ? (STATUS_DOT_COLOURS[sub.status] ?? "#22c55e") : "transparent",
+                                  }}
+                                />
+                                <span
+                                  className="flex-1 text-[13px]"
+                                  style={{
+                                    color: sub.status === "completed" ? "var(--text-muted)" : "var(--text-1)",
+                                    textDecoration: sub.status === "completed" ? "line-through" : "none",
+                                  }}
+                                >
+                                  {sub.title}
+                                </span>
+                                <span className="text-[11px]" style={{ color: dueDateColour(sub.dueDate, sub.status), minWidth: 50, textAlign: "right" }}>
+                                  {formatDueDate(sub.dueDate)}
+                                </span>
+                                <button
+                                  onClick={() => deleteTask(sub.id)}
+                                  aria-label="Delete subtask"
+                                  className="inline-flex items-center"
+                                  style={{ color: "var(--text-muted)", background: "transparent", border: 0, cursor: "pointer", padding: "2px 4px", borderRadius: 3 }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.color = "#ef4444"; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            ))}
+
+                            {addingSubtaskFor === task.id && (
+                              <div className="flex items-center gap-2 py-1.5">
+                                <div style={{ width: 14, height: 14, borderRadius: "50%", border: "1.5px solid var(--border)", flexShrink: 0 }} />
+                                <input
+                                  type="text"
+                                  autoFocus
+                                  value={newSubtaskTitle}
+                                  placeholder="Subtask title..."
+                                  onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") { e.preventDefault(); void createSubtask(task.id); }
+                                    if (e.key === "Escape") { setAddingSubtaskFor(null); setNewSubtaskTitle(""); }
+                                  }}
+                                  className="flex-1 text-[13px] outline-none"
+                                  style={{ background: "transparent", border: 0, color: "var(--text-1)" }}
+                                />
+                                <button
+                                  onClick={() => void createSubtask(task.id)}
+                                  disabled={!newSubtaskTitle.trim() || subtaskSaving}
+                                  className="text-[11px] font-semibold"
+                                  style={{
+                                    color: "#fff", background: "#6c44f6", border: 0, borderRadius: 4,
+                                    padding: "3px 8px", cursor: "pointer",
+                                    opacity: (!newSubtaskTitle.trim() || subtaskSaving) ? 0.5 : 1,
+                                  }}
+                                >
+                                  {subtaskSaving ? "..." : "Add"}
+                                </button>
+                                <button
+                                  onClick={() => { setAddingSubtaskFor(null); setNewSubtaskTitle(""); }}
+                                  aria-label="Cancel"
+                                  className="text-[11px]"
+                                  style={{ color: "var(--text-muted)", background: "transparent", border: 0, cursor: "pointer", padding: "3px 4px" }}
+                                >
+                                  Esc
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex justify-start mt-4">
                             <button
                               onClick={() => deleteTask(task.id)}
                               className="inline-flex items-center gap-1.5 text-[12px]"
