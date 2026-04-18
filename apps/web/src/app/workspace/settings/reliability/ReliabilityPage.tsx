@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { getTimezone } from "@/lib/timezone-context";
 import type {
   CanonicalEventRuntimeStatus,
   WorkspaceCanonicalEventRuntimeEntry,
@@ -30,7 +31,7 @@ const EMPTY_SUMMARY: WorkspaceCanonicalEventRuntimeSummary = {
 
 function formatDate(value: string | null | undefined): string {
   if (!value) return "n/a";
-  return new Date(value).toLocaleString("en-GB", {
+  return new Date(value).toLocaleString("en-GB", { timeZone: getTimezone(),
     day: "2-digit",
     month: "short",
     year: "numeric",

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bell, Check, RefreshCw, Search } from "lucide-react";
+import { getTimezone } from "@/lib/timezone-context";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,7 @@ function formatRelativeTime(value?: string | null): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days}d ago`;
-  return new Date(value).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  return new Date(value).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: getTimezone() });
 }
 
 function getNotificationIcon(source: string) {

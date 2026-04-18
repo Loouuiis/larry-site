@@ -17,6 +17,7 @@ import { triggerBoundedWorkspaceRefresh } from "./refresh";
 import { useTranscriptProcessing } from "./useTranscriptProcessing";
 import { VerificationBanner } from "@/components/auth/VerificationBanner";
 import { GlobalSearch } from "@/components/GlobalSearch";
+import { TimezoneProvider } from "@/lib/timezone-context";
 
 async function readJson<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -148,6 +149,7 @@ export function WorkspaceShell({ children, userEmail, emailVerified, avatarUrl, 
   }, [chatProjectId, startTranscriptProcessing, transcript]);
 
   return (
+    <TimezoneProvider>
     <QueryClientProvider client={getQueryClient()}>
     <ToastProvider>
     <WorkspaceChromeProvider
@@ -246,5 +248,6 @@ export function WorkspaceShell({ children, userEmail, emailVerified, avatarUrl, 
     <GlobalSearch />
     </ToastProvider>
     </QueryClientProvider>
+    </TimezoneProvider>
   );
 }

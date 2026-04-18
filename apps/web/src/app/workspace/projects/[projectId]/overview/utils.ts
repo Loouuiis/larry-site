@@ -1,3 +1,5 @@
+import { getTimezone } from "@/lib/timezone-context";
+
 export function formatRelative(value?: string | null): string {
   if (!value) return "Just now";
   const delta = Date.now() - new Date(value).getTime();
@@ -8,5 +10,5 @@ export function formatRelative(value?: string | null): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   if (days < 7) return `${days}d ago`;
-  return new Date(value).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  return new Date(value).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: getTimezone() });
 }

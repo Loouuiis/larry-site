@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { X, FileText, Copy, Check, Download } from "lucide-react";
+import { getTimezone } from "@/lib/timezone-context";
 import type { LarryDocument } from "@/app/dashboard/types";
 
 interface DocumentViewerDrawerProps {
@@ -28,7 +29,7 @@ const STATE_BADGE: Record<string, { label: string; color: string; bg: string }> 
 function formatDate(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: getTimezone() });
 }
 
 function ContentView({ content, docType }: { content: string; docType: string }) {

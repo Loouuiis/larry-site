@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getTimezone } from "@/lib/timezone-context";
 import { ArrowLeft, Copy, Check, Download, FileDown } from "lucide-react";
 
 interface DocumentData {
@@ -37,7 +38,7 @@ const STATE_BADGE: Record<string, { label: string; color: string; bg: string }> 
 function formatDate(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: getTimezone() });
 }
 
 export function DocumentViewPage({ id, isLarry }: { id: string; isLarry: boolean }) {

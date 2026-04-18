@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { getTimezone } from "@/lib/timezone-context";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Activity, CheckCircle2, FolderKanban, Mail, RefreshCw, Search, Layers } from "lucide-react";
@@ -21,6 +22,7 @@ function formatDate(value?: string | null): string {
     day: "numeric",
     month: "short",
     year: "numeric",
+    timeZone: getTimezone(),
   });
 }
 

@@ -3,6 +3,7 @@ import type {
   GanttNode, GanttTask, GanttTaskStatus, PortfolioTimelineResponse, StatusChipData, ZoomLevel,
 } from "./gantt-types";
 import { DEFAULT_CATEGORY_COLOUR, ROW_HEIGHT, ROW_HEIGHT_TASK } from "./gantt-types";
+import { getTimezone } from "@/lib/timezone-context";
 
 /* ─── DB status normalisation ──────────────────────────────────────── */
 
@@ -336,7 +337,7 @@ export function generateDateAxis(range: TimelineRange, zoom: ZoomLevel): DateAxi
     const endPct = Math.min(100, dateToPct(spanEnd, range));
     if (endPct > startPct) {
       months.push({
-        label: monthCursor.toLocaleDateString("en-GB", { month: "short", year: "numeric" }).toUpperCase(),
+        label: monthCursor.toLocaleDateString("en-GB", { month: "short", year: "numeric", timeZone: getTimezone() }).toUpperCase(),
         startPct,
         endPct,
       });
@@ -349,7 +350,7 @@ export function generateDateAxis(range: TimelineRange, zoom: ZoomLevel): DateAxi
   if (zoom === "week") {
     while (dayCursor <= range.end) {
       days.push({
-        label: dayCursor.toLocaleDateString("en-GB", { weekday: "short", day: "numeric" }),
+        label: dayCursor.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", timeZone: getTimezone() }),
         pct: dateToPct(dayCursor, range),
         isMonthStart: dayCursor.getDate() === 1,
       });

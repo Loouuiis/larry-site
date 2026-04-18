@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { getTimezone } from "@/lib/timezone-context";
 import type { WorkspaceHomeData, WorkspaceTask } from "@/app/dashboard/types";
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -340,6 +341,7 @@ export function WorkspaceMyWork() {
                                 ? new Date(task.dueDate + "T12:00:00").toLocaleDateString("en-GB", {
                                     day: "numeric",
                                     month: "short",
+                                    timeZone: getTimezone(),
                                   })
                                 : "—"}
                             </span>

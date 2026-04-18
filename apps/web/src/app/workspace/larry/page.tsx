@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence } from "framer-motion";
+import { getTimezone } from "@/lib/timezone-context";
 import {
   Clock3,
   Plus,
@@ -50,7 +51,7 @@ function formatDate(dateStr?: string | null): string {
   const diffHours = Math.floor(diffMins / 60);
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffHours < 48) return "Yesterday";
-  return value.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  return value.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: getTimezone() });
 }
 
 function getConversationTitle(conversation: LarryConversation): string {

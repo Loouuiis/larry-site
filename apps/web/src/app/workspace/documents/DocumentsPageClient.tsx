@@ -11,6 +11,7 @@ import {
   Upload,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
+import { getTimezone } from "@/lib/timezone-context";
 
 import type { Folder, FolderBreadcrumbItem, LarryDocument } from "@/app/dashboard/types";
 import { FolderBreadcrumb } from "./FolderBreadcrumb";
@@ -91,7 +92,7 @@ interface RenameState {
 function formatDate(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "\u2014";
-  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: getTimezone() });
 }
 
 const GRID_COLS = "minmax(0,1fr) 100px 100px";

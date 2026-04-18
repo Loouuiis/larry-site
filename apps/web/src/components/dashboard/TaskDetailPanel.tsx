@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { getTimezone } from "@/lib/timezone-context";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -618,7 +619,7 @@ export function TaskDetailPanel({ task, onClose, projectId, onSave, onDelete }: 
                 <span className="text-[var(--text-disabled)] w-16 shrink-0 text-left">Deadline</span>
                 <span className="font-medium text-[var(--text-2)]">
                   {deadlineDraft
-                    ? new Date(deadlineDraft + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short" })
+                    ? new Date(deadlineDraft + "T00:00:00").toLocaleDateString("en-GB", { day: "2-digit", month: "short", timeZone: getTimezone() })
                     : task.deadline || "Set date"}
                 </span>
                 <ChevronDown size={11} className="ml-auto text-[var(--text-disabled)]" />

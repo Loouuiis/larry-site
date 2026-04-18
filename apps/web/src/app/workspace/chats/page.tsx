@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getTimezone } from "@/lib/timezone-context";
 import { MessageSquare, Plus, Users, User, Layers } from "lucide-react";
 import { PageState } from "@/components/PageState";
 import {
@@ -24,7 +25,7 @@ function formatDate(dateStr?: string | null): string {
   const diffHours = Math.floor(diffMins / 60);
   if (diffHours < 24) return `${diffHours}h`;
   if (diffHours < 48) return "Yesterday";
-  return value.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  return value.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: getTimezone() });
 }
 
 function conversationDisplayName(c: ColleagueConversation): string {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { getTimezone } from "@/lib/timezone-context";
 import { createPortal } from "react-dom";
 import { ChevronDown, ChevronRight, ListChecks, Plus, Trash2 } from "lucide-react";
 import type { WorkspaceTask } from "@/app/dashboard/types";
@@ -87,7 +88,7 @@ function formatDueDate(value: string | null): string {
   const d = parseDate(value);
   if (isNaN(d.getTime())) return "—";
   const day = String(d.getDate()).padStart(2, "0");
-  const month = d.toLocaleDateString("en-GB", { month: "short" });
+  const month = d.toLocaleDateString("en-GB", { month: "short", timeZone: getTimezone() });
   return `${day} ${month}`;
 }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useRef } from "react";
+import { getTimezone } from "@/lib/timezone-context";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
@@ -142,7 +143,7 @@ export default function CalendarPage() {
   const month = viewDate.getMonth();
   const grid = useMemo(() => getMonthGrid(year, month), [year, month]);
 
-  const monthLabel = viewDate.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  const monthLabel = viewDate.toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: getTimezone() });
 
   const prevMonth = () => setViewDate(new Date(year, month - 1, 1));
   const nextMonth = () => setViewDate(new Date(year, month + 1, 1));
@@ -378,7 +379,7 @@ export default function CalendarPage() {
         {/* Day detail panel */}
         {selectedDate && (() => {
           const dayEvents = events.filter((e) => e.date === selectedDate);
-          const dateLabel = new Date(selectedDate + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+          const dateLabel = new Date(selectedDate + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: getTimezone() });
           return (
             <div
               style={{

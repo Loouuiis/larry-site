@@ -58,6 +58,8 @@ export default function GeneralSettingsPage() {
 
   function handleSaveTimezone() {
     localStorage.setItem("larry:timezone", timezoneTemp);
+    // Notify the TimezoneContext in the same tab (storage events don't fire for same-tab writes).
+    window.dispatchEvent(new StorageEvent("storage", { key: "larry:timezone", newValue: timezoneTemp }));
     setTimezone(timezoneTemp);
     setTimezoneEditing(false);
     setTimezoneSaved(true);

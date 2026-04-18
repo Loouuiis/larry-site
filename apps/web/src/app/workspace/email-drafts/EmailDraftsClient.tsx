@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { getTimezone } from "@/lib/timezone-context";
 import Link from "next/link";
 import {
   Mail, Send, ChevronDown, ChevronUp, Check,
@@ -23,7 +24,7 @@ interface EmailDraft {
 function formatDate(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: getTimezone() });
 }
 
 function StateBadge({ state }: { state: "draft" | "sent" }) {

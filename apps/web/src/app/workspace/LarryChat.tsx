@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { getTimezone } from "@/lib/timezone-context";
 import ReactMarkdown from "react-markdown";
 import { ChevronDown, Sparkles, Menu, Plus, X } from "lucide-react";
 import type { WorkspaceLarryEvent } from "@/app/dashboard/types";
@@ -26,7 +27,7 @@ function formatRelativeTime(dateStr?: string | null): string {
   const diffHours = Math.floor(diffMins / 60);
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffHours < 48) return "Yesterday";
-  return new Date(dateStr).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  return new Date(dateStr).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: getTimezone() });
 }
 
 function getConversationTitle(conversation: LarryConversation): string {

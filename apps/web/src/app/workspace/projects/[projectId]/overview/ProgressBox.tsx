@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { getTimezone } from "@/lib/timezone-context";
 import type {
   WorkspaceTask,
   WorkspaceTimeline,
@@ -91,7 +92,7 @@ export function ProgressBox({ tasks, timeline, targetDate, members, avgRiskScore
 
   const formatTarget = (date?: string | null) => {
     if (!date) return null;
-    return new Date(date).toLocaleDateString("en-GB", { month: "short", year: "numeric" });
+    return new Date(date).toLocaleDateString("en-GB", { month: "short", year: "numeric", timeZone: getTimezone() });
   };
 
   return (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { getTimezone } from "@/lib/timezone-context";
 import { X, FileText, Zap, Copy, Check } from "lucide-react";
 
 export interface MeetingDetail {
@@ -26,7 +27,7 @@ function formatDate(meetingDate: string | null, createdAt: string): string {
   const raw = meetingDate ?? createdAt;
   const d = new Date(raw);
   if (isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: getTimezone() });
 }
 
 const SPEAKER_RE = /^([A-Za-z][^:]{0,40}):\s+(.+)$/;

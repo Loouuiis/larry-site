@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { getTimezone } from "@/lib/timezone-context";
 import type { WorkspaceTask, WorkspaceLarryEvent } from "@/app/dashboard/types";
 import { formatRelative } from "./utils";
 
@@ -210,7 +211,7 @@ export function ProjectInfoTabs({
                   )}
                   {task.dueDate && (
                     <span className="shrink-0 text-[10px]" style={{ color: "var(--text-muted)" }}>
-                      Due {new Date(task.dueDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                      Due {new Date(task.dueDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: getTimezone() })}
                     </span>
                   )}
                 </button>

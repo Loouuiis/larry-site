@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { getTimezone } from "@/lib/timezone-context";
 import {
   Activity,
   ArrowRight,
@@ -94,6 +95,7 @@ function formatDate(value?: string | null): string {
     day: "numeric",
     month: "short",
     year: "numeric",
+    timeZone: getTimezone(),
   });
 }
 
@@ -407,7 +409,7 @@ function ProjectCalendar({ projectId }: { projectId: string }) {
   }
 
   const grid = useMemo(() => getMonthGrid(year, month), [year, month]);
-  const monthLabel = viewDate.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  const monthLabel = viewDate.toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: getTimezone() });
 
   return (
     <div className="space-y-4">
@@ -585,7 +587,7 @@ function ProjectCalendar({ projectId }: { projectId: string }) {
           >
             <div className="flex items-center justify-between">
               <h4 className="text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
-                {new Date(selectedDate + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+                {new Date(selectedDate + "T00:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: getTimezone() })}
               </h4>
               <div className="flex items-center gap-3">
                 {!creating && (
@@ -749,7 +751,7 @@ const DOC_STATE_COLORS: Record<LarryDocState, { color: string; bg: string }> = {
 function formatFilesDate(iso: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: getTimezone() });
 }
 
 interface RegularDocument {

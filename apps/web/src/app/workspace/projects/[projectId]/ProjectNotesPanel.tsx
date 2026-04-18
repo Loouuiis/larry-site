@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { getTimezone } from "@/lib/timezone-context";
 import type {
   WorkspaceProjectMember,
   WorkspaceProjectMembers,
@@ -21,6 +22,7 @@ function formatRelativeTime(value: string): string {
     day: "numeric",
     month: "short",
     year: "numeric",
+    timeZone: getTimezone(),
   });
 }
 
