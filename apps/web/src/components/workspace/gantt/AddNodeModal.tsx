@@ -11,6 +11,11 @@ interface Props {
   parentTaskId?: string;      // for subtask
   parentCategoryId?: string;  // for project AND subcategory (category-nested-under-category)
   scopedProjectId?: string;   // v4 — for category mode: creates a project-scoped category
+  // v4 bug #7 — when creating a task FROM the Timeline, both dates must be set
+  // or the task would be filtered out of the Gantt anyway (server excludes
+  // null-date tasks). Tells the modal to show both fields, block submit until
+  // both are filled, and show a helper explaining why.
+  requireDates?: boolean;
   onClose: () => void;
   onCreated: () => Promise<void> | void;
 }
@@ -22,10 +27,12 @@ const inputStyle: React.CSSProperties = {
 
 export function AddNodeModal({
   mode, parentProjectId, parentTaskId, parentCategoryId, scopedProjectId,
+  requireDates = false,
   onClose, onCreated,
 }: Props) {
   const [title, setTitle] = useState("");
   const [colour, setColour] = useState<string>(DEFAULT_SWATCH_HEX);
+  const [startDate, setStartDate] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -33,8 +40,12 @@ export function AddNodeModal({
 
   useEffect(() => { titleRef.current?.focus(); }, []);
 
+  const isTaskMode = mode === "task" || mode === "subtask";
+  const datesMissing = requireDates && isTaskMode && (!startDate || !dueDate);
+  const canSubmit = title.trim().length > 0 && !saving && !datesMissing;
+
   async function handleSave() {
-    if (!title.trim() || saving) return;
+    if (!canSubmit) return;
     setSaving(true); setErr(null);
     try {
       if (mode === "category") {
@@ -59,6 +70,7 @@ export function AddNodeModal({
         const body: Record<string, unknown> = {
           projectId: parentProjectId, title: title.trim(),
         };
+        if (startDate) body.startDate = startDate;
         if (dueDate) body.dueDate = dueDate;
         if (mode === "subtask") body.parentTaskId = parentTaskId;
         const res = await fetch("/api/workspace/tasks", {
@@ -114,17 +126,42 @@ export function AddNodeModal({
               <CategorySwatchPicker value={colour} onChange={setColour} />
             </div>
           )}
-          {(mode === "task" || mode === "subtask") && (
-            <div>
-              <p style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, color: "var(--text-muted)", margin: 0, marginBottom: 6 }}>Due date</p>
-              <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} style={inputStyle} />
-            </div>
+          {isTaskMode && (
+            <>
+              <div style={{ display: "flex", gap: 10 }}>
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, color: "var(--text-muted)", margin: 0, marginBottom: 6 }}>
+                    Start date{requireDates ? " *" : ""}
+                  </p>
+                  <input
+                    type="date" value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    style={inputStyle}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, color: "var(--text-muted)", margin: 0, marginBottom: 6 }}>
+                    Due date{requireDates ? " *" : ""}
+                  </p>
+                  <input
+                    type="date" value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
+              {requireDates && datesMissing && (
+                <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0 }}>
+                  Timeline tasks need both a start date and a due date. Without them the bar has nothing to anchor to, so the task would stay invisible on the Timeline.
+                </p>
+              )}
+            </>
           )}
           {err && <p style={{ color: "#e84c6f", fontSize: 12, margin: 0 }}>{err}</p>}
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 20, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
           <button onClick={onClose} style={{ padding: "8px 14px", fontSize: 13, fontWeight: 500, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, color: "var(--text-2)", cursor: "pointer" }}>Cancel</button>
-          <button onClick={() => void handleSave()} disabled={!title.trim() || saving} style={{ padding: "8px 14px", fontSize: 13, fontWeight: 500, background: "#6c44f6", border: 0, borderRadius: 8, color: "#fff", cursor: "pointer", opacity: (!title.trim() || saving) ? 0.5 : 1 }}>
+          <button onClick={() => void handleSave()} disabled={!canSubmit} style={{ padding: "8px 14px", fontSize: 13, fontWeight: 500, background: "#6c44f6", border: 0, borderRadius: 8, color: "#fff", cursor: "pointer", opacity: canSubmit ? 1 : 0.5 }}>
             {saving ? "Saving..." : "Create"}
           </button>
         </div>
