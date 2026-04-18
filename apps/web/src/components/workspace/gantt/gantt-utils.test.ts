@@ -374,6 +374,160 @@ describe("statusChipFor", () => {
   });
 });
 
+/* ─── v4 Slice 4 — validateDrop ────────────────────────────────────── */
+
+import { validateDrop, parseDndKey, type DropContext } from "./gantt-utils";
+
+describe("parseDndKey", () => {
+  it("parses every prefix", () => {
+    expect(parseDndKey("dnd-cat:abc")).toEqual({ kind: "cat", id: "abc" });
+    expect(parseDndKey("dnd-proj:def")).toEqual({ kind: "proj", id: "def" });
+    expect(parseDndKey("dnd-task:ghi")).toEqual({ kind: "task", id: "ghi" });
+    expect(parseDndKey("dnd-sub:jkl")).toEqual({ kind: "sub", id: "jkl" });
+    expect(parseDndKey("garbage")).toBeNull();
+  });
+});
+
+function mkCtx(overrides: Partial<DropContext> = {}): DropContext {
+  return {
+    categoriesById: overrides.categoriesById ?? new Map(),
+    tasksById:      overrides.tasksById      ?? new Map(),
+  };
+}
+
+describe("validateDrop", () => {
+  it("rejects self-drops", () => {
+    const r = validateDrop("dnd-cat:c1", "dnd-cat:c1", mkCtx());
+    expect(r.ok).toBe(false);
+  });
+
+  it("rejects unrecognised ids", () => {
+    const r = validateDrop("junk", "dnd-cat:c1", mkCtx());
+    expect(r.ok).toBe(false);
+  });
+
+  it("rejects synthetic Uncategorised/__root__ on either side", () => {
+    expect(validateDrop("dnd-cat:uncat", "dnd-cat:c1", mkCtx()).ok).toBe(false);
+    expect(validateDrop("dnd-cat:c1", "dnd-cat:uncat", mkCtx()).ok).toBe(false);
+    expect(validateDrop("dnd-cat:c1", "dnd-cat:__root__", mkCtx()).ok).toBe(false);
+  });
+
+  it("category → category emits moveCategory (reparent)", () => {
+    const r = validateDrop("dnd-cat:c1", "dnd-cat:c2", mkCtx({
+      categoriesById: new Map([
+        ["c1", { parentCategoryId: null, projectId: null }],
+        ["c2", { parentCategoryId: null, projectId: null }],
+      ]),
+    }));
+    expect(r).toEqual({
+      ok: true,
+      effect: { kind: "moveCategory", sourceId: "c1", newParentCategoryId: "c2", newProjectId: null },
+    });
+  });
+
+  it("category → descendant-of-itself rejected (cycle guard)", () => {
+    // c2 is a descendant of c1; dragging c1 onto c2 must be rejected.
+    const r = validateDrop("dnd-cat:c1", "dnd-cat:c2", mkCtx({
+      categoriesById: new Map([
+        ["c1", { parentCategoryId: null, projectId: null }],
+        ["c2", { parentCategoryId: "c1", projectId: null }],
+      ]),
+    }));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/descendant/i);
+  });
+
+  it("category → project emits moveCategory with projectId set", () => {
+    const r = validateDrop("dnd-cat:c1", "dnd-proj:p1", mkCtx());
+    expect(r).toEqual({
+      ok: true,
+      effect: { kind: "moveCategory", sourceId: "c1", newParentCategoryId: null, newProjectId: "p1" },
+    });
+  });
+
+  it("project → category emits moveProject", () => {
+    const r = validateDrop("dnd-proj:p1", "dnd-cat:c1", mkCtx());
+    expect(r).toEqual({
+      ok: true,
+      effect: { kind: "moveProject", sourceId: "p1", newCategoryId: "c1" },
+    });
+  });
+
+  it("task → task (target = top-level task) makes source its subtask", () => {
+    const r = validateDrop("dnd-task:t1", "dnd-task:t2", mkCtx({
+      tasksById: new Map([
+        ["t1", { projectId: "p1", parentTaskId: null }],
+        ["t2", { projectId: "p1", parentTaskId: null }],
+      ]),
+    }));
+    expect(r).toEqual({
+      ok: true,
+      effect: { kind: "moveTask", sourceId: "t1", newProjectId: "p1", newParentTaskId: "t2" },
+    });
+  });
+
+  it("task → subtask makes source a sibling (same parent)", () => {
+    const r = validateDrop("dnd-task:t1", "dnd-sub:t3", mkCtx({
+      tasksById: new Map([
+        ["t1", { projectId: "p1", parentTaskId: null }],
+        ["t2", { projectId: "p1", parentTaskId: null }],
+        ["t3", { projectId: "p1", parentTaskId: "t2" }],
+      ]),
+    }));
+    expect(r).toEqual({
+      ok: true,
+      effect: { kind: "moveTask", sourceId: "t1", newProjectId: "p1", newParentTaskId: "t2" },
+    });
+  });
+
+  it("task → task cross-project is allowed", () => {
+    const r = validateDrop("dnd-task:t1", "dnd-task:t2", mkCtx({
+      tasksById: new Map([
+        ["t1", { projectId: "p1", parentTaskId: null }],
+        ["t2", { projectId: "p2", parentTaskId: null }],
+      ]),
+    }));
+    expect(r).toEqual({
+      ok: true,
+      effect: { kind: "moveTask", sourceId: "t1", newProjectId: "p2", newParentTaskId: "t2" },
+    });
+  });
+
+  it("task → project clears parent task", () => {
+    const r = validateDrop("dnd-task:t1", "dnd-proj:p2", mkCtx());
+    expect(r).toEqual({
+      ok: true,
+      effect: { kind: "moveTask", sourceId: "t1", newProjectId: "p2", newParentTaskId: null },
+    });
+  });
+
+  it("subtask → project clears parent task", () => {
+    const r = validateDrop("dnd-sub:t3", "dnd-proj:p2", mkCtx());
+    expect(r).toEqual({
+      ok: true,
+      effect: { kind: "moveTask", sourceId: "t3", newProjectId: "p2", newParentTaskId: null },
+    });
+  });
+
+  it("rejects unsupported combinations (project → project, project → task, category → task)", () => {
+    expect(validateDrop("dnd-proj:p1", "dnd-proj:p2", mkCtx()).ok).toBe(false);
+    expect(validateDrop("dnd-proj:p1", "dnd-task:t1", mkCtx()).ok).toBe(false);
+    expect(validateDrop("dnd-cat:c1",  "dnd-task:t1", mkCtx()).ok).toBe(false);
+  });
+
+  it("rejects task self-parenting (task onto its own subtask)", () => {
+    const r = validateDrop("dnd-task:t1", "dnd-sub:t2", mkCtx({
+      tasksById: new Map([
+        ["t1", { projectId: "p1", parentTaskId: null }],
+        ["t2", { projectId: "p1", parentTaskId: "t1" }],
+      ]),
+    }));
+    // Target subtask's parent is t1 (= source). Source would become its own
+    // sibling-of-self, i.e. child of t1 (= itself). Must reject.
+    expect(r.ok).toBe(false);
+  });
+});
+
 describe("darken", () => {
   it("returns a lower-RGB hex for the given percentage", () => {
     // #808080 (128) → -12% of 128 ≈ -15 → 113 (0x71)
