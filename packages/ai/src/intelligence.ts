@@ -805,21 +805,71 @@ function mockIntelligence(snapshot: ProjectSnapshot, hint: string | null): Intel
   return { briefing, autoActions, suggestedActions };
 }
 
+// ── Provider error taxonomy ───────────────────────────────────────────────────
+
+export type IntelligenceErrorCode =
+  | "quota_exhausted_daily"
+  | "billing_blocked"
+  | "transient"
+  | "other";
+
+export class ProviderError extends Error {
+  readonly code: IntelligenceErrorCode;
+  readonly provider: string;
+  readonly retryAfter?: number;
+  constructor(code: IntelligenceErrorCode, provider: string, retryAfter?: number) {
+    super(`LLM provider error: ${code} (provider=${provider})`);
+    this.name = "ProviderError";
+    this.code = code;
+    this.provider = provider;
+    this.retryAfter = retryAfter;
+  }
+}
+
+export function classifyProviderError(err: unknown): { code: IntelligenceErrorCode; retryAfter?: number } {
+  if (err != null && typeof err === "object") {
+    const e = err as Record<string, unknown>;
+    const status = typeof e.statusCode === "number" ? e.statusCode : undefined;
+    if (status === 429) {
+      let retryAfter: number | undefined;
+      const headers = e.responseHeaders as Record<string, string> | undefined;
+      if (headers) {
+        const ra = headers["retry-after"] ?? headers["Retry-After"];
+        if (typeof ra === "string") {
+          const parsed = parseInt(ra, 10);
+          if (!isNaN(parsed)) retryAfter = parsed;
+        }
+      }
+      return { code: "quota_exhausted_daily", retryAfter };
+    }
+    if (status === 403) return { code: "billing_blocked" };
+    if (status != null && (status >= 500 || status === 408 || status === 504)) {
+      return { code: "transient" };
+    }
+  }
+  if (err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError")) {
+    return { code: "transient" };
+  }
+  return { code: "other" };
+}
+
 // ── Main export ───────────────────────────────────────────────────────────────
 
 /**
  * Run Larry's intelligence on a project snapshot.
+ * Fails over to fallbackConfig on 429 or transient errors from the primary provider.
  *
  * @param config  LLM provider config — pass from getApiEnv() or getWorkerEnv()
  * @param snapshot Full project context assembled by getProjectSnapshot()
  * @param hint    What triggered this run. E.g. "user said: add a task for X", "scheduled scan", "user logged in"
- * @returns Structured intelligence result with briefing, auto-actions, and suggested actions
- * @throws If the LLM API call fails or the response cannot be parsed
+ * @param fallbackConfig  Secondary provider to try if the primary returns 429 or a transient error
+ * @throws ProviderError with a classified code if all providers fail
  */
 export async function runIntelligence(
   config: IntelligenceConfig,
   snapshot: ProjectSnapshot,
-  hint: string | null = null
+  hint: string | null = null,
+  fallbackConfig?: IntelligenceConfig,
 ): Promise<IntelligenceResult> {
   if (config.provider === "mock" || !config.apiKey) {
     return mockIntelligence(snapshot, hint);
@@ -828,17 +878,43 @@ export async function runIntelligence(
   const systemPrompt = buildIntelligenceSystemPrompt();
   const userPrompt = buildUserPrompt(snapshot, hint);
 
-  const { object } = await generateObject({
-    model: createModel(config),
-    schema: IntelligenceResultSchema,
-    system: systemPrompt,
-    prompt: userPrompt,
-    temperature: 0.2,
-    abortSignal: AbortSignal.timeout(45_000),
-    ...getStructuredOutputOptions(config),
-  });
+  const callProvider = async (cfg: IntelligenceConfig) => {
+    const { object } = await generateObject({
+      model: createModel(cfg),
+      schema: IntelligenceResultSchema,
+      system: systemPrompt,
+      prompt: userPrompt,
+      temperature: 0.2,
+      abortSignal: AbortSignal.timeout(45_000),
+      ...getStructuredOutputOptions(cfg),
+    });
+    return object as IntelligenceResult;
+  };
 
-  return object as IntelligenceResult;
+  try {
+    return await callProvider(config);
+  } catch (primaryErr) {
+    const { code, retryAfter } = classifyProviderError(primaryErr);
+    const canFailover =
+      (code === "quota_exhausted_daily" || code === "transient") &&
+      fallbackConfig != null &&
+      fallbackConfig.provider !== "mock" &&
+      fallbackConfig.apiKey != null;
+
+    if (canFailover && fallbackConfig) {
+      console.warn(
+        `[runIntelligence] failover: primary=${config.provider} code=${code} -> fallback=${fallbackConfig.provider}`
+      );
+      try {
+        return await callProvider(fallbackConfig);
+      } catch (fallbackErr) {
+        const fb = classifyProviderError(fallbackErr);
+        throw new ProviderError(fb.code, `${config.provider}+${fallbackConfig.provider}`, fb.retryAfter);
+      }
+    }
+
+    throw new ProviderError(code, config.provider, retryAfter);
+  }
 }
 
 // Re-export types for consumers that import from @larry/ai

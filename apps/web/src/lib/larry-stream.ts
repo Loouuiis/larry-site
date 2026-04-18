@@ -21,7 +21,7 @@ export type LarryChatStreamEvent =
       suggestionCount: number;
       linkedActions?: WorkspaceLarryEvent[];
     }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string; code?: string };
 
 export async function* parseLarrySseStream(
   body: ReadableStream<Uint8Array>

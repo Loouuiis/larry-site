@@ -965,7 +965,10 @@ export {
   runIntelligence,
   buildIntelligenceSystemPrompt,
   IntelligenceResultSchema,
+  ProviderError,
+  classifyProviderError,
 } from "./intelligence.js";
+export type { IntelligenceErrorCode } from "./intelligence.js";
 export { getStructuredOutputOptions } from "./structured.js";
 export type { StructuredOutputOptions } from "./structured.js";
 

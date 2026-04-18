@@ -3,6 +3,8 @@ import type { FastifyRequest } from "fastify";
 import { z } from "zod";
 import {
   runIntelligence,
+  ProviderError,
+  classifyProviderError,
   streamLarryChat,
   streamModifyChat,
   detectInjectionAttempt,
@@ -106,6 +108,16 @@ function buildIntelligenceConfig(config: ReturnType<typeof getApiEnv>): Intellig
     return { provider: "groq", apiKey: config.GROQ_API_KEY, model: config.GROQ_MODEL };
   }
   return { provider: "mock", model: "mock" };
+}
+
+function buildFallbackIntelligenceConfig(config: ReturnType<typeof getApiEnv>): IntelligenceConfig | undefined {
+  if (config.MODEL_PROVIDER === "gemini" && config.GROQ_API_KEY) {
+    return { provider: "groq", apiKey: config.GROQ_API_KEY, model: config.GROQ_MODEL };
+  }
+  if (config.MODEL_PROVIDER === "groq" && config.GEMINI_API_KEY) {
+    return { provider: "gemini", apiKey: config.GEMINI_API_KEY, model: config.GEMINI_MODEL };
+  }
+  return undefined;
 }
 
 const ConversationQuerySchema = z.object({
@@ -3114,6 +3126,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const config = buildIntelligenceConfig(fastify.config);
+      const fallbackConfig = buildFallbackIntelligenceConfig(fastify.config);
       await reserveTokens({
         tenantId,
         provider: config.provider,
@@ -3124,12 +3137,19 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         result = await runIntelligence(
           config,
           snapshot,
-          `user said: "${message}"${conversationHistoryHint}${pendingClause}${guidanceHint ? `\n\n${guidanceHint}` : ""}`
+          `user said: "${message}"${conversationHistoryHint}${pendingClause}${guidanceHint ? `\n\n${guidanceHint}` : ""}`,
+          fallbackConfig,
         );
       } catch (error) {
-        const messageText = error instanceof Error ? error.message : String(error);
         request.log.error({ err: error, tenantId, projectId }, "runIntelligence failed");
-        throw fastify.httpErrors.serviceUnavailable(`Larry intelligence error: ${messageText}`);
+        if (error instanceof ProviderError) {
+          return reply.code(503).send({
+            error: "Larry is temporarily unavailable",
+            errorCode: error.code,
+            ...(error.retryAfter != null ? { retryAfter: error.retryAfter } : {}),
+          });
+        }
+        throw fastify.httpErrors.serviceUnavailable("Larry intelligence error");
       }
 
       if (result.contextUpdate && projectId) {
@@ -3876,9 +3896,9 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           linkedActions: [],
         });
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Streaming error";
-        request.log.error({ err, tenantId, projectId }, "streamLarryChat generator failed");
-        write({ type: "error", message: msg });
+        const { code } = classifyProviderError(err);
+        request.log.error({ err, code, tenantId, projectId }, "streamLarryChat generator failed");
+        write({ type: "error", message: "Larry is temporarily unavailable", code });
       } finally {
         if (!reply.raw.destroyed) {
           reply.raw.end();
