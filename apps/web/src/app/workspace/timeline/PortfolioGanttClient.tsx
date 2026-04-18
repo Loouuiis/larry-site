@@ -25,6 +25,7 @@ const QK_TIMELINE_ORG = ["timeline", "org"] as const;
 type AddCtx =
   | { mode: "category" }
   | { mode: "subcategory"; parentCategoryId: string }
+  | { mode: "projectCategory"; projectId: string }    // v4 Slice 4.5 — project-scoped category
   | { mode: "project"; parentCategoryId?: string }
   | { mode: "task"; parentProjectId: string }
   | { mode: "subtask"; parentProjectId: string; parentTaskId: string };
@@ -517,6 +518,14 @@ export function PortfolioGanttClient() {
       return;
     }
 
+    if (action === "addCategory" && rowKind === "project") {
+      // v4 Slice 4.5 — project-scoped category. The AddNodeModal renders
+      // mode "category" with scopedProjectId set, so the server receives
+      // projectId and the DB CHECK constraint enforces single-parent.
+      setAddCtx({ mode: "projectCategory", projectId: rowKey.slice(5) });
+      return;
+    }
+
     if (action === "changeColour" && rowKind === "category") {
       const id = rowKey.slice(4);
       if (id === "uncat") return;
@@ -645,12 +654,19 @@ export function PortfolioGanttClient() {
 
       {addCtx && (
         <AddNodeModal
-          mode={addCtx.mode === "subcategory" ? "category" : addCtx.mode}
+          // subcategory + projectCategory both render as the "category" modal;
+          // parent* / scopedProjectId pick which single-parent the server receives.
+          mode={
+            addCtx.mode === "subcategory" || addCtx.mode === "projectCategory"
+              ? "category"
+              : addCtx.mode
+          }
           parentCategoryId={
             addCtx.mode === "project" ? addCtx.parentCategoryId :
             addCtx.mode === "subcategory" ? addCtx.parentCategoryId :
             undefined
           }
+          scopedProjectId={addCtx.mode === "projectCategory" ? addCtx.projectId : undefined}
           parentProjectId={addCtx.mode === "task" || addCtx.mode === "subtask" ? addCtx.parentProjectId : undefined}
           parentTaskId={addCtx.mode === "subtask" ? addCtx.parentTaskId : undefined}
           requireDates={addCtx.mode === "task" || addCtx.mode === "subtask"}

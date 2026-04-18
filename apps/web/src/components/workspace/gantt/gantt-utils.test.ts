@@ -353,10 +353,10 @@ describe("contextMenuItemsFor", () => {
     ]);
   });
 
-  it("project row gets Open, Move, Add task, Delete", () => {
+  it("project row gets Open, Move, Add task, Add category, Delete", () => {
     const items = contextMenuItemsFor({ rowKind: "project", isUncategorised: false });
     expect(items.map((i) => i.id)).toEqual([
-      "openDetail", "moveToCategory", "addChild", "delete",
+      "openDetail", "moveToCategory", "addChild", "addCategory", "delete",
     ]);
   });
 
