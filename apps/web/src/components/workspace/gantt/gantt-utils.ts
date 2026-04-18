@@ -87,14 +87,106 @@ export function buildPortfolioTree(resp: PortfolioTimelineResponse): GanttNode {
   return { kind: "category", id: "__root__", name: "", colour: null, children: categoryChildren };
 }
 
+// v4 Slice 4 — project timeline can now render project-scoped categories.
+//
+// The optional `categories` argument carries every category the API returned for
+// the tenant; this function picks out the ones scoped to this project (either
+// directly via `projectId === project.id`, or as a subcategory nested under
+// another project-scoped category) and renders them as rows above the tasks.
+//
+// Tasks are not (yet) attached to categories — the task→category link lives on
+// the DB only via `projects.category_id`, not `tasks.category_id`. So tasks
+// keep their existing flat placement under the project root. What this change
+// unlocks is *right-clicking a category row* on the project timeline, which
+// previously was impossible because no category rows were rendered at all.
+//
+// When `categories` is absent or empty, this function behaves exactly as before.
 export function buildProjectTree(
   project: { id: string; name: string; status: string },
   tasks: GanttTask[],
+  categories?: ReadonlyArray<{
+    id: string;
+    name: string;
+    colour: string | null;
+    sortOrder: number;
+    parentCategoryId: string | null;
+    projectId: string | null;
+  }>,
 ): Extract<GanttNode, { kind: "project" }> {
+  const taskNodes = buildTaskForest(tasks);
+  const catNodes = buildProjectScopedCategoryForest(project.id, categories ?? []);
   return {
     kind: "project", id: project.id, name: project.name, status: project.status,
-    children: buildTaskForest(tasks),
+    children: [...catNodes, ...taskNodes],
   };
+}
+
+type ProjectScopedCategoryInput = {
+  id: string;
+  name: string;
+  colour: string | null;
+  sortOrder: number;
+  parentCategoryId: string | null;
+  projectId: string | null;
+};
+
+function buildProjectScopedCategoryForest(
+  projectId: string,
+  categories: ReadonlyArray<ProjectScopedCategoryInput>,
+): GanttNode[] {
+  if (categories.length === 0) return [];
+
+  // Step 1: find every category directly scoped to this project.
+  const direct = categories.filter((c) => c.projectId === projectId);
+  if (direct.length === 0) return [];
+
+  // Step 2: walk descendants (subcategories of those project-scoped categories)
+  // so a `projectId=null, parentCategoryId=<project-scoped>` child still renders
+  // here. That's how "Add subcategory" on a project-scoped category round-trips
+  // — the server stores child with parentCategoryId set and projectId null (the
+  // DB's single-parent CHECK constraint).
+  const keep = new Set<string>(direct.map((c) => c.id));
+  let frontier: ProjectScopedCategoryInput[] = direct;
+  while (frontier.length > 0) {
+    const next: ProjectScopedCategoryInput[] = [];
+    for (const parent of frontier) {
+      for (const c of categories) {
+        if (c.parentCategoryId === parent.id && !keep.has(c.id)) {
+          keep.add(c.id);
+          next.push(c);
+        }
+      }
+    }
+    frontier = next;
+  }
+  const relevant = categories.filter((c) => keep.has(c.id));
+
+  // Step 3: index by parent for O(N) tree construction. Anything whose parent
+  // is NOT in the keep-set (typically top-level direct children with
+  // parentCategoryId === null) roots under the project node.
+  const childrenByParent = new Map<string | null, ProjectScopedCategoryInput[]>();
+  for (const c of relevant) {
+    const parentInScope = c.parentCategoryId && keep.has(c.parentCategoryId) ? c.parentCategoryId : null;
+    const list = childrenByParent.get(parentInScope) ?? [];
+    list.push(c);
+    childrenByParent.set(parentInScope, list);
+  }
+  for (const list of childrenByParent.values()) {
+    list.sort((a, b) => a.sortOrder - b.sortOrder);
+  }
+
+  function buildNode(c: ProjectScopedCategoryInput): GanttNode {
+    const subs = (childrenByParent.get(c.id) ?? []).map(buildNode);
+    return {
+      kind: "category",
+      id: c.id,
+      name: c.name,
+      colour: c.colour,
+      children: subs,
+    };
+  }
+
+  return (childrenByParent.get(null) ?? []).map(buildNode);
 }
 
 function buildTaskForest(tasks: GanttTask[]): GanttNode[] {
@@ -446,6 +538,7 @@ export function contextMenuItemsFor(args: {
       { id: "openDetail",     label: "Open project" },
       { id: "moveToCategory", label: "Move to category…", hasSubmenu: true },
       { id: "addChild",       label: "Add task" },
+      { id: "addCategory",    label: "Add category in this project" },
       { id: "delete",         label: "Delete", destructive: true },
     ];
   }
@@ -476,6 +569,151 @@ export function statusChipFor(status: GanttTaskStatus): StatusChipData | null {
     default:
       return null;
   }
+}
+
+/* ─── v4 Slice 4 — drag-and-drop validation ─────────────────────────── */
+
+// dnd-kit sortable ids issued by GanttOutlineRow:
+//   "dnd-cat:<uuid|uncat|__root__>"
+//   "dnd-proj:<uuid>"
+//   "dnd-task:<uuid>"
+//   "dnd-sub:<uuid>"
+export type DndKind = "cat" | "proj" | "task" | "sub";
+
+export interface ParsedDndKey {
+  kind: DndKind;
+  id: string;
+}
+
+export function parseDndKey(key: string): ParsedDndKey | null {
+  if (key.startsWith("dnd-cat:"))  return { kind: "cat",  id: key.slice("dnd-cat:".length) };
+  if (key.startsWith("dnd-proj:")) return { kind: "proj", id: key.slice("dnd-proj:".length) };
+  if (key.startsWith("dnd-task:")) return { kind: "task", id: key.slice("dnd-task:".length) };
+  if (key.startsWith("dnd-sub:"))  return { kind: "sub",  id: key.slice("dnd-sub:".length) };
+  return null;
+}
+
+export type DropEffect =
+  | { kind: "moveCategory"; sourceId: string; newParentCategoryId: string | null; newProjectId: string | null }
+  | { kind: "moveProject";  sourceId: string; newCategoryId: string | null }
+  | { kind: "moveTask";     sourceId: string; newProjectId: string | null; newParentTaskId: string | null };
+
+export type DropValidation =
+  | { ok: true;  effect: DropEffect }
+  | { ok: false; reason: string };
+
+export interface DropContext {
+  // All values are *current* server state. Keys: the entity's UUID.
+  categoriesById: Map<string, { parentCategoryId: string | null; projectId: string | null }>;
+  tasksById:      Map<string, { projectId: string; parentTaskId: string | null }>;
+}
+
+function isAncestorCategory(
+  ctx: DropContext,
+  ancestorId: string,
+  possibleDescendantId: string,
+): boolean {
+  // Walk up from possibleDescendant via parentCategoryId. Returns true iff we
+  // hit ancestorId along the way.
+  let cursor: string | null = possibleDescendantId;
+  const seen = new Set<string>();
+  while (cursor && !seen.has(cursor)) {
+    if (cursor === ancestorId) return true;
+    seen.add(cursor);
+    const row = ctx.categoriesById.get(cursor);
+    cursor = row?.parentCategoryId ?? null;
+  }
+  return false;
+}
+
+// v4 Slice 4 — validate a single drop and, if allowed, describe the server
+// mutation it should trigger. Rules (spec §4.5, tightened to this slice's
+// scope — unsupported combinations reject with a message rather than silently
+// falling through):
+//
+//   source → target        effect
+//   ─────────────────────  ──────────────────────────────────────────────
+//   category → category    moveCategory (reparent). Cycle-rejected when
+//                          target is a descendant of source.
+//   category → project     moveCategory (convert to project-scoped).
+//   project  → category    moveProject (reparent to that category).
+//   task/sub → project     moveTask (cross-project allowed, parent cleared).
+//   task/sub → task/sub    moveTask. Target task → source becomes its
+//                          subtask. Target subtask → source becomes a
+//                          sibling (same parent as target).
+//
+// Synthetic rows (Uncategorised / __root__) are never valid as source OR
+// target — those paths belong to the right-click "Move to category…" submenu.
+export function validateDrop(
+  sourceKey: string,
+  targetKey: string,
+  ctx: DropContext,
+): DropValidation {
+  const src = parseDndKey(sourceKey);
+  const tgt = parseDndKey(targetKey);
+  if (!src || !tgt) return { ok: false, reason: "Unrecognised row id." };
+  if (sourceKey === targetKey) return { ok: false, reason: "Dropped on itself." };
+
+  // Reject synthetic buckets explicitly on either side.
+  for (const side of [src, tgt]) {
+    if (side.kind === "cat" && (side.id === "uncat" || side.id === "__root__" || side.id === "null")) {
+      return { ok: false, reason: "Use the right-click menu to move into Uncategorised." };
+    }
+  }
+
+  // category → category  (reparent)
+  if (src.kind === "cat" && tgt.kind === "cat") {
+    if (isAncestorCategory(ctx, src.id, tgt.id)) {
+      return { ok: false, reason: "Can't move a category under its own descendant." };
+    }
+    return {
+      ok: true,
+      effect: { kind: "moveCategory", sourceId: src.id, newParentCategoryId: tgt.id, newProjectId: null },
+    };
+  }
+
+  // category → project  (convert to project-scoped)
+  if (src.kind === "cat" && tgt.kind === "proj") {
+    return {
+      ok: true,
+      effect: { kind: "moveCategory", sourceId: src.id, newParentCategoryId: null, newProjectId: tgt.id },
+    };
+  }
+
+  // project → category  (reparent project)
+  if (src.kind === "proj" && tgt.kind === "cat") {
+    return {
+      ok: true,
+      effect: { kind: "moveProject", sourceId: src.id, newCategoryId: tgt.id },
+    };
+  }
+
+  // task/subtask → project  (cross-project move, clears parent task)
+  if ((src.kind === "task" || src.kind === "sub") && tgt.kind === "proj") {
+    return {
+      ok: true,
+      effect: { kind: "moveTask", sourceId: src.id, newProjectId: tgt.id, newParentTaskId: null },
+    };
+  }
+
+  // task/subtask → task/subtask  (reparent + potential cross-project)
+  if ((src.kind === "task" || src.kind === "sub") && (tgt.kind === "task" || tgt.kind === "sub")) {
+    const tgtTask = ctx.tasksById.get(tgt.id);
+    if (!tgtTask) return { ok: false, reason: "Target task not found." };
+    // Task depth cap = 1: a subtask cannot parent another subtask, so if the
+    // target is itself a subtask the source becomes a sibling (same parent).
+    const newParentTaskId = tgt.kind === "task" ? tgt.id : tgtTask.parentTaskId;
+    if (newParentTaskId === src.id) {
+      return { ok: false, reason: "Task cannot be its own parent." };
+    }
+    return {
+      ok: true,
+      effect: { kind: "moveTask", sourceId: src.id, newProjectId: tgtTask.projectId, newParentTaskId },
+    };
+  }
+
+  // Everything else: not yet supported by this slice.
+  return { ok: false, reason: "That move isn't supported — use the right-click menu." };
 }
 
 // Darken a hex colour by a percentage (0-100) of each RGB channel.

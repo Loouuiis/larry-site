@@ -1,12 +1,15 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Plus } from "lucide-react";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import type { WorkspaceTimelineTask, WorkspaceTimeline } from "@/app/dashboard/types";
 import type { GanttTask, ProjectCategory, ContextMenuAction, GanttNode } from "./gantt-types";
-import { DEFAULT_CATEGORY_COLOUR } from "./gantt-types";
+import { NEUTRAL_ROW_COLOUR } from "./gantt-types";
 import { buildProjectTree, buildCategoryColorMap, normalizeGanttStatus } from "./gantt-utils";
 import { GanttContainer } from "./GanttContainer";
 import { AddNodeModal } from "./AddNodeModal";
+import { CategoryColourPopover } from "./CategoryColourPopover";
+import type { CategoryOption } from "./GanttContextMenu";
 
 interface Props {
   projectId: string;
@@ -21,7 +24,15 @@ type ProjectSummary = { id: string; categoryId: string | null };
 type AddCtx =
   | { mode: "task" }
   | { mode: "subtask"; parentTaskId: string }
-  | { mode: "category" };
+  | { mode: "category" }                                 // project-scoped, top-level
+  | { mode: "subcategory"; parentCategoryId: string };   // v4 Slice 4 — nested
+
+type ColourPopover = { categoryId: string; currentColour: string | null };
+
+// v4 Slice 4 — share query keys with PortfolioGanttClient so invalidations
+// travel across the two surfaces automatically.
+const QK_CATEGORIES = ["categories"] as const;
+const QK_PROJECTS = ["projects"] as const;
 
 function toGanttTask(t: WorkspaceTimelineTask): GanttTask {
   return {
@@ -41,40 +52,82 @@ function toGanttTask(t: WorkspaceTimelineTask): GanttTask {
 }
 
 export function ProjectGanttClient({ projectId, projectName, tasks, timeline, refresh }: Props) {
+  const qc = useQueryClient();
   const source = (timeline?.gantt && timeline.gantt.length > 0) ? timeline.gantt : tasks;
   const ganttTasks = useMemo(() => (source as WorkspaceTimelineTask[]).map(toGanttTask), [source]);
+
+  // v4 Slice 4 — categories + projects come from the same React Query cache that
+  // the portfolio timeline populates. If the user navigated here from
+  // /workspace/timeline within staleTime, the first render already has the
+  // real colour + category tree (fixes the Larry-purple flash reproduced
+  // 2026-04-18 at t=12,367 ms → t=13,006 ms).
+  const { data: categoriesData } = useQuery({
+    queryKey: QK_CATEGORIES,
+    queryFn: async (): Promise<{ categories: ProjectCategory[] }> => {
+      const res = await fetch("/api/workspace/categories", { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
+    staleTime: 30_000,
+  });
+  const { data: projectsData } = useQuery({
+    queryKey: QK_PROJECTS,
+    queryFn: async (): Promise<{ items: ProjectSummary[] }> => {
+      const res = await fetch("/api/workspace/projects?status=all", { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    },
+    staleTime: 30_000,
+  });
+
+  const allCategories: ProjectCategory[] = categoriesData?.categories ?? [];
+
+  // The project row's category colour — resolved synchronously from the shared
+  // cache. Returns null when data isn't loaded yet; the Gantt renders neutral
+  // grey (NEUTRAL_ROW_COLOUR) in that case, never Larry purple.
+  const categoryColour: string | null = useMemo(() => {
+    if (!projectsData || !categoriesData) return null;
+    const proj = projectsData.items.find((p: ProjectSummary) => p.id === projectId);
+    if (!proj?.categoryId) return null;
+    const map = buildCategoryColorMap(categoriesData.categories.map((c: ProjectCategory) => ({ id: c.id, colour: c.colour })));
+    return map.get(`cat:${proj.categoryId}`) ?? null;
+  }, [categoriesData, projectsData, projectId]);
+
   const root = useMemo(
-    () => buildProjectTree({ id: projectId, name: projectName, status: "active" }, ganttTasks),
-    [projectId, projectName, ganttTasks],
+    () => buildProjectTree(
+      { id: projectId, name: projectName, status: "active" },
+      ganttTasks,
+      allCategories,
+    ),
+    [projectId, projectName, ganttTasks, allCategories],
   );
 
+  // Same shape as PortfolioGanttClient's submenu options — lets "Move to
+  // category…" on a task inside the project offer every real category.
+  const categoriesForSubmenu: CategoryOption[] = useMemo(() => {
+    const real: CategoryOption[] = allCategories
+      .filter((c) => !c.projectId || c.projectId === projectId)
+      .map((c) => ({ id: c.id, name: c.name, colour: c.colour ?? "#6c44f6" }));
+    return [...real, { id: null, name: "Uncategorised", colour: "#bdb7d0" }];
+  }, [allCategories, projectId]);
+
   const [addCtx, setAddCtx] = useState<AddCtx | null>(null);
-  const [categoryColour, setCategoryColour] = useState<string>(DEFAULT_CATEGORY_COLOUR);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
+  const [colourPopover, setColourPopover] = useState<ColourPopover | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [projectsRes, categoriesRes] = await Promise.all([
-          fetch("/api/workspace/projects?status=all", { cache: "no-store" }),
-          fetch("/api/workspace/categories", { cache: "no-store" }),
-        ]);
-        if (!projectsRes.ok || !categoriesRes.ok) return;
-        const projectsBody = await projectsRes.json() as { items?: ProjectSummary[] };
-        const categoriesBody = await categoriesRes.json() as { categories?: ProjectCategory[] };
-        const project = (projectsBody.items ?? []).find((p) => p.id === projectId);
-        const categoryId = project?.categoryId ?? null;
-        const map = buildCategoryColorMap(categoriesBody.categories?.map((c) => ({ id: c.id, colour: c.colour })) ?? []);
-        const colour = categoryId ? (map.get(`cat:${categoryId}`) ?? DEFAULT_CATEGORY_COLOUR) : DEFAULT_CATEGORY_COLOUR;
-        if (!cancelled) setCategoryColour(colour);
-      } catch {
-        // fallback stays Larry purple
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [projectId]);
+  const invalidateCategoryCaches = () => {
+    void qc.invalidateQueries({ queryKey: QK_CATEGORIES });
+    void qc.invalidateQueries({ queryKey: ["timeline", "org"] });
+  };
+
+  // Keep the refresh() contract for the parent page so tasks still re-render
+  // after task-level mutations; chain React Query invalidation alongside.
+  const refreshAll = async () => {
+    await refresh();
+    invalidateCategoryCaches();
+    void qc.invalidateQueries({ queryKey: QK_PROJECTS });
+  };
 
   function handleAdd(context: { selectedKey: string | null }) {
     if (context.selectedKey?.startsWith("task:")) {
@@ -84,11 +137,26 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
     }
   }
 
+  // Shared error extraction so archived-project + 422-from-Zod messages
+  // surface as-is rather than "HTTP 409".
+  async function extractApiError(res: Response, fallback: string): Promise<string> {
+    try {
+      const body = (await res.json()) as { message?: unknown; error?: unknown };
+      const msg = typeof body.message === "string" ? body.message
+                : typeof body.error   === "string" ? body.error
+                : null;
+      if (msg) return msg;
+    } catch { /* body wasn't JSON */ }
+    return `${fallback} (HTTP ${res.status})`;
+  }
+
   async function handleContextMenuAction(
     action: ContextMenuAction,
     args: { rowKey: string; rowKind: GanttNode["kind"]; categoryId?: string | null },
   ) {
-    const { rowKey, rowKind } = args;
+    const { rowKey, rowKind, categoryId } = args;
+
+    // Task / subtask actions (unchanged pre-existing behaviour).
     if (action === "removeFromTimeline" && (rowKind === "task" || rowKind === "subtask")) {
       const taskId = rowKey.startsWith("task:") ? rowKey.slice(5) : rowKey.slice(4);
       try {
@@ -98,10 +166,11 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
           body: JSON.stringify({ startDate: null, dueDate: null }),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        await refresh();
+        await refreshAll();
       } catch (e) {
         setMutationError(e instanceof Error ? e.message : "Failed to remove task from timeline");
       }
+      return;
     }
     if (action === "delete" && (rowKind === "task" || rowKind === "subtask")) {
       const taskId = rowKey.startsWith("task:") ? rowKey.slice(5) : rowKey.slice(4);
@@ -109,15 +178,110 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
       try {
         const res = await fetch(`/api/workspace/tasks/${taskId}`, { method: "DELETE" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        await refresh();
+        await refreshAll();
       } catch (e) {
         setMutationError(e instanceof Error ? e.message : "Failed to delete task");
       }
+      return;
     }
     if (action === "addChild" && rowKind === "project") {
       setAddCtx({ mode: "task" });
+      return;
+    }
+    if (action === "moveToCategory" && (rowKind === "task" || rowKind === "subtask")) {
+      // Cross-category move for a task on the project timeline rewrites the
+      // project's categoryId (same path as PortfolioGanttClient).
+      try {
+        const res = await fetch(`/api/workspace/projects/${projectId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ categoryId: categoryId ?? null }),
+        });
+        if (!res.ok) {
+          setMutationError(await extractApiError(res, "Couldn't move this project"));
+          return;
+        }
+        await refreshAll();
+      } catch (e) {
+        setMutationError(e instanceof Error ? e.message : "Failed to move project");
+      }
+      return;
+    }
+
+    // v4 Slice 4 — category-row actions, mirror of PortfolioGanttClient.
+    if (action === "addSubcategory" && rowKind === "category") {
+      const id = rowKey.slice(4);
+      if (id === "uncat") return;
+      setAddCtx({ mode: "subcategory", parentCategoryId: id });
+      return;
+    }
+    if (action === "changeColour" && rowKind === "category") {
+      const id = rowKey.slice(4);
+      if (id === "uncat") return;
+      const cat = allCategories.find((c) => c.id === id);
+      setColourPopover({ categoryId: id, currentColour: cat?.colour ?? null });
+      return;
+    }
+    if (action === "rename" && rowKind === "category") {
+      const id = rowKey.slice(4);
+      if (id === "uncat") return;
+      const cat = allCategories.find((c) => c.id === id);
+      const next = window.prompt("Rename category to:", cat?.name ?? "");
+      if (next === null) return;
+      const trimmed = next.trim();
+      if (!trimmed || trimmed === cat?.name) return;
+      try {
+        const res = await fetch(`/api/workspace/categories/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: trimmed }),
+        });
+        if (!res.ok) {
+          setMutationError(await extractApiError(res, "Couldn't rename this category"));
+          return;
+        }
+        invalidateCategoryCaches();
+      } catch (e) {
+        setMutationError(e instanceof Error ? e.message : "Failed to rename category");
+      }
+      return;
+    }
+    if (action === "delete" && rowKind === "category") {
+      const id = rowKey.slice(4);
+      if (id === "uncat") return;
+      if (!window.confirm("Delete this category? Subcategories will also be deleted.")) return;
+      try {
+        const res = await fetch(`/api/workspace/categories/${id}`, { method: "DELETE" });
+        if (!res.ok) {
+          setMutationError(await extractApiError(res, "Couldn't delete this category"));
+          return;
+        }
+        invalidateCategoryCaches();
+      } catch (e) {
+        setMutationError(e instanceof Error ? e.message : "Failed to delete category");
+      }
+      return;
     }
   }
+
+  const applyCategoryColour = useMutation({
+    mutationFn: async ({ id, colour }: { id: string; colour: string }) => {
+      const res = await fetch(`/api/workspace/categories/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ colour }),
+      });
+      if (!res.ok) {
+        throw new Error(await extractApiError(res, "Couldn't change colour"));
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      invalidateCategoryCaches();
+      setColourPopover(null);
+    },
+    onError: (err: unknown) => setMutationError(err instanceof Error ? err.message : "Failed to change colour"),
+  });
 
   // Label text only — GanttToolbar provides the leading <Plus /> icon.
   const addLabel = selectedKey?.startsWith("task:") ? "Subtask" : "Task";
@@ -156,9 +320,9 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
         addLabel={addLabel}
         onAdd={handleAdd}
         onSelectionChange={setSelectedKey}
-        rootCategoryColor={categoryColour}
+        rootCategoryColor={categoryColour ?? NEUTRAL_ROW_COLOUR}
         onContextMenuAction={handleContextMenuAction}
-        categoriesForSubmenu={[]}
+        categoriesForSubmenu={categoriesForSubmenu}
         outlineHeaderActions={
           <button
             type="button"
@@ -189,13 +353,29 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
       />
       {addCtx && (
         <AddNodeModal
-          mode={addCtx.mode === "subtask" ? "subtask" : addCtx.mode === "task" ? "task" : "category"}
+          // subcategory mode reuses the category modal with parentCategoryId set.
+          mode={
+            addCtx.mode === "subtask"     ? "subtask"
+            : addCtx.mode === "task"      ? "task"
+            : /* category or subcategory */ "category"
+          }
           parentProjectId={addCtx.mode === "task" || addCtx.mode === "subtask" ? projectId : undefined}
           parentTaskId={addCtx.mode === "subtask" ? addCtx.parentTaskId : undefined}
+          parentCategoryId={addCtx.mode === "subcategory" ? addCtx.parentCategoryId : undefined}
+          // Only the top-level "+ Category" in the toolbar targets this project;
+          // a nested subcategory must NOT also send projectId (API CHECK enforces
+          // exactly one parent).
           scopedProjectId={addCtx.mode === "category" ? projectId : undefined}
           requireDates={addCtx.mode === "task" || addCtx.mode === "subtask"}
           onClose={() => setAddCtx(null)}
-          onCreated={async () => { await refresh(); }}
+          onCreated={async () => { await refreshAll(); }}
+        />
+      )}
+      {colourPopover && (
+        <CategoryColourPopover
+          currentColour={colourPopover.currentColour}
+          onApply={async (hex) => { await applyCategoryColour.mutateAsync({ id: colourPopover.categoryId, colour: hex }); }}
+          onClose={() => setColourPopover(null)}
         />
       )}
     </>

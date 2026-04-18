@@ -2295,7 +2295,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
 
         {/* ── Tab: Team — re-uses existing collaborators panel ──── */}
         {activeTab === "team" && (
-          <CollaboratorsPanel projectId={projectId} />
+          <CollaboratorsPanel projectId={projectId} projectName={project.name} />
         )}
       </div>
       {archiveDialogOpen && (

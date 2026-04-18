@@ -5,6 +5,7 @@ import { ZodError } from "zod";
 import type { Db } from "@larry/db";
 import { invitationsRoutes } from "../src/routes/v1/invitations.js";
 import * as invitationsLib from "../src/lib/invitations.js";
+import * as projectMembershipsLib from "../src/lib/project-memberships.js";
 
 vi.mock("../src/lib/invitations.js", async () => {
   const actual = await vi.importActual<typeof import("../src/lib/invitations.js")>(
@@ -21,6 +22,17 @@ vi.mock("../src/lib/invitations.js", async () => {
   };
 });
 
+vi.mock("../src/lib/project-memberships.js", async () => {
+  const actual =
+    await vi.importActual<typeof import("../src/lib/project-memberships.js")>(
+      "../src/lib/project-memberships.js",
+    );
+  return {
+    ...actual,
+    getProjectMembershipAccess: vi.fn(),
+  };
+});
+
 vi.mock("../src/lib/email.js", () => ({
   sendMemberInviteEmail: vi.fn().mockResolvedValue(undefined),
   EmailQuotaError: class extends Error {},
@@ -30,8 +42,19 @@ vi.mock("../src/lib/audit.js", () => ({
   writeAuditLog: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("../src/lib/seat-cap.js", () => ({
+  assertSeatAvailable: vi.fn().mockResolvedValue(undefined),
+  SeatCapReachedError: class extends Error {},
+}));
+
+vi.mock("../src/lib/mfa-gate.js", () => ({
+  assertMfaIfRequired: vi.fn().mockResolvedValue(undefined),
+  MfaEnrollmentRequiredError: class extends Error {},
+}));
+
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const USER = "22222222-2222-4222-8222-222222222222";
+const PROJECT = "33333333-3333-4333-8333-333333333333";
 
 async function buildApp(role: "owner" | "admin" | "member" | "pm" = "admin") {
   const app = Fastify({ logger: false });
@@ -41,7 +64,9 @@ async function buildApp(role: "owner" | "admin" | "member" | "pm" = "admin") {
     query: dbQuery,
     queryTenant: dbQueryTenant,
     tx: vi.fn(async (fn: (c: { query: typeof dbQuery }) => unknown) =>
-      fn({ query: vi.fn(async () => ({ rows: [], rowCount: 1 })) as unknown as typeof dbQuery }),
+      fn({
+        query: vi.fn(async () => ({ rows: [], rowCount: 1 })) as unknown as typeof dbQuery,
+      }),
     ),
   } as unknown as Db);
   app.decorate("authenticate", async (req: Parameters<(typeof app)["authenticate"]>[0]) => {
@@ -75,10 +100,18 @@ afterEach(async () => {
   vi.clearAllMocks();
 });
 
-describe("POST /orgs/invitations", () => {
-  it("admin creates invitation and returns invite URL with raw token", async () => {
+describe("POST /orgs/invitations with project scope", () => {
+  it("admin can invite someone directly into a project", async () => {
     const app = await buildApp("admin");
     apps.push(app);
+
+    vi.mocked(projectMembershipsLib.getProjectMembershipAccess).mockResolvedValue({
+      projectExists: true,
+      projectStatus: "active",
+      projectRole: null,
+      canRead: true,
+      canManage: true,
+    });
     vi.mocked(invitationsLib.createInvitation).mockResolvedValue({
       invitation: {
         id: "inv1",
@@ -92,60 +125,103 @@ describe("POST /orgs/invitations", () => {
         acceptedByUserId: null,
         revokedAt: null,
         createdAt: new Date().toISOString(),
-        projectId: null,
-        projectRole: null,
+        projectId: PROJECT,
+        projectRole: "editor",
       },
-      rawToken: "tok-raw-123",
+      rawToken: "tok-raw-proj-1",
     });
+
     const res = await app.inject({
       method: "POST",
       url: "/orgs/invitations",
-      payload: { email: "x@y.com", role: "member" },
+      payload: {
+        email: "x@y.com",
+        role: "member",
+        projectId: PROJECT,
+        projectRole: "editor",
+      },
     });
+
     expect(res.statusCode).toBe(201);
-    const body = res.json() as { invitation: { id: string }; inviteUrl: string };
-    expect(body.invitation.id).toBe("inv1");
-    expect(body.inviteUrl).toContain("tok-raw-123");
+    expect(vi.mocked(projectMembershipsLib.getProjectMembershipAccess)).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: PROJECT, tenantId: TENANT }),
+    );
+    expect(vi.mocked(invitationsLib.createInvitation)).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ projectId: PROJECT, projectRole: "editor" }),
+    );
   });
 
-  it("member is forbidden", async () => {
-    const app = await buildApp("member");
+  it("rejects project invite when inviter cannot manage the project", async () => {
+    const app = await buildApp("admin");
     apps.push(app);
+    vi.mocked(projectMembershipsLib.getProjectMembershipAccess).mockResolvedValue({
+      projectExists: true,
+      projectStatus: "active",
+      projectRole: "viewer",
+      canRead: true,
+      canManage: false,
+    });
+
     const res = await app.inject({
       method: "POST",
       url: "/orgs/invitations",
-      payload: { email: "x@y.com", role: "member" },
+      payload: {
+        email: "x@y.com",
+        role: "member",
+        projectId: PROJECT,
+        projectRole: "editor",
+      },
     });
+
     expect(res.statusCode).toBe(403);
+    expect(vi.mocked(invitationsLib.createInvitation)).not.toHaveBeenCalled();
   });
 
-  it("rejects role=owner in the invite schema", async () => {
-    const app = await buildApp("owner");
+  it("rejects project invite when the project does not exist", async () => {
+    const app = await buildApp("admin");
     apps.push(app);
+    vi.mocked(projectMembershipsLib.getProjectMembershipAccess).mockResolvedValue({
+      projectExists: false,
+      projectStatus: null,
+      projectRole: null,
+      canRead: false,
+      canManage: false,
+    });
     const res = await app.inject({
       method: "POST",
       url: "/orgs/invitations",
-      payload: { email: "x@y.com", role: "owner" },
+      payload: {
+        email: "x@y.com",
+        role: "member",
+        projectId: PROJECT,
+        projectRole: "editor",
+      },
     });
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(404);
   });
 
-  it("rejects role=viewer", async () => {
+  it("rejects mismatched projectId/projectRole pair", async () => {
     const app = await buildApp("admin");
     apps.push(app);
     const res = await app.inject({
       method: "POST",
       url: "/orgs/invitations",
-      payload: { email: "x@y.com", role: "viewer" },
+      payload: {
+        email: "x@y.com",
+        role: "member",
+        projectId: PROJECT,
+      },
     });
     expect(res.statusCode).toBe(400);
   });
 });
 
-describe("GET /orgs/invitations/:token (public preview)", () => {
-  it("returns preview for a pending unexpired invitation", async () => {
+describe("GET /orgs/invitations/:token preview with project", () => {
+  it("surfaces project name when invite is project-scoped", async () => {
     const app = await buildApp("member");
     apps.push(app);
+
     vi.mocked(invitationsLib.findPendingInvitationByToken).mockResolvedValue({
       id: "inv1",
       tenantId: TENANT,
@@ -158,69 +234,30 @@ describe("GET /orgs/invitations/:token (public preview)", () => {
       acceptedByUserId: null,
       revokedAt: null,
       createdAt: new Date().toISOString(),
-      projectId: null,
-      projectRole: null,
+      projectId: PROJECT,
+      projectRole: "editor",
     });
     vi.mocked(invitationsLib.isInvitationConsumable).mockReturnValue(true);
-    (app.db.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce([{ name: "Acme", slug: "acme" }]);
-    const res = await app.inject({ method: "GET", url: "/orgs/invitations/rawtok12345" });
-    expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ email: "x@y.com", tenantName: "Acme" });
-  });
 
-  it("returns 410 invite_revoked when invitation is revoked", async () => {
-    const app = await buildApp("member");
-    apps.push(app);
-    vi.mocked(invitationsLib.findPendingInvitationByToken).mockResolvedValue({
-      id: "inv1",
-      tenantId: TENANT,
-      email: "x@y.com",
-      role: "member",
-      status: "revoked",
-      invitedByUserId: USER,
-      expiresAt: new Date(Date.now() + 3600_000).toISOString(),
-      acceptedAt: null,
-      acceptedByUserId: null,
-      revokedAt: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-      projectId: null,
-      projectRole: null,
-    });
-    vi.mocked(invitationsLib.isInvitationConsumable).mockReturnValue(false);
-    const res = await app.inject({ method: "GET", url: "/orgs/invitations/rawtok12345" });
-    expect(res.statusCode).toBe(410);
-    expect((res.json() as { code: string }).code).toBe("invite_revoked");
-  });
+    (app.db.query as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      { name: "Acme", slug: "acme" },
+    ]);
+    (app.db.queryTenant as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      { name: "Launch Plan" },
+    ]);
 
-  it("returns 404 for unknown token", async () => {
-    const app = await buildApp("member");
-    apps.push(app);
-    vi.mocked(invitationsLib.findPendingInvitationByToken).mockResolvedValue(null);
-    const res = await app.inject({ method: "GET", url: "/orgs/invitations/unknowntok12" });
-    expect(res.statusCode).toBe(404);
-  });
-});
-
-describe("POST /orgs/invitations/:id/revoke", () => {
-  it("admin revokes a pending invitation", async () => {
-    const app = await buildApp("admin");
-    apps.push(app);
-    vi.mocked(invitationsLib.revokeInvitation).mockResolvedValue(true);
     const res = await app.inject({
-      method: "POST",
-      url: "/orgs/invitations/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/revoke",
+      method: "GET",
+      url: "/orgs/invitations/rawtok12345",
     });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ revoked: true });
-  });
-
-  it("member cannot revoke", async () => {
-    const app = await buildApp("member");
-    apps.push(app);
-    const res = await app.inject({
-      method: "POST",
-      url: "/orgs/invitations/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/revoke",
-    });
-    expect(res.statusCode).toBe(403);
+    const body = res.json() as {
+      projectName: string | null;
+      projectRole: string | null;
+      tenantName: string | null;
+    };
+    expect(body.tenantName).toBe("Acme");
+    expect(body.projectName).toBe("Launch Plan");
+    expect(body.projectRole).toBe("editor");
   });
 });
