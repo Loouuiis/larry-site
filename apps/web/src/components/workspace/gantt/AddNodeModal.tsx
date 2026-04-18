@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
+import { CategorySwatchPicker, DEFAULT_SWATCH_HEX } from "./CategorySwatchPicker";
 
 type Mode = "category" | "project" | "task" | "subtask";
 
@@ -20,7 +21,7 @@ const inputStyle: React.CSSProperties = {
 
 export function AddNodeModal({ mode, parentProjectId, parentTaskId, parentCategoryId, onClose, onCreated }: Props) {
   const [title, setTitle] = useState("");
-  const [colour, setColour] = useState<string>("#6c44f6");
+  const [colour, setColour] = useState<string>(DEFAULT_SWATCH_HEX);
   const [dueDate, setDueDate] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -89,7 +90,7 @@ export function AddNodeModal({ mode, parentProjectId, parentTaskId, parentCatego
           {mode === "category" && (
             <div>
               <p style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, color: "var(--text-muted)", margin: 0, marginBottom: 6 }}>Colour</p>
-              <input type="color" value={colour} onChange={(e) => setColour(e.target.value)} style={{ ...inputStyle, padding: 2, height: 36 }} />
+              <CategorySwatchPicker value={colour} onChange={setColour} />
             </div>
           )}
           {(mode === "task" || mode === "subtask") && (

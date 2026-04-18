@@ -11,6 +11,7 @@ import { getActionTypeTag, getAllActionTypes } from "@/lib/action-types";
 import { useToast } from "@/components/toast/ToastContext";
 import { ActionDetailPreview } from "@/components/workspace/ActionDetailPreview";
 import { ModifyPanel } from "@/app/workspace/ModifyPanel";
+import { PageState } from "@/components/PageState";
 
 export const dynamic = "force-dynamic";
 
@@ -564,9 +565,11 @@ export default function WorkspaceActionsPage() {
 
             <div className="mt-5 space-y-3">
               {loading && suggested.length === 0 ? (
-                <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>
-                  Loading suggested actions...
-                </p>
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="pm-shimmer rounded-xl" style={{ height: "100px", borderRadius: "var(--radius-card)" }} />
+                  ))}
+                </div>
               ) : filteredSuggested.length === 0 ? (
                 <div
                   className="rounded-xl border border-dashed px-4 py-6 text-center"
@@ -763,9 +766,11 @@ export default function WorkspaceActionsPage() {
 
             <div className="mt-5 space-y-3">
               {loading && activity.length === 0 ? (
-                <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>
-                  Loading recent activity...
-                </p>
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="pm-shimmer rounded-xl" style={{ height: "80px", borderRadius: "var(--radius-card)" }} />
+                  ))}
+                </div>
               ) : filteredActivity.length === 0 ? (
                 <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>
                   {hasFilters ? "No activity matches your filters." : "No recent Larry activity logged yet."}

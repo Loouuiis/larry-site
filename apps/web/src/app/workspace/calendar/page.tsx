@@ -2,13 +2,61 @@
 
 import { useState, useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { useCalendarEvents, type CalendarEvent } from "@/hooks/useCalendarEvents";
 import { toLocalDateKey } from "@/lib/calendar-date";
+import { PageState } from "@/components/PageState";
 
 export const dynamic = "force-dynamic";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+function CalendarGridSkeleton() {
+  return (
+    <div
+      style={{
+        border: "1px solid var(--border)",
+        borderRadius: "var(--radius-card)",
+        background: "var(--surface)",
+        overflow: "hidden",
+      }}
+    >
+      {/* month nav shimmer */}
+      <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid var(--border)" }}>
+        <div className="pm-shimmer" style={{ width: 28, height: 28, borderRadius: 6 }} />
+        <div className="pm-shimmer" style={{ width: 140, height: 20, borderRadius: 4 }} />
+        <div className="pm-shimmer" style={{ width: 28, height: 28, borderRadius: 6 }} />
+      </div>
+      {/* weekday headers */}
+      <div className="grid grid-cols-7 gap-px px-2 py-2" style={{ borderBottom: "1px solid var(--border)" }}>
+        {Array.from({ length: 7 }).map((_, i) => (
+          <div key={i} className="flex justify-center">
+            <div className="pm-shimmer" style={{ width: 28, height: 14, borderRadius: 4 }} />
+          </div>
+        ))}
+      </div>
+      {/* day cells — 5 rows × 7 cols */}
+      <div className="grid grid-cols-7 gap-px">
+        {Array.from({ length: 35 }).map((_, i) => (
+          <div
+            key={i}
+            style={{
+              minHeight: 80,
+              padding: "6px 8px",
+              borderRight: "1px solid var(--border)",
+              borderBottom: "1px solid var(--border)",
+            }}
+          >
+            <div className="pm-shimmer" style={{ width: 24, height: 24, borderRadius: "50%", marginBottom: 6 }} />
+            {i % 5 === 0 && <div className="pm-shimmer" style={{ height: 12, borderRadius: 999, marginBottom: 3 }} />}
+            {i % 7 === 2 && <div className="pm-shimmer" style={{ height: 12, width: "80%", borderRadius: 999 }} />}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function getDaysInMonth(year: number, month: number): Date[] {
   const days: Date[] = [];
@@ -50,8 +98,9 @@ function isSameDay(a: Date, b: Date): boolean {
 
 export default function CalendarPage() {
   const today = useMemo(() => new Date(), []);
+  const router = useRouter();
   const [viewDate, setViewDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
-  const { events, loading: eventsLoading, refresh } = useCalendarEvents();
+  const { events, loading: eventsLoading, error: eventsError, refresh } = useCalendarEvents();
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [draggingEvent, setDraggingEvent] = useState<CalendarEvent | null>(null);
   const [dragOverDate, setDragOverDate] = useState<string | null>(null);
@@ -150,7 +199,16 @@ export default function CalendarPage() {
           </div>
         </div>
 
+        {/* Error state */}
+        {eventsError && (
+          <PageState loading={false} error={eventsError} onRetry={refresh} empty={false}>{null}</PageState>
+        )}
+
+        {/* Calendar skeleton */}
+        {eventsLoading && events.length === 0 && <CalendarGridSkeleton />}
+
         {/* Calendar card */}
+        {(!eventsLoading || events.length > 0) && !eventsError && (
         <div
           style={{
             borderRadius: "var(--radius-card)",
@@ -315,6 +373,7 @@ export default function CalendarPage() {
             ))}
           </div>
         </div>
+        )}
 
         {/* Day detail panel */}
         {selectedDate && (() => {
@@ -455,23 +514,18 @@ export default function CalendarPage() {
         })()}
 
         {/* Empty state hint */}
-        {!eventsLoading && events.length === 0 && (
-          <div
-            className="text-center px-6 py-8"
-            style={{
-              borderRadius: "var(--radius-card)",
-              border: "1px dashed var(--border-2)",
-              background: "var(--surface)",
-            }}
+        {!eventsLoading && events.length === 0 && !eventsError && (
+          <PageState
+            loading={false}
+            error={null}
+            empty={true}
+            emptyTitle="Connect your calendars"
+            emptyBody="Link Google Calendar or Outlook to see meetings, deadlines, and project events in one place. Larry will automatically attach meeting notes to the right projects."
+            emptyCta="Connect a calendar"
+            onEmptyCta={() => router.push("/workspace/settings/connectors")}
           >
-            <p className="text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
-              Connect your calendars
-            </p>
-            <p className="mt-2 text-[13px] leading-6 mx-auto max-w-md" style={{ color: "var(--text-2)" }}>
-              Link Google Calendar or Outlook to see meetings, deadlines, and project events in one place.
-              Larry will automatically attach meeting notes to the right projects.
-            </p>
-          </div>
+            {null}
+          </PageState>
         )}
       </div>
     </div>

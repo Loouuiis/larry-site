@@ -12,6 +12,7 @@ import {
   tinyTint,
 } from "./gantt-utils";
 import type { PortfolioTimelineResponse, GanttTask, GanttNode } from "./gantt-types";
+import { ROW_HEIGHT, ROW_HEIGHT_TASK } from "./gantt-types";
 
 const baseTask = (over: Partial<GanttTask> = {}): GanttTask => ({
   id: "t", projectId: "p", parentTaskId: null, title: "T",
@@ -244,5 +245,125 @@ describe("tinyTint", () => {
   it("returns an rgba() string with the given alpha", () => {
     expect(tinyTint("#ff0000", 0.2)).toBe("rgba(255, 0, 0, 0.2)");
     expect(tinyTint("#6c44f6")).toMatch(/^rgba\(108, 68, 246, 0\.15\)$/);
+  });
+});
+
+/* ─── v3 additions ─────────────────────────────────────────────────── */
+
+import { darken, statusChipFor, contextMenuItemsFor } from "./gantt-utils";
+
+describe("contextMenuItemsFor", () => {
+  it("task row gets Open, Move, Remove from timeline, Delete", () => {
+    const items = contextMenuItemsFor({ rowKind: "task", isUncategorised: false });
+    expect(items.map((i) => i.id)).toEqual([
+      "openDetail", "moveToCategory", "removeFromTimeline", "delete",
+    ]);
+    expect(items.find((i) => i.id === "moveToCategory")?.hasSubmenu).toBe(true);
+    expect(items.find((i) => i.id === "delete")?.destructive).toBe(true);
+  });
+
+  it("subtask row gets same items as task", () => {
+    const items = contextMenuItemsFor({ rowKind: "subtask", isUncategorised: false });
+    expect(items.map((i) => i.id)).toEqual([
+      "openDetail", "moveToCategory", "removeFromTimeline", "delete",
+    ]);
+  });
+
+  it("project row gets Open, Move, Add task, Delete", () => {
+    const items = contextMenuItemsFor({ rowKind: "project", isUncategorised: false });
+    expect(items.map((i) => i.id)).toEqual([
+      "openDetail", "moveToCategory", "addChild", "delete",
+    ]);
+  });
+
+  it("category row gets Rename, Change colour, Delete", () => {
+    const items = contextMenuItemsFor({ rowKind: "category", isUncategorised: false });
+    expect(items.map((i) => i.id)).toEqual([
+      "rename", "changeColour", "delete",
+    ]);
+  });
+
+  it("uncategorised category row returns a single disabled sentinel", () => {
+    const items = contextMenuItemsFor({ rowKind: "category", isUncategorised: true });
+    expect(items).toHaveLength(1);
+    expect(items[0].disabled).toBe(true);
+    expect(items[0].label).toMatch(/default bucket/i);
+  });
+});
+
+describe("flattenVisible assigns per-level heights", () => {
+  it("category/project rows use ROW_HEIGHT=32 and task/subtask use 28", () => {
+    const sub: GanttNode = { kind: "subtask", id: "t2", task: baseTask({ id: "t2", parentTaskId: "t1" }) };
+    const task1: GanttNode = { kind: "task", id: "t1", task: baseTask({ id: "t1" }), children: [sub] };
+    const project: GanttNode = { kind: "project", id: "p1", name: "P", status: "active", children: [task1] };
+    const category: GanttNode = { kind: "category", id: "c1", name: "C", colour: null, children: [project] };
+    const syntheticRoot: GanttNode = { kind: "category", id: "__root__", name: "", colour: null, children: [category] };
+
+    const expanded = new Set<string>(["cat:c1", "proj:p1", "task:t1"]);
+    const rows = flattenVisible(syntheticRoot, expanded);
+    const byKey = Object.fromEntries(rows.map((r) => [r.key, r]));
+
+    expect((byKey["cat:c1"] as { height: number }).height).toBe(ROW_HEIGHT);
+    expect((byKey["proj:p1"] as { height: number }).height).toBe(ROW_HEIGHT);
+    expect((byKey["task:t1"] as { height: number }).height).toBe(ROW_HEIGHT_TASK);
+    expect((byKey["sub:t2"] as { height: number }).height).toBe(ROW_HEIGHT_TASK);
+  });
+});
+
+
+describe("statusChipFor", () => {
+  it("returns null for on_track (no chip shown)", () => {
+    expect(statusChipFor("on_track")).toBeNull();
+  });
+
+  it("returns NS chip for not_started with a muted outline", () => {
+    const chip = statusChipFor("not_started");
+    expect(chip).not.toBeNull();
+    expect(chip!.label).toBe("NS");
+    expect(chip!.bg).toBe("transparent");
+    expect(chip!.border).not.toBeNull();
+  });
+
+  it("returns AR chip for at_risk with amber fill", () => {
+    const chip = statusChipFor("at_risk");
+    expect(chip!.label).toBe("AR");
+    expect(chip!.bg).toBe("var(--tl-at-risk)");
+    expect(chip!.fg).toBe("#ffffff");
+    expect(chip!.border).toBeNull();
+  });
+
+  it("returns OD chip for overdue with red fill", () => {
+    expect(statusChipFor("overdue")!.bg).toBe("var(--tl-overdue)");
+  });
+
+  it("returns ✓ chip for completed with green fill", () => {
+    const chip = statusChipFor("completed");
+    expect(chip!.label).toBe("✓");
+    expect(chip!.bg).toBe("var(--tl-completed)");
+  });
+});
+
+describe("darken", () => {
+  it("returns a lower-RGB hex for the given percentage", () => {
+    // #808080 (128) → -12% of 128 ≈ -15 → 113 (0x71)
+    expect(darken("#808080", 12)).toBe("#717171");
+  });
+
+  it("floors at #000000", () => {
+    expect(darken("#000000", 50)).toBe("#000000");
+  });
+
+  it("normalises 3-digit hex", () => {
+    // #abc → #aabbcc → each channel × 0.88 = (150, 165, 180) = #96a5b4
+    expect(darken("#abc", 12)).toBe("#96a5b4");
+  });
+
+  it("handles Larry brand purple", () => {
+    // #6c44f6 = (108, 68, 246). × 0.88 → (95, 60, 216) = #5f3cd8
+    expect(darken("#6c44f6", 12)).toBe("#5f3cd8");
+  });
+
+  it("returns the input when the hex is invalid", () => {
+    expect(darken("not-a-hex", 12)).toBe("not-a-hex");
   });
 });

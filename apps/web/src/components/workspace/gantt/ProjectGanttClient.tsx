@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import type { WorkspaceTimelineTask, WorkspaceTimeline } from "@/app/dashboard/types";
-import type { GanttTask, ProjectCategory } from "./gantt-types";
+import type { GanttTask, ProjectCategory, ContextMenuAction, GanttNode } from "./gantt-types";
 import { DEFAULT_CATEGORY_COLOUR } from "./gantt-types";
 import { buildProjectTree, buildCategoryColorMap, normalizeGanttStatus } from "./gantt-utils";
 import { GanttContainer } from "./GanttContainer";
@@ -44,8 +44,9 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
 
   const [addCtx, setAddCtx] = useState<{ mode: "task" | "subtask"; parentTaskId?: string } | null>(null);
   const [categoryColour, setCategoryColour] = useState<string>(DEFAULT_CATEGORY_COLOUR);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
 
-  // One-shot lookup of this project's category colour. Defaults to Larry purple until resolved.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -77,14 +78,82 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
     }
   }
 
+  async function handleContextMenuAction(
+    action: ContextMenuAction,
+    args: { rowKey: string; rowKind: GanttNode["kind"]; categoryId?: string | null },
+  ) {
+    const { rowKey, rowKind } = args;
+    if (action === "removeFromTimeline" && (rowKind === "task" || rowKind === "subtask")) {
+      const taskId = rowKey.startsWith("task:") ? rowKey.slice(5) : rowKey.slice(4);
+      try {
+        const res = await fetch(`/api/workspace/tasks/${taskId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ startDate: null, dueDate: null }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        await refresh();
+      } catch (e) {
+        setMutationError(e instanceof Error ? e.message : "Failed to remove task from timeline");
+      }
+    }
+    if (action === "delete" && (rowKind === "task" || rowKind === "subtask")) {
+      const taskId = rowKey.startsWith("task:") ? rowKey.slice(5) : rowKey.slice(4);
+      if (!window.confirm("Delete this task?")) return;
+      try {
+        const res = await fetch(`/api/workspace/tasks/${taskId}`, { method: "DELETE" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        await refresh();
+      } catch (e) {
+        setMutationError(e instanceof Error ? e.message : "Failed to delete task");
+      }
+    }
+    if (action === "addChild" && rowKind === "project") {
+      setAddCtx({ mode: "task" });
+    }
+  }
+
+  const addLabel =
+    selectedKey?.startsWith("task:") ? "+ Subtask" :
+    "+ Task";
+
   return (
     <>
+      {mutationError && (
+        <div
+          role="alert"
+          style={{
+            margin: "8px 0",
+            padding: "8px 12px",
+            background: "var(--pm-red-light)",
+            border: "1px solid var(--pm-red)",
+            borderRadius: 6,
+            fontSize: 12,
+            color: "var(--pm-red)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <span>{mutationError}</span>
+          <button
+            onClick={() => setMutationError(null)}
+            aria-label="Dismiss error"
+            style={{ background: "transparent", border: 0, color: "inherit", cursor: "pointer", fontSize: 14 }}
+          >
+            ×
+          </button>
+        </div>
+      )}
       <GanttContainer
         root={root}
         defaultZoom="month"
-        addLabel={addCtx?.mode === "subtask" ? "+ Subtask" : "+ Task"}
+        addLabel={addLabel}
         onAdd={handleAdd}
+        onSelectionChange={setSelectedKey}
         rootCategoryColor={categoryColour}
+        onContextMenuAction={handleContextMenuAction}
+        categoriesForSubmenu={[]}
       />
       {addCtx && (
         <AddNodeModal

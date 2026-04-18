@@ -3717,13 +3717,23 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         const displayText = typeof params.displayText === "string" ? params.displayText : toolName;
         const reasoning = typeof params.reasoning === "string" ? params.reasoning : `Called via streaming chat`;
 
+        // Preserve the user-supplied description when present; fall back to
+        // reasoning only when the tool call omitted it. Previously this line
+        // was `description: reasoning` which clobbered any user description,
+        // so accepted task_create actions stored the reasoning string in the
+        // description column (see PR #70 sibling bug report).
+        const userDescription =
+          typeof params.description === "string" && params.description.trim() !== ""
+            ? params.description
+            : null;
+
         const action: LarryAction = {
           type: actionType as LarryActionType,
           displayText,
           reasoning,
           payload: {
             ...params,
-            description: reasoning, // required by all action payloads
+            description: userDescription ?? reasoning,
           },
           selfExecutable: false,
           offerExecution: false,
@@ -3819,7 +3829,10 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         }
         // Strip any inline function-call markup emitted as plain text by
         // models that don't use the AI SDK's structured tool-calling interface.
-        fullContent = fullContent.replace(/<function=[^>]*>/g, "");
+        // Handles both <function=name{...}</function> and <function=name>...</function>.
+        fullContent = fullContent
+          .replace(/<function=[^>]*>(?:[\s\S]*?<\/function>)?/g, "")
+          .replace(/<\/function>/g, "");
         await fastify.db.queryTenant<Record<string, unknown>>(
           tenantId,
           `UPDATE larry_messages SET content = $3 WHERE tenant_id = $1 AND id = $2`,

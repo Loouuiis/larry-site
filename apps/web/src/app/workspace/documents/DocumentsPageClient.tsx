@@ -14,6 +14,7 @@ import { AnimatePresence, motion } from "framer-motion";
 
 import type { Folder, FolderBreadcrumbItem, LarryDocument } from "@/app/dashboard/types";
 import { FolderBreadcrumb } from "./FolderBreadcrumb";
+import { PageState } from "@/components/PageState";
 import {
   FolderContextMenu,
   buildFolderActions,
@@ -109,6 +110,7 @@ export function DocumentsPageClient() {
   const [documents, setDocuments] = useState<DocumentRow[]>([]);
   const [breadcrumb, setBreadcrumb] = useState<FolderBreadcrumbItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   /* ---- search ---- */
   const [search, setSearch] = useState("");
@@ -170,6 +172,7 @@ export function DocumentsPageClient() {
 
   const fetchContents = useCallback(async () => {
     setLoading(true);
+    setFetchError(null);
     try {
       if (folderId) {
         // Folder view — fetch folder metadata + contents
@@ -228,7 +231,7 @@ export function DocumentsPageClient() {
         );
       }
     } catch {
-      // Silently fail — empty state will show
+      setFetchError("Failed to load documents.");
     } finally {
       setLoading(false);
     }
@@ -599,6 +602,11 @@ export function DocumentsPageClient() {
           </span>
         )}
       </div>
+
+      {/* ---- Error state ---- */}
+      {fetchError && (
+        <PageState loading={false} error={fetchError} onRetry={fetchContents} empty={false}>{null}</PageState>
+      )}
 
       {/* ---- Content grid ---- */}
       <div

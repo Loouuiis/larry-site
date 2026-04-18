@@ -1,12 +1,11 @@
 "use client";
 import { forwardRef, useMemo } from "react";
 import type { FlatRow } from "./gantt-utils";
-import type { ZoomLevel } from "./gantt-types";
+import type { ZoomLevel, GanttNode } from "./gantt-types";
 import type { TimelineRange } from "./gantt-utils";
 import { dateToPct, generateDateAxis } from "./gantt-utils";
 import { GanttRow } from "./GanttRow";
-import { GanttDateHeader, GANTT_HEADER_HEIGHT } from "./GanttDateHeader";
-import { ROW_HEIGHT } from "./gantt-types";
+import { GanttDateHeader, GANTT_HEADER_HEIGHT, PX_PER_DAY_BY_ZOOM } from "./GanttDateHeader";
 
 interface Props {
   rows: FlatRow[];
@@ -16,21 +15,28 @@ interface Props {
   selectedKey: string | null;
   onHoverKey: (k: string | null) => void;
   onSelectKey: (k: string | null) => void;
+  onContextMenu?: (rowKey: string, rowKind: GanttNode["kind"], e: React.MouseEvent) => void;
 }
 
 export const GanttGrid = forwardRef<HTMLDivElement, Props>(function GanttGrid(
-  { rows, range, zoom, hoveredKey, selectedKey, onHoverKey, onSelectKey }, ref,
+  { rows, range, zoom, hoveredKey, selectedKey, onHoverKey, onSelectKey, onContextMenu }, ref,
 ) {
   const axis = useMemo(() => generateDateAxis(range, zoom), [range, zoom]);
   const todayPct = dateToPct(new Date(), range);
   const todayInRange = todayPct >= 0 && todayPct <= 100;
 
+  // Explicit horizontal scale keyed on zoom so the axis is wide enough that
+  // day + month labels never overlap. Grid viewport scrolls horizontally when
+  // the axis exceeds the available width (almost always at W zoom).
+  const pxPerDay = PX_PER_DAY_BY_ZOOM[zoom];
+  const axisMinWidth = Math.max(600, pxPerDay * range.totalDays);
+
   return (
     <div ref={ref} style={{ position: "relative", overflowX: "auto", flex: 1, minHeight: 0 }}>
-      <div style={{ minWidth: "max-content", position: "relative" }}>
+      <div style={{ minWidth: axisMinWidth, position: "relative" }}>
         <GanttDateHeader range={range} zoom={zoom} />
 
-        {/* Vertical gridlines — render before rows so row content stacks on top */}
+        {/* Gridlines — below the axis band, down to grid bottom */}
         <div style={{ position: "absolute", top: GANTT_HEADER_HEIGHT, left: 0, right: 0, bottom: 0, pointerEvents: "none", zIndex: 0 }}>
           {axis.days.map((d, i) => (
             <div
@@ -41,81 +47,44 @@ export const GanttGrid = forwardRef<HTMLDivElement, Props>(function GanttGrid(
                 top: 0,
                 bottom: 0,
                 width: 1,
-                background: d.isMonthStart
-                  ? "var(--border-2, #bdb7d0)"
-                  : "var(--surface-2, #f6f2fc)",
-                opacity: d.isMonthStart ? 0.6 : 1,
+                background: d.isMonthStart ? "var(--border)" : "var(--border-2)",
+                opacity: d.isMonthStart ? 1 : 0.3,
               }}
             />
           ))}
         </div>
 
-        {/* Today line (below the header, runs full height of rows) */}
+        {/* Today vertical line — no pill (label is in the header) */}
         {todayInRange && (
-          <>
-            <div
-              style={{
-                position: "absolute",
-                left: `${todayPct}%`,
-                top: GANTT_HEADER_HEIGHT,
-                bottom: 0,
-                width: 1,
-                background: "rgba(108, 68, 246, 0.4)",
-                pointerEvents: "none",
-                zIndex: 1,
-              }}
-            />
-            {/* Today pill */}
-            <div
-              style={{
-                position: "absolute",
-                left: `${todayPct}%`,
-                top: GANTT_HEADER_HEIGHT - 18,
-                transform: "translateX(-50%)",
-                padding: "2px 6px",
-                fontSize: 10,
-                fontWeight: 600,
-                color: "#6c44f6",
-                background: "var(--surface, #fff)",
-                border: "1px solid rgba(108, 68, 246, 0.35)",
-                borderRadius: 4,
-                pointerEvents: "none",
-                zIndex: 3,
-                whiteSpace: "nowrap",
-              }}
-            >
-              Today
-            </div>
-          </>
+          <div
+            style={{
+              position: "absolute",
+              left: `${todayPct}%`,
+              top: GANTT_HEADER_HEIGHT,
+              bottom: 0,
+              width: 1.5,
+              background: "var(--brand)",
+              pointerEvents: "none",
+              zIndex: 1,
+            }}
+          />
         )}
 
         {/* Rows */}
         <div style={{ position: "relative", zIndex: 1 }}>
-          {rows.map((r) => {
-            if (r.kind === "add") {
-              return (
-                <div
-                  key={r.key}
-                  style={{
-                    height: r.height,
-                    borderBottom: "1px solid var(--border, #f0edfa)",
-                  }}
-                />
-              );
-            }
-            return (
-              <div key={r.key} style={{ height: r.height ?? ROW_HEIGHT }}>
-                <GanttRow
-                  row={r}
-                  range={range}
-                  hoveredKey={hoveredKey}
-                  selectedKey={selectedKey}
-                  onHoverKey={onHoverKey}
-                  onSelectKey={onSelectKey}
-                />
-              </div>
-            );
-          })}
+          {rows.map((r) => (
+            <div key={r.key} style={{ height: r.height }}>
+              <GanttRow
+                row={r}
+                range={range}
+                hoveredKey={hoveredKey}
+                selectedKey={selectedKey}
+                onHoverKey={onHoverKey}
+                onSelectKey={onSelectKey}
+                onContextMenu={onContextMenu}
+              />
+            </div>
+          ))}
         </div>
       </div>
     </div>

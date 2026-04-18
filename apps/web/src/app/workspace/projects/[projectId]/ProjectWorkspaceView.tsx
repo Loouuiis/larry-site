@@ -50,6 +50,33 @@ import { ModifyPanel } from "@/app/workspace/ModifyPanel";
 import { ActionBellDropdown } from "./overview/ActionBellDropdown";
 import { ProjectOverviewTab } from "./overview/ProjectOverviewTab";
 import { ProjectDescriptionCard } from "./overview/ProjectDescriptionCard";
+import { PageState, SkeletonLine } from "@/components/PageState";
+
+function TaskListSkeleton() {
+  return (
+    <div style={{ borderRadius: "var(--radius-card)", border: "1px solid var(--border)", background: "var(--surface)", overflow: "hidden" }}>
+      {[1, 2].map((g) => (
+        <div key={g} style={{ borderLeft: "3px solid var(--border-2)", borderBottom: "1px solid var(--border)" }}>
+          <div className="flex items-center gap-2 px-4 py-2.5">
+            <SkeletonLine width={12} height={12} borderRadius="2px" />
+            <SkeletonLine width={80} height={13} />
+            <SkeletonLine width={20} height={13} />
+          </div>
+          {[1, 2, 3].map((t) => (
+            <div key={t} className="flex items-center gap-3 px-4 py-2" style={{ borderBottom: "1px solid var(--border-subtle, #faf8ff)", minHeight: 38 }}>
+              <SkeletonLine width={18} height={18} borderRadius="50%" />
+              <SkeletonLine width={`${140 + t * 40}px`} height={13} />
+              <div style={{ flex: 1 }} />
+              <SkeletonLine width={60} height={18} borderRadius="999px" />
+              <SkeletonLine width={50} height={13} />
+              <SkeletonLine width={70} height={13} />
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 async function readJson<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -285,7 +312,7 @@ const PROJECT_TABS: { id: ProjectTab; label: string; icon: React.ElementType }[]
 function ProjectCalendar({ projectId }: { projectId: string }) {
   const today = useMemo(() => new Date(), []);
   const [viewDate, setViewDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
-  const { events, loading, refresh } = useCalendarEvents(projectId);
+  const { events, loading, error: calendarError, refresh } = useCalendarEvents(projectId);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [draggingEvent, setDraggingEvent] = useState<CalendarEvent | null>(null);
   const [dragOverDate, setDragOverDate] = useState<string | null>(null);
@@ -384,6 +411,9 @@ function ProjectCalendar({ projectId }: { projectId: string }) {
 
   return (
     <div className="space-y-4">
+      {calendarError && (
+        <PageState loading={false} error={calendarError} onRetry={refresh} empty={false}>{null}</PageState>
+      )}
       {/* Calendar card */}
       <div
         style={{
@@ -1858,7 +1888,15 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
 
         {/* ── Tab: Task center ──────────────────────────── */}
         {activeTab === "tasks" && (
-          <TaskCenter projectId={projectId} tasks={tasks} refresh={refresh} openTaskId={openTaskId} />
+          <PageState
+            loading={loading && tasks.length === 0}
+            skeleton={<TaskListSkeleton />}
+            error={error}
+            onRetry={refresh}
+            empty={false}
+          >
+            <TaskCenter projectId={projectId} tasks={tasks} refresh={refresh} openTaskId={openTaskId} />
+          </PageState>
         )}
 
         {/* ── Tab: Calendar ──────────────── */}

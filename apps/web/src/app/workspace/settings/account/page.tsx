@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { SettingsSubnav } from "../SettingsSubnav";
 import { resizeImageToDataUrl } from "@/lib/image";
+import { SkeletonCard, SkeletonLine } from "@/components/PageState";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -504,11 +505,9 @@ export default function AccountSettingsPage() {
       <SettingsSubnav active="account" />
 
       {loadingUser ? (
-        <div
-          className="mt-8 text-[13px]"
-          style={{ color: "var(--text-2)" }}
-        >
-          Loading...
+        <div className="mt-8 space-y-4">
+          <SkeletonCard />
+          <SkeletonCard />
         </div>
       ) : (
         <div className="mt-8 space-y-8">
@@ -876,12 +875,9 @@ export default function AccountSettingsPage() {
             </p>
 
             {sessionsLoading ? (
-              <p
-                className="mt-4 text-[12px]"
-                style={{ color: "var(--text-2)" }}
-              >
-                Loading sessions...
-              </p>
+              <div className="mt-4">
+                <SkeletonLine width="100%" height={48} borderRadius="8px" />
+              </div>
             ) : sessions.length === 0 ? (
               <p
                 className="mt-4 text-[12px]"

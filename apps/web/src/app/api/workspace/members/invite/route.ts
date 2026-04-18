@@ -5,7 +5,7 @@ import { persistSession, proxyApiRequest } from "@/lib/workspace-proxy";
 
 const InviteSchema = z.object({
   email: z.string().email(),
-  role: z.enum(["admin", "member", "viewer"]).default("member"),
+  role: z.enum(["admin", "pm", "member"]).default("member"),
   displayName: z.string().max(200).optional(),
 });
 

@@ -24,6 +24,7 @@ import {
 import { parseLarrySseStream } from "@/lib/larry-stream";
 import { ChatInput, type AttachedFile } from "@/components/larry/ChatInput";
 import { useSmartScroll } from "@/hooks/useSmartScroll";
+import { PageState } from "@/components/PageState";
 
 interface WorkspaceProject {
   id: string;
@@ -496,7 +497,7 @@ export default function AskLarryPage() {
           for await (const streamEvent of parseLarrySseStream(response.body)) {
             switch (streamEvent.type) {
               case "token":
-                updateStreamingMessage((previous) => ({ content: previous.content + streamEvent.delta }));
+                updateStreamingMessage((previous) => ({ content: previous.content + String(streamEvent.delta ?? "") }));
                 break;
               case "done":
                 finalConversationId = streamEvent.conversationId;
@@ -650,6 +651,20 @@ export default function AskLarryPage() {
             </div>
 
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px" }}>
+              {loading && conversations.length === 0 && (
+                <div style={{ padding: "8px" }}>
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 10px", marginBottom: "2px" }}>
+                      <div className="pm-shimmer" style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0 }} />
+                      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
+                        <div className="pm-shimmer" style={{ height: 13, width: `${55 + i * 8}%`, borderRadius: 4 }} />
+                        <div className="pm-shimmer" style={{ height: 11, width: "40%", borderRadius: 4 }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {!loading && conversations.length === 0 && (
                 <div style={{ padding: "40px 16px", textAlign: "center" }}>
                   <Sparkles size={24} style={{ margin: "0 auto", color: "#6c44f6", opacity: 0.4 }} />
@@ -763,8 +778,24 @@ export default function AskLarryPage() {
             <div style={{ display: "flex", flex: 1, flexDirection: "column", minHeight: 0, background: "var(--page-bg)" }}>
               {/* Messages */}
               <div ref={containerRef} style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "20px 24px" }}>
-                {messageLoading && (
-                  <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>Loading conversation...</p>
+                {messageLoading && messages.length === 0 && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "16px" }}>
+                    {[false, true, false, true].map((isSelf, idx) => (
+                      <div key={idx} style={{ display: "flex", justifyContent: isSelf ? "flex-end" : "flex-start", alignItems: "flex-end", gap: 8 }}>
+                        {!isSelf && <div className="pm-shimmer" style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0 }} />}
+                        <div
+                          className="pm-shimmer"
+                          style={{
+                            height: 48,
+                            width: 130 + idx * 20,
+                            borderRadius: 18,
+                            borderTopLeftRadius: isSelf ? 18 : 4,
+                            borderTopRightRadius: isSelf ? 4 : 18,
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
                 )}
 
                 {!messageLoading && messages.length === 0 && (

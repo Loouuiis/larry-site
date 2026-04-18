@@ -1,9 +1,8 @@
 "use client";
 import { useRef, useCallback, useEffect, type ReactNode } from "react";
-import type { FlatRow, InlineAddMode } from "./gantt-utils";
+import type { FlatRow } from "./gantt-utils";
+import type { GanttNode } from "./gantt-types";
 import { GanttOutlineRow } from "./GanttOutlineRow";
-import { GanttInlineAdd } from "./GanttInlineAdd";
-import { ROW_HEIGHT } from "./gantt-types";
 import { GANTT_HEADER_HEIGHT } from "./GanttDateHeader";
 
 interface Props {
@@ -16,19 +15,42 @@ interface Props {
   onToggle: (key: string) => void;
   onSelect: (key: string) => void;
   onHover: (key: string | null) => void;
-  onInlineAdd?: (ctx: { mode: InlineAddMode; parentKey: string | null }) => void;
-  header?: ReactNode;        // optional: full replacement for the default header
-  headerActions?: ReactNode; // optional: right-aligned actions inside default header (e.g. gear icon)
+  onContextMenu?: (rowKey: string, rowKind: GanttNode["kind"], e: React.MouseEvent) => void;
+  header?: ReactNode;
+  headerActions?: ReactNode;
   footer?: ReactNode;
-  overlay?: ReactNode;       // optional: absolutely-positioned child (e.g. CategoryManagerPanel)
+  overlay?: ReactNode;
 }
 
 const MIN_WIDTH = 220;
 const MAX_WIDTH = 420;
+const INDENT_STEP = 14;
+const INDENT_BASE = 14;
+
+function computeIndentGuides(rows: FlatRow[]): { depth: number; top: number; height: number }[] {
+  const out: { depth: number; top: number; height: number }[] = [];
+  const segments: { depth: number; top: number; bottom: number }[] = [];
+  let y = 0;
+  for (const r of rows) {
+    if (r.depth >= 1) {
+      segments.push({ depth: r.depth, top: y, bottom: y + r.height });
+    }
+    y += r.height;
+  }
+  for (const seg of segments) {
+    const last = out[out.length - 1];
+    if (last && last.depth === seg.depth && last.top + last.height === seg.top) {
+      last.height = seg.bottom - last.top;
+    } else {
+      out.push({ depth: seg.depth, top: seg.top, height: seg.bottom - seg.top });
+    }
+  }
+  return out;
+}
 
 export function GanttOutline({
   rows, expanded, selectedKey, hoveredKey, width, onWidthChange,
-  onToggle, onSelect, onHover, onInlineAdd, header, headerActions, footer, overlay,
+  onToggle, onSelect, onHover, onContextMenu, header, headerActions, footer, overlay,
 }: Props) {
   const dragging = useRef(false);
   const startX = useRef(0);
@@ -56,11 +78,13 @@ export function GanttOutline({
     return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
   }, [onWidthChange]);
 
+  const guides = computeIndentGuides(rows);
+
   return (
     <div style={{
-      position: "sticky", left: 0, zIndex: 2, background: "#fff",
+      position: "sticky", left: 0, zIndex: 2, background: "var(--surface)",
       width, flexShrink: 0,
-      borderRight: "1px solid var(--border, #f0edfa)",
+      borderRight: "1px solid var(--border)",
       display: "flex", flexDirection: "column",
     }}>
       {header ?? (
@@ -73,8 +97,7 @@ export function GanttOutline({
             alignItems: "flex-end",
             justifyContent: "space-between",
             padding: "0 14px 10px 20px",
-            borderBottom: "1px solid var(--border, #f0edfa)",
-            background: "var(--surface, #fff)",
+            background: "var(--surface)",
             zIndex: 2,
           }}
         >
@@ -84,7 +107,7 @@ export function GanttOutline({
               fontWeight: 500,
               letterSpacing: "0.08em",
               textTransform: "uppercase",
-              color: "var(--text-2, #4b556b)",
+              color: "var(--text-2)",
             }}
           >
             Task / Groups
@@ -92,23 +115,29 @@ export function GanttOutline({
           {headerActions}
         </div>
       )}
-      <div style={{ flex: 1, overflow: "hidden" }}>
-        {rows.map((row) => {
-          if (row.kind === "add") {
-            return (
-              <GanttInlineAdd
-                key={row.key}
-                mode={row.mode}
-                parentKey={row.parentKey}
-                depth={row.depth}
-                categoryColor={row.categoryColor}
-                height={row.height}
-                onClick={() => onInlineAdd?.({ mode: row.mode, parentKey: row.parentKey })}
-              />
-            );
-          }
-          return (
-            <div key={row.key} style={{ height: row.height ?? ROW_HEIGHT }}>
+      <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
+        {/* Indent guides — behind rows */}
+        <div style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0 }}>
+          {guides.map((g, i) => (
+            <div
+              key={`guide-${i}`}
+              style={{
+                position: "absolute",
+                left: INDENT_BASE + (g.depth - 1) * INDENT_STEP + 6,
+                top: g.top,
+                height: g.height,
+                width: 2,
+                background: "var(--border-2)",
+                opacity: 0.45,
+              }}
+            />
+          ))}
+        </div>
+
+        {/* Rows */}
+        <div style={{ position: "relative", zIndex: 1 }}>
+          {rows.map((row) => (
+            <div key={row.key} style={{ height: row.height }}>
               <GanttOutlineRow
                 row={row}
                 expanded={expanded.has(row.key)}
@@ -117,10 +146,13 @@ export function GanttOutline({
                 onToggle={() => onToggle(row.key)}
                 onSelect={() => onSelect(row.key)}
                 onHover={(h) => onHover(h ? row.key : null)}
+                onContextMenu={onContextMenu
+                  ? (e) => { e.preventDefault(); onContextMenu(row.key, row.node.kind, e); }
+                  : undefined}
               />
             </div>
-          );
-        })}
+          ))}
+        </div>
       </div>
       {footer}
       {overlay}
