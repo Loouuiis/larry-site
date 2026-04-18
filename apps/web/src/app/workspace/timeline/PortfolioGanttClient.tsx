@@ -7,13 +7,17 @@ import { GanttContainer } from "@/components/workspace/gantt/GanttContainer";
 import { AddNodeModal } from "@/components/workspace/gantt/AddNodeModal";
 import { CategoryManagerPanel } from "@/components/workspace/gantt/CategoryManagerPanel";
 import { GanttEmptyState } from "@/components/workspace/gantt/GanttEmptyState";
+import { CategoryColourPopover } from "@/components/workspace/gantt/CategoryColourPopover";
 import type { CategoryOption } from "@/components/workspace/gantt/GanttContextMenu";
 
 type AddCtx =
   | { mode: "category" }
+  | { mode: "subcategory"; parentCategoryId: string }
   | { mode: "project"; parentCategoryId?: string }
   | { mode: "task"; parentProjectId: string }
   | { mode: "subtask"; parentProjectId: string; parentTaskId: string };
+
+type ColourPopover = { categoryId: string; currentColour: string | null; x: number; y: number };
 
 export function PortfolioGanttClient() {
   const [data, setData] = useState<PortfolioTimelineResponse | null>(null);
@@ -21,6 +25,7 @@ export function PortfolioGanttClient() {
   const [addCtx, setAddCtx] = useState<AddCtx | null>(null);
   const [managerOpen, setManagerOpen] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [colourPopover, setColourPopover] = useState<ColourPopover | null>(null);
 
   const fetchTimeline = useCallback(async () => {
     try {
@@ -273,10 +278,67 @@ export function PortfolioGanttClient() {
       return;
     }
 
-    if ((action === "rename" || action === "changeColour") && rowKind === "category") {
-      // Open the Categories drawer — user finishes the edit there.
-      setManagerOpen(true);
+    if (action === "addSubcategory" && rowKind === "category") {
+      const id = rowKey.slice(4);
+      if (id === "uncat") return;
+      setAddCtx({ mode: "subcategory", parentCategoryId: id });
       return;
+    }
+
+    if (action === "changeColour" && rowKind === "category") {
+      const id = rowKey.slice(4);
+      if (id === "uncat") return;
+      const cat = data?.categories.find((c) => c.id === id);
+      setColourPopover({
+        categoryId: id,
+        currentColour: cat?.colour ?? null,
+        x: 0, y: 0,  // centred modal — position not used currently
+      });
+      return;
+    }
+
+    if (action === "rename" && rowKind === "category") {
+      const id = rowKey.slice(4);
+      if (id === "uncat") return;
+      const cat = data?.categories.find((c) => c.id === id);
+      const next = window.prompt("Rename category to:", cat?.name ?? "");
+      if (next === null) return;
+      const trimmed = next.trim();
+      if (!trimmed || trimmed === cat?.name) return;
+      try {
+        const res = await fetch(`/api/workspace/categories/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: trimmed }),
+        });
+        if (!res.ok) {
+          setError(await extractApiError(res, "Couldn't rename this category"));
+          return;
+        }
+        await fetchTimeline();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to rename category");
+      }
+      return;
+    }
+  }
+
+  async function applyCategoryColour(hex: string) {
+    if (!colourPopover) return;
+    try {
+      const res = await fetch(`/api/workspace/categories/${colourPopover.categoryId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ colour: hex }),
+      });
+      if (!res.ok) {
+        setError(await extractApiError(res, "Couldn't change colour"));
+        return;
+      }
+      setColourPopover(null);
+      await fetchTimeline();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to change colour");
     }
   }
 
@@ -349,12 +411,24 @@ export function PortfolioGanttClient() {
 
       {addCtx && (
         <AddNodeModal
-          mode={addCtx.mode}
-          parentCategoryId={addCtx.mode === "project" ? addCtx.parentCategoryId : undefined}
+          mode={addCtx.mode === "subcategory" ? "category" : addCtx.mode}
+          parentCategoryId={
+            addCtx.mode === "project" ? addCtx.parentCategoryId :
+            addCtx.mode === "subcategory" ? addCtx.parentCategoryId :
+            undefined
+          }
           parentProjectId={addCtx.mode === "task" || addCtx.mode === "subtask" ? addCtx.parentProjectId : undefined}
           parentTaskId={addCtx.mode === "subtask" ? addCtx.parentTaskId : undefined}
           onClose={() => setAddCtx(null)}
           onCreated={async () => { await fetchTimeline(); }}
+        />
+      )}
+
+      {colourPopover && (
+        <CategoryColourPopover
+          currentColour={colourPopover.currentColour}
+          onApply={applyCategoryColour}
+          onClose={() => setColourPopover(null)}
         />
       )}
     </div>

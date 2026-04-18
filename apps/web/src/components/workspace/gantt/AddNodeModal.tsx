@@ -9,7 +9,8 @@ interface Props {
   mode: Mode;
   parentProjectId?: string;   // for task
   parentTaskId?: string;      // for subtask
-  parentCategoryId?: string;  // for project
+  parentCategoryId?: string;  // for project AND subcategory (category-nested-under-category)
+  scopedProjectId?: string;   // v4 — for category mode: creates a project-scoped category
   onClose: () => void;
   onCreated: () => Promise<void> | void;
 }
@@ -19,7 +20,10 @@ const inputStyle: React.CSSProperties = {
   background: "var(--surface-2)", color: "var(--text-1)", fontSize: 13, outline: "none", boxSizing: "border-box",
 };
 
-export function AddNodeModal({ mode, parentProjectId, parentTaskId, parentCategoryId, onClose, onCreated }: Props) {
+export function AddNodeModal({
+  mode, parentProjectId, parentTaskId, parentCategoryId, scopedProjectId,
+  onClose, onCreated,
+}: Props) {
   const [title, setTitle] = useState("");
   const [colour, setColour] = useState<string>(DEFAULT_SWATCH_HEX);
   const [dueDate, setDueDate] = useState("");
@@ -34,9 +38,15 @@ export function AddNodeModal({ mode, parentProjectId, parentTaskId, parentCatego
     setSaving(true); setErr(null);
     try {
       if (mode === "category") {
+        const payload: Record<string, unknown> = { name: title.trim(), colour };
+        // parentCategoryId → subcategory nested under another category.
+        // scopedProjectId  → category scoped to a specific project.
+        // API enforces single-parent (only one of parentCategoryId / projectId non-null).
+        if (parentCategoryId) payload.parentCategoryId = parentCategoryId;
+        else if (scopedProjectId) payload.projectId = scopedProjectId;
         const res = await fetch("/api/workspace/categories", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: title.trim(), colour }),
+          body: JSON.stringify(payload),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
       } else if (mode === "project") {
@@ -66,7 +76,18 @@ export function AddNodeModal({ mode, parentProjectId, parentTaskId, parentCatego
     }
   }
 
-  const label = mode === "category" ? "New category" : mode === "project" ? "New project" : mode === "task" ? "New task" : "New subtask";
+  const label =
+    mode === "category"
+      ? (parentCategoryId ? "New subcategory" : scopedProjectId ? "New category in project" : "New category")
+      : mode === "project" ? "New project"
+      : mode === "task" ? "New task"
+      : "New subtask";
+
+  const placeholder =
+    mode === "category"
+      ? (parentCategoryId ? "Subcategory name..." : "Category name...")
+      : mode === "project" ? "Project name..."
+      : "Task title...";
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -83,7 +104,7 @@ export function AddNodeModal({ mode, parentProjectId, parentTaskId, parentCatego
               ref={titleRef} type="text" value={title}
               onChange={(e) => setTitle(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") void handleSave(); if (e.key === "Escape") onClose(); }}
-              placeholder={mode === "category" ? "Category name..." : mode === "project" ? "Project name..." : "Task title..."}
+              placeholder={placeholder}
               style={inputStyle}
             />
           </div>

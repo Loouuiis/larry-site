@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import { Plus } from "lucide-react";
 import type { WorkspaceTimelineTask, WorkspaceTimeline } from "@/app/dashboard/types";
 import type { GanttTask, ProjectCategory, ContextMenuAction, GanttNode } from "./gantt-types";
 import { DEFAULT_CATEGORY_COLOUR } from "./gantt-types";
@@ -16,6 +17,11 @@ interface Props {
 }
 
 type ProjectSummary = { id: string; categoryId: string | null };
+
+type AddCtx =
+  | { mode: "task" }
+  | { mode: "subtask"; parentTaskId: string }
+  | { mode: "category" };
 
 function toGanttTask(t: WorkspaceTimelineTask): GanttTask {
   return {
@@ -42,7 +48,7 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
     [projectId, projectName, ganttTasks],
   );
 
-  const [addCtx, setAddCtx] = useState<{ mode: "task" | "subtask"; parentTaskId?: string } | null>(null);
+  const [addCtx, setAddCtx] = useState<AddCtx | null>(null);
   const [categoryColour, setCategoryColour] = useState<string>(DEFAULT_CATEGORY_COLOUR);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
@@ -113,9 +119,8 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
     }
   }
 
-  const addLabel =
-    selectedKey?.startsWith("task:") ? "+ Subtask" :
-    "+ Task";
+  // Label text only — GanttToolbar provides the leading <Plus /> icon.
+  const addLabel = selectedKey?.startsWith("task:") ? "Subtask" : "Task";
 
   return (
     <>
@@ -154,12 +159,40 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
         rootCategoryColor={categoryColour}
         onContextMenuAction={handleContextMenuAction}
         categoriesForSubmenu={[]}
+        outlineHeaderActions={
+          <button
+            type="button"
+            onClick={() => setAddCtx({ mode: "category" })}
+            aria-label="New category in this project"
+            title="New category in this project"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              height: 24,
+              padding: "0 8px",
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+              background: "var(--brand)",
+              color: "#fff",
+              border: 0,
+              borderRadius: 6,
+              cursor: "pointer",
+            }}
+          >
+            <Plus size={12} strokeWidth={2.5} />
+            Category
+          </button>
+        }
       />
       {addCtx && (
         <AddNodeModal
-          mode={addCtx.mode}
-          parentProjectId={projectId}
-          parentTaskId={addCtx.parentTaskId}
+          mode={addCtx.mode === "subtask" ? "subtask" : addCtx.mode === "task" ? "task" : "category"}
+          parentProjectId={addCtx.mode === "task" || addCtx.mode === "subtask" ? projectId : undefined}
+          parentTaskId={addCtx.mode === "subtask" ? addCtx.parentTaskId : undefined}
+          scopedProjectId={addCtx.mode === "category" ? projectId : undefined}
           onClose={() => setAddCtx(null)}
           onCreated={async () => { await refresh(); }}
         />
