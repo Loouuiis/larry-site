@@ -1,6 +1,7 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, X } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PortfolioTimelineResponse, ContextMenuAction, GanttNode } from "@/components/workspace/gantt/gantt-types";
 import { buildPortfolioTree, buildCategoryColorMap, normalizePortfolioStatuses } from "@/components/workspace/gantt/gantt-utils";
 import { GanttContainer } from "@/components/workspace/gantt/GanttContainer";
@@ -9,6 +10,10 @@ import { CategoryManagerPanel } from "@/components/workspace/gantt/CategoryManag
 import { GanttEmptyState } from "@/components/workspace/gantt/GanttEmptyState";
 import { CategoryColourPopover } from "@/components/workspace/gantt/CategoryColourPopover";
 import type { CategoryOption } from "@/components/workspace/gantt/GanttContextMenu";
+
+// v4 Slice 3A — React Query keys for this surface. Mutations invalidate
+// these so every view reading the same data stays in sync across tabs.
+const QK_TIMELINE_ORG = ["timeline", "org"] as const;
 
 type AddCtx =
   | { mode: "category" }
@@ -20,28 +25,43 @@ type AddCtx =
 type ColourPopover = { categoryId: string; currentColour: string | null; x: number; y: number };
 
 export function PortfolioGanttClient() {
-  const [data, setData] = useState<PortfolioTimelineResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const qc = useQueryClient();
   const [addCtx, setAddCtx] = useState<AddCtx | null>(null);
   const [managerOpen, setManagerOpen] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [colourPopover, setColourPopover] = useState<ColourPopover | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
 
-  const fetchTimeline = useCallback(async () => {
-    try {
+  // v4 Slice 3A — the timeline read is now React Query. Mutations invalidate
+  // QK_TIMELINE_ORG to trigger a refetch; the cached payload stays mounted
+  // during refetch so the Gantt never blanks between writes.
+  const { data, error: queryError, isError: isFetchError, refetch } = useQuery({
+    queryKey: QK_TIMELINE_ORG,
+    queryFn: async (): Promise<PortfolioTimelineResponse> => {
       const res = await fetch("/api/workspace/timeline", { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setData(await res.json());
-      setError(null);
-    } catch (e) {
-      // Never blank the Gantt on fetch error — surface the message in the
-      // dismissible banner and keep the last good `data` mounted. A transient
-      // 409/5xx no longer wipes the user's view.
-      setError(e instanceof Error ? e.message : "Failed to load");
-    }
-  }, []);
+      return res.json() as Promise<PortfolioTimelineResponse>;
+    },
+  });
 
-  useEffect(() => { void fetchTimeline(); }, [fetchTimeline]);
+  // Merge query-error and mutation-error into a single banner stream.
+  const error =
+    mutationError
+      ?? (isFetchError ? (queryError instanceof Error ? queryError.message : "Failed to load") : null);
+
+  // Fire-and-forget invalidation — used after every mutation. Consumers of
+  // these keys (Task Center, My Tasks, etc.) refetch automatically when they
+  // become active again.
+  const invalidateAll = () => {
+    void qc.invalidateQueries({ queryKey: QK_TIMELINE_ORG });
+    void qc.invalidateQueries({ queryKey: ["tasks"] });
+    void qc.invalidateQueries({ queryKey: ["projects"] });
+  };
+
+  // Keep the legacy callback-name for existing consumers (modal onCreated,
+  // CategoryManagerPanel onChanged). Invalidate + rely on React Query to
+  // refetch, rather than the old per-page `fetchTimeline()` ad-hoc refetch.
+  const fetchTimeline = async () => { invalidateAll(); };
 
   const categoryColorMap = useMemo(
     () => data ? buildCategoryColorMap(data.categories.map((c) => ({ id: c.id, colour: c.colour }))) : undefined,
@@ -59,7 +79,7 @@ export function PortfolioGanttClient() {
   if (!data && error) {
     return (
       <div style={{ padding: 24 }}>
-        <ErrorBanner message={error} onDismiss={() => setError(null)} onRetry={() => void fetchTimeline()} />
+        <ErrorBanner message={error} onDismiss={() => setMutationError(null)} onRetry={() => void refetch()} />
       </div>
     );
   }
@@ -165,7 +185,7 @@ export function PortfolioGanttClient() {
       const projectId = taskProjectLookup.get(taskId);
       if (!projectId) return;
       if (isArchived(projectId)) {
-        setError("That task's project is archived — unarchive it first to move it between categories.");
+        setMutationError("That task's project is archived — unarchive it first to move it between categories.");
         return;
       }
       try {
@@ -175,12 +195,12 @@ export function PortfolioGanttClient() {
           body: JSON.stringify({ categoryId: categoryId ?? null }),
         });
         if (!res.ok) {
-          setError(await extractApiError(res, "Couldn't move this project"));
+          setMutationError(await extractApiError(res, "Couldn't move this project"));
           return;
         }
         await fetchTimeline();
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to move project");
+        setMutationError(e instanceof Error ? e.message : "Failed to move project");
       }
       return;
     }
@@ -188,7 +208,7 @@ export function PortfolioGanttClient() {
     if (action === "moveToCategory" && rowKind === "project") {
       const projectId = rowKey.slice(5);
       if (isArchived(projectId)) {
-        setError("That project is archived — unarchive it first to move it between categories.");
+        setMutationError("That project is archived — unarchive it first to move it between categories.");
         return;
       }
       try {
@@ -198,12 +218,12 @@ export function PortfolioGanttClient() {
           body: JSON.stringify({ categoryId: categoryId ?? null }),
         });
         if (!res.ok) {
-          setError(await extractApiError(res, "Couldn't move this project"));
+          setMutationError(await extractApiError(res, "Couldn't move this project"));
           return;
         }
         await fetchTimeline();
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to move project");
+        setMutationError(e instanceof Error ? e.message : "Failed to move project");
       }
       return;
     }
@@ -212,7 +232,7 @@ export function PortfolioGanttClient() {
       const taskId = rowKey.startsWith("task:") ? rowKey.slice(5) : rowKey.slice(4);
       const projectId = taskProjectLookup.get(taskId);
       if (isArchived(projectId)) {
-        setError("That task's project is archived — unarchive it first to edit task dates.");
+        setMutationError("That task's project is archived — unarchive it first to edit task dates.");
         return;
       }
       try {
@@ -222,12 +242,12 @@ export function PortfolioGanttClient() {
           body: JSON.stringify({ startDate: null, dueDate: null }),
         });
         if (!res.ok) {
-          setError(await extractApiError(res, "Couldn't remove this task from the timeline"));
+          setMutationError(await extractApiError(res, "Couldn't remove this task from the timeline"));
           return;
         }
         await fetchTimeline();
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to remove task from timeline");
+        setMutationError(e instanceof Error ? e.message : "Failed to remove task from timeline");
       }
       return;
     }
@@ -246,7 +266,7 @@ export function PortfolioGanttClient() {
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           await fetchTimeline();
         } catch (e) {
-          setError(e instanceof Error ? e.message : "Failed to delete task");
+          setMutationError(e instanceof Error ? e.message : "Failed to delete task");
         }
       }
       if (rowKind === "project") {
@@ -260,7 +280,7 @@ export function PortfolioGanttClient() {
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           await fetchTimeline();
         } catch (e) {
-          setError(e instanceof Error ? e.message : "Failed to delete project");
+          setMutationError(e instanceof Error ? e.message : "Failed to delete project");
         }
       }
       if (rowKind === "category") {
@@ -272,7 +292,7 @@ export function PortfolioGanttClient() {
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           await fetchTimeline();
         } catch (e) {
-          setError(e instanceof Error ? e.message : "Failed to delete category");
+          setMutationError(e instanceof Error ? e.message : "Failed to delete category");
         }
       }
       return;
@@ -312,12 +332,12 @@ export function PortfolioGanttClient() {
           body: JSON.stringify({ name: trimmed }),
         });
         if (!res.ok) {
-          setError(await extractApiError(res, "Couldn't rename this category"));
+          setMutationError(await extractApiError(res, "Couldn't rename this category"));
           return;
         }
         await fetchTimeline();
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to rename category");
+        setMutationError(e instanceof Error ? e.message : "Failed to rename category");
       }
       return;
     }
@@ -332,13 +352,13 @@ export function PortfolioGanttClient() {
         body: JSON.stringify({ colour: hex }),
       });
       if (!res.ok) {
-        setError(await extractApiError(res, "Couldn't change colour"));
+        setMutationError(await extractApiError(res, "Couldn't change colour"));
         return;
       }
       setColourPopover(null);
       await fetchTimeline();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to change colour");
+      setMutationError(e instanceof Error ? e.message : "Failed to change colour");
     }
   }
 
@@ -351,7 +371,7 @@ export function PortfolioGanttClient() {
 
       {error && (
         <div style={{ marginBottom: 12 }}>
-          <ErrorBanner message={error} onDismiss={() => setError(null)} onRetry={() => void fetchTimeline()} />
+          <ErrorBanner message={error} onDismiss={() => setMutationError(null)} onRetry={() => void refetch()} />
         </div>
       )}
 

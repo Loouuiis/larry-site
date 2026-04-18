@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@larry/shared": "file:../../packages/shared",
+    "@tanstack/react-query": "^5.59.20",
     "framer-motion": "^12.35.0",
     "html2canvas-pro": "^2.0.2",
     "ioredis": "^5.8.0",
