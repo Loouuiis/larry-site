@@ -71,6 +71,15 @@ function CreateTaskFields({ snapshot, payload, onPatch }: FieldsProps) {
       </label>
       <div className="grid grid-cols-2 gap-3">
         <label className={LABEL_CLASS}>
+          <span className={SPAN_CLASS}>Start date</span>
+          <input
+            type="date"
+            value={str(payload.startDate)}
+            onChange={(e) => onPatch({ startDate: e.target.value })}
+            className={INPUT_CLASS}
+          />
+        </label>
+        <label className={LABEL_CLASS}>
           <span className={SPAN_CLASS}>Due date</span>
           <input
             type="date"
@@ -79,6 +88,8 @@ function CreateTaskFields({ snapshot, payload, onPatch }: FieldsProps) {
             className={INPUT_CLASS}
           />
         </label>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
         <label className={LABEL_CLASS}>
           <span className={SPAN_CLASS}>Priority</span>
           <select
@@ -92,16 +103,16 @@ function CreateTaskFields({ snapshot, payload, onPatch }: FieldsProps) {
             <option value="critical">Critical</option>
           </select>
         </label>
+        <label className={LABEL_CLASS}>
+          <span className={SPAN_CLASS}>Assignee</span>
+          <TeamSelect
+            value={str(payload.assigneeName)}
+            onChange={(name) => onPatch({ assigneeName: name })}
+            members={snapshot.teamMembers}
+            placeholder="(unassigned)"
+          />
+        </label>
       </div>
-      <label className={LABEL_CLASS}>
-        <span className={SPAN_CLASS}>Assignee</span>
-        <TeamSelect
-          value={str(payload.assigneeName)}
-          onChange={(name) => onPatch({ assigneeName: name })}
-          members={snapshot.teamMembers}
-          placeholder="(unassigned)"
-        />
-      </label>
     </div>
   );
 }
