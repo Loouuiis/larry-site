@@ -1033,7 +1033,7 @@ export async function executeProjectCreate(
   });
 
   const tasks: Array<Record<string, unknown>> = [];
-  for (const taskSpec of payload.tasks) {
+  for (const taskSpec of payload.tasks ?? []) {
     try {
       const task = await executeTaskCreate(db, tenantId, projectId, {
         title: taskSpec.title,

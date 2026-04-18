@@ -97,7 +97,7 @@ function buildFixtures({ tenantId, projectId, secondUserId, taskId, calendarEven
     },
     {
       type: "project_create",
-      payload: { name: "Verify-109 child project", description: "before description edit" },
+      payload: { name: "Verify-109 child project", description: "before description edit", tasks: [] },
       patch: { name: "Verify-109 child — EDITED", description: "after description edit" },
     },
     {
@@ -215,14 +215,39 @@ async function lookupContext() {
       seededProjectIds.push(projectId);
     }
 
-    // find any second tenant member (for collaborator_* tests)
+    // find a second tenant member for collaborator_* tests, or seed one
     const peer = await client.query(
       `SELECT user_id FROM memberships
         WHERE tenant_id = $1 AND user_id <> $2
         LIMIT 1`,
       [tenantId, userId],
     );
-    const secondUserId = peer.rows[0]?.user_id ?? null;
+    let secondUserId = peer.rows[0]?.user_id ?? null;
+    if (!secondUserId) {
+      // Seed a peer user attached to this tenant as a viewer.
+      const peerEmail = `verify-109-peer@larry-pm.com`;
+      const existing = await client.query(`SELECT id FROM users WHERE email=$1 LIMIT 1`, [peerEmail]);
+      if (existing.rows[0]) {
+        secondUserId = existing.rows[0].id;
+      } else {
+        // Generate a non-loginable bcrypt hash placeholder — peer is for membership tests only.
+        const created = await client.query(
+          `INSERT INTO users (email, password_hash, display_name, email_verified_at)
+           VALUES ($1, $2, $3, NOW())
+           ON CONFLICT (email) DO UPDATE SET display_name = EXCLUDED.display_name
+           RETURNING id`,
+          [peerEmail, "$2b$10$verify109peerunusable.placeholder.hash.value/AAAAAAAAAAAAAAAA", "Verify Peer"],
+        );
+        secondUserId = created.rows[0].id;
+      }
+      // Ensure tenant membership exists.
+      await client.query(
+        `INSERT INTO memberships (tenant_id, user_id, role)
+         VALUES ($1, $2, 'member')
+         ON CONFLICT DO NOTHING`,
+        [tenantId, secondUserId],
+      );
+    }
 
     // pick or create a task in the project (for status_update/risk_flag/etc.)
     const t = await client.query(
