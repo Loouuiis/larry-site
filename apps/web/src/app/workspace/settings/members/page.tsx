@@ -225,8 +225,28 @@ export default function MembersSettingsPage() {
           </div>
 
           {loading ? (
-            <div className="px-6 py-12 text-center">
-              <p className="text-[14px]" style={{ color: "var(--text-muted)" }}>Loading members...</p>
+            <div>
+              {[1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="grid items-center px-5 py-3"
+                  style={{
+                    gridTemplateColumns: "1fr 160px 200px 80px",
+                    borderBottom: "1px solid var(--border)",
+                  }}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="pm-shimmer" style={{ width: 36, height: 36, borderRadius: "50%", flexShrink: 0 }} />
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <div className="pm-shimmer" style={{ width: 100, height: 13, borderRadius: 4 }} />
+                      <div className="pm-shimmer" style={{ width: 140, height: 11, borderRadius: 4 }} />
+                    </div>
+                  </div>
+                  <div className="pm-shimmer" style={{ width: 80, height: 22, borderRadius: 999 }} />
+                  <div />
+                  <div />
+                </div>
+              ))}
             </div>
           ) : members.length === 0 ? (
             <div className="px-6 py-12 text-center">

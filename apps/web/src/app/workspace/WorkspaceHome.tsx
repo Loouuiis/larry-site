@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { TriangleAlert, Plus, Search, ChevronDown, ChevronRight, ArchiveRestore, Trash2 } from "lucide-react";
+import { Plus, Search, ChevronDown, ChevronRight, ArchiveRestore, Trash2 } from "lucide-react";
 import type { WorkspaceProject, WorkspaceHomeData, WorkspaceTask } from "@/app/dashboard/types";
 import { StartProjectFlow } from "@/components/dashboard/StartProjectFlow";
 import { useWorkspaceChrome } from "./WorkspaceChromeContext";
+import { PageState, SkeletonCard } from "@/components/PageState";
 
 interface LarryBriefingProject {
   projectId: string;
@@ -434,29 +435,14 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
 
         {/* Error banner */}
         {error && (
-          <div
-            className="flex items-start gap-3 px-4 py-3 rounded-lg text-[14px]"
-            style={{
-              background: "var(--pm-red-light, #fff6f7)",
-              border: "1px solid var(--pm-red)",
-              color: "var(--pm-red)",
-              borderRadius: "var(--radius-btn)",
-            }}
-          >
-            <TriangleAlert size={16} className="mt-0.5 shrink-0" />
-            <span>{error}</span>
-          </div>
+          <PageState loading={false} error={error} onRetry={loadWorkspace} empty={false}>{null}</PageState>
         )}
 
         {/* Project cards grid */}
         {loading ? (
           <div className="grid gap-4 md:grid-cols-2">
             {Array.from({ length: 4 }).map((_, index) => (
-              <div
-                key={index}
-                className="pm-shimmer h-[180px]"
-                style={{ borderRadius: "var(--radius-card)" }}
-              />
+              <SkeletonCard key={index} />
             ))}
           </div>
         // QA-2026-04-12 §1: empty-state must check the WHOLE picture, not

@@ -31,9 +31,11 @@ const toDateStr = parseDateKey;
 export function useCalendarEvents(projectId?: string) {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const [tasksRes, meetingsRes] = await Promise.all([
         fetch(projectId ? `/api/workspace/tasks?projectId=${projectId}` : "/api/workspace/tasks", { cache: "no-store" }),
@@ -79,7 +81,7 @@ export function useCalendarEvents(projectId?: string) {
 
       setEvents(calEvents);
     } catch {
-      // Keep empty on error
+      setError("Failed to load calendar events.");
     } finally {
       setLoading(false);
     }
@@ -89,5 +91,5 @@ export function useCalendarEvents(projectId?: string) {
     void load();
   }, [load]);
 
-  return { events, loading, refresh: load };
+  return { events, loading, error, refresh: load };
 }

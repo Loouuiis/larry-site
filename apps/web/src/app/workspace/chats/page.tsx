@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MessageSquare, Plus, Users, User, Layers } from "lucide-react";
+import { PageState } from "@/components/PageState";
 import {
   type ColleagueConversation,
   type ColleagueMessage,
@@ -45,6 +46,7 @@ export default function ColleagueChatsPage() {
   const [messages, setMessages] = useState<ColleagueMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [messagesLoading, setMessagesLoading] = useState(false);
+  const [convError, setConvError] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [files, setFiles] = useState<AttachedFile[]>([]);
   const [busy, setBusy] = useState(false);
@@ -56,17 +58,24 @@ export default function ColleagueChatsPage() {
   );
 
   // Load conversations
-  useEffect(() => {
+  const loadConversations = useCallback(() => {
     let cancelled = false;
+    setConvError(null);
+    setLoading(true);
     void listConversations()
       .then((items) => {
         if (cancelled) return;
         setConversations(items);
         if (items.length > 0 && !selectedId) setSelectedId(items[0].id);
       })
+      .catch(() => { if (!cancelled) setConvError("Failed to load conversations."); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    return loadConversations();
+  }, [loadConversations]);
 
   // Load messages when selection changes
   useEffect(() => {
@@ -140,15 +149,31 @@ export default function ColleagueChatsPage() {
 
             {/* Conversation list */}
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px" }}>
-              {!loading && conversations.length === 0 && (
-                <div style={{ padding: "40px 16px", textAlign: "center" }}>
-                  <MessageSquare size={24} style={{ margin: "0 auto", color: "#6c44f6", opacity: 0.4 }} />
-                  <p style={{ marginTop: "12px", fontSize: "13px", fontWeight: 600, color: "var(--text-1)" }}>No conversations yet</p>
-                  <p style={{ marginTop: "6px", fontSize: "12px", lineHeight: "1.5", color: "var(--text-muted)" }}>
-                    Start a chat with a colleague.
-                  </p>
+              {loading ? (
+                <div style={{ padding: "8px" }}>
+                  {[1, 2, 3, 4].map((i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px", marginBottom: "2px" }}>
+                      <div className="pm-shimmer" style={{ width: 36, height: 36, borderRadius: 10, flexShrink: 0 }} />
+                      <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: "6px" }}>
+                        <div className="pm-shimmer" style={{ height: 13, width: `${50 + i * 10}%`, borderRadius: 4 }} />
+                        <div className="pm-shimmer" style={{ height: 11, width: "40%", borderRadius: 4 }} />
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              )}
+              ) : convError ? (
+                <PageState loading={false} error={convError} onRetry={loadConversations} empty={false}>{null}</PageState>
+              ) : (
+                <>
+                  {!loading && conversations.length === 0 && (
+                    <div style={{ padding: "40px 16px", textAlign: "center" }}>
+                      <MessageSquare size={24} style={{ margin: "0 auto", color: "#6c44f6", opacity: 0.4 }} />
+                      <p style={{ marginTop: "12px", fontSize: "13px", fontWeight: 600, color: "var(--text-1)" }}>No conversations yet</p>
+                      <p style={{ marginTop: "6px", fontSize: "12px", lineHeight: "1.5", color: "var(--text-muted)" }}>
+                        Start a chat with a colleague.
+                      </p>
+                    </div>
+                  )}
 
               {conversations.map((c) => {
                 const active = c.id === selectedId;
@@ -203,6 +228,8 @@ export default function ColleagueChatsPage() {
                   </button>
                 );
               })}
+                </>
+              )}
             </div>
           </aside>
 
@@ -253,8 +280,24 @@ export default function ColleagueChatsPage() {
             {/* Messages */}
             <div style={{ display: "flex", flex: 1, flexDirection: "column", minHeight: 0, background: "var(--page-bg)" }}>
               <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "20px 24px" }}>
-                {messagesLoading && (
-                  <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>Loading...</p>
+                {messagesLoading && messages.length === 0 && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "16px" }}>
+                    {[false, true, false, true].map((isSelf, idx) => (
+                      <div key={idx} style={{ display: "flex", justifyContent: isSelf ? "flex-end" : "flex-start", alignItems: "flex-end", gap: 8 }}>
+                        {!isSelf && <div className="pm-shimmer" style={{ width: 28, height: 28, borderRadius: 8, flexShrink: 0 }} />}
+                        <div
+                          className="pm-shimmer"
+                          style={{
+                            height: 48 + idx * 4,
+                            width: 130 + idx * 20,
+                            borderRadius: 18,
+                            borderTopLeftRadius: isSelf ? 18 : 4,
+                            borderTopRightRadius: isSelf ? 4 : 18,
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
                 )}
 
                 {!messagesLoading && !selectedId && (
