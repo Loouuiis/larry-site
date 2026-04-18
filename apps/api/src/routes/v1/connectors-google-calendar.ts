@@ -9,6 +9,7 @@ import {
   loadProjectWriteState,
 } from "../../lib/project-write-lock.js";
 import { createSignedStateToken, verifySignedStateToken } from "../../services/connectors/slack.js";
+import { claimStateToken } from "../../lib/oauth-state.js";
 import {
   buildGoogleCalendarInstallUrl,
   createGoogleCalendarWatch,
@@ -278,8 +279,10 @@ export const googleCalendarConnectorRoutes: FastifyPluginAsync = async (fastify)
     }
 
     let oauthState: z.infer<typeof GoogleOauthStateSchema>;
+    let decodedJti: string | undefined;
     try {
       const decoded = verifySignedStateToken(query.state, fastify.config.JWT_ACCESS_SECRET);
+      decodedJti = typeof decoded.jti === "string" ? decoded.jti : undefined;
       oauthState = GoogleOauthStateSchema.parse(decoded);
     } catch (error) {
       const reason = error instanceof Error ? error.message : "unknown";
@@ -287,6 +290,12 @@ export const googleCalendarConnectorRoutes: FastifyPluginAsync = async (fastify)
         throw fastify.httpErrors.badRequest(`Invalid or expired Google OAuth state (${reason}).`);
       }
       throw fastify.httpErrors.badRequest("Invalid or expired Google OAuth state.");
+    }
+
+    const stateTtl = fastify.config.GOOGLE_OAUTH_STATE_TTL_SECONDS;
+    if (decodedJti && !(await claimStateToken(decodedJti, stateTtl))) {
+      request.log.warn({ jti: decodedJti }, "google-calendar/callback: state replay rejected");
+      throw fastify.httpErrors.badRequest("OAuth state already consumed.");
     }
 
     const tokenSet = await exchangeGoogleOauthCode({
