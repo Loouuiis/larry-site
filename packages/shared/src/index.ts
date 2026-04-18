@@ -382,6 +382,8 @@ export interface ProjectCategory {
   name: string;
   colour: string | null;
   sortOrder: number;
+  parentCategoryId: string | null;
+  projectId: string | null;
   createdAt: string;
   updatedAt: string;
 }
