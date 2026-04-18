@@ -227,10 +227,15 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
         completed: taskRows.filter((task) => task.status === "completed"),
       };
 
+      // Gantt should only show tasks with a full date span; Kanban keeps every task.
+      const ganttTasks = taskRows.filter(
+        (t) => t.startDate !== null && t.dueDate !== null,
+      );
+
       return {
         projectId: params.id,
         generatedAt: new Date().toISOString(),
-        gantt: taskRows,
+        gantt: ganttTasks,
         dependencies: dependencyRows,
         kanban: byColumn,
       };
