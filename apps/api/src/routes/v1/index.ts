@@ -26,6 +26,7 @@ import { searchRoutes } from "./search.js";
 import { adminRoutes } from "./admin.js";
 import { resendWebhookRoutes } from "./webhooks-resend.js";
 import { timelineRoutes } from "./timeline.js";
+import { userProfileRoutes } from "./user-profile.js";
 
 export const v1Routes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(authRoutes, { prefix: "/auth" });
@@ -56,4 +57,5 @@ export const v1Routes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(adminRoutes, { prefix: "/admin" });
   await fastify.register(resendWebhookRoutes, { prefix: "/webhooks" });
   await fastify.register(timelineRoutes);
+  await fastify.register(userProfileRoutes, { prefix: "/user" });
 };

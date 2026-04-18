@@ -22,11 +22,14 @@ interface ApiSignupResponse {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { email: rawEmail, password, confirmPassword } = body ?? {};
+    const { email: rawEmail, password } = body ?? {};
 
-    if (!rawEmail || !password || !confirmPassword) {
+    // 3-step signup (#86) drops the confirm-password field in favour of a
+    // show/hide toggle. We also accept confirmPassword for transitional
+    // compatibility with any stale client bundles still sending it.
+    if (!rawEmail || !password) {
       return NextResponse.json(
-        { error: "All fields are required." },
+        { error: "Email and password are required." },
         { status: 400 }
       );
     }
@@ -38,7 +41,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (password !== confirmPassword) {
+    if (typeof body?.confirmPassword === "string" && body.confirmPassword !== password) {
       return NextResponse.json(
         { error: "Passwords do not match." },
         { status: 400 }
@@ -71,6 +74,8 @@ export async function POST(req: NextRequest) {
           password: String(password),
           firstName: typeof body?.firstName === "string" ? body.firstName : undefined,
           lastName: typeof body?.lastName === "string" ? body.lastName : undefined,
+          role: typeof body?.role === "string" ? body.role : undefined,
+          orgName: typeof body?.orgName === "string" ? body.orgName : undefined,
         }),
         cache: "no-store",
         signal: AbortSignal.timeout(12_000),

@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { Eye, EyeOff, Check, Upload, ArrowRight, X } from "lucide-react";
+import { Eye, EyeOff, Check, ArrowRight, Plus, X, CalendarCheck } from "lucide-react";
 import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 
-/* ─── Step dots ───────────────────────────────────────────────────── */
+/* ─── Step dots (3 steps, active widens) ──────────────────────────── */
 
 function StepDots({ current, total }: { current: number; total: number }) {
   return (
@@ -31,40 +31,42 @@ function StepDots({ current, total }: { current: number; total: number }) {
 const INPUT_CLS =
   "min-h-[44px] w-full rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 text-[var(--text-1)] placeholder:text-[var(--text-disabled)] outline-none transition-colors duration-150 focus:border-[var(--border-2)] focus:bg-[var(--surface)]";
 
-/* ─── Tile selector ───────────────────────────────────────────────── */
+const ROLES = [
+  "Team member", "Manager", "Director",
+  "Executive (e.g. VP or C-suite)", "Business Owner",
+  "Freelancer", "Student", "Other", "Prefer not to say",
+];
 
-function TileSelector({
-  options,
-  selected,
-  onToggle,
-  max,
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const TOTAL_STEPS = 3;
+
+/* ─── Tile selector (single-select role chip) ─────────────────────── */
+
+function RoleChips({
+  value,
+  onChange,
 }: {
-  options: string[];
-  selected: string[];
-  onToggle: (value: string) => void;
-  max?: number;
+  value: string;
+  onChange: (v: string) => void;
 }) {
   return (
     <div className="flex flex-wrap gap-2">
-      {options.map((option) => {
-        const isSelected = selected.includes(option);
-        const isDisabled = !isSelected && max !== undefined && selected.length >= max;
+      {ROLES.map((option) => {
+        const selected = value === option;
         return (
           <button
             key={option}
             type="button"
-            onClick={() => !isDisabled && onToggle(option)}
-            disabled={isDisabled}
+            onClick={() => onChange(selected ? "" : option)}
             className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-[13px] font-medium transition-all duration-150"
             style={{
-              borderColor: isSelected ? "var(--brand)" : "var(--border)",
-              background: isSelected ? "var(--brand-soft, #f0edfa)" : "var(--surface)",
-              color: isSelected ? "var(--brand)" : "var(--text-2)",
-              opacity: isDisabled ? 0.5 : 1,
-              cursor: isDisabled ? "not-allowed" : "pointer",
+              borderColor: selected ? "var(--brand)" : "var(--border)",
+              background: selected ? "var(--brand-soft, #f0edfa)" : "var(--surface)",
+              color: selected ? "var(--brand)" : "var(--text-2)",
+              cursor: "pointer",
             }}
           >
-            {isSelected && <Check size={14} />}
+            {selected && <Check size={14} />}
             {option}
           </button>
         );
@@ -89,276 +91,218 @@ function getPasswordStrength(pw: string): { label: string; color: string; width:
   return { label: "Strong", color: "#6c44f6", width: "100%" };
 }
 
-/* ─── Constants ───────────────────────────────────────────────────── */
-
-const ROLES = [
-  "Team member", "Manager", "Director",
-  "Executive (e.g. VP or C-suite)", "Business Owner",
-  "Freelancer", "Student", "Other", "Prefer not to say",
-];
-
-const WORK_TYPES = [
-  "Administrative", "Communications", "Creative & Design",
-  "Customer Experience / Support", "Data or Analytics",
-  "Education Professional", "Engineering", "Finance or Accounting",
-  "Fundraising", "Healthcare Professional", "Human Resources / Recruiting",
-  "Information Technology", "Legal", "Marketing", "Operations",
-  "Product Management", "Professional Services",
-  "Project or Program Management", "Research and Development",
-  "Sales & CRM", "Other",
-];
-
-const DISCOVERY_OPTIONS = [
-  "Friend / Colleague", "LinkedIn", "Facebook / Instagram",
-  "AI Tools (ChatGPT, Perplexity, etc.)", "Search Engine (Google, Bing, etc.)",
-  "Software Review Site", "Podcasts / Radio", "TikTok",
-  "TV / Streaming (Hulu, NBC, etc.)", "YouTube", "Other",
-];
-
-const TOOLS = [
-  "Jira", "Asana", "Monday.com", "ClickUp", "Trello",
-  "Notion", "Linear", "Microsoft Planner", "Basecamp",
-  "Smartsheet", "Wrike", "Google Sheets", "Excel",
-  "Slack", "Microsoft Teams", "Other",
-];
-
-const TOTAL_STEPS = 8;
-
 /* ─── Wizard ──────────────────────────────────────────────────────── */
-
-const STEP_NAME_MAP: Record<string, number> = {
-  role: 3,
-  work: 4,
-  discovery: 5,
-  tools: 6,
-};
 
 export function SignupWizard() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [step, setStep] = useState(0);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // If redirected from Google OAuth with ?step=role, jump to that step
-  useEffect(() => {
-    const stepParam = searchParams.get("step");
-    if (stepParam) {
-      const target = STEP_NAME_MAP[stepParam] ?? parseInt(stepParam, 10);
-      if (!isNaN(target) && target >= 0 && target < TOTAL_STEPS) {
-        setStep(target);
-      }
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Step 1: Account
+  // Step 0 — Account + role
   const [email, setEmail] = useState("");
-  const [authMethod, setAuthMethod] = useState<"email" | null>(null);
-
-  // Step 2: Profile
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [subscribeEmails, setSubscribeEmails] = useState(true);
+  const [role, setRole] = useState("");
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [subscribeEmails, setSubscribeEmails] = useState(true);
 
-  // Profile photo
-  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Step 1 — Workspace + invites
+  const [orgName, setOrgName] = useState("");
+  const [inviteEmails, setInviteEmails] = useState<string[]>(["", "", ""]);
 
-  const handleAvatarChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setError("Please upload an image file.");
-      return;
-    }
-    if (file.size > 2 * 1024 * 1024) {
-      setError("Image must be under 2 MB.");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => setAvatarPreview(reader.result as string);
-    reader.readAsDataURL(file);
-  }, []);
-
-  // Step 3-6: Profile questions
-  const [roles, setRoles] = useState<string[]>([]);
-  const [workTypes, setWorkTypes] = useState<string[]>([]);
-  const [discovery, setDiscovery] = useState<string[]>([]);
-  const [tools, setTools] = useState<string[]>([]);
-
-  // Step 7: Invite
-  const [inviteEmails, setInviteEmails] = useState("");
-
-  const toggleItem = useCallback((list: string[], item: string, setter: (v: string[]) => void) => {
-    setter(list.includes(item) ? list.filter((v) => v !== item) : [...list, item]);
-  }, []);
+  // Step 2 — First project + GCal
+  const [projectName, setProjectName] = useState("");
+  const [gcalConnected, setGcalConnected] = useState(false);
 
   const passwordStrength = getPasswordStrength(password);
-  const passwordsMatch = confirmPassword.length > 0 && password === confirmPassword;
+  const step0Valid =
+    EMAIL_RE.test(email) &&
+    firstName.trim().length > 0 &&
+    password.length >= 8 &&
+    agreedToTerms;
 
-  const next = () => {
-    setError("");
-    setStep((s) => Math.min(s + 1, TOTAL_STEPS - 1));
-  };
+  const displayName = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
+  const defaultOrgName = firstName.trim() ? `${firstName.trim()}'s workspace` : "";
 
-  const createAccount = async () => {
+  /* ─── Step 0 submit: create account ───────────────────────────── */
+
+  const submitStep0 = useCallback(async () => {
     setError("");
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
-      return;
-    }
-    if (password !== confirmPassword) {
-      setError("Passwords do not match.");
-      return;
-    }
-    if (!agreedToTerms) {
-      setError("Please agree to the terms to continue.");
-      return;
-    }
+    if (!step0Valid) return;
 
     setLoading(true);
     try {
       const res = await fetch("/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, confirmPassword, firstName: firstName.trim(), lastName: lastName.trim() }),
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          role: role || undefined,
+          orgName: defaultOrgName || undefined,
+        }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(data.error ?? "Something went wrong.");
         return;
       }
-      // Save avatar in background — don't block the wizard flow
-      if (avatarPreview) {
-        void fetch("/api/auth/update-profile", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ avatarUrl: avatarPreview }),
-        });
-      }
-      next();
+      setOrgName(defaultOrgName || displayName || "");
+      setStep(1);
     } catch {
       setError("Network error. Please check your connection.");
     } finally {
       setLoading(false);
     }
-  };
+  }, [step0Valid, email, password, firstName, lastName, role, defaultOrgName, displayName]);
 
-  const finish = () => {
-    router.push("/workspace");
-  };
+  /* ─── Step 1 submit: rename workspace + send invites ──────────── */
+
+  const submitStep1 = useCallback(async () => {
+    setError("");
+    setLoading(true);
+
+    try {
+      // Rename tenant only if user changed the name. Fire-and-forget —
+      // the signup already created a tenant; a failed rename leaves the
+      // default name intact, which is acceptable.
+      const finalOrgName = orgName.trim();
+      if (finalOrgName && finalOrgName !== defaultOrgName) {
+        void fetch("/api/workspace/tenant", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: finalOrgName }),
+        });
+      }
+
+      // Send invitations for each non-empty, valid email. Fire-and-forget;
+      // errors show no blocking UI — we prioritise flow over capture.
+      const validInvites = inviteEmails
+        .map((e) => e.trim())
+        .filter((e) => e.length > 0 && EMAIL_RE.test(e));
+
+      validInvites.forEach((inviteEmail) => {
+        void fetch("/api/invitations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: inviteEmail }),
+        });
+      });
+
+      setStep(2);
+    } finally {
+      setLoading(false);
+    }
+  }, [orgName, defaultOrgName, inviteEmails]);
+
+  /* ─── Step 2 submit: create project + redirect ────────────────── */
+
+  const submitStep2 = useCallback(async () => {
+    setError("");
+    setLoading(true);
+    try {
+      const trimmed = projectName.trim();
+      if (trimmed.length > 0) {
+        const res = await fetch("/api/workspace/projects", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: trimmed }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setError(data.error ?? "Could not create your first project. Try again or skip for now.");
+          setLoading(false);
+          return;
+        }
+      }
+      router.push("/workspace");
+    } catch {
+      setError("Network error. Please check your connection.");
+      setLoading(false);
+    }
+  }, [projectName, router]);
+
+  const skipToWorkspace = () => router.push("/workspace");
+
+  /* ─── GCal connect popup ──────────────────────────────────────── */
+
+  const connectGCal = useCallback(async () => {
+    setError("");
+    try {
+      const res = await fetch("/api/workspace/connectors/calendar/install");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.installUrl) {
+        setError(data?.error ?? "Could not start Google Calendar setup. Try again from Settings.");
+        return;
+      }
+      const w = window.open(data.installUrl, "gcal-oauth", "width=520,height=620");
+      if (!w) {
+        setError("Popup blocked. You can connect Google Calendar later from Settings.");
+        return;
+      }
+      const poll = window.setInterval(() => {
+        if (w.closed) {
+          window.clearInterval(poll);
+          // We can't observe the popup's final URL cross-origin — closing
+          // is the only signal. Optimistically mark connected; if the
+          // user cancelled they can reconnect from Settings.
+          setGcalConnected(true);
+        }
+      }, 500);
+    } catch {
+      setError("Network error connecting to Google Calendar.");
+    }
+  }, []);
 
   return (
-    <div className={`w-full transition-all duration-300 ${step >= 3 && step <= 6 ? "max-w-xl" : "max-w-md"}`}>
+    <div className="w-full max-w-md transition-all duration-300">
       <div
         className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-8"
         style={{ boxShadow: "var(--shadow-2)" }}
       >
-        {/* ── Step 0: Welcome ──────────────────────────────────── */}
+        {/* ── Step 0: Account + role ─────────────────────────── */}
         {step === 0 && (
-          <div className="text-center space-y-5">
-            <Image
-              src="/Larryfulllogo.png"
-              alt="Larry"
-              width={180}
-              height={72}
-              className="mx-auto block object-contain"
-            />
-            <h1 className="text-2xl font-bold tracking-tight text-[var(--text-1)]">
-              Welcome to Larry
-            </h1>
-            <p className="text-[14px] leading-6 text-[var(--text-2)]">
-              I make your projects run themselves through automatic execution that aligns your team,
-              timelines, and tasks — so you don&apos;t have to.
-            </p>
-            <button
-              type="button"
-              onClick={next}
-              className="inline-flex h-[2.75rem] w-full items-center justify-center rounded-lg bg-[var(--cta)] text-[0.9375rem] font-medium text-white transition-colors hover:bg-[var(--cta-hover)]"
-            >
-              Get started
-            </button>
-            <p className="text-sm text-[var(--text-muted)]">
-              Already have an account?{" "}
-              <Link href="/login" className="font-medium text-[var(--brand)] underline underline-offset-2 hover:text-[var(--brand-hover)]">
-                Log in
-              </Link>
-            </p>
-          </div>
-        )}
-
-        {/* ── Step 1: Create account (email) ────────────────── */}
-        {step === 1 && (
           <div className="space-y-4">
             <div className="text-center mb-6">
-              <Image src="/Larryfulllogo.png" alt="Larry" width={125} height={50} className="mx-auto block object-contain mb-3" />
-              <h2 className="text-lg font-bold text-[var(--text-1)]">Create your account</h2>
+              <Image
+                src="/Larryfulllogo.png"
+                alt="Larry"
+                width={140}
+                height={56}
+                className="mx-auto block object-contain mb-2"
+              />
+              <h1 className="text-lg font-bold text-[var(--text-1)]">Create your account</h1>
             </div>
 
-            {!authMethod ? (
-              <div className="space-y-3">
-                <button
-                  type="button"
-                  onClick={() => setAuthMethod("email")}
-                  className="inline-flex h-[2.75rem] w-full items-center justify-center rounded-lg bg-[var(--cta)] text-[0.9375rem] font-medium text-white transition-colors hover:bg-[var(--cta-hover)]"
-                >
-                  Sign up with email
-                </button>
-                <div className="flex items-center gap-3">
-                  <div className="h-px flex-1" style={{ background: "var(--border)" }} />
-                  <span className="text-xs text-[var(--text-disabled)]">or</span>
-                  <div className="h-px flex-1" style={{ background: "var(--border)" }} />
-                </div>
-                <GoogleSignInButton label="Sign up with Google" />
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div>
-                  <label htmlFor="signup-email" className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">
-                    Email
-                  </label>
-                  <input
-                    id="signup-email"
-                    type="email"
-                    autoComplete="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@company.com"
-                    className={INPUT_CLS}
-                    style={{ fontSize: "1rem" }}
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!email.includes("@")) {
-                      setError("Please enter a valid email address.");
-                      return;
-                    }
-                    setError("");
-                    next();
-                  }}
-                  disabled={!email}
-                  className="inline-flex h-[2.75rem] w-full items-center justify-center rounded-lg bg-[var(--cta)] text-[0.9375rem] font-medium text-white transition-colors hover:bg-[var(--cta-hover)] disabled:opacity-50"
-                >
-                  Continue
-                </button>
-              </div>
-            )}
-          </div>
-        )}
+            <GoogleSignInButton label="Sign up with Google" />
 
-        {/* ── Step 2: Profile + password ─────────────────────── */}
-        {step === 2 && (
-          <div className="space-y-4">
-            <h2 className="text-lg font-bold text-[var(--text-1)]">Set up your profile</h2>
-            <p className="text-[13px] text-[var(--text-2)]">Tell Larry a bit about yourself.</p>
+            <div className="flex items-center gap-3 py-1">
+              <div className="h-px flex-1" style={{ background: "var(--border)" }} />
+              <span className="text-xs text-[var(--text-disabled)]">or sign up with email</span>
+              <div className="h-px flex-1" style={{ background: "var(--border)" }} />
+            </div>
+
+            <div>
+              <label htmlFor="signup-email" className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">
+                Work email
+              </label>
+              <input
+                id="signup-email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@company.com"
+                className={INPUT_CLS}
+                style={{ fontSize: "1rem" }}
+              />
+            </div>
 
             <div className="flex gap-3">
               <div className="flex-1">
@@ -371,14 +315,14 @@ export function SignupWizard() {
                   autoComplete="given-name"
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
-                  placeholder="First name"
+                  placeholder="Jane"
                   className={INPUT_CLS}
                   style={{ fontSize: "1rem" }}
                 />
               </div>
               <div className="flex-1">
                 <label htmlFor="last-name" className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">
-                  Last name
+                  Last name <span className="text-[var(--text-disabled)]">(optional)</span>
                 </label>
                 <input
                   id="last-name"
@@ -386,56 +330,13 @@ export function SignupWizard() {
                   autoComplete="family-name"
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
-                  placeholder="Last name"
+                  placeholder="Doe"
                   className={INPUT_CLS}
                   style={{ fontSize: "1rem" }}
                 />
               </div>
             </div>
 
-            {/* Profile photo upload */}
-            <div>
-              <label className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">
-                Profile photo <span className="text-[var(--text-disabled)]">(optional)</span>
-              </label>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleAvatarChange}
-                className="hidden"
-              />
-              {avatarPreview ? (
-                <div className="flex items-center gap-3">
-                  <div
-                    className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border"
-                    style={{ borderColor: "var(--border)" }}
-                  >
-                    <img src={avatarPreview} alt="Avatar preview" className="h-full w-full object-cover" />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => { setAvatarPreview(null); if (fileInputRef.current) fileInputRef.current.value = ""; }}
-                    className="flex items-center gap-1 text-[12px] text-[var(--text-2)] transition-colors hover:text-[var(--text-1)]"
-                  >
-                    <X size={14} /> Remove
-                  </button>
-                </div>
-              ) : (
-                <div
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex h-20 items-center justify-center rounded-lg border-2 border-dashed transition-colors cursor-pointer hover:border-[var(--brand)]"
-                  style={{ borderColor: "var(--border)" }}
-                >
-                  <div className="flex items-center gap-2 text-[13px] text-[var(--text-disabled)]">
-                    <Upload size={16} />
-                    <span>Upload photo</span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Password */}
             <div>
               <label htmlFor="new-password" className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">
                 Password
@@ -461,7 +362,6 @@ export function SignupWizard() {
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
-              {/* Strength meter */}
               {password.length > 0 && (
                 <div className="mt-2 space-y-1">
                   <div className="h-1.5 w-full overflow-hidden rounded-full" style={{ background: "var(--border)" }}>
@@ -475,58 +375,16 @@ export function SignupWizard() {
                   </p>
                 </div>
               )}
-              <p className="mt-1 text-[11px] text-[var(--text-disabled)]">
-                Must be at least 8 characters with letters, numbers, and special characters.
-              </p>
             </div>
 
-            {/* Confirm password */}
             <div>
-              <label htmlFor="confirm-pw" className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">
-                Confirm password
+              <label className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">
+                What&apos;s your role? <span className="text-[var(--text-disabled)]">(optional)</span>
               </label>
-              <div className="relative">
-                <input
-                  id="confirm-pw"
-                  type={showConfirm ? "text" : "password"}
-                  autoComplete="new-password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="••••••••"
-                  className={`${INPUT_CLS} pr-11`}
-                  style={{ fontSize: "1rem" }}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirm((v) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1"
-                  style={{ color: "var(--text-disabled)" }}
-                  aria-label={showConfirm ? "Hide password" : "Show password"}
-                >
-                  {showConfirm ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
-              {confirmPassword.length > 0 && (
-                <p className="mt-1 flex items-center gap-1 text-[11px]" style={{ color: passwordsMatch ? "#6c44f6" : "#9a7fa7" }}>
-                  {passwordsMatch && <Check size={12} />}
-                  {passwordsMatch ? "Passwords match" : "Passwords do not match"}
-                </p>
-              )}
+              <RoleChips value={role} onChange={setRole} />
             </div>
 
-            {/* Checkboxes */}
             <div className="space-y-3 pt-1">
-              <label className="flex items-start gap-2.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={subscribeEmails}
-                  onChange={(e) => setSubscribeEmails(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 shrink-0 rounded accent-[var(--brand)]"
-                />
-                <span className="text-[12px] leading-5 text-[var(--text-2)]">
-                  Subscribe to emails about new feature updates, improvements and tips to get the most out of Larry
-                </span>
-              </label>
               <label className="flex items-start gap-2.5 cursor-pointer">
                 <input
                   type="checkbox"
@@ -536,6 +394,17 @@ export function SignupWizard() {
                 />
                 <span className="text-[12px] leading-5 text-[var(--text-2)]">
                   I agree to the Terms of Service and Privacy Policy
+                </span>
+              </label>
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={subscribeEmails}
+                  onChange={(e) => setSubscribeEmails(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded accent-[var(--brand)]"
+                />
+                <span className="text-[12px] leading-5 text-[var(--text-2)]">
+                  Send me updates about new features and tips
                 </span>
               </label>
             </div>
@@ -548,155 +417,196 @@ export function SignupWizard() {
 
             <button
               type="button"
-              onClick={createAccount}
-              disabled={loading || !agreedToTerms || password.length < 8 || password !== confirmPassword}
+              onClick={submitStep0}
+              disabled={loading || !step0Valid}
               className="inline-flex h-[2.75rem] w-full items-center justify-center rounded-lg bg-[var(--cta)] text-[0.9375rem] font-medium text-white transition-colors hover:bg-[var(--cta-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? "Creating account…" : "Create account"}
+              {loading ? "Creating account…" : "Continue"}
             </button>
-          </div>
-        )}
 
-        {/* ── Step 3: Role ────────────────────────────────────── */}
-        {step === 3 && (
-          <div className="space-y-4">
-            {/* Show verification notice right after account creation (email signup only) */}
-            {email && (
-              <div
-                className="flex items-start gap-2.5 rounded-lg px-3.5 py-3 text-[13px] leading-5"
-                style={{ background: "rgba(108, 68, 246, 0.08)", color: "var(--text-2)" }}
+            <p className="text-center text-sm text-[var(--text-muted)]">
+              Already have an account?{" "}
+              <Link
+                href="/login"
+                className="font-medium text-[var(--brand)] underline underline-offset-2 hover:text-[var(--brand-hover)]"
               >
-                <span className="shrink-0 mt-0.5">✉️</span>
-                <span>We sent a verification email to <strong className="text-[var(--text-1)]">{email}</strong>. Check your inbox to verify your account.</span>
-              </div>
-            )}
-            <h2 className="text-lg font-bold text-[var(--text-1)]">Tell Larry more about your work</h2>
-            <p className="text-[13px] text-[var(--text-2)]">What&apos;s your role?</p>
-            <TileSelector
-              options={ROLES}
-              selected={roles}
-              onToggle={(v) => toggleItem(roles, v, setRoles)}
-              max={1}
-            />
-            <button
-              type="button"
-              onClick={next}
-              className="inline-flex h-[2.75rem] w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--cta)] text-[0.9375rem] font-medium text-white transition-colors hover:bg-[var(--cta-hover)]"
-            >
-              Continue <ArrowRight size={16} />
-            </button>
-            <button type="button" onClick={finish} className="block w-full text-center text-xs text-[var(--text-disabled)] transition-colors hover:text-[var(--text-2)]">
-              Skip for now
-            </button>
-          </div>
-        )}
-
-        {/* ── Step 4: Work type ───────────────────────────────── */}
-        {step === 4 && (
-          <div className="space-y-4">
-            <h2 className="text-lg font-bold text-[var(--text-1)]">What kind of work do you do?</h2>
-            <p className="text-[13px] text-[var(--text-2)]">Select up to 5.</p>
-            <TileSelector
-              options={WORK_TYPES}
-              selected={workTypes}
-              onToggle={(v) => toggleItem(workTypes, v, setWorkTypes)}
-              max={5}
-            />
-            <button
-              type="button"
-              onClick={next}
-              className="inline-flex h-[2.75rem] w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--cta)] text-[0.9375rem] font-medium text-white transition-colors hover:bg-[var(--cta-hover)]"
-            >
-              Continue <ArrowRight size={16} />
-            </button>
-            <button type="button" onClick={finish} className="block w-full text-center text-xs text-[var(--text-disabled)] transition-colors hover:text-[var(--text-2)]">
-              Skip for now
-            </button>
-          </div>
-        )}
-
-        {/* ── Step 5: Discovery ───────────────────────────────── */}
-        {step === 5 && (
-          <div className="space-y-4">
-            <h2 className="text-lg font-bold text-[var(--text-1)]">How did you hear about Larry?</h2>
-            <TileSelector
-              options={DISCOVERY_OPTIONS}
-              selected={discovery}
-              onToggle={(v) => toggleItem(discovery, v, setDiscovery)}
-              max={3}
-            />
-            <button
-              type="button"
-              onClick={next}
-              className="inline-flex h-[2.75rem] w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--cta)] text-[0.9375rem] font-medium text-white transition-colors hover:bg-[var(--cta-hover)]"
-            >
-              Continue <ArrowRight size={16} />
-            </button>
-            <button type="button" onClick={finish} className="block w-full text-center text-xs text-[var(--text-disabled)] transition-colors hover:text-[var(--text-2)]">
-              Skip for now
-            </button>
-          </div>
-        )}
-
-        {/* ── Step 6: Tools ───────────────────────────────────── */}
-        {step === 6 && (
-          <div className="space-y-4">
-            <h2 className="text-lg font-bold text-[var(--text-1)]">What tools do you use?</h2>
-            <p className="text-[13px] text-[var(--text-2)]">Select all that apply.</p>
-            <TileSelector
-              options={TOOLS}
-              selected={tools}
-              onToggle={(v) => toggleItem(tools, v, setTools)}
-            />
-            <button
-              type="button"
-              onClick={next}
-              className="inline-flex h-[2.75rem] w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--cta)] text-[0.9375rem] font-medium text-white transition-colors hover:bg-[var(--cta-hover)]"
-            >
-              Continue <ArrowRight size={16} />
-            </button>
-            <button type="button" onClick={finish} className="block w-full text-center text-xs text-[var(--text-disabled)] transition-colors hover:text-[var(--text-2)]">
-              Skip for now
-            </button>
-          </div>
-        )}
-
-        {/* ── Step 7: Completion ──────────────────────────────── */}
-        {step === 7 && (
-          <div className="space-y-5 text-center">
-            <div
-              className="mx-auto flex h-16 w-16 items-center justify-center rounded-full"
-              style={{ background: "var(--brand-soft, #f0edfa)" }}
-            >
-              <Check size={28} style={{ color: "var(--brand)" }} />
-            </div>
-            <h2 className="text-2xl font-bold text-[var(--text-1)]">You&apos;re good to go!</h2>
-            <p className="text-[14px] leading-6 text-[var(--text-2)]">
-              Go ahead and explore Larry. Start by creating your first project.
+                Log in
+              </Link>
             </p>
+          </div>
+        )}
+
+        {/* ── Step 1: Workspace + invites ─────────────────────── */}
+        {step === 1 && (
+          <div className="space-y-4">
+            <h2 className="text-lg font-bold text-[var(--text-1)]">Set up your workspace</h2>
+            <p className="text-[13px] text-[var(--text-2)]">
+              This is where Larry will manage your projects. You can rename it any time.
+            </p>
+
+            <div>
+              <label htmlFor="org-name" className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">
+                Workspace name
+              </label>
+              <input
+                id="org-name"
+                type="text"
+                value={orgName}
+                onChange={(e) => setOrgName(e.target.value)}
+                placeholder="Acme Inc."
+                className={INPUT_CLS}
+                style={{ fontSize: "1rem" }}
+              />
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">
+                Invite teammates <span className="text-[var(--text-disabled)]">(optional)</span>
+              </label>
+              <div className="space-y-2">
+                {inviteEmails.map((email, i) => (
+                  <div key={i} className="flex gap-2">
+                    <input
+                      type="email"
+                      autoComplete="off"
+                      value={email}
+                      onChange={(e) => {
+                        const next = [...inviteEmails];
+                        next[i] = e.target.value;
+                        setInviteEmails(next);
+                      }}
+                      placeholder="teammate@company.com"
+                      className={INPUT_CLS}
+                      style={{ fontSize: "1rem" }}
+                    />
+                    {inviteEmails.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setInviteEmails(inviteEmails.filter((_, idx) => idx !== i));
+                        }}
+                        className="flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-disabled)] hover:text-[var(--text-2)]"
+                        aria-label={`Remove invite ${i + 1}`}
+                      >
+                        <X size={16} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setInviteEmails([...inviteEmails, ""])}
+                  className="inline-flex items-center gap-1.5 text-[13px] text-[var(--brand)] hover:text-[var(--brand-hover)]"
+                >
+                  <Plus size={14} /> Add another
+                </button>
+              </div>
+              <p className="mt-2 text-[11px] text-[var(--text-disabled)]">
+                We&apos;ll send them an invite link. You can invite more from Settings later.
+              </p>
+            </div>
+
+            {error && (
+              <p className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 text-sm text-[var(--text-2)]">
+                {error}
+              </p>
+            )}
+
             <button
               type="button"
-              onClick={finish}
-              className="inline-flex h-[2.75rem] w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--cta)] text-[0.9375rem] font-medium text-white transition-colors hover:bg-[var(--cta-hover)]"
+              onClick={submitStep1}
+              disabled={loading}
+              className="inline-flex h-[2.75rem] w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--cta)] text-[0.9375rem] font-medium text-white transition-colors hover:bg-[var(--cta-hover)] disabled:opacity-50"
             >
-              Go to Larry <ArrowRight size={16} />
+              {loading ? "Saving…" : <>Continue <ArrowRight size={16} /></>}
             </button>
           </div>
         )}
 
-        {/* Step dots — shown on all steps except welcome (0) and completion (7) */}
-        {step > 0 && step < TOTAL_STEPS - 1 && (
-          <StepDots current={step - 1} total={TOTAL_STEPS - 2} />
+        {/* ── Step 2: First project + GCal ────────────────────── */}
+        {step === 2 && (
+          <div className="space-y-4">
+            <h2 className="text-lg font-bold text-[var(--text-1)]">Start your first project</h2>
+            <p className="text-[13px] text-[var(--text-2)]">
+              Give Larry something to work on. You can add more projects from the workspace.
+            </p>
+
+            <div>
+              <label htmlFor="project-name" className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">
+                Project name
+              </label>
+              <input
+                id="project-name"
+                type="text"
+                autoFocus
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value)}
+                placeholder="e.g. Website redesign"
+                className={INPUT_CLS}
+                style={{ fontSize: "1rem" }}
+              />
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-[var(--text-2)]">
+                Connect Google Calendar <span className="text-[var(--text-disabled)]">(recommended)</span>
+              </label>
+              <button
+                type="button"
+                onClick={connectGCal}
+                disabled={gcalConnected}
+                className="inline-flex h-[2.75rem] w-full items-center justify-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] text-[0.9375rem] font-medium text-[var(--text-1)] transition-colors hover:bg-[var(--surface)] disabled:cursor-default disabled:opacity-100"
+              >
+                {gcalConnected ? (
+                  <>
+                    <Check size={16} style={{ color: "var(--brand)" }} />
+                    Calendar connected
+                  </>
+                ) : (
+                  <>
+                    <CalendarCheck size={16} />
+                    Connect Google Calendar
+                  </>
+                )}
+              </button>
+              <p className="mt-2 text-[11px] text-[var(--text-disabled)]">
+                Lets Larry see meeting context so it can act on action items.
+                Optional — you can connect later from Settings.
+              </p>
+            </div>
+
+            {error && (
+              <p className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 text-sm text-[var(--text-2)]">
+                {error}
+              </p>
+            )}
+
+            <button
+              type="button"
+              onClick={submitStep2}
+              disabled={loading || projectName.trim().length === 0}
+              className="inline-flex h-[2.75rem] w-full items-center justify-center gap-1.5 rounded-lg bg-[var(--cta)] text-[0.9375rem] font-medium text-white transition-colors hover:bg-[var(--cta-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? "Starting…" : <>Go to Larry <ArrowRight size={16} /></>}
+            </button>
+            <button
+              type="button"
+              onClick={skipToWorkspace}
+              className="block w-full text-center text-xs text-[var(--text-disabled)] transition-colors hover:text-[var(--text-2)]"
+            >
+              Skip for now →
+            </button>
+          </div>
         )}
+
+        <StepDots current={step} total={TOTAL_STEPS} />
       </div>
 
-      {step > 0 && step < TOTAL_STEPS - 1 && (
-        <p className="mt-6 text-center text-xs text-[var(--text-muted)]">
-          <Link href="/" className="transition-colors hover:text-[var(--text-2)]">
-            {"<-"} Back to Larry
-          </Link>
-        </p>
-      )}
+      <p className="mt-6 text-center text-xs text-[var(--text-muted)]">
+        <Link href="/" className="transition-colors hover:text-[var(--text-2)]">
+          {"<-"} Back to Larry
+        </Link>
+      </p>
     </div>
   );
 }
