@@ -724,4 +724,125 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
       return { success: true, riskScore, riskLevel };
     }
   );
+
+  // v4 Slice 4 — DnD commit path for task reparent.
+  //
+  // Accepts any combination of:
+  //   • projectId       — move the task to a different project (cross-project move)
+  //   • parentTaskId    — set/clear the parent task (null un-parents to top level)
+  //
+  // Cross-project moves clear parentTaskId unless the caller also supplies a
+  // parentTaskId belonging to the target project (the parent-in-same-project
+  // constraint already enforced below).
+  //
+  // Write-lock is checked on the source project and, for cross-project moves,
+  // the target project too. A move that doesn't change anything is a no-op
+  // (no audit log written).
+  fastify.post(
+    "/:id/move",
+    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
+    async (request) => {
+      const params = z.object({ id: z.string().uuid() }).parse(request.params);
+      const body = z.object({
+        projectId: z.string().uuid().optional(),
+        parentTaskId: z.string().uuid().nullable().optional(),
+      }).parse(request.body);
+      const tenantId = request.user.tenantId;
+
+      const existing = await fastify.db.queryTenant<{ id: string; projectId: string; parentTaskId: string | null }>(
+        tenantId,
+        `SELECT id, project_id AS "projectId", parent_task_id AS "parentTaskId"
+           FROM tasks WHERE tenant_id = $1 AND id = $2 LIMIT 1`,
+        [tenantId, params.id],
+      );
+      if (!existing[0]) throw fastify.httpErrors.notFound("Task not found.");
+      const currentProjectId = existing[0].projectId;
+
+      // Source project writable?
+      const sourceState = await loadTaskProjectWriteState(fastify.db, tenantId, params.id);
+      if (sourceState) assertProjectWritableOrThrow(sourceState.projectStatus);
+
+      // If moving across projects, target must exist in-tenant and be writable.
+      const crossProject = body.projectId !== undefined && body.projectId !== currentProjectId;
+      if (crossProject) {
+        const targetRows = await fastify.db.queryTenant<{ status: string }>(
+          tenantId,
+          `SELECT status FROM projects WHERE tenant_id = $1 AND id = $2 LIMIT 1`,
+          [tenantId, body.projectId as string],
+        );
+        if (!targetRows[0]) throw fastify.httpErrors.notFound("Target project not found.");
+        assertProjectWritableOrThrow(targetRows[0].status);
+      }
+
+      const nextProjectId = body.projectId ?? currentProjectId;
+
+      // parentTaskId validation — same-project constraint + no-self-parent + depth=1.
+      if (body.parentTaskId !== undefined && body.parentTaskId !== null) {
+        if (body.parentTaskId === params.id) {
+          throw fastify.httpErrors.badRequest("Task cannot be its own parent.");
+        }
+        const parentRows = await fastify.db.queryTenant<{ projectId: string; parentTaskId: string | null }>(
+          tenantId,
+          `SELECT project_id AS "projectId", parent_task_id AS "parentTaskId"
+             FROM tasks WHERE tenant_id = $1 AND id = $2`,
+          [tenantId, body.parentTaskId],
+        );
+        if (!parentRows[0]) throw fastify.httpErrors.notFound("Parent task not found.");
+        if (parentRows[0].projectId !== nextProjectId) {
+          throw fastify.httpErrors.badRequest("Parent task must be in the target project.");
+        }
+        if (parentRows[0].parentTaskId !== null) {
+          throw fastify.httpErrors.badRequest("Subtask depth limit reached (parent already has a parent).");
+        }
+      }
+
+      // A cross-project move with no explicit parentTaskId clears the existing
+      // parent (which would otherwise orphan into the new project, violating the
+      // same-project constraint above).
+      const nextParentTaskId =
+        body.parentTaskId !== undefined
+          ? body.parentTaskId
+          : (crossProject ? null : undefined);
+
+      const setClauses: string[] = ["updated_at = NOW()"];
+      const values: unknown[] = [tenantId, params.id];
+      let idx = 3;
+      if (body.projectId !== undefined) {
+        setClauses.push(`project_id = $${idx++}`);
+        values.push(nextProjectId);
+      }
+      if (nextParentTaskId !== undefined) {
+        setClauses.push(`parent_task_id = $${idx++}`);
+        values.push(nextParentTaskId);
+      }
+
+      if (setClauses.length === 1) {
+        // Nothing to update — no-op, return the existing row.
+        return { id: existing[0].id, projectId: currentProjectId, parentTaskId: existing[0].parentTaskId };
+      }
+
+      const rows = await fastify.db.queryTenant<{ id: string; projectId: string; parentTaskId: string | null }>(
+        tenantId,
+        `UPDATE tasks SET ${setClauses.join(", ")}
+         WHERE tenant_id = $1 AND id = $2
+         RETURNING id, project_id AS "projectId", parent_task_id AS "parentTaskId"`,
+        values,
+      );
+
+      await writeAuditLog(fastify.db, {
+        tenantId,
+        actorUserId: request.user.userId,
+        actionType: "task.moved",
+        objectType: "task",
+        objectId: params.id,
+        details: {
+          fromProjectId: currentProjectId,
+          toProjectId: nextProjectId,
+          parentTaskId: nextParentTaskId ?? null,
+        },
+      });
+
+      return rows[0];
+    }
+  );
 };

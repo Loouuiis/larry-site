@@ -56,11 +56,16 @@ function labelFor(n: NodeRow["node"]): string {
   return n.task.title;
 }
 
-// v4 Slice 3C-3 — a category row is draggable if it's a real org-level
-// category (not the synthetic Uncategorised bucket, not a null id).
-// Project / task / subtask rows are not drag-enabled in this slice.
-function isDraggableCategory(n: NodeRow["node"]): n is Extract<NodeRow["node"], { kind: "category" }> {
-  return n.kind === "category" && n.id !== null && n.id !== "uncat" && n.id !== "__root__";
+// v4 Slice 4 — drag enablement covers every row kind except synthetic buckets:
+//   • Categories: real-id org-level / project-scoped / subcategory rows.
+//   • Projects: every real project row (including inside Uncategorised).
+//   • Tasks / Subtasks: every real task/subtask row.
+//   • Excluded: the synthetic __root__ node and the Uncategorised bucket row
+//     (id === null / "uncat" on a category), because they don't map to any
+//     server-side identity.
+function isDraggableRow(n: NodeRow["node"]): boolean {
+  if (n.kind === "category") return n.id !== null && n.id !== "uncat" && n.id !== "__root__";
+  return true;  // project / task / subtask
 }
 
 export function GanttOutlineRow({
@@ -82,7 +87,7 @@ export function GanttOutlineRow({
     return `dnd-sub:${n.task.id}`;
   }, [n]);
 
-  const dndEnabled = isDraggableCategory(n);
+  const dndEnabled = isDraggableRow(n);
 
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } =
     useDraggable({ id: dndId, disabled: !dndEnabled });
@@ -121,7 +126,7 @@ export function GanttOutlineRow({
         paddingLeft: indent,
         paddingRight: 14,
         borderLeft: selected ? "2px solid var(--brand)" : "2px solid transparent",
-        // Drop target outline when another category is hovering over this row.
+        // Drop target outline when any draggable row is hovering over this one.
         outline: isOver && dndEnabled ? "2px dashed var(--brand)" : "none",
         outlineOffset: "-2px",
         background,
