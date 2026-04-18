@@ -18,6 +18,12 @@ export type CategoryColorMap = Map<string, string>;
 // Larry purple — used when a category has no colour or a row has no category.
 export const DEFAULT_CATEGORY_COLOUR = "#6c44f6";
 
+// v4 Slice 4 — neutral grey placeholder shown for a project-level Gantt while
+// its category colour is loading. Never seed bars with DEFAULT_CATEGORY_COLOUR
+// on first render; Larry purple looks *meaningful* (the brand colour) so it
+// reads as a category choice rather than "data not loaded yet".
+export const NEUTRAL_ROW_COLOUR = "#bdb7d0";
+
 // v3 — trailing status chip beside a bar (GanttStatusChip)
 export interface StatusChipData {
   label: string;        // "NS" | "AR" | "OD" | "✓"

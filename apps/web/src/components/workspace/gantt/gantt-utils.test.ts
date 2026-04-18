@@ -102,6 +102,59 @@ describe("buildProjectTree", () => {
     expect(tree.kind).toBe("project");
     expect(tree.children).toHaveLength(1);
   });
+
+  it("renders project-scoped categories above tasks when supplied (v4 Slice 4)", () => {
+    const tasks: GanttTask[] = [baseTask({ id: "t1", projectId: "p1" })];
+    const categories = [
+      { id: "cA", name: "Cat A", colour: "#ef4444", sortOrder: 0, parentCategoryId: null, projectId: "p1" },
+    ];
+    const tree = buildProjectTree({ id: "p1", name: "P", status: "active" }, tasks, categories);
+    expect(tree.children.map((c) => c.kind)).toEqual(["category", "task"]);
+    const catNode = tree.children[0] as Extract<GanttNode, { kind: "category" }>;
+    expect(catNode.id).toBe("cA");
+    expect(catNode.name).toBe("Cat A");
+    expect(catNode.colour).toBe("#ef4444");
+  });
+
+  it("nests project-scoped subcategories under their project-scoped parent", () => {
+    const categories = [
+      { id: "cA", name: "Parent", colour: null, sortOrder: 0, parentCategoryId: null, projectId: "p1" },
+      { id: "cB", name: "Child",  colour: null, sortOrder: 0, parentCategoryId: "cA", projectId: null },
+    ];
+    const tree = buildProjectTree({ id: "p1", name: "P", status: "active" }, [], categories);
+    const topLevelCat = tree.children[0] as Extract<GanttNode, { kind: "category" }>;
+    expect(topLevelCat.id).toBe("cA");
+    expect(topLevelCat.children).toHaveLength(1);
+    expect((topLevelCat.children[0] as Extract<GanttNode, { kind: "category" }>).id).toBe("cB");
+  });
+
+  it("ignores categories scoped to other projects", () => {
+    const categories = [
+      { id: "cA", name: "Own", colour: null, sortOrder: 0, parentCategoryId: null, projectId: "p1" },
+      { id: "cB", name: "Other", colour: null, sortOrder: 0, parentCategoryId: null, projectId: "p2" },
+      { id: "cC", name: "Org-level", colour: null, sortOrder: 0, parentCategoryId: null, projectId: null },
+    ];
+    const tree = buildProjectTree({ id: "p1", name: "P", status: "active" }, [], categories);
+    const catIds = tree.children.filter((c) => c.kind === "category").map((c) => (c as Extract<GanttNode, { kind: "category" }>).id);
+    expect(catIds).toEqual(["cA"]);
+  });
+
+  it("renders multiple project-scoped top-level categories in sortOrder", () => {
+    const categories = [
+      { id: "cA", name: "A", colour: null, sortOrder: 2, parentCategoryId: null, projectId: "p1" },
+      { id: "cB", name: "B", colour: null, sortOrder: 0, parentCategoryId: null, projectId: "p1" },
+      { id: "cC", name: "C", colour: null, sortOrder: 1, parentCategoryId: null, projectId: "p1" },
+    ];
+    const tree = buildProjectTree({ id: "p1", name: "P", status: "active" }, [], categories);
+    const catIds = tree.children.filter((c) => c.kind === "category").map((c) => (c as Extract<GanttNode, { kind: "category" }>).id);
+    expect(catIds).toEqual(["cB", "cC", "cA"]);
+  });
+
+  it("is a no-op when passed an empty categories array", () => {
+    const tasks: GanttTask[] = [baseTask({ id: "t1", projectId: "p1" })];
+    const tree = buildProjectTree({ id: "p1", name: "P", status: "active" }, tasks, []);
+    expect(tree.children.every((c) => c.kind === "task")).toBe(true);
+  });
 });
 
 describe("flattenVisible", () => {
