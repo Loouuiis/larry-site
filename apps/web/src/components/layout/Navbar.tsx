@@ -3,32 +3,36 @@
 import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { Button } from "@/components/ui/Button";
+import { LiquidButton } from "@/components/ui/LiquidButton";
 import { useOverlayTrigger } from "@/components/ui/LiquidOverlay";
 
 interface NavLink {
   label: string;
   href: string;
+  kind: "hash" | "route";
   sectionId?: string;
 }
 
 const NAV_LINKS: NavLink[] = [
-  { label: "How It Works",  href: "#solution",      sectionId: "solution"      },
-  { label: "Why Larry",     href: "#differentiator", sectionId: "differentiator" },
-  { label: "Who It's For",  href: "#audience",       sectionId: "audience"      },
-  { label: "Pricing",       href: "#pricing",        sectionId: "pricing"       },
+  { label: "Mission",  href: "/#mission", sectionId: "mission", kind: "hash"  },
+  { label: "Pricing",  href: "/pricing",                        kind: "route" },
+  { label: "Careers",  href: "/careers",                        kind: "route" },
 ];
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
 export function Navbar() {
+  const pathname = usePathname();
   const [scrolled, setScrolled] = useState(false);
   const [scrollProgress, setScrollProgress] = useState(0);
   const [activeSection, setActiveSection] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const headerRef = useRef<HTMLElement>(null);
-  const openWaitlist = useOverlayTrigger("waitlist");
+  const onWaitlist = useOverlayTrigger("waitlist");
+  const onIntro    = useOverlayTrigger("intro");
 
   // Close mobile menu on ESC
   useEffect(() => {
@@ -64,28 +68,33 @@ export function Navbar() {
     window.addEventListener("scroll", onScroll, { passive: true });
 
     // ── Active section tracking (IntersectionObserver) ────────────────────
+    // Only attach on the home page — the #mission section doesn't exist on
+    // /pricing or /careers, so there's nothing to observe.
     // rootMargin "-40% 0px -55% 0px" creates a 5% horizontal band centred
     // at 40% from the top. A section is "active" when its top edge crosses
     // into that band — roughly when it owns the user's reading focus.
-    const sectionIds = NAV_LINKS.map((l) => l.sectionId).filter(Boolean) as string[];
-    const observers = sectionIds.map((id) => {
-      const el = document.getElementById(id);
-      if (!el) return null;
-      const obs = new IntersectionObserver(
-        ([entry]) => {
-          if (entry.isIntersecting) setActiveSection(id);
-        },
-        { rootMargin: "-40% 0px -55% 0px" }
-      );
-      obs.observe(el);
-      return obs;
-    });
+    const observers: (IntersectionObserver | null)[] = [];
+    if (pathname === "/") {
+      const hashSectionIds = ["mission"];
+      hashSectionIds.forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const obs = new IntersectionObserver(
+          ([entry]) => {
+            if (entry.isIntersecting) setActiveSection(id);
+          },
+          { rootMargin: "-40% 0px -55% 0px" }
+        );
+        obs.observe(el);
+        observers.push(obs);
+      });
+    }
 
     return () => {
       window.removeEventListener("scroll", onScroll);
       observers.forEach((obs) => obs?.disconnect());
     };
-  }, []);
+  }, [pathname]);
 
   return (
     <header ref={headerRef} className="fixed top-0 left-0 right-0 z-50 px-4 pt-3 sm:px-6">
@@ -135,8 +144,11 @@ export function Navbar() {
 
         {/* Nav links — hidden on mobile */}
         <ul className="hidden items-center gap-0.5 md:flex" role="list">
-          {NAV_LINKS.map(({ label, href, sectionId }) => {
-            const isActive = !!sectionId && activeSection === sectionId;
+          {NAV_LINKS.map(({ label, href, kind, sectionId }) => {
+            const isActive =
+              kind === "hash"
+                ? !!sectionId && activeSection === sectionId
+                : pathname === href;
             return (
               <li key={label}>
                 <Link
@@ -169,24 +181,30 @@ export function Navbar() {
         </ul>
 
         {/* Right-side actions */}
-        <div className="flex items-center gap-1">
-          {/* Log in — hidden on small mobile, visible from sm */}
+        <div className="flex items-center gap-3 sm:gap-4">
+          {/* Sign in — hidden on small mobile */}
           <Link
             href="/login"
-            className="group relative hidden rounded-lg px-3 py-1.5 text-sm text-[var(--text-muted)] transition-colors duration-150 hover:text-[var(--text-1)] sm:block"
+            className="hidden sm:inline text-sm text-[var(--text-muted)] hover:text-[var(--text-1)] transition-colors"
           >
-            Log in
-            <span
-              aria-hidden="true"
-              className="absolute bottom-1 left-3 right-3 h-px rounded-full bg-gradient-to-r from-[#A88DFF] to-[#4FA3FF] scale-x-0 group-hover:scale-x-100 transition-transform duration-200 ease-out origin-left"
-            />
+            Sign in
           </Link>
 
-          {/* Primary CTA — always visible; shorter label on xs to avoid crowding hamburger */}
-          <Button size="sm" onClick={openWaitlist}>
+          {/* Book an intro — hidden on small mobile */}
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={onIntro}
+            className="hidden sm:inline-flex"
+          >
+            Book an intro
+          </Button>
+
+          {/* Join Waitlist — always visible; shorter label on xs to avoid crowding hamburger */}
+          <LiquidButton size="sm" onClick={onWaitlist}>
             <span className="sm:hidden">Join Waitlist</span>
             <span className="hidden sm:inline">Join the Waitlist</span>
-          </Button>
+          </LiquidButton>
 
           {/* Hamburger — only on mobile (below md) */}
           <button
@@ -259,23 +277,39 @@ export function Navbar() {
 
             {/* Bottom actions */}
             <div className="flex flex-col gap-2 border-t border-[var(--border)] px-4 py-4">
+              {/* Sign in */}
               <Link
                 href="/login"
                 onClick={() => setMenuOpen(false)}
                 className="flex min-h-[44px] items-center rounded-xl px-4 py-2.5 text-sm font-medium text-[var(--text-2)] transition-colors duration-150 hover:bg-[var(--surface-2)] hover:text-[var(--text-1)]"
               >
-                Log in
+                Sign in
               </Link>
+              {/* Book an intro */}
               <Button
+                variant="secondary"
                 size="lg"
                 className="w-full"
                 onClick={(e) => {
-                  openWaitlist(e);
+                  onIntro(e);
                   setMenuOpen(false);
                 }}
               >
-                Join the Waitlist
+                Book an intro
               </Button>
+              {/* Join Waitlist — div wrapper makes the inline-flex motion.div fill the row */}
+              <div className="w-full">
+                <LiquidButton
+                  size="lg"
+                  className="w-full"
+                  onClick={(e) => {
+                    onWaitlist(e);
+                    setMenuOpen(false);
+                  }}
+                >
+                  Join Waitlist
+                </LiquidButton>
+              </div>
             </div>
           </motion.div>
         )}
