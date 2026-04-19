@@ -1064,7 +1064,7 @@ EXCEPTION WHEN duplicate_object THEN null; END $$;
 CREATE TABLE IF NOT EXISTS larry_events (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  project_id   UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  project_id   UUID REFERENCES projects(id) ON DELETE CASCADE,
 
   -- Lifecycle state
   event_type   TEXT NOT NULL CHECK (event_type IN ('auto_executed', 'suggested', 'accepted', 'dismissed')),
@@ -1146,6 +1146,29 @@ WHERE executed_by_kind IS NULL
 UPDATE larry_events
 SET source_kind = triggered_by
 WHERE source_kind IS NULL;
+
+-- Migration 030: org-scope suggestions have no single project anchor.
+ALTER TABLE larry_events
+  ALTER COLUMN project_id DROP NOT NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'larry_events_project_scope_check'
+  ) THEN
+    ALTER TABLE larry_events
+      ADD CONSTRAINT larry_events_project_scope_check
+      CHECK (
+        project_id IS NOT NULL
+        OR action_type LIKE 'timeline\_%' ESCAPE '\'
+      );
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_larry_events_org_pending
+  ON larry_events (tenant_id, created_at DESC)
+  WHERE project_id IS NULL AND event_type = 'suggested';
 
 CREATE INDEX IF NOT EXISTS idx_larry_events_project
   ON larry_events (project_id, event_type, created_at DESC);
