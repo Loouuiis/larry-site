@@ -156,9 +156,13 @@ export function GanttOutline({
       </div>
       {footer}
       {overlay}
+      {/* v4 Slice 5 — wider (12 px) hit area so the outline resize handle is
+          actually discoverable. The visible affordance stays 1 px wide via
+          the outline's right border; this invisible overlay catches clicks. */}
       <div
         onMouseDown={onMouseDown}
-        style={{ position: "absolute", right: -3, top: 0, bottom: 0, width: 6, cursor: "col-resize" }}
+        aria-hidden="true"
+        style={{ position: "absolute", right: -6, top: 0, bottom: 0, width: 12, cursor: "col-resize" }}
       />
     </div>
   );
