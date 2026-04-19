@@ -262,7 +262,7 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, avatar
             value={search}
             onChange={handleSearchChange}
             placeholder="Search…"
-            className="h-[34px] w-full pl-8 pr-3 text-[13px] outline-none transition-all"
+            className="h-[30px] w-full pl-8 pr-3 text-[13px] outline-none transition-all"
             style={{
               borderRadius: "var(--radius-input)",
               border: "1px solid var(--border)",

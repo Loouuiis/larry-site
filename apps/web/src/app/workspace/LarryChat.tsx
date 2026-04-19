@@ -405,7 +405,7 @@ export function LarryChat({ projectId, projectName, onVoiceInput }: LarryChatPro
                 ? [
                     "What's at risk this week?",
                     "Flag any overdue tasks as high risk",
-                    "Who's blocked right now?",
+                    "What's blocked right now?",
                     "Create a task to review the QA checklist",
                   ]
                 : [
@@ -453,7 +453,7 @@ export function LarryChat({ projectId, projectName, onVoiceInput }: LarryChatPro
         onSubmit={chat.handleSubmit}
         disabled={chat.busy}
         busy={chat.busy}
-        placeholder={projectId ? "Tell Larry what to do..." : "Ask Larry anything across your workspace..."}
+        placeholder={projectId ? "Talk to Larry..." : "Talk to Larry..."}
         onVoiceInput={onVoiceInput}
         files={files}
         onFilesChange={setFiles}

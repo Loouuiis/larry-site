@@ -243,7 +243,7 @@ export function ChatInput({
                 onSubmit();
               }
             }}
-            className="h-9 flex-1 rounded-lg border border-[var(--pm-border,#e5e3f0)] bg-[var(--pm-gray-light,#faf9ff)] px-3 text-[13px] outline-none focus:border-[#6c44f6] focus:bg-white disabled:opacity-50"
+            className="h-9 flex-1 rounded-lg border border-[var(--pm-border,#e5e3f0)] bg-[var(--pm-gray-light,#faf9ff)] px-3 text-[12px] outline-none focus:border-[#6c44f6] focus:bg-white disabled:opacity-50"
           />
         ) : (
           <textarea
@@ -258,7 +258,7 @@ export function ChatInput({
                 onSubmit();
               }
             }}
-            className="flex-1 resize-none rounded-lg border border-[var(--pm-border,#e5e3f0)] bg-[var(--pm-gray-light,#faf9ff)] px-3 py-2 text-[13px] leading-relaxed outline-none focus:border-[#6c44f6] focus:bg-white disabled:opacity-50"
+            className="flex-1 resize-none rounded-lg border border-[var(--pm-border,#e5e3f0)] bg-[var(--pm-gray-light,#faf9ff)] px-3 py-2 text-[12px] leading-relaxed outline-none focus:border-[#6c44f6] focus:bg-white disabled:opacity-50"
             style={{ minHeight: isWidget ? undefined : "72px" }}
           />
         )}
