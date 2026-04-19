@@ -85,7 +85,9 @@ Replace with a persistent `device_id` cookie + loose fingerprint.
 
 - `HSTS` / `Strict-Transport-Security` header from the web layer (Vercel
   already sets it, confirm for completeness).
-- `X-Frame-Options: DENY` on the auth pages to block clickjacking.
+- ✅ `X-Frame-Options: DENY` + `Referrer-Policy: no-referrer` on the auth
+  pages (login, signup, forgot/reset-password, verify-email,
+  confirm-email-change, mfa/enrol) shipped in `feat/auth-page-security-headers`.
 - Move `SESSION_COOKIE` name to `__Host-larry_session` once `path=/` +
   `secure` are guaranteed — unlocks extra browser-level isolation.
 - Add `/v1/auth/sessions` endpoint for users to view + revoke active devices.

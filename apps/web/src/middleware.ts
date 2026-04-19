@@ -74,6 +74,29 @@ async function apiMiddleware(req: NextRequest) {
   return NextResponse.next();
 }
 
+// Paths that serve the user's credentials or account-recovery flows. We
+// harden these against clickjacking (X-Frame-Options) and referrer leaks
+// (Referrer-Policy). Login audit P2-6.
+const AUTH_CREDENTIAL_PAGES: ReadonlySet<string> = new Set([
+  "/login",
+  "/signup",
+  "/forgot-password",
+  "/reset-password",
+  "/verify-email",
+  "/verify-email-required",
+  "/confirm-email-change",
+  "/mfa/enrol",
+]);
+
+function applyAuthPageSecurityHeaders(res: NextResponse, pathname: string) {
+  if (!AUTH_CREDENTIAL_PAGES.has(pathname)) return;
+  if (pathname.startsWith("/invite/")) return;
+  // DENY (not SAMEORIGIN) — Larry never embeds its own auth pages in an
+  // iframe. If that changes later, relax to SAMEORIGIN, not wildcard.
+  res.headers.set("X-Frame-Options", "DENY");
+  res.headers.set("Referrer-Policy", "no-referrer");
+}
+
 // ── Page-level session gate (existing behaviour) ────────────────────────────
 async function pageMiddleware(req: NextRequest) {
   const token = req.cookies.get(SESSION_COOKIE)?.value;
@@ -82,7 +105,11 @@ async function pageMiddleware(req: NextRequest) {
   if (!token) {
     // Unauth'd visit to a public auth page (signup, login, etc.) — just
     // render. No CSRF cookie to mirror yet.
-    if (isPublicAuth) return NextResponse.next();
+    if (isPublicAuth) {
+      const res = NextResponse.next();
+      applyAuthPageSecurityHeaders(res, req.nextUrl.pathname);
+      return res;
+    }
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
@@ -95,12 +122,14 @@ async function pageMiddleware(req: NextRequest) {
       ? NextResponse.next()
       : NextResponse.redirect(new URL("/login", req.url));
     res.cookies.set({ name: SESSION_COOKIE, value: "", maxAge: 0, path: "/" });
+    applyAuthPageSecurityHeaders(res, req.nextUrl.pathname);
     return res;
   }
 
   try {
     const { payload } = await jwtVerify(token, secret);
     const res = NextResponse.next();
+    applyAuthPageSecurityHeaders(res, req.nextUrl.pathname);
 
     // CSRF double-submit cookie: mirror the session-bound CSRF token
     // into a non-httpOnly cookie so the client can echo it back on
@@ -146,6 +175,7 @@ async function pageMiddleware(req: NextRequest) {
       ? NextResponse.next()
       : NextResponse.redirect(new URL("/login", req.url));
     res.cookies.set({ name: SESSION_COOKIE, value: "", maxAge: 0, path: "/" });
+    applyAuthPageSecurityHeaders(res, req.nextUrl.pathname);
     return res;
   }
 }
