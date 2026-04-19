@@ -1,5 +1,9 @@
 import type { AppSession } from "@/lib/auth";
-import { createSessionToken, sessionCookieOptions } from "@/lib/auth";
+import {
+  createSessionToken,
+  csrfCookieOptions,
+  sessionCookieOptions,
+} from "@/lib/auth";
 import { cookies } from "next/headers";
 import {
   getApiBaseUrl,
@@ -52,9 +56,12 @@ export async function persistSession(session: AppSession): Promise<void> {
   // update paths should all mint a fresh token. createSessionToken
   // defaults to a new randomUUID when csrfToken is undefined.
   const { csrfToken: _oldCsrf, ...rest } = session;
-  const token = await createSessionToken(rest);
+  const { token, csrfToken } = await createSessionToken(rest);
   const store = await cookies();
   store.set(sessionCookieOptions(token));
+  // Keep larry_csrf in sync with the rotated session csrfToken, else
+  // the client's next mutating /api/** call will 403.
+  store.set(csrfCookieOptions(csrfToken));
 }
 
 // ── Main proxy function ─────────────────────────────────────────────────────

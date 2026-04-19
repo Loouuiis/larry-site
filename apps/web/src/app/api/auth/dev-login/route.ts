@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { createSessionToken, sessionCookieOptions, AppSession } from "@/lib/auth";
+import {
+  createSessionToken,
+  csrfCookieOptions,
+  sessionCookieOptions,
+  AppSession,
+} from "@/lib/auth";
 
 const allowed = process.env.ALLOW_DEV_AUTH_BYPASS === "true";
 
@@ -65,8 +70,9 @@ export async function POST() {
     authMode: "dev",
   };
 
-  const token = await createSessionToken(session);
+  const { token, csrfToken } = await createSessionToken(session);
   const response = NextResponse.json({ success: true, userId: session.userId });
   response.cookies.set(sessionCookieOptions(token));
+  response.cookies.set(csrfCookieOptions(csrfToken));
   return response;
 }

@@ -42,7 +42,12 @@ export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
-export async function createSessionToken(session: AppSession): Promise<string> {
+export const CSRF_COOKIE = "larry_csrf";
+
+export async function createSessionToken(
+  session: AppSession,
+): Promise<{ token: string; csrfToken: string }> {
+  const csrfToken = session.csrfToken ?? randomUUID();
   const payload: SessionJwtPayload = {
     sub: session.userId,
     email: session.email,
@@ -52,14 +57,16 @@ export async function createSessionToken(session: AppSession): Promise<string> {
     apiAccessToken: session.apiAccessToken,
     apiRefreshToken: session.apiRefreshToken,
     authMode: session.authMode,
-    csrfToken: session.csrfToken ?? randomUUID(),
+    csrfToken,
   };
 
-  return new SignJWT(payload)
+  const token = await new SignJWT(payload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${SESSION_DURATION_SECS}s`)
     .sign(getSecret());
+
+  return { token, csrfToken };
 }
 
 export async function verifySessionToken(
@@ -119,6 +126,22 @@ export function clearSessionCookieOptions() {
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax" as const,
     maxAge: 0,
+    path: "/",
+  };
+}
+
+// Readable (non-httpOnly) CSRF double-submit cookie. Paired with the
+// session cookie wherever a session is minted/rotated so the client
+// window.fetch patch can echo it back as X-CSRF-Token on mutating
+// /api/** requests (validated by middleware apiMiddleware).
+export function csrfCookieOptions(csrfToken: string) {
+  return {
+    name: CSRF_COOKIE,
+    value: csrfToken,
+    httpOnly: false,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    maxAge: SESSION_DURATION_SECS,
     path: "/",
   };
 }

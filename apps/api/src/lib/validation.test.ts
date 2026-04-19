@@ -34,4 +34,13 @@ describe("emailSchema", () => {
   it("rejects invalid emails", () => {
     expect(() => emailSchema.parse("not-an-email")).toThrow();
   });
+
+  it("trims leading/trailing whitespace before the email check", () => {
+    expect(emailSchema.parse("  hello@example.com  ")).toBe("hello@example.com");
+    expect(emailSchema.parse("\thello@example.com\n")).toBe("hello@example.com");
+  });
+
+  it("still rejects junk after trim", () => {
+    expect(() => emailSchema.parse("  not-an-email  ")).toThrow();
+  });
 });

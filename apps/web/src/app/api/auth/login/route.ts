@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   createSessionToken,
+  csrfCookieOptions,
   normalizeEmail,
   sessionCookieOptions,
 } from "@/lib/auth";
@@ -101,7 +102,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: GENERIC_ERROR }, { status: 401 });
     }
 
-    const token = await createSessionToken({
+    const { token, csrfToken } = await createSessionToken({
       userId: payload.user.id,
       email: payload.user.email,
       tenantId: payload.user.tenantId,
@@ -113,6 +114,7 @@ export async function POST(req: NextRequest) {
     });
     const res = NextResponse.json({ success: true });
     res.cookies.set(sessionCookieOptions(token));
+    res.cookies.set(csrfCookieOptions(csrfToken));
     return res;
   } catch (err) {
     console.error("[login]", err);

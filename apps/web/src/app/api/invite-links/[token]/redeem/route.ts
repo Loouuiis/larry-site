@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSessionToken, sessionCookieOptions } from "@/lib/auth";
+import {
+  createSessionToken,
+  csrfCookieOptions,
+  sessionCookieOptions,
+} from "@/lib/auth";
 
 const API_BASE = process.env.LARRY_API_BASE_URL ?? "http://localhost:8080";
 
@@ -57,7 +61,7 @@ export async function POST(
     email = undefined;
   }
 
-  const sessionToken = await createSessionToken({
+  const { token: sessionToken, csrfToken } = await createSessionToken({
     userId: payload.userId,
     email,
     tenantId: payload.tenantId,
@@ -72,5 +76,6 @@ export async function POST(
     tenantId: payload.tenantId,
   });
   res.cookies.set(sessionCookieOptions(sessionToken));
+  res.cookies.set(csrfCookieOptions(csrfToken));
   return res;
 }

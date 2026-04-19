@@ -344,6 +344,18 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       email: user.email,
     });
 
+    // P2-5: rotate sessions on re-login. Revoke any other currently-active
+    // refresh tokens for this (user, tenant) BEFORE issuing the new one.
+    // /refresh already rotates on each cycle, but a stale token sitting
+    // on an abandoned device extends the blast radius of a later theft —
+    // logging in should invalidate every prior browser/device session.
+    await fastify.db.query(
+      `UPDATE refresh_tokens
+          SET revoked_at = NOW()
+        WHERE user_id = $1 AND tenant_id = $2 AND revoked_at IS NULL`,
+      [user.id, user.tenant_id],
+    );
+
     const refreshToken = await issueRefreshToken(fastify, {
       userId: user.id,
       tenantId: user.tenant_id,
@@ -416,7 +428,44 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     );
 
     const tokenRow = rows[0];
-    if (!tokenRow || tokenRow.revoked_at || new Date(tokenRow.expires_at) < new Date()) {
+    if (!tokenRow) {
+      return reply.unauthorized("Invalid refresh token.");
+    }
+    if (new Date(tokenRow.expires_at) < new Date()) {
+      return reply.unauthorized("Invalid refresh token.");
+    }
+    // P2-1: refresh-token reuse detection. A revoked token presented
+    // again means either the legitimate owner is racing a rotation (rare
+    // under our single-rotate-per-call design) or an attacker replayed a
+    // stolen token after we already rotated. Either way, burn the whole
+    // family for that (user, tenant): any currently-active token could
+    // be the attacker's branch. Audit + notify the user so they can reset
+    // credentials.
+    if (tokenRow.revoked_at) {
+      try {
+        await fastify.db.query(
+          `UPDATE refresh_tokens
+              SET revoked_at = NOW()
+            WHERE user_id = $1 AND tenant_id = $2 AND revoked_at IS NULL`,
+          [tokenRow.user_id, tokenRow.tenant_id],
+        );
+        await writeAuditLog(fastify.db, {
+          tenantId: tokenRow.tenant_id,
+          actorUserId: tokenRow.user_id,
+          actionType: "auth.refresh_reuse_detected",
+          objectType: "refresh_token",
+          objectId: tokenRow.id,
+          details: { reusedTokenId: tokenRow.id },
+        });
+        const { sendRefreshReuseAlert } = await import("../../lib/email.js");
+        await sendRefreshReuseAlert(
+          tokenRow.email,
+          { ip: request.ip, userAgent: request.headers["user-agent"] ?? "unknown" },
+          { userId: tokenRow.user_id, tenantId: tokenRow.tenant_id },
+        ).catch(() => {});
+      } catch {
+        /* non-fatal — still 401 below */
+      }
       return reply.unauthorized("Invalid refresh token.");
     }
 

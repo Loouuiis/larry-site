@@ -1,6 +1,10 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { createSessionToken, sessionCookieOptions } from "@/lib/auth";
+import {
+  createSessionToken,
+  csrfCookieOptions,
+  sessionCookieOptions,
+} from "@/lib/auth";
 
 /**
  * Verify the HMAC-signed one-time code from the API's Google OAuth callback.
@@ -77,7 +81,7 @@ export async function GET(req: NextRequest) {
     const refreshToken = typeof payload.refreshToken === "string" ? payload.refreshToken : undefined;
     const isNewUser = payload.isNewUser === true;
 
-    const sessionToken = await createSessionToken({
+    const { token: sessionToken, csrfToken } = await createSessionToken({
       userId,
       email,
       tenantId,
@@ -90,6 +94,7 @@ export async function GET(req: NextRequest) {
     const destination = isNewUser ? "/signup?step=role" : "/workspace";
     const res = NextResponse.redirect(new URL(destination, req.url));
     res.cookies.set(sessionCookieOptions(sessionToken));
+    res.cookies.set(csrfCookieOptions(csrfToken));
     return res;
   } catch (err) {
     console.error("[google/complete]", err);
