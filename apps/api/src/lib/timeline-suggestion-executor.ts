@@ -50,7 +50,6 @@ export async function executeTimelineSuggestion(
       };
     }
 
-    // Tasks 12-14 fill the apply loops in here.
     const applied = { categories: 0, moves: 0, recolours: 0 };
     const skipped: ExecuteResult["skipped"] = [];
     const auditEntries: AuditWriteInput[] = [];
