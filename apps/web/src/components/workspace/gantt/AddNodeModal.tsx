@@ -10,6 +10,7 @@ interface Props {
   parentProjectId?: string;   // for task
   parentTaskId?: string;      // for subtask
   parentCategoryId?: string;  // for project AND subcategory (category-nested-under-category)
+  taskCategoryId?: string;    // for task mode: assigns the new task to this project-scoped category
   scopedProjectId?: string;   // v4 — for category mode: creates a project-scoped category
   // v4 bug #7 — when creating a task FROM the Timeline, both dates must be set
   // or the task would be filtered out of the Gantt anyway (server excludes
@@ -26,7 +27,7 @@ const inputStyle: React.CSSProperties = {
 };
 
 export function AddNodeModal({
-  mode, parentProjectId, parentTaskId, parentCategoryId, scopedProjectId,
+  mode, parentProjectId, parentTaskId, parentCategoryId, taskCategoryId, scopedProjectId,
   requireDates = false,
   onClose, onCreated,
 }: Props) {
@@ -76,6 +77,7 @@ export function AddNodeModal({
         if (dueDate) body.dueDate = dueDate;
         if (description.trim()) body.description = description.trim();
         if (mode === "subtask") body.parentTaskId = parentTaskId;
+        if (mode === "task" && taskCategoryId) body.categoryId = taskCategoryId;
         const res = await fetch("/api/workspace/tasks", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),

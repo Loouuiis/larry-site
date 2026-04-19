@@ -32,10 +32,10 @@ interface Props {
 type ProjectSummary = { id: string; categoryId: string | null };
 
 type AddCtx =
-  | { mode: "task" }
+  | { mode: "task"; categoryId?: string }
   | { mode: "subtask"; parentTaskId: string }
-  | { mode: "category" }                                 // project-scoped, top-level
-  | { mode: "subcategory"; parentCategoryId: string };   // v4 Slice 4 — nested
+  | { mode: "category" }
+  | { mode: "subcategory"; parentCategoryId: string };
 
 type ColourPopover = { categoryId: string; currentColour: string | null };
 
@@ -44,6 +44,7 @@ function toGanttTask(t: WorkspaceTimelineTask): GanttTask {
     id: t.id,
     projectId: t.projectId ?? "",
     parentTaskId: t.parentTaskId ?? null,
+    categoryId: t.categoryId ?? null,
     title: t.title,
     status: normalizeGanttStatus(t.status as string),
     priority: t.priority as GanttTask["priority"],
@@ -439,13 +440,19 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
           onChoose={(kind) => {
             setPickerOpen(false);
             if (kind === "group") {
-              setAddCtx({ mode: "category" });
-            } else {
               setAddCtx(
-                selectedKey?.startsWith("task:")
-                  ? { mode: "subtask", parentTaskId: selectedKey.slice(5) }
-                  : { mode: "task" }
+                selectedKey?.startsWith("cat:") && selectedKey !== "cat:uncat"
+                  ? { mode: "subcategory", parentCategoryId: selectedKey.slice(4) }
+                  : { mode: "category" }
               );
+            } else {
+              if (selectedKey?.startsWith("task:")) {
+                setAddCtx({ mode: "subtask", parentTaskId: selectedKey.slice(5) });
+              } else {
+                const catId = selectedKey?.startsWith("cat:") && selectedKey !== "cat:uncat"
+                  ? selectedKey.slice(4) : undefined;
+                setAddCtx({ mode: "task", categoryId: catId });
+              }
             }
           }}
         />
@@ -461,6 +468,7 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
           parentProjectId={addCtx.mode === "task" || addCtx.mode === "subtask" ? projectId : undefined}
           parentTaskId={addCtx.mode === "subtask" ? addCtx.parentTaskId : undefined}
           parentCategoryId={addCtx.mode === "subcategory" ? addCtx.parentCategoryId : undefined}
+          taskCategoryId={addCtx.mode === "task" ? addCtx.categoryId : undefined}
           // Only the top-level "+ Category" in the toolbar targets this project;
           // a nested subcategory must NOT also send projectId (API CHECK enforces
           // exactly one parent).

@@ -113,11 +113,24 @@ export function buildProjectTree(
     projectId: string | null;
   }>,
 ): Extract<GanttNode, { kind: "project" }> {
-  const taskNodes = buildTaskForest(tasks);
-  const catNodes = buildProjectScopedCategoryForest(project.id, categories ?? []);
+  // Partition tasks: those assigned to a project-scoped category go into that
+  // category's node; the rest stay at the project root level (flat list below cats).
+  const tasksByCategory = new Map<string, GanttTask[]>();
+  const uncategorisedTasks: GanttTask[] = [];
+  for (const t of tasks) {
+    if (t.categoryId) {
+      const list = tasksByCategory.get(t.categoryId) ?? [];
+      list.push(t);
+      tasksByCategory.set(t.categoryId, list);
+    } else {
+      uncategorisedTasks.push(t);
+    }
+  }
+  const catNodes = buildProjectScopedCategoryForest(project.id, categories ?? [], tasksByCategory);
+  const rootTaskNodes = buildTaskForest(uncategorisedTasks);
   return {
     kind: "project", id: project.id, name: project.name, status: project.status,
-    children: [...catNodes, ...taskNodes],
+    children: [...catNodes, ...rootTaskNodes],
   };
 }
 
@@ -133,18 +146,13 @@ type ProjectScopedCategoryInput = {
 function buildProjectScopedCategoryForest(
   projectId: string,
   categories: ReadonlyArray<ProjectScopedCategoryInput>,
+  tasksByCategory: Map<string, GanttTask[]> = new Map(),
 ): GanttNode[] {
   if (categories.length === 0) return [];
 
-  // Step 1: find every category directly scoped to this project.
   const direct = categories.filter((c) => c.projectId === projectId);
   if (direct.length === 0) return [];
 
-  // Step 2: walk descendants (subcategories of those project-scoped categories)
-  // so a `projectId=null, parentCategoryId=<project-scoped>` child still renders
-  // here. That's how "Add subcategory" on a project-scoped category round-trips
-  // — the server stores child with parentCategoryId set and projectId null (the
-  // DB's single-parent CHECK constraint).
   const keep = new Set<string>(direct.map((c) => c.id));
   let frontier: ProjectScopedCategoryInput[] = direct;
   while (frontier.length > 0) {
@@ -161,9 +169,6 @@ function buildProjectScopedCategoryForest(
   }
   const relevant = categories.filter((c) => keep.has(c.id));
 
-  // Step 3: index by parent for O(N) tree construction. Anything whose parent
-  // is NOT in the keep-set (typically top-level direct children with
-  // parentCategoryId === null) roots under the project node.
   const childrenByParent = new Map<string | null, ProjectScopedCategoryInput[]>();
   for (const c of relevant) {
     const parentInScope = c.parentCategoryId && keep.has(c.parentCategoryId) ? c.parentCategoryId : null;
@@ -177,12 +182,13 @@ function buildProjectScopedCategoryForest(
 
   function buildNode(c: ProjectScopedCategoryInput): GanttNode {
     const subs = (childrenByParent.get(c.id) ?? []).map(buildNode);
+    const catTasks = buildTaskForest(tasksByCategory.get(c.id) ?? []);
     return {
       kind: "category",
       id: c.id,
       name: c.name,
       colour: c.colour,
-      children: subs,
+      children: [...subs, ...catTasks],
     };
   }
 

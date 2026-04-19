@@ -103,6 +103,7 @@ export interface WorkspaceTimelineTask {
   milestones?: TimelineMilestone[];
   projectId?: string | null;
   parentTaskId?: string | null;
+  categoryId?: string | null;
 }
 
 export interface WorkspaceTimeline {

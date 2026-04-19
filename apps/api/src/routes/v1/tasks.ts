@@ -22,6 +22,7 @@ export const CreateTaskSchema = z.object({
   startDate: z.string().date().optional(),
   dueDate: z.string().date().optional(),
   parentTaskId: z.string().uuid().nullable().optional(),
+  categoryId: z.string().uuid().nullable().optional(),
 });
 
 const AddDependencySchema = z.object({
@@ -77,6 +78,7 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
                         tasks.risk_level as "riskLevel",
                         tasks.start_date::text as "startDate",
                         tasks.due_date::text as "dueDate",
+                        tasks.category_id as "categoryId",
                         tasks.created_at as "createdAt",
                         tasks.updated_at as "updatedAt"
                  FROM tasks
@@ -150,8 +152,8 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
         `INSERT INTO tasks (
           tenant_id, project_id, title, description, priority,
           assignee_user_id, created_by_user_id, start_date, due_date, risk_score, risk_level,
-          parent_task_id
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          parent_task_id, category_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         RETURNING id, parent_task_id AS "parentTaskId"`,
         [
           tenantId,
@@ -166,6 +168,7 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
           riskScore,
           riskLevel,
           body.parentTaskId ?? null,
+          body.categoryId ?? null,
         ]
       );
 

@@ -392,6 +392,7 @@ export interface GanttTask {
   id: string;
   projectId: string;
   parentTaskId: string | null;
+  categoryId: string | null;
   title: string;
   status: GanttTaskStatus;
   priority: GanttTaskPriority;
