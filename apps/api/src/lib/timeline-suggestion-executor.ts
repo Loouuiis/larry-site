@@ -81,6 +81,40 @@ export async function executeTimelineSuggestion(
       }
     }
 
+    for (const mv of payload.moveProjects ?? []) {
+      // Resolve target category.
+      let targetCategoryId: string | null | undefined;
+      if (mv.toCategoryTempId) {
+        targetCategoryId = tempIdToRealId.get(mv.toCategoryTempId);
+        if (!targetCategoryId) {
+          skipped.push({ reason: "category_tempid_not_resolved", categoryId: mv.toCategoryTempId });
+          continue;
+        }
+      } else if (mv.toCategoryId) {
+        targetCategoryId = mv.toCategoryId;
+      } else {
+        skipped.push({ reason: "category_missing", projectId: mv.projectId });
+        continue;
+      }
+
+      // Existence check.
+      const existing = await client.query<{ id: string }>(
+        `SELECT id FROM projects WHERE id = $1 AND tenant_id = $2`,
+        [mv.projectId, tenantId],
+      );
+      if (existing.rows.length === 0) {
+        skipped.push({ reason: "project_not_found", projectId: mv.projectId });
+        continue;
+      }
+
+      // Apply move.
+      await client.query(
+        `UPDATE projects SET category_id = $1 WHERE id = $2 AND tenant_id = $3`,
+        [targetCategoryId, mv.projectId, tenantId],
+      );
+      applied.moves += 1;
+    }
+
     // Mark the event accepted.
     await client.query(
       `UPDATE larry_events
