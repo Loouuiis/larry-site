@@ -8,6 +8,7 @@ interface Preview {
   email: string;
   role: string;
   expiresAt: string;
+  tenantId: string;
   tenantName: string | null;
   tenantSlug: string | null;
   projectId: string | null;
@@ -88,6 +89,25 @@ function StateCard({
   );
 }
 
+async function fetchCurrentTenantName(
+  accessToken: string,
+): Promise<string | null> {
+  const base = process.env.LARRY_API_BASE_URL ?? "http://localhost:8080";
+  try {
+    const res = await fetch(`${base}/v1/auth/tenants`, {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      tenants?: Array<{ name: string; current: boolean }>;
+    };
+    return data.tenants?.find((t) => t.current)?.name ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export default async function AcceptInvitationPage({
   searchParams,
 }: {
@@ -96,6 +116,11 @@ export default async function AcceptInvitationPage({
   const { token } = await searchParams;
   const session = await getSession();
   const currentUserEmail = session?.email ?? null;
+  const currentTenantId = session?.tenantId ?? null;
+  const currentTenantName =
+    session?.apiAccessToken
+      ? await fetchCurrentTenantName(session.apiAccessToken)
+      : null;
 
   if (!token) {
     return (
@@ -166,7 +191,16 @@ export default async function AcceptInvitationPage({
     );
   }
 
-  const { email, role, tenantName, expiresAt, projectName, projectRole } = result.data;
+  const { email, role, tenantId, tenantName, expiresAt, projectName, projectRole } = result.data;
+
+  // Signed-in as the same email but in a different tenant: accepting replaces
+  // the session. We don't *lose* the current membership — the row stays — but
+  // the user will need the workspace switcher to get back. Surface that.
+  const willSwitchTenant =
+    currentUserEmail !== null &&
+    currentUserEmail.toLowerCase() === email.toLowerCase() &&
+    currentTenantId !== null &&
+    currentTenantId !== tenantId;
 
   return (
     <Shell>
@@ -206,10 +240,26 @@ export default async function AcceptInvitationPage({
           </p>
         </div>
 
+        {willSwitchTenant && (
+          <div
+            className="rounded-lg border px-3 py-2 text-[12px]"
+            style={{
+              borderColor: "#fde68a",
+              background: "#fffbeb",
+              color: "#92400e",
+            }}
+          >
+            You'll keep your {currentTenantName ? <strong>{currentTenantName}</strong> : "current workspace"} membership.
+            Accepting adds <strong>{tenantName ?? "this workspace"}</strong> as a second one — your active session will switch to it, and you can flip back anytime from the topbar.
+          </div>
+        )}
+
         <AcceptForm
           token={token}
           email={email}
           currentUserEmail={currentUserEmail}
+          willSwitchTenant={willSwitchTenant}
+          targetTenantName={tenantName}
         />
       </div>
     </Shell>

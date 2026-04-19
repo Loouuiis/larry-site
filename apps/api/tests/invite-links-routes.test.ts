@@ -283,7 +283,7 @@ describe("POST /orgs/invite-links/by-token/:token/redeem", () => {
     const res = await app.inject({
       method: "POST",
       url: "/orgs/invite-links/by-token/long-enough-token/redeem",
-      payload: { email: "new@example.com", password: "LongPass1!" },
+      payload: { email: "new@example.com", password: "LongPassword12!" },
     });
     expect(res.statusCode).toBe(410);
   });
