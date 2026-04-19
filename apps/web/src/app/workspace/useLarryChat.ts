@@ -156,7 +156,7 @@ export function useLarryChat(projectId?: string) {
     setConversations([]);
   }, [projectId]);
 
-  // Load conversations list + latest conversation when widget opens
+  // Load conversations list + latest conversation when widget opens or project scope changes
   useEffect(() => {
     if (!isOpen) return;
 

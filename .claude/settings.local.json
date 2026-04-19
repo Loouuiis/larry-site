@@ -21,7 +21,10 @@
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); [print\\(k,':',v\\) for k,v in d.get\\('scripts',{}\\).items\\(\\) if 'build' in k]\")",
       "Bash(echo \"exit: $?\")",
       "Bash(echo \"EXIT:$?\")",
-      "Bash(npx vitest *)"
+      "Bash(npx vitest *)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(list\\(d.get\\('dependencies',{}\\).keys\\(\\)\\), indent=2\\)\\)\")",
+      "Bash(npm ls *)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('browser',{}\\), indent=2\\)\\)\")"
     ]
   }
 }

@@ -41,6 +41,8 @@ export function WorkspaceShell({ children, userEmail, emailVerified, avatarUrl, 
   const pathname = usePathname();
   const [projects, setProjects] = useState<WorkspaceProject[]>([]);
   const [chatProjectId, setChatProjectId] = useState<string>("");
+  // "project" = open with project context; "global" = open with no project (workspace assistant)
+  const [chatMode, setChatMode] = useState<"project" | "global">("project");
   const [meetingOpen, setMeetingOpen] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [notifCount, setNotifCount] = useState(0);
@@ -138,6 +140,17 @@ export function WorkspaceShell({ children, userEmail, emailVerified, avatarUrl, 
     return () => window.removeEventListener("larry:refresh-snapshot", onRefresh);
   }, [loadShell]);
 
+  // When "Ask Larry" (project button) opens the chat, ensure we're in project mode.
+  // This listener runs before LarryChat's own larry:open listener because WorkspaceShell
+  // is the parent and mounts first.
+  useEffect(() => {
+    function onLarryOpen() {
+      setChatMode("project");
+    }
+    window.addEventListener("larry:open", onLarryOpen);
+    return () => window.removeEventListener("larry:open", onLarryOpen);
+  }, []);
+
   const onMeetingSubmit = useCallback(async () => {
     const trimmedTranscript = transcript.trim();
     if (trimmedTranscript.length < 20) return;
@@ -213,14 +226,17 @@ export function WorkspaceShell({ children, userEmail, emailVerified, avatarUrl, 
       {!isLarryPage && (
         <>
           <LarryChat
-            projectId={chatProjectId || undefined}
-            projectName={projects.find((p) => p.id === chatProjectId)?.name}
+            projectId={chatMode === "project" ? (chatProjectId || undefined) : undefined}
+            projectName={chatMode === "project" ? projects.find((p) => p.id === chatProjectId)?.name : undefined}
           />
           <button
             type="button"
             aria-label="Ask Larry"
             data-testid="ask-larry-fab"
-            onClick={() => window.dispatchEvent(new CustomEvent("larry:toggle"))}
+            onClick={() => {
+              setChatMode("global");
+              window.dispatchEvent(new CustomEvent("larry:toggle"));
+            }}
             style={{
               position: "fixed",
               bottom: "24px",
