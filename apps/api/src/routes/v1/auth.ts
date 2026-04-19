@@ -59,9 +59,11 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
   }, async (request, reply) => {
     const body = SignupSchema.parse(request.body);
 
-    // Check for existing user with same email
+    // Check for existing user with same email. emailSchema normalises to
+    // lowercase, but legacy rows may have mixed-case values — always
+    // compare with lower() so duplicate-detection is airtight.
     const existing = await fastify.db.query<{ id: string }>(
-      `SELECT id FROM users WHERE email = $1 LIMIT 1`,
+      `SELECT id FROM users WHERE lower(email) = lower($1) LIMIT 1`,
       [body.email],
     );
 
@@ -217,6 +219,8 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     // Resolve membership by email. If a tenantId is supplied, scope to it;
     // otherwise pick the user's oldest membership (deterministic default for
     // users who belong to exactly one tenant, which is the signup case).
+    // Case-insensitive email lookup so legacy mixed-case rows still log in
+    // (the schema normalises new inputs, but old data is unchanged).
     const rows = tenantId
       ? await fastify.db.query<{
           id: string;
@@ -229,7 +233,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
           `SELECT u.id, u.email, u.password_hash, u.display_name, m.role, m.tenant_id
            FROM users u
            JOIN memberships m ON m.user_id = u.id
-           WHERE u.email = $1 AND m.tenant_id = $2
+           WHERE lower(u.email) = lower($1) AND m.tenant_id = $2
            LIMIT 1`,
           [body.email, tenantId]
         )
@@ -244,7 +248,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
           `SELECT u.id, u.email, u.password_hash, u.display_name, m.role, m.tenant_id
            FROM users u
            JOIN memberships m ON m.user_id = u.id
-           WHERE u.email = $1
+           WHERE lower(u.email) = lower($1)
            ORDER BY m.created_at ASC
            LIMIT 1`,
           [body.email]

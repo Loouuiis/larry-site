@@ -7,18 +7,30 @@ interface AcceptFormProps {
   token: string;
   email: string;
   currentUserEmail: string | null;
+  /** True when the signed-in email matches the invite but the active tenant differs. */
+  willSwitchTenant?: boolean;
+  targetTenantName?: string | null;
 }
 
-export function AcceptForm({ token, email, currentUserEmail }: AcceptFormProps) {
+export function AcceptForm({
+  token,
+  email,
+  currentUserEmail,
+  willSwitchTenant = false,
+  targetTenantName = null,
+}: AcceptFormProps) {
   const router = useRouter();
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [confirmedSwitch, setConfirmedSwitch] = useState(false);
 
   const mismatch =
     currentUserEmail !== null &&
     currentUserEmail.toLowerCase() !== email.toLowerCase();
+
+  const needsSwitchConfirm = willSwitchTenant && !confirmedSwitch;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,6 +77,34 @@ export function AcceptForm({ token, email, currentUserEmail }: AcceptFormProps) 
         >
           Sign out and accept as {email}
         </a>
+      </div>
+    );
+  }
+
+  if (needsSwitchConfirm) {
+    return (
+      <div className="space-y-3">
+        <p className="text-[13px]" style={{ color: "var(--text-2)" }}>
+          Accepting will switch your active session to
+          {" "}<strong>{targetTenantName ?? "the new workspace"}</strong>. Confirm to continue.
+        </p>
+        <div className="flex gap-2">
+          <a
+            href="/workspace"
+            className="flex-1 h-10 inline-flex items-center justify-center rounded-full border text-[13px] font-semibold"
+            style={{ borderColor: "var(--border)", color: "var(--text-1)" }}
+          >
+            Cancel
+          </a>
+          <button
+            type="button"
+            onClick={() => setConfirmedSwitch(true)}
+            className="flex-1 h-10 rounded-full text-[13px] font-semibold text-white"
+            style={{ background: "#6c44f6" }}
+          >
+            Switch and accept
+          </button>
+        </div>
       </div>
     );
   }
@@ -149,7 +189,9 @@ export function AcceptForm({ token, email, currentUserEmail }: AcceptFormProps) 
         {busy
           ? "Accepting…"
           : currentUserEmail
-            ? `Continue as ${currentUserEmail}`
+            ? willSwitchTenant
+              ? `Switch to ${targetTenantName ?? "this workspace"} as ${currentUserEmail}`
+              : `Continue as ${currentUserEmail}`
             : "Create account and join"}
       </button>
     </form>

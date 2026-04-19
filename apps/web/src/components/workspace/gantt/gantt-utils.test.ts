@@ -427,6 +427,56 @@ describe("statusChipFor", () => {
   });
 });
 
+/* ─── v4 Slice 5 — search dimming ─────────────────────────────────── */
+
+import { searchUnDimmedKeys } from "./gantt-utils";
+
+describe("searchUnDimmedKeys", () => {
+  const mkTree = (): GanttNode => {
+    const task: GanttNode = { kind: "task", id: "t1", task: baseTask({ id: "t1", title: "Verify migrations" }), children: [] };
+    const sibTask: GanttNode = { kind: "task", id: "t2", task: baseTask({ id: "t2", title: "Design landing page" }), children: [] };
+    const project: GanttNode = { kind: "project", id: "p1", name: "Onboarding", status: "active", children: [task, sibTask] };
+    const category: GanttNode = { kind: "category", id: "c1", name: "Marketing", colour: null, children: [project] };
+    const peerCat: GanttNode = { kind: "category", id: "c2", name: "Legal", colour: null, children: [] };
+    return { kind: "category", id: "__root__", name: "", colour: null, children: [category, peerCat] };
+  };
+
+  it("returns an empty set for an empty query", () => {
+    const set = searchUnDimmedKeys(mkTree(), "");
+    expect(set.size).toBe(0);
+  });
+
+  it("includes the matching task AND its ancestors", () => {
+    const set = searchUnDimmedKeys(mkTree(), "verify");
+    expect(set).toContain("task:t1");
+    expect(set).toContain("proj:p1");
+    expect(set).toContain("cat:c1");
+    // Sibling task that doesn't match is NOT un-dimmed
+    expect(set.has("task:t2")).toBe(false);
+    // Peer category that doesn't match is NOT un-dimmed
+    expect(set.has("cat:c2")).toBe(false);
+  });
+
+  it("when a category matches, its whole subtree stays un-dimmed", () => {
+    const set = searchUnDimmedKeys(mkTree(), "marketing");
+    expect(set).toContain("cat:c1");
+    expect(set).toContain("proj:p1");
+    expect(set).toContain("task:t1");
+    expect(set).toContain("task:t2");
+    expect(set.has("cat:c2")).toBe(false);
+  });
+
+  it("never emits the synthetic __root__ key", () => {
+    const set = searchUnDimmedKeys(mkTree(), "verify");
+    expect(set.has("cat:__root__")).toBe(false);
+  });
+
+  it("query is case-insensitive and trims whitespace", () => {
+    const set = searchUnDimmedKeys(mkTree(), "  MIGR  ");
+    expect(set).toContain("task:t1");
+  });
+});
+
 /* ─── v4 Slice 4 — validateDrop ────────────────────────────────────── */
 
 import { validateDrop, parseDndKey, type DropContext } from "./gantt-utils";

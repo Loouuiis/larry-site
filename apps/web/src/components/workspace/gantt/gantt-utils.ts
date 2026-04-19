@@ -218,6 +218,11 @@ export type FlatRow = {
   categoryColor: string; // resolved category colour; fallback to Larry purple
   dimmed?: boolean;
   height: number;      // per-level (ROW_HEIGHT for cat/proj, ROW_HEIGHT_TASK for task/sub)
+  // v4 Slice 5 — a human-readable suffix ("no scheduled tasks") rendered
+  // after the row label when the row is a structural container with no
+  // scheduled content. Set only on project / category rows whose subtree
+  // collapsed to zero Gantt-visible descendants.
+  emptyNote?: string;
 };
 
 export interface FlattenOptions {
@@ -256,9 +261,26 @@ export function flattenVisible(
     const key = keyOf(node);
     const categoryColor = colourFor(node, inherited);
 
+    // v4 Slice 5 — annotate structural container rows that have no Gantt
+    // content so the outline can render a "(no scheduled tasks)" suffix.
+    // Project rows: empty = zero children (server already filtered null-date
+    // tasks out). Category rows: only when id is a real category (not the
+    // Uncategorised bucket — that's already italic + always empty-by-design).
+    let emptyNote: string | undefined;
+    if (!isSyntheticRoot && !hasChildren) {
+      if (node.kind === "project") {
+        emptyNote = "no scheduled tasks";
+      } else if (node.kind === "category"
+                 && node.id !== null
+                 && node.id !== "uncat"
+                 && node.id !== "__root__") {
+        emptyNote = "no projects yet";
+      }
+    }
+
     if (!isSyntheticRoot) {
       const height = (node.kind === "task" || node.kind === "subtask") ? ROW_HEIGHT_TASK : ROW_HEIGHT;
-      rows.push({ kind: "node", key, depth, node, hasChildren, categoryColor, height });
+      rows.push({ kind: "node", key, depth, node, hasChildren, categoryColor, height, emptyNote });
     }
 
     if (!isSyntheticRoot && !expanded.has(key)) return;
@@ -542,10 +564,13 @@ export function contextMenuItemsFor(args: {
       { id: "delete",         label: "Delete", destructive: true },
     ];
   }
-  // task or subtask
+  // task or subtask — tasks inherit their category from the parent project,
+  // so "moveToCategory" here rewrites the project's categoryId rather than
+  // the task's. Until tasks.category_id exists as a real column, be honest
+  // in the label about the scope of the action.
   return [
     { id: "openDetail",          label: "Open task" },
-    { id: "moveToCategory",      label: "Move project to category…", hasSubmenu: true },
+    { id: "moveToCategory",      label: "Change project's category…", hasSubmenu: true },
     { id: "removeFromTimeline",  label: "Remove from timeline" },
     { id: "delete",              label: "Delete", destructive: true },
   ];
@@ -569,6 +594,73 @@ export function statusChipFor(status: GanttTaskStatus): StatusChipData | null {
     default:
       return null;
   }
+}
+
+/* ─── v4 Slice 5 — search dimming (ancestor-aware) ──────────────────── */
+
+// Build the set of node keys that should stay un-dimmed for a given search
+// query. A row stays un-dimmed if:
+//   • Its own label matches the query (case-insensitive substring), OR
+//   • Any descendant's label matches (so the parent stays legible as
+//     context for the match below it), OR
+//   • Any ancestor's label matches (so a matched parent keeps its children
+//     visible rather than fading them out).
+// Returns an empty set when the query is blank; the caller should skip
+// dimming entirely in that case.
+export function searchUnDimmedKeys(root: GanttNode, rawQuery: string): Set<string> {
+  const query = rawQuery.trim().toLowerCase();
+  const out = new Set<string>();
+  if (!query) return out;
+
+  function keyOf(node: GanttNode): string {
+    if (node.kind === "category") return `cat:${node.id ?? "uncat"}`;
+    if (node.kind === "project") return `proj:${node.id}`;
+    if (node.kind === "task") return `task:${node.id}`;
+    return `sub:${node.id}`;
+  }
+
+  function labelOf(node: GanttNode): string {
+    if (node.kind === "category" || node.kind === "project") return node.name;
+    return node.task.title;
+  }
+
+  // Mark every node in the given subtree as un-dimmed.
+  function addSubtree(node: GanttNode): void {
+    const isSyntheticRoot = node.kind === "category" && node.id === "__root__";
+    if (!isSyntheticRoot) out.add(keyOf(node));
+    if (node.kind === "subtask") return;
+    for (const child of node.children) addSubtree(child);
+  }
+
+  // walk returns true if `node` or any descendant matched. When a match sits
+  // on this node, every queued ancestor key is added to `out`, and the
+  // node's whole subtree is kept un-dimmed too.
+  function walk(node: GanttNode, ancestors: string[]): boolean {
+    const isSyntheticRoot = node.kind === "category" && node.id === "__root__";
+    const k = keyOf(node);
+    const selfMatch = !isSyntheticRoot && labelOf(node).toLowerCase().includes(query);
+    let descendantMatch = false;
+    if (node.kind !== "subtask") {
+      const nextAncestors = isSyntheticRoot ? ancestors : [...ancestors, k];
+      for (const child of node.children) {
+        if (walk(child, nextAncestors)) descendantMatch = true;
+      }
+    }
+    if (selfMatch) {
+      // Propagate up + keep the whole subtree in context.
+      for (const a of ancestors) out.add(a);
+      addSubtree(node);
+      return true;
+    }
+    if (descendantMatch) {
+      // Some child matched — this node stays visible as context.
+      if (!isSyntheticRoot) out.add(k);
+      return true;
+    }
+    return false;
+  }
+  walk(root, []);
+  return out;
 }
 
 /* ─── v4 Slice 4 — drag-and-drop validation ─────────────────────────── */

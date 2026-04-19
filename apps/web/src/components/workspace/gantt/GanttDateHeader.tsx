@@ -15,12 +15,12 @@ const TODAY_LABEL_BAND = 16;
 
 // Horizontal scale: px-per-day per zoom. Drives the grid minWidth so day-
 // number labels and month labels never overlap. Tuned so adjacent ticks are
-// spaced comfortably wider than their labels (~16px for "23" at 11px tabular):
-//   - week:    daily ticks × 36px = 36px between labels (20px gap)
+// spaced comfortably wider than their labels:
+//   - week:    daily ticks × 48px (room for "Mon 16" / "Tue 17" weekday+num)
 //   - month:   weekly ticks × 14px per day = 98px between labels
 //   - quarter: biweekly ticks × 8px per day = 112px between labels
 export const PX_PER_DAY_BY_ZOOM: Record<ZoomLevel, number> = {
-  week:    36,
+  week:    48,
   month:   14,
   quarter:  8,
 };
@@ -40,7 +40,9 @@ export function GanttDateHeader({ range, zoom }: Props) {
         zIndex: 3,
       }}
     >
-      {/* Today label band (top 16px) */}
+      {/* Today pill (top 16px). v4 Slice 5 — upgraded from a bare 10px text
+          to a proper pill that reads as a persistent now-marker; easier to
+          spot when scrolled and matches the industry norm (Asana/Monday). */}
       <div style={{ position: "relative", height: TODAY_LABEL_BAND }}>
         {todayInRange && (
           <span
@@ -48,15 +50,21 @@ export function GanttDateHeader({ range, zoom }: Props) {
               position: "absolute",
               left: `${todayPct}%`,
               transform: "translateX(-50%)",
-              top: 2,
+              top: 0,
+              padding: "1px 6px",
               fontSize: 10,
-              fontWeight: 600,
-              color: "var(--brand)",
+              fontWeight: 700,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+              color: "#fff",
+              background: "var(--brand)",
+              borderRadius: 3,
               whiteSpace: "nowrap",
               pointerEvents: "none",
+              boxShadow: "0 1px 3px rgba(108, 68, 246, 0.35)",
             }}
           >
-            Today
+            Today {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
           </span>
         )}
       </div>
@@ -132,7 +140,10 @@ export function GanttDateHeader({ range, zoom }: Props) {
                   whiteSpace: "nowrap",
                 }}
               >
-                {d.label.replace(/^[A-Za-z]+\s/, "")}
+                {/* v4 Slice 5 — keep the weekday prefix at week zoom so
+                    "Mon 16" stays visible. Month / quarter zoom already emit
+                    number-only labels so no strip needed. */}
+                {d.label}
               </span>
             </div>
           ))}
