@@ -103,7 +103,7 @@
 @theme inline {
   --color-background:       var(--page-bg);
   --color-foreground:       var(--text-1);
-  --font-sans:              var(--font-plus-jakarta);
+  --font-sans:              var(--font-inter);
   --font-mono:              var(--font-geist-mono);
   --color-brand:            var(--brand);
   --color-brand-dark:       var(--brand-hover);
@@ -129,7 +129,7 @@ html {
 body {
   background: var(--page-bg);
   color: var(--text-1);
-  font-family: var(--font-plus-jakarta), var(--font-inter), system-ui, sans-serif;
+  font-family: var(--font-inter), system-ui, sans-serif;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -334,7 +334,7 @@ h3, h4 {
   --pm-text-secondary:   var(--text-muted);
   --pm-text-muted:       var(--text-disabled);
 
-  font-family: var(--font-plus-jakarta), var(--font-inter), system-ui, sans-serif;
+  font-family: var(--font-inter), system-ui, sans-serif;
   font-size: 14px;
   line-height: 1.4;
   color: var(--text-1);
