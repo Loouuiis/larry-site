@@ -70,7 +70,7 @@ function wrapHtml(bodyContent: string): string {
   return `
     <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 40px 24px; color: #111;">
       <div style="margin-bottom: 32px;">
-        <img src="${frontendUrl}/Larryfulllogo.png" alt="Larry" style="height:38px; width:auto; display:block;" />
+        <img src="${frontendUrl}/Larryfulllogo.png" alt="Larry" style="height:52px; width:auto; display:block;" />
       </div>
       ${bodyContent}
       <p style="margin-top: 40px; font-size: 12px; color: #aaa;">
