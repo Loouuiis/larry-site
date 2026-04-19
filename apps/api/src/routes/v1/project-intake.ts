@@ -36,7 +36,7 @@ const DraftProjectInputSchema = z.object({
 });
 
 const DraftChatInputSchema = z.object({
-  answers: z.array(z.string().trim().max(1_000)).max(20).optional(),
+  answers: z.array(z.string().trim().max(10_000)).max(20).optional(),
 });
 
 const DraftMeetingInputSchema = z.object({

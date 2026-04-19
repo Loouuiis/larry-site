@@ -739,7 +739,8 @@ export function WorkspaceProjectIntake() {
                     onChange={(event) => setChatInput(event.target.value)}
                     rows={4}
                     placeholder="Type your answer here..."
-                    className="w-full rounded-[22px] border px-4 py-3 text-[14px] outline-none"
+                    maxLength={10000}
+className="w-full rounded-[22px] border px-4 py-3 text-[14px] outline-none"
                     style={{ borderColor: "var(--border)", background: "var(--surface-2)", color: "var(--text-1)" }}
                   />
                   <div className="flex justify-end">
