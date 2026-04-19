@@ -85,10 +85,15 @@ Admin toggle for `mfa_required_for_admins` reuses the existing
 **✅ Shipped in `fix/password-breach-check`:**
 - Password breach check (HIBP k-anonymous): new `apps/api/src/lib/password-breach.ts` with `assertPasswordNotBreached` wired into signup, password reset, change-password, invitation accept, and invite-link redeem. SHA-1 the password locally, send the first 5 hex chars to HIBP's Range API, reject anything in the returned list. Fails open on HIBP downtime (signup shouldn't break because an external service is flaky). 1h in-memory prefix cache. New `PasswordBreachedError` mapped to a 400 "Password Compromised" response by the global error handler.
 
-**Device fingerprint.** `auth.ts:321-322` does exact `(ip, user_agent)` match
-for known-device detection. Mobile clients rotate UA on each OS update and
-change IP on every Wi-Fi handoff, producing constant "new device" emails.
-Replace with a persistent `device_id` cookie + loose fingerprint.
+**✅ Device fingerprint** shipped in `feat/device-fingerprint-cookie`.
+`/v1/auth/login` and `/v1/auth/mfa/{verify,enrol/confirm}` now read
+`X-Device-Id` (forwarded by the web proxy from the httpOnly `larry_device_id`
+cookie), look up any refresh-token row for this user with that device_id in
+the last 30 days, and only send the new-device email if the device is
+unrecognised AND the user has prior sessions. `/v1/auth/refresh` carries
+the device_id through rotation so the cookie stays sticky across refresh
+cycles. Migration 028 adds nullable `refresh_tokens.device_id` UUID. No
+more email churn on OS updates or Wi-Fi handoffs.
 
 ### P3 — nice to have
 

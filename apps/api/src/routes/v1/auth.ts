@@ -369,19 +369,50 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       }
     }
 
-    // --- New-device detection (best-effort, don't block login) ---
-    // Must run BEFORE issueRefreshToken so the just-created token doesn't match itself.
+    // --- New-device detection (P2-3, best-effort, don't block login) ---
+    // Replaces the old (ip, user_agent) exact-match check — mobile OS
+    // updates churn UA and Wi-Fi handoffs churn IP, so every login
+    // triggered an alert. The browser now sticks a `larry_device_id`
+    // cookie (minted the first time we mint a session) which the web
+    // proxy forwards as `X-Device-Id`. Known device = cookie matches
+    // any row in this user's refresh_tokens within the last 30 days,
+    // regardless of revoked_at so that P2-5's aggressive rotation
+    // doesn't make every re-login look new.
+    const incomingDeviceId =
+      typeof request.headers["x-device-id"] === "string" && request.headers["x-device-id"]
+        ? request.headers["x-device-id"]
+        : null;
+    let effectiveDeviceId: string = incomingDeviceId ?? randomBytes(16).toString("hex");
+    // Ensure effectiveDeviceId is a valid UUID shape if we minted it — the
+    // column is UUID typed. randomBytes(16).hex is 32 chars; convert to
+    // 8-4-4-4-12 UUID.
+    if (!incomingDeviceId) {
+      const hex = effectiveDeviceId;
+      effectiveDeviceId = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${((parseInt(hex[16], 16) & 0x3) | 0x8).toString(16)}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+    }
+
     try {
-      const recentSessions = await fastify.db.query<{ ip_address: string | null; user_agent: string | null }>(
-        `SELECT ip_address, user_agent FROM refresh_tokens
-         WHERE user_id = $1 AND tenant_id = $2 AND created_at > NOW() - INTERVAL '30 days'
-         ORDER BY created_at DESC LIMIT 50`,
-        [user.id, user.tenant_id]
+      const prior = await fastify.db.query<{ id: string }>(
+        `SELECT id FROM refresh_tokens
+          WHERE user_id = $1 AND tenant_id = $2
+          LIMIT 1`,
+        [user.id, user.tenant_id],
       );
-      const isKnownDevice = recentSessions.some(
-        (s) => s.ip_address === request.ip && s.user_agent === (request.headers["user-agent"] ?? "unknown")
-      );
-      if (!isKnownDevice && recentSessions.length > 0) {
+      const hasPriorSessions = prior.length > 0;
+
+      let isKnownDevice = false;
+      if (incomingDeviceId) {
+        const match = await fastify.db.query<{ id: string }>(
+          `SELECT id FROM refresh_tokens
+            WHERE user_id = $1 AND device_id = $2
+              AND created_at > NOW() - INTERVAL '30 days'
+            LIMIT 1`,
+          [user.id, incomingDeviceId],
+        );
+        isKnownDevice = match.length > 0;
+      }
+
+      if (!isKnownDevice && hasPriorSessions) {
         const ua = request.headers["user-agent"] ?? "Unknown device";
         const uaShort = ua.length > 100 ? ua.substring(0, 100) + "..." : ua;
         const { sendNewDeviceAlert } = await import("../../lib/email.js");
@@ -420,6 +451,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     }, undefined, {
       ipAddress: request.ip,
       userAgent: request.headers["user-agent"] ?? undefined,
+      deviceId: effectiveDeviceId,
     });
 
     await writeAuditLog(fastify.db, {
@@ -434,6 +466,10 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     return reply.send({
       accessToken,
       refreshToken,
+      // P2-3: web proxy sets this as the httpOnly larry_device_id cookie
+      // so future /login calls from the same browser skip the new-device
+      // email alert.
+      deviceId: effectiveDeviceId,
       user: {
         id: user.id,
         email: user.email,
@@ -469,12 +505,13 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       id: string;
       tenant_id: string;
       user_id: string;
-      role: "admin" | "pm" | "member" | "executive";
+      role: "owner" | "admin" | "pm" | "member" | "executive";
       email: string;
       expires_at: string;
       revoked_at: string | null;
+      device_id: string | null;
     }>(
-      `SELECT rt.id, rt.tenant_id, rt.user_id, rt.expires_at, rt.revoked_at, m.role, u.email
+      `SELECT rt.id, rt.tenant_id, rt.user_id, rt.expires_at, rt.revoked_at, rt.device_id, m.role, u.email
        FROM refresh_tokens rt
        JOIN users u ON u.id = rt.user_id
        JOIN memberships m ON m.user_id = rt.user_id AND m.tenant_id = rt.tenant_id
@@ -542,7 +579,14 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
           role: tokenRow.role,
           email: tokenRow.email,
         },
-        client
+        client,
+        // P2-3: carry the device_id through rotation so the cookie stays
+        // valid across refresh cycles. ip/ua come from the current request.
+        {
+          ipAddress: request.ip,
+          userAgent: request.headers["user-agent"] ?? undefined,
+          deviceId: tokenRow.device_id ?? undefined,
+        },
       );
     });
 

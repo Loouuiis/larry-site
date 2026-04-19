@@ -49,13 +49,21 @@ export async function issueRefreshToken(
   app: FastifyInstance,
   payload: { userId: string; tenantId: string; role: "owner" | "admin" | "pm" | "member" | "executive"; email?: string },
   dbClient?: PoolClient,
-  meta?: { ipAddress?: string; userAgent?: string }
+  meta?: { ipAddress?: string; userAgent?: string; deviceId?: string }
 ): Promise<string> {
   const token = randomBytes(48).toString("base64url");
   const tokenHash = hashToken(token);
   const expiresAt = futureIsoDate(app.config.REFRESH_TOKEN_TTL);
-  const query = `INSERT INTO refresh_tokens (tenant_id, user_id, token_hash, expires_at, ip_address, user_agent) VALUES ($1, $2, $3, $4, $5, $6)`;
-  const values = [payload.tenantId, payload.userId, tokenHash, expiresAt, meta?.ipAddress ?? null, meta?.userAgent ?? null];
+  const query = `INSERT INTO refresh_tokens (tenant_id, user_id, token_hash, expires_at, ip_address, user_agent, device_id) VALUES ($1, $2, $3, $4, $5, $6, $7)`;
+  const values = [
+    payload.tenantId,
+    payload.userId,
+    tokenHash,
+    expiresAt,
+    meta?.ipAddress ?? null,
+    meta?.userAgent ?? null,
+    meta?.deviceId ?? null,
+  ];
   if (dbClient) {
     await dbClient.query(query, values);
   } else {

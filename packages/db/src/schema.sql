@@ -1733,3 +1733,13 @@ CREATE INDEX IF NOT EXISTS idx_user_mfa_scratch_codes_user
   ON user_mfa_scratch_codes(user_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_user_mfa_scratch_codes_hash
   ON user_mfa_scratch_codes(code_hash);
+
+-- ── 028_refresh_token_device_id.sql ───────────────────────────────
+-- Loose-fingerprint known-device check (P2-3). Nullable — legacy rows
+-- remain untouched; only new logins populate it.
+ALTER TABLE refresh_tokens
+  ADD COLUMN IF NOT EXISTS device_id UUID;
+
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_device_active
+  ON refresh_tokens (user_id, device_id)
+  WHERE revoked_at IS NULL AND device_id IS NOT NULL;
