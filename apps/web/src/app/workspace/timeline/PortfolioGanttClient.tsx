@@ -71,6 +71,16 @@ export function PortfolioGanttClient() {
   // refetch, rather than the old per-page `fetchTimeline()` ad-hoc refetch.
   const fetchTimeline = async () => { invalidateAll(); };
 
+  // Listen for timeline_* accept events emitted by useLarryActionCentre so
+  // the Gantt refetches after Larry reorganises the portfolio structure.
+  useEffect(() => {
+    function onTimelineRefresh() {
+      void qc.invalidateQueries({ queryKey: ["timeline", "org"] });
+    }
+    window.addEventListener("larry:refresh-timeline", onTimelineRefresh);
+    return () => window.removeEventListener("larry:refresh-timeline", onTimelineRefresh);
+  }, [qc]);
+
   // v4 Slice 4 — drag-and-drop for the full matrix (categories, projects,
   // tasks, subtasks). Sensors keep a 5px activation distance so ordinary
   // clicks on rows don't accidentally start a drag.
