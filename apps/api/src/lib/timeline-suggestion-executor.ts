@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { writeAuditLog, type AuditWriteInput } from "./audit.js";
 
 export interface TimelineRegroupPayload {
   displayText: string;
@@ -20,7 +21,7 @@ export async function executeTimelineSuggestion(
   payload: TimelineRegroupPayload,
   actorUserId: string,
 ): Promise<ExecuteResult> {
-  return fastify.db.tx(async (client) => {
+  const { result, auditEntries } = await fastify.db.tx(async (client) => {
     // Set tenant for RLS within this transaction.
     await client.query("SELECT set_config('app.tenant_id', $1, true)", [tenantId]);
 
@@ -41,14 +42,18 @@ export async function executeTimelineSuggestion(
 
     if (lock.rows[0].eventType !== "suggested") {
       return {
-        applied: { categories: 0, moves: 0, recolours: 0 },
-        skipped: [{ reason: "already_resolved" }],
+        result: {
+          applied: { categories: 0, moves: 0, recolours: 0 },
+          skipped: [{ reason: "already_resolved" }],
+        },
+        auditEntries: [] as AuditWriteInput[],
       };
     }
 
     // Tasks 12-14 fill the apply loops in here.
     const applied = { categories: 0, moves: 0, recolours: 0 };
     const skipped: ExecuteResult["skipped"] = [];
+    const auditEntries: AuditWriteInput[] = [];
 
     const tempIdToRealId = new Map<string, string>();
 
@@ -62,6 +67,13 @@ export async function executeTimelineSuggestion(
         );
         tempIdToRealId.set(cat.tempId, ins.rows[0].id);
         applied.categories += 1;
+        auditEntries.push({
+          tenantId, actorUserId,
+          actionType: "timeline.category_created",
+          objectType: "category",
+          objectId: ins.rows[0].id,
+          details: { eventId, sourceKind: "larry_suggestion" },
+        });
       } catch (e) {
         const code = (e as { code?: string } | null)?.code;
         if (code !== "23505") throw e;
@@ -113,6 +125,36 @@ export async function executeTimelineSuggestion(
         [targetCategoryId, mv.projectId, tenantId],
       );
       applied.moves += 1;
+      auditEntries.push({
+        tenantId, actorUserId,
+        actionType: "timeline.project_moved",
+        objectType: "project",
+        objectId: mv.projectId,
+        details: { eventId, sourceKind: "larry_suggestion", toCategoryId: targetCategoryId },
+      });
+    }
+
+    for (const rc of payload.recolourCategories ?? []) {
+      const existing = await client.query<{ id: string }>(
+        `SELECT id FROM project_categories WHERE id = $1 AND tenant_id = $2`,
+        [rc.categoryId, tenantId],
+      );
+      if (existing.rows.length === 0) {
+        skipped.push({ reason: "category_not_found", categoryId: rc.categoryId });
+        continue;
+      }
+      await client.query(
+        `UPDATE project_categories SET colour = $1 WHERE id = $2 AND tenant_id = $3`,
+        [rc.colour, rc.categoryId, tenantId],
+      );
+      applied.recolours += 1;
+      auditEntries.push({
+        tenantId, actorUserId,
+        actionType: "timeline.category_recoloured",
+        objectType: "category",
+        objectId: rc.categoryId,
+        details: { eventId, sourceKind: "larry_suggestion", newColour: rc.colour },
+      });
     }
 
     // Mark the event accepted.
@@ -128,6 +170,11 @@ export async function executeTimelineSuggestion(
       [eventId, actorUserId, tenantId],
     );
 
-    return { applied, skipped };
+    return { result: { applied, skipped }, auditEntries };
   });
+
+  for (const entry of auditEntries) {
+    await writeAuditLog(fastify.db, entry);
+  }
+  return result;
 }

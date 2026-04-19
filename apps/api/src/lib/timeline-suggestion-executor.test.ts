@@ -84,6 +84,8 @@ describe("executeTimelineSuggestion — createCategories", () => {
       { rows: [{ id: "uuid-b" }] },
       { rows: [] },
     ]);
+    // 2 audit entries post-tx × 2 queryTenant calls each = 4
+    (db.queryTenant as ReturnType<typeof vi.fn>).mockResolvedValue([]);
     const result = await executeTimelineSuggestion(
       fakeFastify(db), TENANT, EVENT,
       {
@@ -155,6 +157,8 @@ describe("executeTimelineSuggestion — moveProjects", () => {
       { rows: [] },
       { rows: [] },
     ]);
+    // 1 category + 2 moves = 3 audit entries post-tx × 2 queryTenant calls each = 6
+    (db.queryTenant as ReturnType<typeof vi.fn>).mockResolvedValue([]);
     const result = await executeTimelineSuggestion(
       fakeFastify(db), TENANT, EVENT,
       {
@@ -217,5 +221,61 @@ describe("executeTimelineSuggestion — moveProjects", () => {
     expect(result.skipped).toContainEqual(
       expect.objectContaining({ reason: "category_tempid_not_resolved" }),
     );
+  });
+});
+
+describe("executeTimelineSuggestion — recolourCategories", () => {
+  it("updates colour on an existing category", async () => {
+    const catId = "00000000-0000-0000-0000-000000000ccc";
+    // Scripted:
+    // 1. set_config
+    // 2. lock → suggested
+    // 3. SELECT category by id → exists
+    // 4. UPDATE colour
+    // 5. UPDATE larry_events accepted
+    // + audit writes happen outside the tx via writeAuditLog → use queryTenant.
+    // writeAuditLog makes 2 queryTenant calls per entry (SELECT previous + INSERT).
+    const { db } = makeFakeDb([
+      { rows: [] },
+      { rows: [{ id: EVENT, eventType: "suggested" }] },
+      { rows: [{ id: catId }] },
+      { rows: [] },
+      { rows: [] },
+    ]);
+    // queryTenant for audit: 2 calls per entry × 1 audit entry = 2
+    (db.queryTenant as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    const result = await executeTimelineSuggestion(
+      fakeFastify(db), TENANT, EVENT,
+      {
+        displayText: "x", reasoning: "x",
+        recolourCategories: [{ categoryId: catId, colour: "#abcdef" }],
+      },
+      USER,
+    );
+    expect(result.applied.recolours).toBe(1);
+    // Audit: 2 queryTenant calls (SELECT previous + INSERT audit_log).
+    expect(db.queryTenant).toHaveBeenCalledTimes(2);
+  });
+
+  it("skips missing categories", async () => {
+    const { db } = makeFakeDb([
+      { rows: [] },                                              // set_config
+      { rows: [{ id: EVENT, eventType: "suggested" }] },         // lock
+      { rows: [] },                                              // SELECT category → not found
+      { rows: [] },                                              // UPDATE accepted
+    ]);
+    (db.queryTenant as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    const result = await executeTimelineSuggestion(
+      fakeFastify(db), TENANT, EVENT,
+      {
+        displayText: "x", reasoning: "x",
+        recolourCategories: [{ categoryId: "00000000-0000-0000-0000-000000000bad", colour: "#fff" }],
+      },
+      USER,
+    );
+    expect(result.applied.recolours).toBe(0);
+    expect(result.skipped).toContainEqual(expect.objectContaining({ reason: "category_not_found" }));
+    // No audit entries for skipped — queryTenant not called.
+    expect(db.queryTenant).not.toHaveBeenCalled();
   });
 });
