@@ -7,6 +7,21 @@ const SESSION_COOKIE = "larry_session";
 const SESSION_DURATION_SECS = 24 * 60 * 60; // 24 hours
 const SLIDING_REFRESH_THRESHOLD_SECS = 12 * 60 * 60; // reissue if < 12h remaining
 
+// Pages that must be reachable without a session. Still run through
+// pageMiddleware so that when a session DOES exist (e.g. right after
+// /api/auth/signup or /api/auth/google/complete minted one), we mirror
+// the session's csrfToken into the readable larry_csrf cookie before
+// the signup wizard fires its first mutating /api/** call.
+const PUBLIC_AUTH_PAGES: ReadonlySet<string> = new Set([
+  "/signup",
+  "/login",
+  "/forgot-password",
+  "/reset-password",
+  "/verify-email",
+  "/verify-email-required",
+  "/confirm-email-change",
+]);
+
 export async function middleware(req: NextRequest) {
   if (req.nextUrl.pathname.startsWith("/api/")) {
     return apiMiddleware(req);
@@ -62,8 +77,12 @@ async function apiMiddleware(req: NextRequest) {
 // ── Page-level session gate (existing behaviour) ────────────────────────────
 async function pageMiddleware(req: NextRequest) {
   const token = req.cookies.get(SESSION_COOKIE)?.value;
+  const isPublicAuth = PUBLIC_AUTH_PAGES.has(req.nextUrl.pathname);
 
   if (!token) {
+    // Unauth'd visit to a public auth page (signup, login, etc.) — just
+    // render. No CSRF cookie to mirror yet.
+    if (isPublicAuth) return NextResponse.next();
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
@@ -72,7 +91,9 @@ async function pageMiddleware(req: NextRequest) {
     secret = getSessionSecret();
   } catch {
     // SESSION_SECRET misconfigured in production — fail closed
-    const res = NextResponse.redirect(new URL("/login", req.url));
+    const res = isPublicAuth
+      ? NextResponse.next()
+      : NextResponse.redirect(new URL("/login", req.url));
     res.cookies.set({ name: SESSION_COOKIE, value: "", maxAge: 0, path: "/" });
     return res;
   }
@@ -118,8 +139,12 @@ async function pageMiddleware(req: NextRequest) {
 
     return res;
   } catch {
-    // Token expired or tampered — clear and redirect
-    const res = NextResponse.redirect(new URL("/login", req.url));
+    // Token expired or tampered — clear cookie. On public auth pages
+    // just render (no redirect-loop on /login itself); elsewhere send
+    // the user to /login.
+    const res = isPublicAuth
+      ? NextResponse.next()
+      : NextResponse.redirect(new URL("/login", req.url));
     res.cookies.set({ name: SESSION_COOKIE, value: "", maxAge: 0, path: "/" });
     return res;
   }
@@ -131,5 +156,12 @@ export const config = {
     "/workspace/:path*",
     "/admin/:path*",
     "/api/:path*",
+    "/signup",
+    "/login",
+    "/forgot-password",
+    "/reset-password",
+    "/verify-email",
+    "/verify-email-required",
+    "/confirm-email-change",
   ],
 };
