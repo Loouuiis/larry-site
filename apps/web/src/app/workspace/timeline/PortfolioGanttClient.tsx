@@ -606,8 +606,6 @@ export function PortfolioGanttClient() {
         <GanttContainer
           root={root}
           defaultZoom="month"
-          addLabel={selectionContextAddLabel()}
-          onAdd={handleAdd}
           onSelectionChange={setSelectedKey}
           categoryColorMap={categoryColorMap}
           onCategoriesClick={() => setManagerOpen((v) => !v)}
@@ -617,27 +615,24 @@ export function PortfolioGanttClient() {
           outlineHeaderActions={
             <button
               type="button"
-              onClick={() => setAddCtx({ mode: "category" })}
-              aria-label="New category"
-              title="New category"
+              onClick={() => handleAdd({ selectedKey })}
               style={{
-                // v4 Slice 5 — icon-only pill so this doesn't duplicate the
-                // toolbar "+ Category" button visually. The toolbar button is
-                // contextual (label changes with selection); this one is the
-                // always-creates-a-category shortcut for power users.
                 display: "inline-flex",
                 alignItems: "center",
-                justifyContent: "center",
-                width: 24,
-                height: 24,
-                background: "var(--surface-2)",
-                color: "var(--brand)",
-                border: "1px solid var(--border)",
+                gap: 5,
+                height: 26,
+                padding: "0 10px",
+                fontSize: 12,
+                fontWeight: 600,
+                background: "var(--brand)",
+                color: "#fff",
+                border: 0,
                 borderRadius: 6,
                 cursor: "pointer",
               }}
             >
-              <Plus size={14} strokeWidth={2.5} />
+              <Plus size={13} strokeWidth={2.5} />
+              Add item
             </button>
           }
         />

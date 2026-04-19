@@ -410,8 +410,6 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
         <GanttContainer
           root={root}
           defaultZoom="month"
-          addLabel={addLabel}
-          onAdd={handleAdd}
           onSelectionChange={setSelectedKey}
           rootCategoryColor={categoryColour ?? NEUTRAL_ROW_COLOUR}
           onContextMenuAction={handleContextMenuAction}
@@ -419,26 +417,16 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
           outlineHeaderActions={
             <button
               type="button"
-              onClick={() => setAddCtx({ mode: "category" })}
-              aria-label="New category in this project"
-              title="New category in this project"
+              onClick={() => handleAdd({ selectedKey })}
               style={{
-                // v4 Slice 5 — icon-only, matches the org timeline outline
-                // button. The big pill label lived in the same visual band
-                // as the toolbar "+ Task" button and read as a duplicate.
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: 24,
-                height: 24,
-                background: "var(--surface-2)",
-                color: "var(--brand)",
-                border: "1px solid var(--border)",
-                borderRadius: 6,
-                cursor: "pointer",
+                display: "inline-flex", alignItems: "center", gap: 5,
+                height: 26, padding: "0 10px", fontSize: 12, fontWeight: 600,
+                background: "var(--brand)", color: "#fff",
+                border: 0, borderRadius: 6, cursor: "pointer",
               }}
             >
-              <Plus size={14} strokeWidth={2.5} />
+              <Plus size={13} strokeWidth={2.5} />
+              Add item
             </button>
           }
         />
