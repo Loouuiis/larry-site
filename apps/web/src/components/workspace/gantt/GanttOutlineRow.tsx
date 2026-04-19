@@ -1,5 +1,5 @@
 "use client";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { ChevronRight } from "lucide-react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { FlatRow } from "./gantt-utils";
@@ -107,17 +107,35 @@ export function GanttOutlineRow({
         ? "var(--surface-2)"
         : "transparent";
 
-  const dndDomProps = dndEnabled ? { ...attributes, ...listeners } : {};
+  // v4 Slice 5 — drop the `role=button` that dnd-kit spreads onto the element
+  // (it overrides our `role=row` otherwise). Screen readers now announce each
+  // row as part of the Gantt grid again instead of as a button.
+  const dndDomProps = dndEnabled ? { ...attributes, ...listeners, role: undefined } : {};
+
+  // v4 Slice 5 — suppress the click-select that fires on pointerup at the
+  // end of a drag. dnd-kit activates on pointer distance > 5px, but the
+  // browser still fires a synthetic click event when pointerdown + pointerup
+  // land on the same element; without this guard a drop would also leave the
+  // drop target highlighted in the "selected" state.
+  const lastDragEnd = useRef(0);
+  const prevIsDragging = useRef(isDragging);
+  if (prevIsDragging.current && !isDragging) lastDragEnd.current = performance.now();
+  prevIsDragging.current = isDragging;
+
+  const handleSelectGated = () => {
+    if (performance.now() - lastDragEnd.current < 200) return;
+    onSelect?.();
+  };
 
   return (
     <div
       ref={dndEnabled ? setRef : undefined}
-      role="row"
       onMouseEnter={() => onHover?.(true)}
       onMouseLeave={() => onHover?.(false)}
-      onClick={onSelect}
+      onClick={handleSelectGated}
       onContextMenu={onContextMenu}
       {...dndDomProps}
+      role="row"
       style={{
         height: row.height,
         display: "flex",
