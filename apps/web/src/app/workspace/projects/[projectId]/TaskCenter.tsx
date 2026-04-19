@@ -454,36 +454,6 @@ export function TaskCenter({ projectId, tasks, refresh, openTaskId }: TaskCenter
 
   return (
     <div className="flex flex-col gap-4">
-      {/* ── column headers ──────────────────────────────────── */}
-      <div
-        className="flex items-center gap-3 px-4"
-        style={{
-          height: 28,
-          borderBottom: "1px solid var(--border)",
-          background: "var(--surface-2, #f7f5ff)",
-        }}
-      >
-        {/* chevron + status dot placeholders */}
-        <span style={{ width: 18, flexShrink: 0 }} />
-        <span style={{ width: 18, flexShrink: 0 }} />
-        {/* Task */}
-        <span className="flex-1 text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#4b556b" }}>
-          Task
-        </span>
-        {/* Priority */}
-        <span className="w-[72px] text-right text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#4b556b", flexShrink: 0 }}>
-          Priority
-        </span>
-        {/* Due */}
-        <span className="w-[60px] text-right text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#4b556b", flexShrink: 0 }}>
-          Due
-        </span>
-        {/* Assignee */}
-        <span className="w-[110px] text-right text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#4b556b", flexShrink: 0 }}>
-          Assignee
-        </span>
-      </div>
-
       {/* ── persistent quick-add ─────────────────────────── */}
       <div
         className="flex items-center gap-3 px-4 py-2"
@@ -541,6 +511,34 @@ export function TaskCenter({ projectId, tasks, refresh, openTaskId }: TaskCenter
             ↵
           </kbd>
         )}
+      </div>
+
+      {/* ── column headers ──────────────────────────────────── */}
+      <div
+        className="flex items-center gap-3 px-4"
+        style={{
+          height: 28,
+          borderBottom: "1px solid var(--border)",
+          background: "var(--surface-2, #f7f5ff)",
+        }}
+      >
+        <span style={{ width: 18, flexShrink: 0 }} />
+        <span style={{ width: 18, flexShrink: 0 }} />
+        <span className="flex-1 text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#4b556b" }}>
+          Task
+        </span>
+        <span className="w-[72px] text-right text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#4b556b", flexShrink: 0 }}>
+          Priority
+        </span>
+        <span className="w-[60px] text-right text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#4b556b", flexShrink: 0 }}>
+          Start
+        </span>
+        <span className="w-[60px] text-right text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#4b556b", flexShrink: 0 }}>
+          Due
+        </span>
+        <span className="w-[110px] text-right text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#4b556b", flexShrink: 0 }}>
+          Assignee
+        </span>
       </div>
 
       {grouped.map((group) => {
@@ -885,6 +883,13 @@ export function TaskCenter({ projectId, tasks, refresh, openTaskId }: TaskCenter
                             </>,
                             document.body
                           )}
+                        </div>
+
+                        {/* start date */}
+                        <div style={{ width: 60, flexShrink: 0, display: "flex", justifyContent: "flex-end" }}>
+                          <span className="text-right text-[11px] font-medium tabular-nums" style={{ color: "var(--text-disabled)" }}>
+                            {formatDueDate(task.startDate ?? null)}
+                          </span>
                         </div>
 
                         {/* due date — click to edit */}

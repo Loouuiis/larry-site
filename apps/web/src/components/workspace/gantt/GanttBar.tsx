@@ -130,8 +130,8 @@ export function GanttBar({
         )}
       </div>
 
-      {/* Trailing status chip — leaf rows only */}
-      {isLeaf && status && (
+      {/* Trailing status chip — leaf rows only, skip not_started (no label needed) */}
+      {isLeaf && status && status !== "not_started" && (
         <span style={{ marginLeft: 4, flexShrink: 0 }}>
           <GanttStatusChip status={status} />
         </span>

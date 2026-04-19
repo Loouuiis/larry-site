@@ -270,11 +270,12 @@ export function WorkspaceMyWork() {
                       {/* Table header */}
                       <div
                         className="pm-table-header"
-                        style={{ gridTemplateColumns: "minmax(0,1fr) 140px 120px 100px" }}
+                        style={{ gridTemplateColumns: "minmax(0,1fr) 140px 120px 90px 100px" }}
                       >
                         <span>Task</span>
                         <span>Project</span>
                         <span>Status</span>
+                        <span>Start</span>
                         <span>Due</span>
                       </div>
 
@@ -285,7 +286,7 @@ export function WorkspaceMyWork() {
                             key={task.id}
                             className="pm-table-row"
                             style={{
-                              gridTemplateColumns: "minmax(0,1fr) 140px 120px 100px",
+                              gridTemplateColumns: "minmax(0,1fr) 140px 120px 90px 100px",
                               borderLeft: overdue ? "3px solid var(--pm-red)" : "3px solid transparent",
                             }}
                           >
@@ -330,6 +331,17 @@ export function WorkspaceMyWork() {
                               >
                                 {task.status.replace(/_/g, " ").toLowerCase()}
                               </span>
+                            </span>
+
+                            {/* Start date */}
+                            <span className="text-body-sm" style={{ color: "var(--text-disabled)" }}>
+                              {task.startDate
+                                ? new Date(task.startDate + "T12:00:00").toLocaleDateString("en-GB", {
+                                    day: "numeric",
+                                    month: "short",
+                                    timeZone: getTimezone(),
+                                  })
+                                : "—"}
                             </span>
 
                             {/* Due date */}

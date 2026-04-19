@@ -45,6 +45,14 @@ const TYPOGRAPHY_BY_TIER: Record<Tier, React.CSSProperties> = {
   },
 };
 
+const STATUS_DOT_COLOR: Record<string, string> = {
+  not_started: "#efefef",
+  on_track:    "#8db2ff",
+  at_risk:     "#fbe187",
+  overdue:     "#f67a79",
+  completed:   "#bce8a4",
+};
+
 function tierOf(kind: NodeRow["node"]["kind"]): Tier { return kind; }
 
 function labelFor(n: NodeRow["node"]): string {
@@ -175,8 +183,15 @@ export function GanttOutlineRow({
       )}
 
       <CategoryDot
-        color={isUncategorised ? "var(--text-muted)" : row.categoryColor}
+        color={
+          isUncategorised
+            ? "var(--text-muted)"
+            : (n.kind === "task" || n.kind === "subtask")
+              ? (STATUS_DOT_COLOR[n.task.status] ?? row.categoryColor)
+              : row.categoryColor
+        }
         tier={tier}
+        outline={(n.kind === "task" || n.kind === "subtask") && n.task.status === "not_started" ? "#c8c8c8" : undefined}
       />
 
       <span

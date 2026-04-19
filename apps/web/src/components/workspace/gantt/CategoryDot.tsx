@@ -12,9 +12,10 @@ const SIZE_BY_TIER: Record<CategoryDotTier, number> = {
 interface Props {
   color: string;
   tier: CategoryDotTier;
+  outline?: string;
 }
 
-export function CategoryDot({ color, tier }: Props) {
+export function CategoryDot({ color, tier, outline }: Props) {
   const size = SIZE_BY_TIER[tier];
   return (
     <span
@@ -26,6 +27,8 @@ export function CategoryDot({ color, tier }: Props) {
         borderRadius: "50%",
         background: color,
         flexShrink: 0,
+        border: outline ? `1px solid ${outline}` : undefined,
+        boxSizing: "border-box",
       }}
     />
   );
