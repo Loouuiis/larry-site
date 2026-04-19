@@ -55,6 +55,49 @@ export function shouldRunOrgPass(g: OrgPassGateInput): boolean {
   return true;
 }
 
+export async function loadOrgTimelineContext(
+  db: Db,
+  tenantId: string,
+): Promise<OrgTimelineContextInput> {
+  const [catsRaw, projsRaw, pending, signalsRaw] = await Promise.all([
+    db.queryTenant<{
+      id: string; name: string; colour: string | null;
+      parentCategoryId: string | null; projectId: string | null;
+      createdAt: string;
+    }>(tenantId,
+      `SELECT id, name, colour,
+              parent_category_id AS "parentCategoryId",
+              project_id         AS "projectId",
+              created_at::text   AS "createdAt"
+         FROM project_categories WHERE tenant_id = $1`, [tenantId]),
+    db.queryTenant<{
+      id: string; name: string; categoryId: string | null;
+      status: string; createdAt: string;
+    }>(tenantId,
+      `SELECT id, name, category_id AS "categoryId", status,
+              created_at::text AS "createdAt"
+         FROM projects WHERE tenant_id = $1 AND status = 'active'`, [tenantId]),
+    db.queryTenant<{ displayText: string }>(tenantId,
+      `SELECT display_text AS "displayText" FROM larry_events
+        WHERE tenant_id = $1
+          AND action_type LIKE 'timeline\\_%' ESCAPE '\\'
+          AND event_type = 'suggested'
+        ORDER BY created_at DESC LIMIT 10`, [tenantId]),
+    // recentSignals: keep empty for now — wiring real signals requires knowing
+    // which table holds them. An empty array is safe: Larry just won't have
+    // extra cross-project hints in this pass.
+    Promise.resolve([] as Array<{ projectId: string; source: string; excerpt: string }>),
+  ]);
+
+  return {
+    tenantId,
+    categories: catsRaw.map((c) => ({ ...c, lastRenamedAt: null })),
+    projects: projsRaw,
+    recentSignals: signalsRaw,
+    pendingTimelineSuggestions: pending.map((r) => r.displayText),
+  };
+}
+
 export const ORG_TIMELINE_SYSTEM_PROMPT = [
   "You are Larry — a senior PM running the workspace's org-wide timeline pass.",
   "Your only purpose here is to spot opportunities to reorganise the timeline.",

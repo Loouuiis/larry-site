@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { getProjectSnapshot, runAutoActions, storeSuggestions, updateProjectLarryContext } from "@larry/db";
-import { runIntelligence, ProviderError } from "@larry/ai";
+import { runIntelligence, ProviderError, loadOrgTimelineContext, runOrgIntelligencePass, shouldRunOrgPass } from "@larry/ai";
 import { db } from "./context.js";
 import { buildWorkerIntelligenceConfig, buildWorkerFallbackIntelligenceConfig } from "./intelligence-config.js";
 import { reserveTokens, LLMQuotaError } from "./llm-budget.js";
@@ -150,6 +150,56 @@ export async function runLarryScan(): Promise<void> {
   });
 
   await Promise.all(workers);
+
+  // Org-wide timeline intelligence pass. Runs once per tenant per hour, gated
+  // by shouldRunOrgPass and the larry_org_scan_runs last_run_at. Larry may
+  // propose a timeline_regroup action into the Action Centre.
+  const distinctTenants = Array.from(new Set(projectRows.map((r) => r.tenant_id)));
+  for (const tenantId of distinctTenants) {
+    try {
+      const pendingRows = await db.queryTenant<{ count: string }>(tenantId,
+        `SELECT count(*)::text FROM larry_events
+          WHERE tenant_id = $1
+            AND action_type LIKE 'timeline\\_%' ESCAPE '\\'
+            AND event_type = 'suggested'`,
+        [tenantId]);
+      const pendingCount = Number(pendingRows[0]?.count ?? 0);
+
+      const lastRunRows = await db.queryTenant<{ minutesAgo: number | null }>(tenantId,
+        `SELECT (EXTRACT(EPOCH FROM (NOW() - last_run_at))::int / 60) AS "minutesAgo"
+           FROM larry_org_scan_runs WHERE tenant_id = $1`,
+        [tenantId]);
+      const lastRunMinutesAgo = lastRunRows[0]?.minutesAgo ?? Number.POSITIVE_INFINITY;
+
+      if (!shouldRunOrgPass({ pendingCount, lastRunMinutesAgo })) continue;
+
+      // Budget: the org pass uses generateText with a small tool set, cheaper
+      // than per-project runIntelligence. Use half the per-project estimate.
+      try {
+        await reserveTokens({
+          tenantId,
+          provider: config.provider,
+          estimatedTokens: Math.floor(SCAN_ESTIMATED_TOKENS / 2),
+        });
+      } catch (err) {
+        if (err instanceof LLMQuotaError) continue;
+        throw err;
+      }
+
+      const ctx = await loadOrgTimelineContext(db, tenantId);
+      await runOrgIntelligencePass({ db, tenantId, context: ctx, config });
+
+      await db.queryTenant(tenantId,
+        `INSERT INTO larry_org_scan_runs (tenant_id, last_run_at)
+         VALUES ($1, NOW())
+         ON CONFLICT (tenant_id) DO UPDATE SET last_run_at = NOW()`,
+        [tenantId]);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(`[larry-scan] org pass failed for tenant ${tenantId}: ${message}`);
+      // Never let an org pass failure take down the whole scan — just log.
+    }
+  }
 
   const elapsedSeconds = ((Date.now() - startTime) / 1000).toFixed(1);
   console.log(

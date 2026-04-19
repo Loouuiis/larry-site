@@ -969,6 +969,9 @@ export {
   classifyProviderError,
 } from "./intelligence.js";
 export type { IntelligenceErrorCode } from "./intelligence.js";
+
+// ── Larry Org-Wide Timeline Intelligence ──────────────────────────────────────
+export * from "./org-intelligence.js";
 export { getStructuredOutputOptions } from "./structured.js";
 export type { StructuredOutputOptions } from "./structured.js";
 
