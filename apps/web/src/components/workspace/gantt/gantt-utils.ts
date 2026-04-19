@@ -218,6 +218,11 @@ export type FlatRow = {
   categoryColor: string; // resolved category colour; fallback to Larry purple
   dimmed?: boolean;
   height: number;      // per-level (ROW_HEIGHT for cat/proj, ROW_HEIGHT_TASK for task/sub)
+  // v4 Slice 5 — a human-readable suffix ("no scheduled tasks") rendered
+  // after the row label when the row is a structural container with no
+  // scheduled content. Set only on project / category rows whose subtree
+  // collapsed to zero Gantt-visible descendants.
+  emptyNote?: string;
 };
 
 export interface FlattenOptions {
@@ -256,9 +261,26 @@ export function flattenVisible(
     const key = keyOf(node);
     const categoryColor = colourFor(node, inherited);
 
+    // v4 Slice 5 — annotate structural container rows that have no Gantt
+    // content so the outline can render a "(no scheduled tasks)" suffix.
+    // Project rows: empty = zero children (server already filtered null-date
+    // tasks out). Category rows: only when id is a real category (not the
+    // Uncategorised bucket — that's already italic + always empty-by-design).
+    let emptyNote: string | undefined;
+    if (!isSyntheticRoot && !hasChildren) {
+      if (node.kind === "project") {
+        emptyNote = "no scheduled tasks";
+      } else if (node.kind === "category"
+                 && node.id !== null
+                 && node.id !== "uncat"
+                 && node.id !== "__root__") {
+        emptyNote = "no projects yet";
+      }
+    }
+
     if (!isSyntheticRoot) {
       const height = (node.kind === "task" || node.kind === "subtask") ? ROW_HEIGHT_TASK : ROW_HEIGHT;
-      rows.push({ kind: "node", key, depth, node, hasChildren, categoryColor, height });
+      rows.push({ kind: "node", key, depth, node, hasChildren, categoryColor, height, emptyNote });
     }
 
     if (!isSyntheticRoot && !expanded.has(key)) return;
@@ -542,10 +564,13 @@ export function contextMenuItemsFor(args: {
       { id: "delete",         label: "Delete", destructive: true },
     ];
   }
-  // task or subtask
+  // task or subtask — tasks inherit their category from the parent project,
+  // so "moveToCategory" here rewrites the project's categoryId rather than
+  // the task's. Until tasks.category_id exists as a real column, be honest
+  // in the label about the scope of the action.
   return [
     { id: "openDetail",          label: "Open task" },
-    { id: "moveToCategory",      label: "Move project to category…", hasSubmenu: true },
+    { id: "moveToCategory",      label: "Change project's category…", hasSubmenu: true },
     { id: "removeFromTimeline",  label: "Remove from timeline" },
     { id: "delete",              label: "Delete", destructive: true },
   ];

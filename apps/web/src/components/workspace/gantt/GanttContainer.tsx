@@ -90,12 +90,16 @@ export function GanttContainer({
 
   const handleContextMenu = useCallback(
     (rowKey: string, rowKind: GanttNode["kind"], e: React.MouseEvent) => {
+      // v4 Slice 5 — no context menu on the synthetic Uncategorised bucket.
+      // Previously it opened with a single disabled-sentinel item which read
+      // like an error; the row's italic typography already tells users it's
+      // not editable.
+      if (rowKey === "cat:uncat") return;
       if (rowKind === "subtask" || rowKind === "task" || rowKind === "project" || rowKind === "category") {
-        const isUncategorised = rowKey === "cat:uncat";
         setContextMenu({
           rowKey,
           rowKind,
-          isUncategorised,
+          isUncategorised: false,
           x: e.clientX,
           y: e.clientY,
         });

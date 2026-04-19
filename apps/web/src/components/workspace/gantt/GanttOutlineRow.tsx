@@ -180,7 +180,7 @@ export function GanttOutlineRow({
       />
 
       <span
-        title={label}
+        title={row.emptyNote ? `${label} — ${row.emptyNote}` : label}
         style={{
           ...TYPOGRAPHY_BY_TIER[tier],
           fontStyle: isUncategorised ? "italic" : "normal",
@@ -192,6 +192,19 @@ export function GanttOutlineRow({
         }}
       >
         {label}
+        {row.emptyNote && (
+          <span style={{
+            marginLeft: 8,
+            fontSize: 11,
+            fontWeight: 400,
+            letterSpacing: 0,
+            textTransform: "none",
+            color: "var(--text-muted)",
+            fontStyle: "italic",
+          }}>
+            · {row.emptyNote}
+          </span>
+        )}
       </span>
     </div>
   );
