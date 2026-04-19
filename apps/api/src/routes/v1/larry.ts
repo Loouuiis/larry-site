@@ -9,9 +9,11 @@ import {
   streamModifyChat,
   detectInjectionAttempt,
   detectDestructiveSweep,
+  TimelineRegroupArgsSchema,
 } from "@larry/ai";
 import type { ModifyChatStreamEvent } from "@larry/ai";
 import type { ToolCallResult } from "@larry/ai";
+import { executeTimelineSuggestion } from "../../lib/timeline-suggestion-executor.js";
 import {
   applyPatch,
   assertPatchIsAllowed,
@@ -1582,7 +1584,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.post(
     "/events/:id/accept",
-    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm"])] },
+    { preHandler: [fastify.authenticate, fastify.requireRole(["owner", "admin", "pm"])] },
     async (request, reply) => {
       const tenantId = request.user.tenantId;
       const actorUserId = request.user.userId;
@@ -1598,6 +1600,21 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       if (!event) {
         throw fastify.httpErrors.notFound("Event not found.");
       }
+
+      // Timeline reorganisation suggestions have project_id = NULL because they
+      // span the whole workspace. Gate on workspace role (already done by
+      // preHandler) and skip the project-access check.
+      if (typeof event.actionType === "string" && event.actionType.startsWith("timeline_")) {
+        if (event.eventType !== "suggested") {
+          throw fastify.httpErrors.conflict("Only suggested events can be accepted.");
+        }
+        const parsed = TimelineRegroupArgsSchema.parse(event.payload);
+        const result = await executeTimelineSuggestion(
+          fastify, tenantId, id, parsed, actorUserId,
+        );
+        return reply.code(200).send({ accepted: true, result });
+      }
+
       await assertProjectAccessOrThrow({
         tenantId,
         userId: actorUserId,
@@ -1871,7 +1888,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.post(
     "/events/:id/dismiss",
-    { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
+    { preHandler: [fastify.authenticate, fastify.requireRole(["owner", "admin", "pm", "member"])] },
     async (request, reply) => {
       const tenantId = request.user.tenantId;
       const actorUserId = request.user.userId;
@@ -1885,6 +1902,18 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       if (!event) {
         throw fastify.httpErrors.notFound("Event not found.");
       }
+
+      // Timeline reorganisation suggestions have project_id = NULL — skip the
+      // project-access check. Still use the standard dismiss path (just without
+      // the project gate).
+      if (typeof event.actionType === "string" && event.actionType.startsWith("timeline_")) {
+        if (event.eventType !== "suggested") {
+          throw fastify.httpErrors.conflict("Only suggested events can be dismissed.");
+        }
+        await markLarryEventDismissed(fastify.db, tenantId, id, actorUserId, body.reason ?? null);
+        return reply.code(200).send({ dismissed: true });
+      }
+
       await assertProjectAccessOrThrow({
         tenantId,
         userId: actorUserId,

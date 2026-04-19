@@ -1766,3 +1766,13 @@ ALTER TABLE refresh_tokens
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_device_active
   ON refresh_tokens (user_id, device_id)
   WHERE revoked_at IS NULL AND device_id IS NOT NULL;
+
+-- ── 029_larry_org_scan_runs.sql ───────────────────────────────────────────────
+-- Rate-limit table for the org-wide timeline intelligence pass.
+-- Each tenant has at most one row; we upsert last_run_at after every org pass
+-- and the scheduler gate compares NOW() - last_run_at against the 60-minute
+-- threshold in shouldRunOrgPass().
+CREATE TABLE IF NOT EXISTS larry_org_scan_runs (
+  tenant_id    UUID PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+  last_run_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

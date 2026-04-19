@@ -21,6 +21,9 @@ const ACTION_TYPE_MAP: Record<string, ActionTypeTag> = {
   calendar_event_create:    { key: "calendar_event_create",    label: "Create Event",         color: "#2563eb" },
   calendar_event_update:    { key: "calendar_event_update",    label: "Update Event",         color: "#2563eb" },
   slack_message_draft:      { key: "slack_message_draft",      label: "Slack Draft",          color: "#e11d8f" },
+  timeline_regroup:         { key: "timeline_regroup",         label: "Reorganise Timeline",  color: "#6c44f6" },
+  timeline_categorise:      { key: "timeline_categorise",      label: "New Category",         color: "#6c44f6" },
+  timeline_recolour:        { key: "timeline_recolour",        label: "Category Colour",      color: "#6c44f6" },
   other:                    { key: "other",                    label: "Other",                color: "#64748b" },
 };
 

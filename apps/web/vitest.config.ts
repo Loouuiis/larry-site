@@ -8,7 +8,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/*.spec.ts"],
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/*.spec.ts", "src/**/*.spec.tsx"],
     environment: "node",
     passWithNoTests: true,
     poolOptions: {
@@ -16,6 +16,6 @@ export default defineConfig({
         singleFork: true,
       },
     },
+    setupFiles: ["src/test-setup.ts"],
   },
 });
-

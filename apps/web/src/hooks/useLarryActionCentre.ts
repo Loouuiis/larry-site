@@ -156,6 +156,12 @@ export function useLarryActionCentre({
             event?: { actionType: string; displayText: string; projectName: string | null; projectId: string };
           }>(response);
           removeSuggestedLocally(id);
+          // If the accepted event was a timeline_* suggestion, the tree of
+          // categories and project moves just changed — refresh both Gantt surfaces.
+          const actionType = body.event?.actionType;
+          if (typeof actionType === "string" && actionType.startsWith("timeline_")) {
+            window.dispatchEvent(new CustomEvent("larry:refresh-timeline"));
+          }
           window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
           await Promise.all([load(), onMutate()]);
           if (body.event && onAccepted) {

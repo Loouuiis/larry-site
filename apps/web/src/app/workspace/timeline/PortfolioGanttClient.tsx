@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import {
@@ -60,6 +60,16 @@ export function PortfolioGanttClient() {
   // CategoryManagerPanel onChanged). Invalidate + rely on React Query to
   // refetch, rather than the old per-page `fetchTimeline()` ad-hoc refetch.
   const fetchTimeline = async () => { invalidateAll(); };
+
+  // Listen for timeline_* accept events emitted by useLarryActionCentre so
+  // the Gantt refetches after Larry reorganises the portfolio structure.
+  useEffect(() => {
+    function onTimelineRefresh() {
+      void qc.invalidateQueries({ queryKey: ["timeline", "org"] });
+    }
+    window.addEventListener("larry:refresh-timeline", onTimelineRefresh);
+    return () => window.removeEventListener("larry:refresh-timeline", onTimelineRefresh);
+  }, [qc]);
 
   // v4 Slice 4 — drag-and-drop for the full matrix (categories, projects,
   // tasks, subtasks). Sensors keep a 5px activation distance so ordinary
