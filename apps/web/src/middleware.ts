@@ -20,6 +20,7 @@ const PUBLIC_AUTH_PAGES: ReadonlySet<string> = new Set([
   "/verify-email",
   "/verify-email-required",
   "/confirm-email-change",
+  "/mfa/enrol",
 ]);
 
 export async function middleware(req: NextRequest) {
@@ -163,5 +164,6 @@ export const config = {
     "/verify-email",
     "/verify-email-required",
     "/confirm-email-change",
+    "/mfa/enrol",
   ],
 };

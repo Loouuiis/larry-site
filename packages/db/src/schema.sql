@@ -1709,3 +1709,27 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_invite_links_token_hash
 CREATE INDEX IF NOT EXISTS idx_invite_links_tenant_active
   ON invite_links (tenant_id, created_at DESC)
   WHERE revoked_at IS NULL;
+
+-- ── 027_mfa_secrets.sql ───────────────────────────────────────────
+-- TOTP shared secrets + backup scratch codes for MFA enforcement.
+CREATE TABLE IF NOT EXISTS user_mfa_secrets (
+  user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  secret TEXT NOT NULL,
+  confirmed_at TIMESTAMPTZ,
+  last_verified_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS user_mfa_scratch_codes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  code_hash TEXT NOT NULL,
+  used_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_mfa_scratch_codes_user
+  ON user_mfa_scratch_codes(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_mfa_scratch_codes_hash
+  ON user_mfa_scratch_codes(code_hash);

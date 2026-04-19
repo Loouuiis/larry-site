@@ -93,11 +93,41 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // MFA gate: forward the API's second-step signal to the client. Do NOT
+    // mint a session cookie — the user hasn't finished authenticating yet.
+    if (apiResponse.status === 412) {
+      try {
+        const body = (await apiResponse.json()) as {
+          code?: string;
+          mfaEnrolmentToken?: string;
+          enrolmentUrl?: string;
+        };
+        if (body?.code === "mfa_enrollment_required" && body.mfaEnrolmentToken) {
+          return NextResponse.json(body, { status: 412 });
+        }
+      } catch { /* fall through to generic error */ }
+      return NextResponse.json({ error: GENERIC_ERROR }, { status: 401 });
+    }
+
     if (!apiResponse.ok) {
       return NextResponse.json({ error: GENERIC_ERROR }, { status: 401 });
     }
 
-    const payload = (await apiResponse.json()) as ApiLoginResponse;
+    const payload = (await apiResponse.json()) as ApiLoginResponse & {
+      code?: string;
+      mfaPendingToken?: string;
+    };
+
+    // MFA second-step required: the API responds 200 with an mfaPendingToken
+    // instead of tokens. Forward verbatim; the login page swaps to a
+    // 6-digit code form and calls /api/auth/mfa/verify.
+    if (payload?.code === "mfa_required" && payload.mfaPendingToken) {
+      return NextResponse.json(
+        { code: "mfa_required", mfaPendingToken: payload.mfaPendingToken },
+        { status: 200 },
+      );
+    }
+
     if (!payload?.user?.id || !payload?.accessToken) {
       return NextResponse.json({ error: GENERIC_ERROR }, { status: 401 });
     }

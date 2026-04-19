@@ -15,6 +15,7 @@ import { authPasswordResetRoutes } from "./auth-password-reset.js";
 import { authVerificationRoutes } from "./auth-verification.js";
 import { authGoogleRoutes } from "./auth-google.js";
 import { authAccountRoutes } from "./auth-account.js";
+import { authMfaRoutes, issueMfaPendingToken } from "./auth-mfa.js";
 
 const LoginSchema = z.object({
   email: emailSchema,
@@ -45,6 +46,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(authVerificationRoutes);
   await fastify.register(authGoogleRoutes);
   await fastify.register(authAccountRoutes);
+  await fastify.register(authMfaRoutes);
 
   // -----------------------------------------------------------------------
   // POST /signup
@@ -229,7 +231,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
           id: string;
           email: string;
           password_hash: string;
-          role: "admin" | "pm" | "member" | "executive";
+          role: "owner" | "admin" | "pm" | "member" | "executive";
           tenant_id: string;
           display_name: string | null;
         }>(
@@ -244,7 +246,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
           id: string;
           email: string;
           password_hash: string;
-          role: "admin" | "pm" | "member" | "executive";
+          role: "owner" | "admin" | "pm" | "member" | "executive";
           tenant_id: string;
           display_name: string | null;
         }>(
@@ -315,6 +317,57 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
 
     // --- Successful login: reset lockout counter ---
     await fastify.db.query("DELETE FROM login_attempts WHERE user_id = $1", [user.id]);
+
+    // --- MFA gate (login audit P1-2) ---
+    // Tenant can set mfa_required_for_admins; when true, owners/admins
+    // can't finish login with just a password. Two sub-states:
+    //   (a) not enrolled → issue a short-lived "mfa_enrol" token and
+    //       tell the client to send the user through /settings/mfa.
+    //   (b) enrolled → issue a short-lived "mfa_verify" token; the
+    //       client POSTs { token, code } to /v1/auth/mfa/verify for
+    //       real access+refresh tokens.
+    // Non-admin users, or admins in tenants where MFA isn't required,
+    // skip this entirely and take the fast path below.
+    const requiresMfa = user.role === "owner" || user.role === "admin";
+    if (requiresMfa) {
+      const mfaRows = await fastify.db.query<{
+        mfa_required_for_admins: boolean;
+        mfa_enrolled_at: string | null;
+      }>(
+        `SELECT t.mfa_required_for_admins, u.mfa_enrolled_at
+           FROM tenants t, users u
+          WHERE t.id = $1 AND u.id = $2`,
+        [user.tenant_id, user.id],
+      );
+      const mfaRow = mfaRows[0];
+      if (mfaRow?.mfa_required_for_admins) {
+        if (!mfaRow.mfa_enrolled_at) {
+          const enrolToken = await issueMfaPendingToken(fastify, {
+            userId: user.id,
+            tenantId: user.tenant_id,
+            role: user.role,
+            email: user.email,
+            scope: "mfa_enrol",
+          });
+          return reply.status(412).send({
+            code: "mfa_enrollment_required",
+            mfaEnrolmentToken: enrolToken,
+            enrolmentUrl: "/workspace/settings/mfa",
+          });
+        }
+        const verifyToken = await issueMfaPendingToken(fastify, {
+          userId: user.id,
+          tenantId: user.tenant_id,
+          role: user.role,
+          email: user.email,
+          scope: "mfa_verify",
+        });
+        return reply.status(200).send({
+          code: "mfa_required",
+          mfaPendingToken: verifyToken,
+        });
+      }
+    }
 
     // --- New-device detection (best-effort, don't block login) ---
     // Must run BEFORE issueRefreshToken so the just-created token doesn't match itself.

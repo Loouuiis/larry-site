@@ -24,6 +24,7 @@ const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 export const CSRF_EXEMPT_PATTERNS: readonly (string | RegExp)[] = [
   "/api/auth/login",
   "/api/auth/dev-login",
+  "/api/auth/mfa/verify",
   "/api/auth/signup",
   "/api/auth/forgot-password",
   "/api/auth/reset-password",
