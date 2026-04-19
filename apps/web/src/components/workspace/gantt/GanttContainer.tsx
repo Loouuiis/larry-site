@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { CategoryColorMap, ContextMenuAction, ContextMenuState, GanttNode, GanttTask, ZoomLevel } from "./gantt-types";
-import { computeRange, flattenVisible, dateToPct, contextMenuItemsFor } from "./gantt-utils";
+import { computeRange, flattenVisible, dateToPct, contextMenuItemsFor, searchUnDimmedKeys } from "./gantt-utils";
 import { GanttOutline } from "./GanttOutline";
 import { GanttGrid } from "./GanttGrid";
 import { GanttToolbar } from "./GanttToolbar";
@@ -50,8 +50,11 @@ export function GanttContainer({
   const rows = useMemo(() => {
     const base = flattenVisible(root, expanded, { categoryColorMap, rootCategoryColor });
     if (!search.trim()) return base;
-    const q = search.toLowerCase();
-    return base.map((r) => ({ ...r, dimmed: !nodeLabel(r.node).toLowerCase().includes(q) }));
+    // v4 Slice 5 — ancestor-aware dimming: a row stays un-dimmed if itself,
+    // any ancestor, or any descendant matches. Keeps the match's context
+    // chain legible instead of fading it out.
+    const unDimmed = searchUnDimmedKeys(root, search);
+    return base.map((r) => ({ ...r, dimmed: !unDimmed.has(r.key) }));
   }, [root, expanded, search, categoryColorMap, rootCategoryColor]);
 
   const toggle = useCallback((key: string) => {

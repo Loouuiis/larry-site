@@ -571,6 +571,73 @@ export function statusChipFor(status: GanttTaskStatus): StatusChipData | null {
   }
 }
 
+/* ─── v4 Slice 5 — search dimming (ancestor-aware) ──────────────────── */
+
+// Build the set of node keys that should stay un-dimmed for a given search
+// query. A row stays un-dimmed if:
+//   • Its own label matches the query (case-insensitive substring), OR
+//   • Any descendant's label matches (so the parent stays legible as
+//     context for the match below it), OR
+//   • Any ancestor's label matches (so a matched parent keeps its children
+//     visible rather than fading them out).
+// Returns an empty set when the query is blank; the caller should skip
+// dimming entirely in that case.
+export function searchUnDimmedKeys(root: GanttNode, rawQuery: string): Set<string> {
+  const query = rawQuery.trim().toLowerCase();
+  const out = new Set<string>();
+  if (!query) return out;
+
+  function keyOf(node: GanttNode): string {
+    if (node.kind === "category") return `cat:${node.id ?? "uncat"}`;
+    if (node.kind === "project") return `proj:${node.id}`;
+    if (node.kind === "task") return `task:${node.id}`;
+    return `sub:${node.id}`;
+  }
+
+  function labelOf(node: GanttNode): string {
+    if (node.kind === "category" || node.kind === "project") return node.name;
+    return node.task.title;
+  }
+
+  // Mark every node in the given subtree as un-dimmed.
+  function addSubtree(node: GanttNode): void {
+    const isSyntheticRoot = node.kind === "category" && node.id === "__root__";
+    if (!isSyntheticRoot) out.add(keyOf(node));
+    if (node.kind === "subtask") return;
+    for (const child of node.children) addSubtree(child);
+  }
+
+  // walk returns true if `node` or any descendant matched. When a match sits
+  // on this node, every queued ancestor key is added to `out`, and the
+  // node's whole subtree is kept un-dimmed too.
+  function walk(node: GanttNode, ancestors: string[]): boolean {
+    const isSyntheticRoot = node.kind === "category" && node.id === "__root__";
+    const k = keyOf(node);
+    const selfMatch = !isSyntheticRoot && labelOf(node).toLowerCase().includes(query);
+    let descendantMatch = false;
+    if (node.kind !== "subtask") {
+      const nextAncestors = isSyntheticRoot ? ancestors : [...ancestors, k];
+      for (const child of node.children) {
+        if (walk(child, nextAncestors)) descendantMatch = true;
+      }
+    }
+    if (selfMatch) {
+      // Propagate up + keep the whole subtree in context.
+      for (const a of ancestors) out.add(a);
+      addSubtree(node);
+      return true;
+    }
+    if (descendantMatch) {
+      // Some child matched — this node stays visible as context.
+      if (!isSyntheticRoot) out.add(k);
+      return true;
+    }
+    return false;
+  }
+  walk(root, []);
+  return out;
+}
+
 /* ─── v4 Slice 4 — drag-and-drop validation ─────────────────────────── */
 
 // dnd-kit sortable ids issued by GanttOutlineRow:
