@@ -77,7 +77,7 @@ export function WelcomeSplash() {
           userSelect: "none",
         }}
       >
-        welcome
+        Larry
       </span>
     </motion.div>
   );
