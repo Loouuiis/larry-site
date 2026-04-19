@@ -159,6 +159,11 @@ export function GanttOutlineRow({
         cursor: dndEnabled ? (isDragging ? "grabbing" : "grab") : (onSelect ? "pointer" : "default"),
         opacity: isDragging ? 0.4 : (row.dimmed ? 0.35 : 1),
         userSelect: "none",
+        // Required by dnd-kit PointerSensor: prevents the browser from firing
+        // pointercancel (interpreted as a scroll gesture) before the 5px
+        // activation threshold is reached, which caused the grab cursor to
+        // flash and disappear immediately.
+        touchAction: dndEnabled ? "none" : "auto",
         transition: "background-color 150ms ease-out",
       }}
     >
