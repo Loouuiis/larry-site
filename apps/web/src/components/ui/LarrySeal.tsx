@@ -19,7 +19,8 @@ export function LarrySeal({ size = 80, color = "#6c44f6", className }: LarrySeal
     >
       <defs>
         <path id={`${uid}-top`} d="M 20 50 A 30 30 0 0 1 80 50" />
-        <path id={`${uid}-bottom`} d="M 80 50 A 30 30 0 0 1 20 50" />
+        {/* Bottom arc intentionally travels left-to-right via the bottom (sweep=0) so <textPath> reads upright. */}
+        <path id={`${uid}-bottom`} d="M 20 50 A 30 30 0 0 0 80 50" />
       </defs>
       <circle cx="50" cy="50" r="42" />
       <circle cx="50" cy="50" r="36" strokeOpacity="0.6" />

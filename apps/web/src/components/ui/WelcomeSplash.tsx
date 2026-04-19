@@ -72,7 +72,6 @@ export function WelcomeSplash() {
           fontSize: "clamp(1.75rem, 4vw, 3.5rem)",
           fontWeight: 300,
           letterSpacing: "0.45em",
-          textTransform: "lowercase",
           fontFamily: "var(--font-geist-sans, system-ui, sans-serif)",
           userSelect: "none",
         }}
