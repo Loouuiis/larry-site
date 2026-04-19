@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Inter, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
+import CsrfFetchInstaller from "@/components/CsrfFetchInstaller";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -38,6 +39,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body suppressHydrationWarning className={`${geistSans.variable} ${inter.variable} ${plusJakarta.variable} antialiased`}>
+        <CsrfFetchInstaller />
         {children}
       </body>
     </html>

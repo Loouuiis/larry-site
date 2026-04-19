@@ -24,6 +24,7 @@ found during this pass.
 | Refresh revocation on logout | `routes/v1/auth.ts:856` | UPDATE SET revoked_at = NOW() for all active tokens per (user, tenant). |
 | Session cookie flags | `apps/web/src/lib/auth.ts:102-112` | httpOnly, secure (prod), sameSite=lax, path=/. |
 | Session cookie JWT | `apps/web/src/lib/auth.ts:45-62` | HS256, 24h TTL, `csrfToken` bound inside payload. |
+| CSRF enforcement | `apps/web/src/middleware.ts` + `apps/web/src/lib/csrf.ts` | Double-submit: session JWT carries `csrfToken`, middleware mirrors it into `larry_csrf` cookie, all mutating `/api/**` requests require `X-CSRF-Token` header matching session. Shipped in `fix/csrf-enforcement`. |
 | New-device email alerts | `routes/v1/auth.ts:315-334` | Best-effort, does not block login. |
 | Email verification | `routes/v1/auth.ts:152-170`, `auth-verification.ts` | Single-use hashed token, 24h expiry, 7-day grace period. |
 | Password reset | `auth-password-reset.ts` | Signed token, single-use (marked consumed on reset). |
@@ -50,12 +51,13 @@ found during this pass.
 
 ### P1 — ship this sprint
 
-**CSRF enforcement on mutating endpoints.** A `csrfToken` is generated and
-embedded in the session JWT (`apps/web/src/lib/auth.ts:55`) but no middleware
-checks an `X-CSRF-Token` header against it. `sameSite=lax` blocks most
-classical CSRF vectors, but the industry standard is defence in depth —
-double-submit pattern or header echo. Effort: ~2 hours, single middleware in
-the Next.js proxy layer.
+**CSRF enforcement on mutating endpoints.** ✅ Shipped in `fix/csrf-enforcement`.
+Middleware on `/api/:path*` requires `X-CSRF-Token` matching `session.csrfToken`
+for all mutating methods; bootstrap flows (login/signup/invite accept/redeem/
+password reset/verify-email/OAuth/logout) exempt. `larry_csrf` cookie mirrors
+the token for client JS. A `window.fetch` patch installed at root-layout
+module load injects the header on same-origin `/api/**` mutations, so existing
+call sites migrate without change. Token rotates on every `persistSession`.
 
 **MFA on `/login`.** `assertMfaIfRequired` exists but is only called from
 invite creation (`routes/v1/invitations.ts`). The Tenants table has a

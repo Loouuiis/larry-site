@@ -1,12 +1,66 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify, SignJWT } from "jose";
 import { getSessionSecret } from "@/lib/session-secret";
+import { CSRF_HEADER, isCsrfExempt, isMutatingMethod } from "@/lib/csrf";
 
 const SESSION_COOKIE = "larry_session";
 const SESSION_DURATION_SECS = 24 * 60 * 60; // 24 hours
 const SLIDING_REFRESH_THRESHOLD_SECS = 12 * 60 * 60; // reissue if < 12h remaining
 
 export async function middleware(req: NextRequest) {
+  if (req.nextUrl.pathname.startsWith("/api/")) {
+    return apiMiddleware(req);
+  }
+  return pageMiddleware(req);
+}
+
+// ── /api/** CSRF enforcement ───────────────────────────────────────────────
+// Runs only for /api/** mutating methods. Exempt bootstrap routes that
+// cannot have a token yet (login/signup/invite accept etc.). Unauth'd
+// mutating requests fall through so the API route returns a normal 401.
+async function apiMiddleware(req: NextRequest) {
+  if (!isMutatingMethod(req.method)) return NextResponse.next();
+  if (isCsrfExempt(req.nextUrl.pathname)) return NextResponse.next();
+
+  const token = req.cookies.get(SESSION_COOKIE)?.value;
+  if (!token) return NextResponse.next();
+
+  let secret: Uint8Array;
+  try {
+    secret = getSessionSecret();
+  } catch {
+    return NextResponse.next();
+  }
+
+  let sessionCsrf: string | null = null;
+  try {
+    const { payload } = await jwtVerify(token, secret);
+    sessionCsrf =
+      typeof payload.csrfToken === "string" ? payload.csrfToken : null;
+  } catch {
+    return NextResponse.next();
+  }
+
+  if (!sessionCsrf) {
+    return NextResponse.json(
+      { error: "CSRF token missing from session. Please sign in again." },
+      { status: 403 },
+    );
+  }
+
+  const presented = req.headers.get(CSRF_HEADER) ?? req.headers.get("X-CSRF-Token");
+  if (!presented || presented !== sessionCsrf) {
+    return NextResponse.json(
+      { error: "Invalid CSRF token." },
+      { status: 403 },
+    );
+  }
+
+  return NextResponse.next();
+}
+
+// ── Page-level session gate (existing behaviour) ────────────────────────────
+async function pageMiddleware(req: NextRequest) {
   const token = req.cookies.get(SESSION_COOKIE)?.value;
 
   if (!token) {
@@ -27,12 +81,9 @@ export async function middleware(req: NextRequest) {
     const { payload } = await jwtVerify(token, secret);
     const res = NextResponse.next();
 
-    // CSRF double-submit cookie: expose the CSRF token to frontend JS.
-    // NOTE: The cookie is set here but X-CSRF-Token header validation is intentionally
-    // deferred. All mutating BFF routes are same-origin server-to-server calls and the
-    // session cookie uses sameSite:"lax", so the actual CSRF risk is low.
-    // TODO: Add CSRF validation middleware that checks X-CSRF-Token header against this
-    // cookie value once the frontend starts sending the header on mutating requests.
+    // CSRF double-submit cookie: mirror the session-bound CSRF token
+    // into a non-httpOnly cookie so the client can echo it back on
+    // mutating /api/** requests (enforced by apiMiddleware above).
     if (payload.csrfToken) {
       res.cookies.set({
         name: "larry_csrf",
@@ -75,5 +126,10 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/workspace/:path*", "/admin/:path*"],
+  matcher: [
+    "/dashboard/:path*",
+    "/workspace/:path*",
+    "/admin/:path*",
+    "/api/:path*",
+  ],
 };
