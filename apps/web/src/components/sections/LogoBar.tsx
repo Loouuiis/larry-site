@@ -7,7 +7,8 @@ const INDUSTRIES = [
   "Consulting",
   "IT Services",
   "Engineering",
-  "Financial Services",
+  "Construction and Infrastructure",
+  "Energy and Renewables",
   "SaaS",
 ] as const;
 

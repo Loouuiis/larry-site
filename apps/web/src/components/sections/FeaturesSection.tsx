@@ -10,25 +10,25 @@ const STEPS = [
     n: "01",
     title: "Connect",
     detail:
-      "Integrates with Slack, Jira, Linear, Notion, and your existing stack — no migration, no new process.",
+      "Integrates with Teams, email, Slack and your existing stack of tools — no migration, no new process.",
   },
   {
     n: "02",
     title: "Capture",
     detail:
-      "Extracts actions, owners, and deadlines from threads, ticket comments, and meeting notes automatically.",
+      "Extracts actions, owners, and deadlines from emails, ticket comments, and meeting notes automatically.",
   },
   {
     n: "03",
     title: "Execute",
     detail:
-      "Assigns tasks, sends reminders, escalates blockers, and updates status based on real activity — without you asking.",
+      "Creates tasks, sends reminders, escalates blockers, and updates status based on real activity — without you asking.",
   },
   {
     n: "04",
     title: "Report",
     detail:
-      "Compiles standups, flags risks early, and surfaces what leadership needs to see — before they ask.",
+      "Compiles standups, proactively flags risks, and surfaces key insights for leadership to ensure timely execution and delivery.",
   },
 ] as const;
 
@@ -49,7 +49,7 @@ export function FeaturesSection() {
             How it works
           </p>
           <h2 className="text-2xl font-bold tracking-tight text-[var(--text-1)] sm:text-4xl lg:text-5xl">
-            Coordination that runs itself.
+            Project management that runs itself.
           </h2>
           <p className="mt-3 text-sm leading-relaxed text-[var(--text-muted)] sm:mt-4 sm:text-base">
             Larry connects to your existing tools and runs the operational layer

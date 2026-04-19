@@ -4,10 +4,11 @@ import { useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { WaitlistForm } from "./WaitlistForm";
 import { FounderContact } from "./FounderContact";
+import { IntroForm } from "./IntroForm";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type OverlayType = "waitlist" | "founders";
+export type OverlayType = "waitlist" | "founders" | "intro";
 
 interface LiquidOverlayProps {
   type: OverlayType;
@@ -60,11 +61,24 @@ function Overlay({ type, origin, onClose }: LiquidOverlayProps) {
     if (e.target === e.currentTarget) onClose();
   };
 
-  const isWaitlist = type === "waitlist";
-  const title = isWaitlist ? "Join the Waitlist" : "Speak to the Founders";
-  const subtitle = isWaitlist
-    ? "Early access. Priority onboarding. Direct input into the roadmap."
-    : "Tell us about your team. Larry will draft the introduction.";
+  const COPY: Record<OverlayType, { eyebrow: string; title: string; subtitle: string }> = {
+    waitlist: {
+      eyebrow: "Early access",
+      title: "Join the Waitlist",
+      subtitle: "Early access. Priority onboarding. Direct input into the roadmap.",
+    },
+    founders: {
+      eyebrow: "Get in touch",
+      title: "Speak to the Founders",
+      subtitle: "Tell us about your team. Larry will draft the introduction.",
+    },
+    intro: {
+      eyebrow: "EARLY ACCESS",
+      title: "Book an intro",
+      subtitle: "Tell us about your team and we'll reach out to arrange a call.",
+    },
+  };
+  const { eyebrow, title, subtitle } = COPY[type];
 
   return (
     <motion.div
@@ -122,7 +136,7 @@ function Overlay({ type, origin, onClose }: LiquidOverlayProps) {
             <div className="mb-6 flex items-center justify-between sm:mb-8">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-widest text-[var(--text-disabled)]">
-                  {isWaitlist ? "Early access" : "Get in touch"}
+                  {eyebrow}
                 </p>
                 <h2 className="mt-1 text-xl font-bold text-[var(--text-1)] sm:text-2xl">
                   {title}
@@ -147,7 +161,9 @@ function Overlay({ type, origin, onClose }: LiquidOverlayProps) {
             </div>
 
             {/* Form content */}
-            {isWaitlist ? <WaitlistForm /> : <FounderContact />}
+            {type === "waitlist" && <WaitlistForm />}
+            {type === "founders" && <FounderContact />}
+            {type === "intro" && <IntroForm />}
           </div>
         </div>
       </motion.div>

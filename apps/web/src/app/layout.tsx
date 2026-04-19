@@ -1,22 +1,21 @@
 import type { Metadata } from "next";
-import { Geist, Inter, Plus_Jakarta_Sans } from "next/font/google";
+import { Inter, Geist } from "next/font/google";
 import "./globals.css";
 import CsrfFetchInstaller from "@/components/CsrfFetchInstaller";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
+import { OverlayManager } from "@/components/ui/LiquidOverlay";
 
 const inter = Inter({
-  variable: "--font-inter",
   subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700", "800"],
+  variable: "--font-inter",
+  display: "swap",
 });
 
-const plusJakarta = Plus_Jakarta_Sans({
-  variable: "--font-plus-jakarta",
+const geistSans = Geist({
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
+  weight: ["300"],
+  variable: "--font-geist-sans",
+  display: "swap",
 });
 
 export const viewport = {
@@ -38,8 +37,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body suppressHydrationWarning className={`${geistSans.variable} ${inter.variable} ${plusJakarta.variable} antialiased`}>
+      <body
+        className={`${inter.variable} ${geistSans.variable} antialiased`}
+        suppressHydrationWarning
+      >
         <CsrfFetchInstaller />
+        <OverlayManager />
         {children}
       </body>
     </html>
