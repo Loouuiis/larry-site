@@ -195,15 +195,15 @@ export function Navbar() {
             variant="secondary"
             size="sm"
             onClick={onIntro}
-            className="hidden sm:inline-flex"
+            className="!hidden sm:!inline-flex"
           >
             Book an intro
           </Button>
 
           {/* Join Waitlist — always visible; shorter label on xs to avoid crowding hamburger */}
           <LiquidButton size="sm" onClick={onWaitlist}>
-            <span className="sm:hidden">Join Waitlist</span>
-            <span className="hidden sm:inline">Join the Waitlist</span>
+            <span className="sm:!hidden">Join Waitlist</span>
+            <span className="!hidden sm:!inline">Join the Waitlist</span>
           </LiquidButton>
 
           {/* Hamburger — only on mobile (below md) */}
