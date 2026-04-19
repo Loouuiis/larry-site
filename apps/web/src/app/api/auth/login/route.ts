@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  DEVICE_COOKIE,
   createSessionToken,
   csrfCookieOptions,
+  deviceCookieOptions,
   normalizeEmail,
   sessionCookieOptions,
 } from "@/lib/auth";
@@ -57,11 +59,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // P2-3: forward the persistent device id (if any) so the API can
+    // classify this as a known device and skip the new-device email.
+    const incomingDeviceId = req.cookies.get(DEVICE_COOKIE)?.value;
+    const upstreamHeaders: Record<string, string> = { "Content-Type": "application/json" };
+    if (incomingDeviceId) upstreamHeaders["X-Device-Id"] = incomingDeviceId;
+
     let apiResponse: Response;
     try {
       apiResponse = await fetch(`${apiBaseUrl.replace(/\/+$/, "")}/v1/auth/login`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: upstreamHeaders,
         body: JSON.stringify({
           ...(explicitTenantId ? { tenantId: explicitTenantId } : {}),
           email,
@@ -93,11 +101,42 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // MFA gate: forward the API's second-step signal to the client. Do NOT
+    // mint a session cookie — the user hasn't finished authenticating yet.
+    if (apiResponse.status === 412) {
+      try {
+        const body = (await apiResponse.json()) as {
+          code?: string;
+          mfaEnrolmentToken?: string;
+          enrolmentUrl?: string;
+        };
+        if (body?.code === "mfa_enrollment_required" && body.mfaEnrolmentToken) {
+          return NextResponse.json(body, { status: 412 });
+        }
+      } catch { /* fall through to generic error */ }
+      return NextResponse.json({ error: GENERIC_ERROR }, { status: 401 });
+    }
+
     if (!apiResponse.ok) {
       return NextResponse.json({ error: GENERIC_ERROR }, { status: 401 });
     }
 
-    const payload = (await apiResponse.json()) as ApiLoginResponse;
+    const payload = (await apiResponse.json()) as ApiLoginResponse & {
+      code?: string;
+      mfaPendingToken?: string;
+      deviceId?: string;
+    };
+
+    // MFA second-step required: the API responds 200 with an mfaPendingToken
+    // instead of tokens. Forward verbatim; the login page swaps to a
+    // 6-digit code form and calls /api/auth/mfa/verify.
+    if (payload?.code === "mfa_required" && payload.mfaPendingToken) {
+      return NextResponse.json(
+        { code: "mfa_required", mfaPendingToken: payload.mfaPendingToken },
+        { status: 200 },
+      );
+    }
+
     if (!payload?.user?.id || !payload?.accessToken) {
       return NextResponse.json({ error: GENERIC_ERROR }, { status: 401 });
     }
@@ -115,6 +154,9 @@ export async function POST(req: NextRequest) {
     const res = NextResponse.json({ success: true });
     res.cookies.set(sessionCookieOptions(token));
     res.cookies.set(csrfCookieOptions(csrfToken));
+    if (payload.deviceId) {
+      res.cookies.set(deviceCookieOptions(payload.deviceId));
+    }
     return res;
   } catch (err) {
     console.error("[login]", err);

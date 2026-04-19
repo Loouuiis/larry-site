@@ -66,10 +66,11 @@ async function guard(kind: EmailKind, to: string, ctx?: EmailSendContext): Promi
 // ---------------------------------------------------------------------------
 
 function wrapHtml(bodyContent: string): string {
+  const frontendUrl = getFrontendUrl();
   return `
     <div style="font-family: system-ui, -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 40px 24px; color: #111;">
       <div style="margin-bottom: 32px;">
-        <div style="display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; background:#6c44f6; border-radius:6px; color:#fff; font-weight:700; font-size:14px;">L</div>
+        <img src="${frontendUrl}/Larryfulllogo.png" alt="Larry" style="height:38px; width:auto; display:block;" />
       </div>
       ${bodyContent}
       <p style="margin-top: 40px; font-size: 12px; color: #aaa;">
@@ -77,6 +78,10 @@ function wrapHtml(bodyContent: string): string {
       </p>
     </div>
   `;
+}
+
+function toTitleCase(s: string): string {
+  return s.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function ctaButton(href: string, label: string): string {
@@ -340,18 +345,18 @@ export async function sendMemberInviteEmail(
   if (!(await guard("member_invite", to, opts))) return;
   const resend = getResend();
   const frontendUrl = getFrontendUrl();
-  const safeName = escapeHtml(displayName);
+  const safeName = escapeHtml(toTitleCase(displayName));
   const safeOrg = escapeHtml(opts.orgName);
   const safeInviter = escapeHtml(opts.inviterName ?? "");
   const acceptUrl = `${frontendUrl}/invite/accept?token=${encodeURIComponent(opts.rawToken)}`;
   const { error } = await resend.emails.send({
     from: FROM_LARRY,
     to,
-    subject: `You've been invited to ${opts.orgName} on Larry`,
+    subject: `You've been invited to join ${opts.orgName} on Larry`,
     html: wrapHtml(`
-      <h1 style="font-size: 22px; font-weight: 700; letter-spacing: -0.03em; margin: 0 0 12px;">You're invited to ${safeOrg}</h1>
+      <h1 style="font-size: 22px; font-weight: 700; letter-spacing: -0.03em; margin: 0 0 12px;">You're invited to join ${safeOrg}</h1>
       <p style="font-size: 15px; color: #555; line-height: 1.6; margin: 0 0 24px;">
-        Hi ${safeName || "there"}, ${safeInviter || "an admin"} has invited you to join <strong>${safeOrg}</strong> on Larry — the AI-powered project management tool.
+        Hi ${safeName || "there"}, ${safeInviter || "an admin"} has invited you to join <strong>${safeOrg}</strong> on Larry, the AI-powered project management tool.
       </p>
       ${ctaButton(acceptUrl, "Accept invitation")}
       <p style="margin-top: 28px; font-size: 13px; color: #888; line-height: 1.5;">

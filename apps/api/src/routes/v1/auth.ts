@@ -15,6 +15,7 @@ import { authPasswordResetRoutes } from "./auth-password-reset.js";
 import { authVerificationRoutes } from "./auth-verification.js";
 import { authGoogleRoutes } from "./auth-google.js";
 import { authAccountRoutes } from "./auth-account.js";
+import { authMfaRoutes, issueMfaPendingToken } from "./auth-mfa.js";
 
 const LoginSchema = z.object({
   email: emailSchema,
@@ -45,6 +46,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(authVerificationRoutes);
   await fastify.register(authGoogleRoutes);
   await fastify.register(authAccountRoutes);
+  await fastify.register(authMfaRoutes);
 
   // -----------------------------------------------------------------------
   // POST /signup
@@ -229,7 +231,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
           id: string;
           email: string;
           password_hash: string;
-          role: "admin" | "pm" | "member" | "executive";
+          role: "owner" | "admin" | "pm" | "member" | "executive";
           tenant_id: string;
           display_name: string | null;
         }>(
@@ -244,7 +246,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
           id: string;
           email: string;
           password_hash: string;
-          role: "admin" | "pm" | "member" | "executive";
+          role: "owner" | "admin" | "pm" | "member" | "executive";
           tenant_id: string;
           display_name: string | null;
         }>(
@@ -316,19 +318,101 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     // --- Successful login: reset lockout counter ---
     await fastify.db.query("DELETE FROM login_attempts WHERE user_id = $1", [user.id]);
 
-    // --- New-device detection (best-effort, don't block login) ---
-    // Must run BEFORE issueRefreshToken so the just-created token doesn't match itself.
+    // --- MFA gate (login audit P1-2) ---
+    // Tenant can set mfa_required_for_admins; when true, owners/admins
+    // can't finish login with just a password. Two sub-states:
+    //   (a) not enrolled → issue a short-lived "mfa_enrol" token and
+    //       tell the client to send the user through /settings/mfa.
+    //   (b) enrolled → issue a short-lived "mfa_verify" token; the
+    //       client POSTs { token, code } to /v1/auth/mfa/verify for
+    //       real access+refresh tokens.
+    // Non-admin users, or admins in tenants where MFA isn't required,
+    // skip this entirely and take the fast path below.
+    const requiresMfa = user.role === "owner" || user.role === "admin";
+    if (requiresMfa) {
+      const mfaRows = await fastify.db.query<{
+        mfa_required_for_admins: boolean;
+        mfa_enrolled_at: string | null;
+      }>(
+        `SELECT t.mfa_required_for_admins, u.mfa_enrolled_at
+           FROM tenants t, users u
+          WHERE t.id = $1 AND u.id = $2`,
+        [user.tenant_id, user.id],
+      );
+      const mfaRow = mfaRows[0];
+      if (mfaRow?.mfa_required_for_admins) {
+        if (!mfaRow.mfa_enrolled_at) {
+          const enrolToken = await issueMfaPendingToken(fastify, {
+            userId: user.id,
+            tenantId: user.tenant_id,
+            role: user.role,
+            email: user.email,
+            scope: "mfa_enrol",
+          });
+          return reply.status(412).send({
+            code: "mfa_enrollment_required",
+            mfaEnrolmentToken: enrolToken,
+            enrolmentUrl: "/workspace/settings/mfa",
+          });
+        }
+        const verifyToken = await issueMfaPendingToken(fastify, {
+          userId: user.id,
+          tenantId: user.tenant_id,
+          role: user.role,
+          email: user.email,
+          scope: "mfa_verify",
+        });
+        return reply.status(200).send({
+          code: "mfa_required",
+          mfaPendingToken: verifyToken,
+        });
+      }
+    }
+
+    // --- New-device detection (P2-3, best-effort, don't block login) ---
+    // Replaces the old (ip, user_agent) exact-match check — mobile OS
+    // updates churn UA and Wi-Fi handoffs churn IP, so every login
+    // triggered an alert. The browser now sticks a `larry_device_id`
+    // cookie (minted the first time we mint a session) which the web
+    // proxy forwards as `X-Device-Id`. Known device = cookie matches
+    // any row in this user's refresh_tokens within the last 30 days,
+    // regardless of revoked_at so that P2-5's aggressive rotation
+    // doesn't make every re-login look new.
+    const incomingDeviceId =
+      typeof request.headers["x-device-id"] === "string" && request.headers["x-device-id"]
+        ? request.headers["x-device-id"]
+        : null;
+    let effectiveDeviceId: string = incomingDeviceId ?? randomBytes(16).toString("hex");
+    // Ensure effectiveDeviceId is a valid UUID shape if we minted it — the
+    // column is UUID typed. randomBytes(16).hex is 32 chars; convert to
+    // 8-4-4-4-12 UUID.
+    if (!incomingDeviceId) {
+      const hex = effectiveDeviceId;
+      effectiveDeviceId = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${((parseInt(hex[16], 16) & 0x3) | 0x8).toString(16)}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+    }
+
     try {
-      const recentSessions = await fastify.db.query<{ ip_address: string | null; user_agent: string | null }>(
-        `SELECT ip_address, user_agent FROM refresh_tokens
-         WHERE user_id = $1 AND tenant_id = $2 AND created_at > NOW() - INTERVAL '30 days'
-         ORDER BY created_at DESC LIMIT 50`,
-        [user.id, user.tenant_id]
+      const prior = await fastify.db.query<{ id: string }>(
+        `SELECT id FROM refresh_tokens
+          WHERE user_id = $1 AND tenant_id = $2
+          LIMIT 1`,
+        [user.id, user.tenant_id],
       );
-      const isKnownDevice = recentSessions.some(
-        (s) => s.ip_address === request.ip && s.user_agent === (request.headers["user-agent"] ?? "unknown")
-      );
-      if (!isKnownDevice && recentSessions.length > 0) {
+      const hasPriorSessions = prior.length > 0;
+
+      let isKnownDevice = false;
+      if (incomingDeviceId) {
+        const match = await fastify.db.query<{ id: string }>(
+          `SELECT id FROM refresh_tokens
+            WHERE user_id = $1 AND device_id = $2
+              AND created_at > NOW() - INTERVAL '30 days'
+            LIMIT 1`,
+          [user.id, incomingDeviceId],
+        );
+        isKnownDevice = match.length > 0;
+      }
+
+      if (!isKnownDevice && hasPriorSessions) {
         const ua = request.headers["user-agent"] ?? "Unknown device";
         const uaShort = ua.length > 100 ? ua.substring(0, 100) + "..." : ua;
         const { sendNewDeviceAlert } = await import("../../lib/email.js");
@@ -367,6 +451,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     }, undefined, {
       ipAddress: request.ip,
       userAgent: request.headers["user-agent"] ?? undefined,
+      deviceId: effectiveDeviceId,
     });
 
     await writeAuditLog(fastify.db, {
@@ -381,6 +466,10 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     return reply.send({
       accessToken,
       refreshToken,
+      // P2-3: web proxy sets this as the httpOnly larry_device_id cookie
+      // so future /login calls from the same browser skip the new-device
+      // email alert.
+      deviceId: effectiveDeviceId,
       user: {
         id: user.id,
         email: user.email,
@@ -416,12 +505,13 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       id: string;
       tenant_id: string;
       user_id: string;
-      role: "admin" | "pm" | "member" | "executive";
+      role: "owner" | "admin" | "pm" | "member" | "executive";
       email: string;
       expires_at: string;
       revoked_at: string | null;
+      device_id: string | null;
     }>(
-      `SELECT rt.id, rt.tenant_id, rt.user_id, rt.expires_at, rt.revoked_at, m.role, u.email
+      `SELECT rt.id, rt.tenant_id, rt.user_id, rt.expires_at, rt.revoked_at, rt.device_id, m.role, u.email
        FROM refresh_tokens rt
        JOIN users u ON u.id = rt.user_id
        JOIN memberships m ON m.user_id = rt.user_id AND m.tenant_id = rt.tenant_id
@@ -489,7 +579,14 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
           role: tokenRow.role,
           email: tokenRow.email,
         },
-        client
+        client,
+        // P2-3: carry the device_id through rotation so the cookie stays
+        // valid across refresh cycles. ip/ua come from the current request.
+        {
+          ipAddress: request.ip,
+          userAgent: request.headers["user-agent"] ?? undefined,
+          deviceId: tokenRow.device_id ?? undefined,
+        },
       );
     });
 

@@ -28,6 +28,10 @@ declare module "@fastify/jwt" {
       tenantId: string;
       role: AuthUser["role"];
       email?: string;
+      // MFA (login audit P1-2): short-lived "mfa_verify" / "mfa_enrol"
+      // pending tokens reuse the same JWT secret but carry a scope claim
+      // so the MFA routes can distinguish them from real access tokens.
+      scope?: "mfa_verify" | "mfa_enrol";
     };
   }
 }

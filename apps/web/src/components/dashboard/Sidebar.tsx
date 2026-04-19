@@ -232,7 +232,7 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, avatar
     <div className="flex h-full flex-col" style={{ background: "#ffffff" }}>
 
       {/* Logo */}
-      <div className="shrink-0 pr-4 pt-4 pb-3 flex items-center justify-between">
+      <div className="shrink-0 pr-4 pt-3 pb-1.5 flex items-center justify-between">
         <Link href="/workspace" onClick={onClose} className="flex items-center gap-2 -ml-3">
           <Image src="/Larryfulllogo.png" alt="Larry" width={105} height={38} className="object-contain" />
         </Link>
@@ -251,7 +251,7 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, avatar
       </div>
 
       {/* Search */}
-      <div ref={searchContainerRef} className="shrink-0 px-3 pb-2">
+      <div ref={searchContainerRef} className="shrink-0 px-3 pb-1.5">
         <div className="relative">
           <Search
             size={13}
@@ -282,7 +282,7 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, avatar
         </div>
       </div>
 
-      {/* Inline search results — replaces nav + projects when searching */}
+      {/* Scrollable middle: search results OR nav + projects */}
       {isSearching ? (
         <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1">
           {!hasResults ? (
@@ -336,9 +336,9 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, avatar
           )}
         </div>
       ) : (
-        <>
+        <div className="min-h-0 flex-1 overflow-y-auto">
       {/* Primary nav */}
-      <nav className="shrink-0 px-2 space-y-0.5" aria-label="Main navigation">
+      <nav className="px-2 space-y-0.5" aria-label="Main navigation">
         {WORKSPACE_NAV.map(({ id, label, icon: Icon, href }) => {
           const isActive = activeNav === id;
           const showBadge = id === "notifications" && (notifCount ?? 0) > 0;
@@ -368,7 +368,7 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, avatar
       <div className="mx-3 my-3" style={{ borderTop: "1px solid var(--border)" }} />
 
       {/* Projects section */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-2">
+      <div className="px-2">
         <div className="flex items-center justify-between px-2 mb-1">
           <button
             type="button"
@@ -519,7 +519,7 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, avatar
           </div>
         )}
       </div>
-        </>
+        </div>
       )}
 
       {/* Bottom bar — avatar button + email */}
