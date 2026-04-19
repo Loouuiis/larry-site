@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { generateSecureToken, hashPassword, hashToken, issueAccessToken, issueRefreshToken, verifyPassword } from "../../lib/auth.js";
+import { assertPasswordNotBreached } from "../../lib/password-breach.js";
 import { writeAuditLog } from "../../lib/audit.js";
 import { emailSchema, passwordSchema } from "../../lib/validation.js";
 import { sendVerificationEmail, sendMemberInviteEmail } from "../../lib/email.js";
@@ -70,6 +71,8 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     if (existing.length > 0) {
       return reply.code(409).send({ error: "An account with this email already exists." });
     }
+
+    await assertPasswordNotBreached(body.password);
 
     const passwordHash = await hashPassword(body.password);
 

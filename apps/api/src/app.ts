@@ -14,6 +14,7 @@ import { createQueuePublisher } from "./services/queue.js";
 import { getRedis, closeRedis } from "./lib/redis.js";
 import { LLMQuotaError } from "./lib/llm-budget.js";
 import { EmailQuotaError } from "./lib/email-quota.js";
+import { PasswordBreachedError } from "./lib/password-breach.js";
 
 export async function createApp() {
   const env = getApiEnv();
@@ -92,6 +93,13 @@ export async function createApp() {
         statusCode: 429,
         error: "Too Many Requests",
         message: "Email send limit reached. Please try again later.",
+      });
+    }
+    if (error instanceof PasswordBreachedError) {
+      return reply.status(400).send({
+        statusCode: 400,
+        error: "Password Compromised",
+        message: error.message,
       });
     }
     // Let Fastify handle everything else (including @fastify/sensible errors)
