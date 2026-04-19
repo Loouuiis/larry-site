@@ -14,11 +14,12 @@ import { TimelineSuggestionPreview } from "./TimelineSuggestionPreview";
  * - For project_note_send: Note content
  */
 export function ActionDetailPreview({ event }: { event: WorkspaceLarryEvent }) {
+  const [expanded, setExpanded] = useState(false);
+
   if (typeof event.actionType === "string" && event.actionType.startsWith("timeline_")) {
     return <TimelineSuggestionPreview event={event} />;
   }
 
-  const [expanded, setExpanded] = useState(false);
   const payload = event.payload ?? {};
   const description = typeof payload.description === "string" ? payload.description.trim() : null;
 
