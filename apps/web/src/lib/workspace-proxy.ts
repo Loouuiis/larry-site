@@ -38,8 +38,9 @@ async function parseApiBody(response: Response): Promise<unknown> {
     }
     return json;
   }
-  const text = await response.text();
-  return text.length > 0 ? { message: text, error: text } : {};
+  // Non-JSON response (e.g. Railway HTML error page). Return a generic message
+  // instead of leaking raw infrastructure text into the UI.
+  return response.ok ? {} : { error: "Service temporarily unavailable. Please try again." };
 }
 
 // ── Session helpers ─────────────────────────────────────────────────────────
