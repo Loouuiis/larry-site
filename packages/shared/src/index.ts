@@ -429,3 +429,5 @@ export interface PortfolioTimelineResponse {
   categories: PortfolioTimelineCategory[];
   dependencies: Array<{ taskId: string; dependsOnTaskId: string }>;
 }
+
+export * from "./timeline.js";
