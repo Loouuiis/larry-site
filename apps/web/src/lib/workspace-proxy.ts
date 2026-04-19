@@ -48,7 +48,11 @@ export async function ensureApiSession(session: AppSession): Promise<AppSession 
 }
 
 export async function persistSession(session: AppSession): Promise<void> {
-  const token = await createSessionToken(session);
+  // Rotate CSRF on every persist — refresh / switch-tenant / profile
+  // update paths should all mint a fresh token. createSessionToken
+  // defaults to a new randomUUID when csrfToken is undefined.
+  const { csrfToken: _oldCsrf, ...rest } = session;
+  const token = await createSessionToken(rest);
   const store = await cookies();
   store.set(sessionCookieOptions(token));
 }
