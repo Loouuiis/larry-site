@@ -8,7 +8,9 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["src/**/*.test.ts", "src/**/*.spec.ts"],
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/*.spec.ts"],
+    environment: "happy-dom",
+    setupFiles: ["./test/setup.ts"],
     passWithNoTests: true,
   },
 });
