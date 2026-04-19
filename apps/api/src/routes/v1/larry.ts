@@ -168,7 +168,7 @@ const RuntimeRetryBulkBodySchema = z.object({
 
 const ChatSchema = z.object({
   projectId: z.string().uuid().optional(),
-  message: z.string().trim().min(1).max(8_000),
+  message: z.string().trim().min(1).max(24_000),
   conversationId: z.string().uuid().optional(),
 });
 
@@ -3532,7 +3532,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
 
   const ChatStreamSchema = z.object({
     projectId: z.string().uuid().optional(),
-    message: z.string().trim().min(1).max(8_000),
+    message: z.string().trim().min(1).max(24_000),
     conversationId: z.string().uuid().optional(),
   });
 

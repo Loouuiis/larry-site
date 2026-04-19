@@ -450,7 +450,11 @@ export function LarryChat({ projectId, projectName, onVoiceInput }: LarryChatPro
       <ChatInput
         value={chat.input}
         onChange={chat.setInput}
-        onSubmit={chat.handleSubmit}
+        onSubmit={async (e) => {
+          const snapshot = files;
+          setFiles([]);
+          await chat.handleSubmit(e, snapshot);
+        }}
         disabled={chat.busy}
         busy={chat.busy}
         placeholder={projectId ? "Talk to Larry..." : "Talk to Larry..."}

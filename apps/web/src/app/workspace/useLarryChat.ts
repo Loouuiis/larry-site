@@ -12,6 +12,11 @@ import {
   type LarryMessage as PersistedLarryMessage,
 } from "@/lib/larry";
 import { parseLarrySseStream } from "@/lib/larry-stream";
+import {
+  extractFileText,
+  buildFileContextBlock,
+} from "@/lib/extract-file-text";
+import type { AttachedFile } from "@/components/larry/ChatInput";
 
 export interface LarryMessage {
   id: string;
@@ -209,7 +214,22 @@ export function useLarryChat(projectId?: string) {
   }, [projectId]);
 
   const sendMessage = useCallback(
-    async (text: string) => {
+    async (text: string, attachedFiles: AttachedFile[] = []) => {
+      // Extract text from attached files and prepend as context
+      let messageText = text;
+      if (attachedFiles.length > 0) {
+        try {
+          const extracted = await Promise.all(
+            attachedFiles.map((f) => extractFileText(f.file))
+          );
+          messageText = buildFileContextBlock(extracted) + text;
+        } catch (err) {
+          // If extraction fails for any file, show the error inline
+          const errorMsg = err instanceof Error ? err.message : "Failed to read attached file.";
+          messageText = `[File attachment error: ${errorMsg}]\n\n${text}`;
+        }
+      }
+
       const optimisticUserId = `user-${crypto.randomUUID()}`;
       const streamingLarryId = `streaming-${crypto.randomUUID()}`;
 
@@ -242,7 +262,7 @@ export function useLarryChat(projectId?: string) {
       try {
         const response = await streamLarryChat({
           projectId,
-          message: text,
+          message: messageText,
           conversationId: conversationId ?? undefined,
         });
 
@@ -339,7 +359,7 @@ export function useLarryChat(projectId?: string) {
         try {
           const { response, data } = await sendLarryChat({
             projectId,
-            message: text,
+            message: messageText,
             conversationId: conversationId ?? undefined,
           });
 
@@ -402,12 +422,12 @@ export function useLarryChat(projectId?: string) {
   );
 
   const handleSubmit = useCallback(
-    async (event?: React.FormEvent) => {
+    async (event?: React.FormEvent, files: AttachedFile[] = []) => {
       event?.preventDefault();
       const text = input.trim();
       if (!text || busy) return;
       setInput("");
-      await sendMessage(text);
+      await sendMessage(text, files);
     },
     [busy, input, sendMessage]
   );
