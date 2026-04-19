@@ -24,16 +24,19 @@ interface Props {
   onMouseLeave?: () => void;
 }
 
+// v4 Slice 5 — roll-up rows (category / project) use a thinner, outlined
+// bar so they read as summaries of the child task bars below, instead of
+// looking identical to concrete task work. Task bars stay solid.
 const HEIGHT_BY_VARIANT: Record<GanttBarVariant, number> = {
-  category: 18,
-  project:  16,
+  category: 8,
+  project:  10,
   task:     14,
   subtask:  10,
 };
 
 const RADIUS_BY_VARIANT: Record<GanttBarVariant, number> = {
-  category: 3,
-  project:  3,
+  category: 2,
+  project:  2,
   task:     3,
   subtask:  2,
 };
@@ -63,11 +66,17 @@ export function GanttBar({
   const height = HEIGHT_BY_VARIANT[variant];
   const radius = RADIUS_BY_VARIANT[variant];
   const isLeaf = variant === "task" || variant === "subtask";
+  const isRollup = variant === "category" || variant === "project";
   const progressClamped = Math.min(100, Math.max(0, progressPercent));
 
   const rgbRing = (highlighted || selected)
     ? `0 0 0 2px ${rgbaFromHex(categoryColor, 0.25)}`
     : undefined;
+
+  // v4 Slice 5 — roll-ups: 35% translucent fill with a 1.5px full-opacity
+  // outline so the bar reads as "summary" vs a solid task bar.
+  const bg = isRollup ? rgbaFromHex(categoryColor, 0.35) : categoryColor;
+  const outline = isRollup ? `1.5px solid ${categoryColor}` : "none";
 
   return (
     <div
@@ -89,21 +98,25 @@ export function GanttBar({
         pointerEvents: "auto",
       }}
     >
-      {/* Solid category-colour bar */}
+      {/* Category-coloured bar — solid on tasks, translucent+outlined on roll-ups */}
       <div
         style={{
           position: "relative",
           width: "100%",
           height,
-          background: categoryColor,
+          background: bg,
+          border: outline,
           borderRadius: radius,
-          boxShadow: rgbRing ?? "0 1px 2px rgba(0,0,0,0.04)",
+          boxShadow: rgbRing ?? (isRollup ? "none" : "0 1px 2px rgba(0,0,0,0.04)"),
           transition: "box-shadow 150ms ease-out",
           overflow: "hidden",
+          boxSizing: "border-box",
         }}
       >
-        {/* Progress overlay — darker inner fill up to progress% */}
-        {progressClamped > 0 && (
+        {/* Progress overlay — leaf bars only. Roll-ups intentionally skip
+            progress because the aggregate would be misleading (a category
+            rolling up 3 projects at different % can't be a single bar). */}
+        {!isRollup && progressClamped > 0 && (
           <div
             style={{
               position: "absolute",
