@@ -95,3 +95,48 @@ describe("middleware — CSRF gating on /api/**", () => {
     expect(res.status).toBe(200);
   });
 });
+
+function pageReq(path: string, opts: { sessionJwt?: string } = {}): NextRequest {
+  const headers = new Headers();
+  if (opts.sessionJwt) headers.set("cookie", `larry_session=${opts.sessionJwt}`);
+  return new NextRequest(new Request(`https://larry-pm.com${path}`, { method: "GET", headers }));
+}
+
+describe("middleware — P2-6 auth page security headers", () => {
+  it("injects X-Frame-Options: DENY + Referrer-Policy: no-referrer on /login (unauth)", async () => {
+    const middleware = await loadMiddleware();
+    const res = await middleware(pageReq("/login"));
+    expect(res.headers.get("X-Frame-Options")).toBe("DENY");
+    expect(res.headers.get("Referrer-Policy")).toBe("no-referrer");
+  });
+
+  it("injects headers on /signup, /forgot-password, /reset-password, /verify-email, /confirm-email-change", async () => {
+    const middleware = await loadMiddleware();
+    for (const path of [
+      "/signup",
+      "/forgot-password",
+      "/reset-password",
+      "/verify-email",
+      "/confirm-email-change",
+    ]) {
+      const res = await middleware(pageReq(path));
+      expect(res.headers.get("X-Frame-Options")).toBe("DENY");
+      expect(res.headers.get("Referrer-Policy")).toBe("no-referrer");
+    }
+  });
+
+  it("injects headers on /login even when a valid session exists (authed user hitting /login)", async () => {
+    const middleware = await loadMiddleware();
+    const jwt = await makeSessionJwt({ sub: "u1", csrfToken: "tok-A" });
+    const res = await middleware(pageReq("/login", { sessionJwt: jwt }));
+    expect(res.headers.get("X-Frame-Options")).toBe("DENY");
+    expect(res.headers.get("Referrer-Policy")).toBe("no-referrer");
+  });
+
+  it("does NOT inject auth headers on workspace pages", async () => {
+    const middleware = await loadMiddleware();
+    const jwt = await makeSessionJwt({ sub: "u1", csrfToken: "tok-A" });
+    const res = await middleware(pageReq("/workspace", { sessionJwt: jwt }));
+    expect(res.headers.get("X-Frame-Options")).toBeNull();
+  });
+});

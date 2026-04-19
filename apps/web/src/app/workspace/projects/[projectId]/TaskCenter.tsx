@@ -147,6 +147,7 @@ export function TaskCenter({ projectId, tasks, refresh, openTaskId }: TaskCenter
   const [newTitle, setNewTitle] = useState("");
   const [newPriority, setNewPriority] = useState<"low" | "medium" | "high" | "critical">("medium");
   const [newAssignee, setNewAssignee] = useState("");
+  const [newStartDate, setNewStartDate] = useState("");
   const [newDueDate, setNewDueDate] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [saving, setSaving] = useState(false);
@@ -273,6 +274,7 @@ export function TaskCenter({ projectId, tasks, refresh, openTaskId }: TaskCenter
     setNewTitle("");
     setNewPriority("medium");
     setNewAssignee("");
+    setNewStartDate("");
     setNewDueDate("");
     setNewDescription("");
     setCollapsed((prev) => ({ ...prev, [groupId]: false }));
@@ -283,6 +285,7 @@ export function TaskCenter({ projectId, tasks, refresh, openTaskId }: TaskCenter
     setNewTitle("");
     setNewPriority("medium");
     setNewAssignee("");
+    setNewStartDate("");
     setNewDueDate("");
     setNewDescription("");
   };
@@ -348,6 +351,7 @@ export function TaskCenter({ projectId, tasks, refresh, openTaskId }: TaskCenter
         priority: newPriority,
       };
       if (newAssignee) body.assigneeUserId = newAssignee;
+      if (newStartDate) body.startDate = newStartDate;
       const effectiveDueDate = dueDateInputRef.current?.value || newDueDate;
       if (effectiveDueDate) body.dueDate = effectiveDueDate;
       if (newDescription.trim()) body.description = newDescription.trim();
@@ -1382,6 +1386,25 @@ export function TaskCenter({ projectId, tasks, refresh, openTaskId }: TaskCenter
                       </option>
                     ))}
                   </select>
+
+                  {/* start date input */}
+                  <input
+                    type="date"
+                    aria-label="Start date"
+                    value={newStartDate}
+                    onChange={(e) => setNewStartDate(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Escape") cancelCreating(); }}
+                    disabled={saving}
+                    className="w-[130px] text-[12px]"
+                    style={{
+                      background: "var(--surface-2)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 2,
+                      color: "var(--text-2)",
+                      padding: "2px 4px",
+                      flexShrink: 0,
+                    }}
+                  />
 
                   {/* due date input */}
                   <input

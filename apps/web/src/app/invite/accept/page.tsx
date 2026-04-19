@@ -1,4 +1,5 @@
 import { getSession } from "@/lib/auth";
+import Image from "next/image";
 import { MailX, Clock, CheckCircle2, AlertCircle } from "lucide-react";
 import { AcceptForm } from "./AcceptForm";
 
@@ -209,22 +210,14 @@ export default async function AcceptInvitationPage({
         style={{ background: "var(--surface)", borderColor: "var(--border)" }}
       >
         <div className="text-center space-y-2">
-          <div
-            className="mx-auto flex h-12 w-12 items-center justify-center rounded-full"
-            style={{
-              background: "#f5f3ff",
-              color: "#6c44f6",
-              fontWeight: 700,
-              fontSize: 20,
-            }}
-          >
-            L
+          <div className="flex justify-center mb-2">
+            <Image src="/Larryfulllogo.png" alt="Larry" width={105} height={38} className="object-contain" />
           </div>
           <h1
             className="text-[20px] font-semibold"
             style={{ color: "var(--text-1)" }}
           >
-            You're invited to {tenantName ?? "a Larry workspace"}
+            You&apos;re invited to join {tenantName ?? "a Larry workspace"}
           </h1>
           {projectName && (
             <p className="text-[13px]" style={{ color: "var(--text-2)" }}>
@@ -233,7 +226,10 @@ export default async function AcceptInvitationPage({
             </p>
           )}
           <p className="text-[13px]" style={{ color: "var(--text-2)" }}>
-            Joining as <strong>{email}</strong> · Role <strong>{role}</strong>
+            Joining as <strong>{email}</strong>
+          </p>
+          <p className="text-[13px]" style={{ color: "var(--text-2)" }}>
+            Role: <strong>{role}</strong>
           </p>
           <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
             Invitation expires {new Date(expiresAt).toLocaleString()}
