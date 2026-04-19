@@ -1,7 +1,7 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Plus, X } from "lucide-react";
-import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import { useQueryClient, useMutation } from "@tanstack/react-query";
 import {
   DndContext, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -17,10 +17,7 @@ import { CategoryManagerPanel } from "@/components/workspace/gantt/CategoryManag
 import { GanttEmptyState } from "@/components/workspace/gantt/GanttEmptyState";
 import { CategoryColourPopover } from "@/components/workspace/gantt/CategoryColourPopover";
 import type { CategoryOption } from "@/components/workspace/gantt/GanttContextMenu";
-
-// v4 Slice 3A — React Query keys for this surface. Mutations invalidate
-// these so every view reading the same data stays in sync across tabs.
-const QK_TIMELINE_ORG = ["timeline", "org"] as const;
+import { useTimelineSnapshot, QK_TIMELINE_ORG } from "@/hooks/useTimelineSnapshot";
 
 type AddCtx =
   | { mode: "category" }
@@ -43,14 +40,7 @@ export function PortfolioGanttClient() {
   // v4 Slice 3A — the timeline read is now React Query. Mutations invalidate
   // QK_TIMELINE_ORG to trigger a refetch; the cached payload stays mounted
   // during refetch so the Gantt never blanks between writes.
-  const { data, error: queryError, isError: isFetchError, refetch } = useQuery({
-    queryKey: QK_TIMELINE_ORG,
-    queryFn: async (): Promise<PortfolioTimelineResponse> => {
-      const res = await fetch("/api/workspace/timeline", { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json() as Promise<PortfolioTimelineResponse>;
-    },
-  });
+  const { data, error: queryError, isError: isFetchError, refetch } = useTimelineSnapshot();
 
   // Merge query-error and mutation-error into a single banner stream.
   const error =
