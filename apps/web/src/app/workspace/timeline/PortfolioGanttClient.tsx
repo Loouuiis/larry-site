@@ -621,24 +621,23 @@ export function PortfolioGanttClient() {
               aria-label="New category"
               title="New category"
               style={{
+                // v4 Slice 5 — icon-only pill so this doesn't duplicate the
+                // toolbar "+ Category" button visually. The toolbar button is
+                // contextual (label changes with selection); this one is the
+                // always-creates-a-category shortcut for power users.
                 display: "inline-flex",
                 alignItems: "center",
-                gap: 4,
+                justifyContent: "center",
+                width: 24,
                 height: 24,
-                padding: "0 8px",
-                fontSize: 11,
-                fontWeight: 600,
-                letterSpacing: "0.04em",
-                textTransform: "uppercase",
-                background: "var(--brand)",
-                color: "#fff",
-                border: 0,
+                background: "var(--surface-2)",
+                color: "var(--brand)",
+                border: "1px solid var(--border)",
                 borderRadius: 6,
                 cursor: "pointer",
               }}
             >
-              <Plus size={12} strokeWidth={2.5} />
-              Category
+              <Plus size={14} strokeWidth={2.5} />
             </button>
           }
         />
