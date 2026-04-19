@@ -59,9 +59,10 @@ function withOptimistic<TVars, TData>(opts: {
   optimistic: (qc: QueryClient, vars: TVars) => void;
   reconcile?: (qc: QueryClient, vars: TVars, data: TData) => void;
   invalidate?: QueryKey[] | ((vars: TVars, data: TData) => QueryKey[]);
-  rollbackToast: (err: unknown, vars: TVars) => string | null;
-  tempId?: { field: keyof TVars & string };
+  onRollback?: (err: unknown, vars: TVars) => void;              // caller-owned error surface
   extractWarnings?: (data: TData) => string[];
+  onWarnings?: (warnings: string[], vars: TVars, data: TData) => void;
+  tempId?: { field: keyof TVars & string };
 }): Pick<
   UseMutationOptions<TData, Error, TVars>,
   "onMutate" | "onError" | "onSuccess" | "onSettled"
@@ -80,8 +81,12 @@ const accept = useMutation({
     optimistic: (qc, id) =>
       qc.setQueryData(["actionCentre", projectId ?? "larry"], (old?: ActionCentreData) =>
         old ? { ...old, suggested: old.suggested.filter((e) => e.id !== id) } : old),
-    rollbackToast: (err) =>
-      `Couldn't accept: ${err instanceof Error ? err.message : "please try again"}`,
+    onRollback: (err) => {
+      setActionError({
+        eventId: eventIdBeingAccepted,
+        message: `Couldn't accept: ${err instanceof Error ? err.message : "please try again"}`,
+      });
+    },
   }),
   scope: { id: `event:${eventIdBeingAccepted}` },
 });
@@ -104,12 +109,12 @@ const accept = useMutation({
 
 1. For each snapshot, **only if** the registry's `opId` for that key still equals `ctx.opId`, restore the snapshot via `setQueryData`. If a newer op has taken over, leave the newer optimistic state alone (Rule 2, §8).
 2. If `tempId` configured, call `failSwap(tempId, err)` — unblocks awaiting follow-up mutations with a rejection.
-3. If `rollbackToast(err, vars)` returns a non-null string, push it to `ToastContext` at `error` level.
+3. If `onRollback` provided, call `opts.onRollback(err, vars)`. The helper does **not** couple to any specific error-surface implementation — the caller decides whether to `setLocalError`, push a toast, log, or all three. Rationale: Larry's existing `ToastContext` is purpose-built for accepted-action toasts (`actionType`/`actionLabel`/`actionColor`/`displayText`/`projectName`/`projectId`), not generic error strings. Keeping the helper decoupled avoids a forced ToastContext generalisation in this PR and is strictly safer.
 
 ### `onSuccess(data, vars, ctx)`
 
 1. Check the registry: if the current `opId` for any affected key ≠ `ctx.opId`, a newer op has taken over. Skip `reconcile` and skip invalidate. Return. (Rule 3, §8.)
-2. If `extractWarnings` provided, iterate its output and push each to `ToastContext` at `info` level.
+2. If `extractWarnings` provided, read the warnings from `data`. If `onWarnings` is also provided, call `opts.onWarnings(warnings, vars, data)` so the caller surfaces them however it likes. If no `onWarnings`, warnings are ignored (the helper never silently pushes anywhere on its own).
 3. If `reconcile` provided, run it. The caller is expected to `setQueryData` with the server's canonical payload.
 4. If `tempId` configured, call `completeSwap(tempId, data.id)` to unblock awaiting follow-ups, then walk each affected cache entry and rewrite any row where `row.id === tempId` to `row.id === data.id`.
 5. If no `reconcile`, invalidate `invalidate ?? affects(vars, qc)`.
@@ -165,12 +170,12 @@ Exercised in migration #2 (Gantt "add task"), not in this PR.
 
 | Case | Behaviour |
 |------|-----------|
-| **Offline** (`navigator.onLine === false`) | `onMutate` throws `OfflineError`. Snapshot captured, no optimistic write, `mutationFn` never fires. Toast: `"You're offline — <action> wasn't saved"`. Persistent offline queue is out of scope for v1. |
+| **Offline** (`navigator.onLine === false`) | `onMutate` throws `OfflineError`. Snapshot captured, no optimistic write, `mutationFn` never fires. `onRollback` fires with the `OfflineError`; the caller surfaces it (suggested phrasing: `"You're offline — <action> wasn't saved"`). Persistent offline queue is out of scope for v1. |
 | **Slow network** | No special handling. Optimistic state holds until settlement. User can navigate away; TanStack Query preserves the mutation. |
 | **Partial success** (2xx with `warnings: string[]`) | Success path (no rollback, `reconcile` runs). Each warning is pushed to toast at `info` level via `extractWarnings`. Opt-in per mutation. |
 | **Validation-corrected** (2xx with server-modified data) | `reconcile` callback overrides the optimistic guess with server canonical data. No toast. No flicker through refetch. |
 | **HTTP 4xx** | Always triggers rollback. If a server wants accept-with-correction, it must return 2xx + corrected data. |
-| **Session expired mid-flight** (401 from proxy) | Rollback + toast `"Session expired — please sign in again"`. No retry. |
+| **Session expired mid-flight** (401 from proxy) | Rollback; `onRollback` receives the `SessionExpiredError` the proxy throws; caller surfaces `"Session expired — please sign in again"`. No retry. |
 
 ## 11. Action Centre migration shape
 
@@ -229,24 +234,24 @@ Net LOC: ~276 → ~160 lines.
 - Rule 3 stomp protection: op A in flight, op B lands, op A success is discarded
 - `scope`-based serialisation using a real `QueryClient`
 - Temp-ID resolve: pending, completed, failed, never-registered (passthrough)
-- Offline short-circuit fires `OfflineError`, skips `mutationFn`
-- `extractWarnings` fires toasts without rolling back
+- Offline short-circuit fires `OfflineError`, skips `mutationFn`, calls `onRollback`
+- `extractWarnings` → `onWarnings` is called without rolling back
 
-**Hook integration** (`useLarryActionCentre.test.tsx`) — React Testing Library + `QueryClientProvider`:
+**Hook integration** (`useLarryActionCentre.test.tsx`) — React Testing Library + `QueryClientProvider`. Requires test-infra setup (Slice 0) to add `@testing-library/react`, `@testing-library/jest-dom`, `happy-dom`, and extend vitest `include` to cover `*.test.tsx` with `environment: 'happy-dom'`:
 - Accept flow: click → `suggested` shrinks synchronously → mock API resolves → no refetch churn
-- Accept failure: `suggested` restored + one toast fired
-- Double-click accept: second mutation queues, mock API sees no 409
+- Accept failure: `suggested` restored + `onRollback` fires exactly once
+- Double-click accept: second mutation queues via `scope`, mock API sees no 409
 - `larry:refresh-snapshot` bridge still invalidates the query
 
-**Playwright smoke** (extends existing action-centre specs): real browser, network throttled, verify click-to-visual-latency < 50ms (today 300–800ms waiting on refetch). The user-facing proof.
+**Playwright smoke** (extends existing action-centre specs if present; otherwise new `e2e/action-centre-optimistic.spec.ts`): real browser, network throttled, verify click-to-visual-latency < 50ms (today 300–800ms waiting on refetch). The user-facing proof.
 
-MSW mocks the Railway API surface. No real network.
+Mocking: `vi.stubGlobal("fetch", vi.fn())` at the top of each test file. MSW is **not** introduced in this PR — scope discipline.
 
 ## 13. Branching & rollout
 
 - Feature branch: `feat/optimistic-ui-pattern`
 - Vercel will build a preview URL per push
-- Merge criteria: all three test layers green, manual QA on preview confirms double-click doesn't 409, toast fires on forced 500, no refetch flicker on accept
+- Merge criteria: all three test layers green, manual QA on preview confirms double-click doesn't 409, `actionError` state appears on forced 500, no refetch flicker on accept
 - Follow-up migrations (one PR each): Gantt, Project Notes, Email Drafts, Calendar, Memory, Modify Panel. Each removes more of the `larry:refresh-snapshot` bridge.
 
 ## 14. Known gaps / future work
