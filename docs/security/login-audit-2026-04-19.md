@@ -25,6 +25,7 @@ found during this pass.
 | Session cookie flags | `apps/web/src/lib/auth.ts:102-112` | httpOnly, secure (prod), sameSite=lax, path=/. |
 | Session cookie JWT | `apps/web/src/lib/auth.ts:45-62` | HS256, 24h TTL, `csrfToken` bound inside payload. |
 | CSRF enforcement | `apps/web/src/middleware.ts` + `apps/web/src/lib/csrf.ts` | Double-submit: session JWT carries `csrfToken`, middleware mirrors it into `larry_csrf` cookie, all mutating `/api/**` requests require `X-CSRF-Token` header matching session. Shipped in `fix/csrf-enforcement`. |
+| MFA enforcement on /login | `apps/api/src/routes/v1/auth.ts` + `auth-mfa.ts` | Admins in `tenants.mfa_required_for_admins=true` tenants must complete TOTP second-step (or enrol first) before access tokens are issued. TOTP via `otpauth` (SHA1/30s/6). 10 scratch codes hashed at rest, single-use via `UPDATE … WHERE used_at IS NULL`. Shipped in `feat/mfa-login-enforcement`. |
 | New-device email alerts | `routes/v1/auth.ts:315-334` | Best-effort, does not block login. |
 | Email verification | `routes/v1/auth.ts:152-170`, `auth-verification.ts` | Single-use hashed token, 24h expiry, 7-day grace period. |
 | Password reset | `auth-password-reset.ts` | Signed token, single-use (marked consumed on reset). |
@@ -59,12 +60,20 @@ the token for client JS. A `window.fetch` patch installed at root-layout
 module load injects the header on same-origin `/api/**` mutations, so existing
 call sites migrate without change. Token rotates on every `persistSession`.
 
-**MFA on `/login`.** `assertMfaIfRequired` exists but is only called from
-invite creation (`routes/v1/invitations.ts`). The Tenants table has a
-`mfa_required_for_admins` flag (`schema.sql:1593-1594`) that today does
-nothing at login. Should gate successful password verification on MFA enrol
-status for admins in mfa-required tenants. Effort: 1 day including TOTP
-enrolment UI.
+**✅ MFA on `/login`** shipped in `feat/mfa-login-enforcement`. After password
+verification, `/v1/auth/login` checks `tenants.mfa_required_for_admins` for
+owners/admins: not enrolled returns `412 { code: "mfa_enrollment_required",
+mfaEnrolmentToken, enrolmentUrl: "/workspace/settings/mfa" }`; enrolled
+returns `200 { code: "mfa_required", mfaPendingToken }` WITHOUT access/
+refresh tokens. Second-step at `POST /v1/auth/mfa/verify` swaps
+`{ mfaPendingToken, code }` for real tokens. TOTP via `otpauth`
+(SHA1/30s/6), scratch codes hashed SHA-256 with single-use guaranteed
+by `UPDATE … WHERE used_at IS NULL`. New migration 027 adds
+`user_mfa_secrets` + `user_mfa_scratch_codes`. Rate-limit on verify is
+10/15m per user_id (not IP), so shared-office networks don't lock each
+other out. `DELETE /v1/auth/mfa` is a self-service "lost my phone" path.
+Admin toggle for `mfa_required_for_admins` reuses the existing
+`PATCH /v1/orgs/:id` endpoint.
 
 ### P2 — backlog
 

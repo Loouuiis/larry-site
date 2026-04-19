@@ -30,6 +30,12 @@ function LoginForm() {
   );
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  // Second-step MFA state. When the API responds with `code: "mfa_required"`,
+  // we swap to a 6-digit code form without leaving the page — the user's
+  // email and password are done with.
+  const [mfaPendingToken, setMfaPendingToken] = useState<string | null>(null);
+  const [mfaCode, setMfaCode] = useState("");
+  const [useScratchCode, setUseScratchCode] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -45,6 +51,18 @@ function LoginForm() {
 
       const data = await res.json();
 
+      // MFA enrolment required (admin in mfa-required tenant, not enrolled).
+      if (res.status === 412 && data?.code === "mfa_enrollment_required" && data.mfaEnrolmentToken) {
+        router.push(`/mfa/enrol?token=${encodeURIComponent(data.mfaEnrolmentToken)}`);
+        return;
+      }
+
+      // MFA second-step required — swap to code form.
+      if (res.ok && data?.code === "mfa_required" && data.mfaPendingToken) {
+        setMfaPendingToken(data.mfaPendingToken);
+        return;
+      }
+
       if (!res.ok) {
         setError(data.error ?? "Something went wrong.");
         return;
@@ -56,6 +74,94 @@ function LoginForm() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleMfaSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!mfaPendingToken) return;
+    setError("");
+    setLoading(true);
+    try {
+      const res = await fetch("/api/auth/mfa/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mfaPendingToken,
+          code: mfaCode.trim(),
+          useScratchCode,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Invalid code.");
+        return;
+      }
+      router.push("/workspace");
+    } catch {
+      setError("Network error. Please check your connection.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (mfaPendingToken) {
+    return (
+      <form onSubmit={handleMfaSubmit} className="space-y-3" noValidate>
+        <p className="mb-4 text-sm text-[var(--text-muted)]">
+          Enter the {useScratchCode ? "backup code" : "6-digit code from your authenticator app"}.
+        </p>
+        <div>
+          <label
+            htmlFor="mfa-code"
+            className="mb-1.5 block text-xs font-medium text-[var(--text-2)]"
+          >
+            {useScratchCode ? "Backup code" : "Authentication code"}
+          </label>
+          <input
+            id="mfa-code"
+            inputMode={useScratchCode ? "text" : "numeric"}
+            autoComplete="one-time-code"
+            required
+            autoFocus
+            value={mfaCode}
+            onChange={(e) =>
+              setMfaCode(
+                useScratchCode
+                  ? e.target.value.toUpperCase().slice(0, 11)
+                  : e.target.value.replace(/\D/g, "").slice(0, 6),
+              )
+            }
+            placeholder={useScratchCode ? "AB2-CD3-EF4" : "000000"}
+            className="min-h-[44px] w-full rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 text-[var(--text-1)] placeholder:text-[var(--text-disabled)] outline-none transition-colors duration-150 focus:border-[var(--border-2)] focus:bg-[var(--surface)]"
+            style={{ fontSize: "1rem", letterSpacing: "0.18em" }}
+          />
+        </div>
+        {error && (
+          <p className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3 text-sm text-[var(--text-2)]">
+            {error}
+          </p>
+        )}
+        <button
+          type="submit"
+          disabled={loading || mfaCode.length < (useScratchCode ? 9 : 6)}
+          aria-busy={loading}
+          className="mt-1 inline-flex h-[2.75rem] w-full items-center justify-center rounded-lg border-none bg-[var(--cta)] px-7 text-[0.9375rem] font-medium text-white transition-colors duration-200 hover:bg-[var(--cta-hover)] disabled:pointer-events-none disabled:opacity-50"
+        >
+          {loading ? "Verifying\u2026" : "Verify"}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setUseScratchCode((v) => !v);
+            setMfaCode("");
+            setError("");
+          }}
+          className="mt-3 w-full text-center text-sm text-[var(--text-muted)] transition-colors hover:text-[var(--brand)]"
+        >
+          {useScratchCode ? "Use authenticator code instead" : "Use a backup code"}
+        </button>
+      </form>
+    );
   }
 
   return (
