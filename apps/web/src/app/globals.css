@@ -668,3 +668,35 @@ h3, h4 {
 body.landing-root {
   background: #ffffff;
 }
+
+/* strokeDraw — purple underline that draws itself left-to-right.
+   Used on the hero keyword and on interactive icon rings.
+   Respects prefers-reduced-motion. */
+.stroke-draw {
+  position: relative;
+  display: inline-block;
+}
+.stroke-draw::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -0.08em;
+  height: 3px;
+  width: 100%;
+  background: #6c44f6;
+  border-radius: 2px;
+  transform: scaleX(0);
+  transform-origin: left center;
+  animation: strokeDraw 800ms cubic-bezier(0.22, 1, 0.36, 1) 600ms forwards;
+  will-change: transform;
+}
+@keyframes strokeDraw {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stroke-draw::after {
+    animation: none;
+    transform: scaleX(1);
+  }
+}
