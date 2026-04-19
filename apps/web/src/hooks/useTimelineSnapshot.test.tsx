@@ -35,9 +35,11 @@ const payload: PortfolioTimelineResponse = {
 };
 
 function makeWrapper(qc: QueryClient) {
-  return ({ children }: { children: React.ReactNode }) => (
+  const Wrapper = ({ children }: { children: React.ReactNode }) => (
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   );
+  Wrapper.displayName = "QueryClientWrapper";
+  return Wrapper;
 }
 
 describe("useTimelineSnapshot", () => {
