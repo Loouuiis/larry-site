@@ -262,6 +262,7 @@ export const invitationsRoutes: FastifyPluginAsync = async (fastify) => {
       email: inv.email,
       role: inv.role,
       expiresAt: inv.expiresAt,
+      tenantId: inv.tenantId,
       tenantName: tenant[0]?.name ?? null,
       tenantSlug: tenant[0]?.slug ?? null,
       projectId: inv.projectId,
