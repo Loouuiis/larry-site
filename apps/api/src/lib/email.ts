@@ -265,6 +265,56 @@ export async function sendNewDeviceAlert(
   }
 }
 
+export interface RefreshReuseInfo {
+  ip?: string;
+  userAgent?: string;
+}
+
+// P2-1. Sent when a previously-revoked refresh token is replayed — either
+// a racing legit client (rare) or a stolen-token replay. We've already
+// nuked the whole session family at the call site; this email tells the
+// human to rotate their password.
+export async function sendRefreshReuseAlert(
+  to: string,
+  info: RefreshReuseInfo,
+  ctx?: EmailSendContext,
+): Promise<void> {
+  if (!isResendConfigured()) {
+    console.log("[email] RESEND_API_KEY not configured. Skipping refresh-reuse alert for %s", to);
+    return;
+  }
+  if (!(await guard("refresh_reuse_alert", to, ctx))) return;
+  const resend = getResend();
+  const frontendUrl = getFrontendUrl();
+  const details = [
+    info.userAgent && `<li><strong>Browser:</strong> ${escapeHtml(info.userAgent).slice(0, 120)}</li>`,
+    info.ip && `<li><strong>IP:</strong> ${escapeHtml(info.ip)}</li>`,
+  ]
+    .filter(Boolean)
+    .join("");
+
+  const { error } = await resend.emails.send({
+    from: FROM_NOREPLY,
+    to,
+    subject: "Unusual sign-in activity on your Larry account",
+    html: wrapHtml(`
+      <h1 style="font-size: 22px; font-weight: 700; letter-spacing: -0.03em; margin: 0 0 12px;">We signed you out of every device</h1>
+      <p style="font-size: 15px; color: #555; line-height: 1.6; margin: 0 0 16px;">
+        A previously-expired Larry session token was presented again just now. That usually means either a device has a stale session, or someone else got hold of it. Either way, every active Larry session for your account has been signed out as a precaution.
+      </p>
+      ${details ? `<ul style="font-size: 14px; color: #555; line-height: 1.8; padding-left: 20px; margin: 0 0 28px;">${details}</ul>` : ""}
+      <p style="font-size: 15px; color: #555; line-height: 1.6; margin: 0 0 28px;">
+        If you don't recognise this, reset your password immediately.
+      </p>
+      ${ctaButton(`${frontendUrl}/forgot-password`, "Reset your password")}
+    `),
+  });
+  if (error) {
+    console.error("[email] sendRefreshReuseAlert failed:", error);
+    throw new Error(`Failed to send refresh-reuse alert: ${error.message}`);
+  }
+}
+
 function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }

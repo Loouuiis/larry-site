@@ -68,6 +68,11 @@ enrolment UI.
 
 ### P2 — backlog
 
+**✅ Shipped in `fix/auth-p2-polish`:**
+- Email trim+normalise ordering: `emailSchema` now `.transform(trim+lower).pipe(.email())` so pasted addresses with stray whitespace validate correctly instead of silently failing.
+- Refresh-token reuse detection: `/v1/auth/refresh` now, when a revoked token is replayed, revokes every active refresh token for `(user_id, tenant_id)`, writes an `auth.refresh_reuse_detected` audit log, and emails the user. Stolen-token replay can no longer keep a quiet parallel branch alive.
+- Session rotation on re-login: `/v1/auth/login` now revokes every prior active refresh token for `(user_id, tenant_id)` before issuing the new one. Stale sessions on forgotten devices no longer linger.
+
 **Device fingerprint.** `auth.ts:321-322` does exact `(ip, user_agent)` match
 for known-device detection. Mobile clients rotate UA on each OS update and
 change IP on every Wi-Fi handoff, producing constant "new device" emails.

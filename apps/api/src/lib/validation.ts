@@ -12,7 +12,11 @@ export const passwordSchema = z
   .regex(/[0-9]/, "Password must contain at least one number")
   .regex(/[^a-zA-Z0-9]/, "Password must contain at least one special character");
 
+// Trim + lowercase BEFORE running the RFC-ish email check. Reversing
+// the order means pasted addresses with stray whitespace ("  x@y.com ",
+// the iOS clipboard-with-trailing-newline bite) fail validation instead
+// of silently succeeding after normalisation.
 export const emailSchema = z
   .string()
-  .email("Invalid email address")
-  .transform((v) => v.trim().toLowerCase());
+  .transform((v) => v.trim().toLowerCase())
+  .pipe(z.string().email("Invalid email address"));
