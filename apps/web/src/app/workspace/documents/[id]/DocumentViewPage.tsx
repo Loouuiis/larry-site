@@ -17,6 +17,7 @@ interface DocumentData {
   updatedAt: string;
   projectId?: string | null;
   metadata?: Record<string, unknown>;
+  meetingTranscript?: string | null;
 }
 
 const DOC_TYPE_LABELS: Record<string, string> = {
@@ -278,7 +279,6 @@ export function DocumentViewPage({ id, isLarry }: { id: string; isLarry: boolean
                       color: "var(--text-2)",
                       whiteSpace: "pre-wrap",
                       wordBreak: "break-word",
-                      fontFamily: doc.docType === "transcript" ? "var(--font-mono, monospace)" : "inherit",
                     }}
                   >
                     {doc.content}
@@ -287,6 +287,36 @@ export function DocumentViewPage({ id, isLarry }: { id: string; isLarry: boolean
                   <p className="text-[13px]" style={{ color: "var(--text-disabled)" }}>
                     No content available.
                   </p>
+                )}
+                {doc.meetingTranscript && (
+                  <>
+                    <div
+                      style={{
+                        margin: "28px 0 20px",
+                        borderTop: "1px solid var(--border)",
+                        paddingTop: "20px",
+                      }}
+                    >
+                      <p
+                        className="text-[11px] font-semibold uppercase tracking-widest mb-4"
+                        style={{ color: "var(--text-muted)" }}
+                      >
+                        Full transcript
+                      </p>
+                      <div
+                        style={{
+                          fontSize: "13px",
+                          lineHeight: "1.8",
+                          color: "var(--text-2)",
+                          whiteSpace: "pre-wrap",
+                          wordBreak: "break-word",
+                          fontFamily: "var(--font-mono, monospace)",
+                        }}
+                      >
+                        {doc.meetingTranscript}
+                      </div>
+                    </div>
+                  </>
                 )}
               </div>
             )}

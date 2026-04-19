@@ -528,7 +528,7 @@ export const documentRoutes: FastifyPluginAsync = async (fastify) => {
       const tenantId = request.user.tenantId;
       const actorUserId = request.user.userId;
 
-      const rows = await fastify.db.queryTenant<DocumentListRow>(
+      const rows = await fastify.db.queryTenant<DocumentListRow & { meetingTranscript: string | null }>(
         tenantId,
         `SELECT d.id,
                 d.project_id as "projectId",
@@ -541,8 +541,13 @@ export const documentRoutes: FastifyPluginAsync = async (fastify) => {
                 d.metadata,
                 d.created_by_user_id as "createdByUserId",
                 d.created_at as "createdAt",
-                d.updated_at as "updatedAt"
+                d.updated_at as "updatedAt",
+                mn.transcript as "meetingTranscript"
            FROM documents d
+           LEFT JOIN meeting_notes mn
+             ON d.source_kind = 'meeting'
+            AND mn.id::text = d.source_record_id
+            AND mn.tenant_id = d.tenant_id
           WHERE d.tenant_id = $1
             AND d.id = $2
           LIMIT 1`,
