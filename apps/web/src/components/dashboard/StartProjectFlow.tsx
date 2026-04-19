@@ -54,7 +54,7 @@ const CHAT_QUESTIONS = [
   "What is the working name of this project?",
   "What outcome are you trying to deliver?",
   "What deadline, launch date, or milestone are you aiming for?",
-  "What are the first 3-5 deliverables or workstreams Larry should set up?",
+  "What are the first deliverables or workstreams Larry should set up?",
   "What risks, constraints, or dependencies should Larry keep in view?",
 ] as const;
 
