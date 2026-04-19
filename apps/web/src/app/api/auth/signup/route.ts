@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   createSessionToken,
+  csrfCookieOptions,
   normalizeEmail,
   sessionCookieOptions,
 } from "@/lib/auth";
@@ -113,7 +114,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const token = await createSessionToken({
+    const { token, csrfToken } = await createSessionToken({
       userId: payload.user.id,
       email: payload.user.email,
       tenantId: payload.user.tenantId,
@@ -125,6 +126,10 @@ export async function POST(req: NextRequest) {
     });
     const res = NextResponse.json({ success: true }, { status: 201 });
     res.cookies.set(sessionCookieOptions(token));
+    // Mirror the session's csrfToken into a readable cookie so the
+    // signup wizard's subsequent mutating /api/** calls (invitations,
+    // project create) pass middleware CSRF validation.
+    res.cookies.set(csrfCookieOptions(csrfToken));
     return res;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

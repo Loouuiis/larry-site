@@ -5,7 +5,11 @@
  */
 
 import type { AppSession } from "@/lib/auth";
-import { createSessionToken, sessionCookieOptions } from "@/lib/auth";
+import {
+  createSessionToken,
+  csrfCookieOptions,
+  sessionCookieOptions,
+} from "@/lib/auth";
 import { cookies } from "next/headers";
 
 interface ApiRefreshResponse {
@@ -95,7 +99,8 @@ export async function refreshApiSession(
 // ── Persist updated session cookie ──────────────────────────────────────────
 
 export async function persistRefreshedSession(session: AppSession): Promise<void> {
-  const token = await createSessionToken(session);
+  const { token, csrfToken } = await createSessionToken(session);
   const store = await cookies();
   store.set(sessionCookieOptions(token));
+  store.set(csrfCookieOptions(csrfToken));
 }

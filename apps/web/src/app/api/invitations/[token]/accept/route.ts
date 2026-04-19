@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSessionToken, sessionCookieOptions } from "@/lib/auth";
+import {
+  createSessionToken,
+  csrfCookieOptions,
+  sessionCookieOptions,
+} from "@/lib/auth";
 
 const API_BASE = process.env.LARRY_API_BASE_URL ?? "http://localhost:8080";
 
@@ -52,7 +56,7 @@ export async function POST(
 
   // Mint the iron-session cookie so the invitee lands logged in on /workspace.
   // Mirrors apps/web/src/app/api/auth/login/route.ts:104-115.
-  const sessionToken = await createSessionToken({
+  const { token: sessionToken, csrfToken } = await createSessionToken({
     userId: payload.userId,
     email: payload.email,
     tenantId: payload.tenantId,
@@ -69,5 +73,6 @@ export async function POST(
     tenantId: payload.tenantId,
   });
   res.cookies.set(sessionCookieOptions(sessionToken));
+  res.cookies.set(csrfCookieOptions(csrfToken));
   return res;
 }
