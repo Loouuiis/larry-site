@@ -19,8 +19,14 @@ interface TenantMember {
 
 const ROLE_OPTIONS: ProjectMembershipRole[] = ["owner", "editor", "viewer"];
 
+const PROJECT_ROLE_LABEL: Record<string, string> = {
+  owner: "Admin",
+  editor: "PM",
+  viewer: "Member",
+};
+
 function formatRole(value: string): string {
-  return value.replace(/[_-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+  return PROJECT_ROLE_LABEL[value] ?? value.replace(/[_-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -292,11 +298,11 @@ export function CollaboratorsPanel({
         <div className="mt-5 space-y-4">
           <p className="text-[12px]" style={{ color: "var(--text-muted)" }}>
             {membersPayload.currentUserRole === "owner"
-              ? "Your role: Owner (Full control and manages access)"
+              ? "Your role: Admin (Full control and manages access)"
               : membersPayload.currentUserRole === "editor"
-              ? "Your role: Editor (Can edit the project)"
+              ? "Your role: PM (Can edit the project)"
               : membersPayload.currentUserRole === "viewer"
-              ? "Your role: Viewer (Can view the project)"
+              ? "Your role: Member (Can view the project)"
               : "No role assigned"}
           </p>
 
@@ -544,7 +550,7 @@ export function CollaboratorsPanel({
                           {member.name}
                         </p>
                         <p className="truncate text-[12px]" style={{ color: "var(--text-muted)" }}>
-                          {member.email} - Tenant {formatRole(member.tenantRole)}
+                          {member.email} — {formatRole(member.tenantRole)}
                         </p>
                       </div>
 
@@ -613,7 +619,7 @@ export function CollaboratorsPanel({
                       className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider"
                       style={{ color: "var(--text-disabled)" }}
                     >
-                      {role === "owner" ? "Owners" : role === "editor" ? "Editors" : "Viewers"}
+                      {role === "owner" ? "Admins" : role === "editor" ? "PMs" : "Members"}
                     </p>
                     {roleMembers.map((member) => (
                       <div

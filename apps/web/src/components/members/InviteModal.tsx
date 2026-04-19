@@ -14,9 +14,9 @@ const ROLE_OPTIONS: { value: InviteRole; label: string; description: string; ico
 ];
 
 const PROJECT_ROLE_OPTIONS: { value: ProjectInviteRole; label: string; description: string }[] = [
-  { value: "owner",  label: "Owner",  description: "Full control, can manage access" },
-  { value: "editor", label: "Editor", description: "Can edit tasks, dates, and notes" },
-  { value: "viewer", label: "Viewer", description: "Read-only access" },
+  { value: "owner",  label: "Admin",  description: "Full control, can manage access" },
+  { value: "editor", label: "PM",     description: "Can edit tasks, dates, and notes" },
+  { value: "viewer", label: "Member", description: "Read-only access" },
 ];
 
 type InviteTab = "email" | "link";

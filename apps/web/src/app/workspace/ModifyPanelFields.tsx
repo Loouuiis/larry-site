@@ -293,9 +293,9 @@ function RoleSelect({
       onChange={(e) => onChange(e.target.value)}
       className={INPUT_CLASS}
     >
-      <option value="owner">Owner</option>
-      <option value="editor">Editor</option>
-      <option value="viewer">Viewer</option>
+      <option value="owner">Admin</option>
+      <option value="editor">PM</option>
+      <option value="viewer">Member</option>
     </select>
   );
 }
