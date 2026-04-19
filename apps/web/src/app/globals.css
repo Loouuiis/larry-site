@@ -662,3 +662,9 @@ h3, h4 {
 .workspace-root ::-webkit-scrollbar-thumb:hover {
   background: var(--text-disabled);
 }
+
+/* Landing-page-only body background override.
+   Interior app pages continue to use --page-bg (#f2f3ff). */
+body.landing-root {
+  background: #ffffff;
+}
