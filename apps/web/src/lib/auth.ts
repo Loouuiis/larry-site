@@ -145,3 +145,24 @@ export function csrfCookieOptions(csrfToken: string) {
     path: "/",
   };
 }
+
+// P2-3: persistent device identifier. The browser never reads or writes
+// this — it's httpOnly so an XSS on a legitimate session can't lift it,
+// and the server uses it as a hint for new-device email alerts rather
+// than an auth credential. 30 days matches our "recent session" window
+// on the API side. Rotates on the server side only if the user clears
+// cookies; legitimate OS / UA upgrades don't churn it.
+export const DEVICE_COOKIE = "larry_device_id";
+const DEVICE_COOKIE_MAX_AGE = 30 * 24 * 60 * 60; // 30 days
+
+export function deviceCookieOptions(deviceId: string) {
+  return {
+    name: DEVICE_COOKIE,
+    value: deviceId,
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    maxAge: DEVICE_COOKIE_MAX_AGE,
+    path: "/",
+  };
+}

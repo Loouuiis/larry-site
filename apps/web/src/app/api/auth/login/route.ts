@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  DEVICE_COOKIE,
   createSessionToken,
   csrfCookieOptions,
+  deviceCookieOptions,
   normalizeEmail,
   sessionCookieOptions,
 } from "@/lib/auth";
@@ -57,11 +59,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // P2-3: forward the persistent device id (if any) so the API can
+    // classify this as a known device and skip the new-device email.
+    const incomingDeviceId = req.cookies.get(DEVICE_COOKIE)?.value;
+    const upstreamHeaders: Record<string, string> = { "Content-Type": "application/json" };
+    if (incomingDeviceId) upstreamHeaders["X-Device-Id"] = incomingDeviceId;
+
     let apiResponse: Response;
     try {
       apiResponse = await fetch(`${apiBaseUrl.replace(/\/+$/, "")}/v1/auth/login`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: upstreamHeaders,
         body: JSON.stringify({
           ...(explicitTenantId ? { tenantId: explicitTenantId } : {}),
           email,
@@ -116,6 +124,7 @@ export async function POST(req: NextRequest) {
     const payload = (await apiResponse.json()) as ApiLoginResponse & {
       code?: string;
       mfaPendingToken?: string;
+      deviceId?: string;
     };
 
     // MFA second-step required: the API responds 200 with an mfaPendingToken
@@ -145,6 +154,9 @@ export async function POST(req: NextRequest) {
     const res = NextResponse.json({ success: true });
     res.cookies.set(sessionCookieOptions(token));
     res.cookies.set(csrfCookieOptions(csrfToken));
+    if (payload.deviceId) {
+      res.cookies.set(deviceCookieOptions(payload.deviceId));
+    }
     return res;
   } catch (err) {
     console.error("[login]", err);

@@ -261,6 +261,13 @@ export const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
     // If the caller came in with an enrolment token, the login flow is
     // blocked waiting for us — issue real tokens so they can continue.
     if (caller.kind === "enrolment_token") {
+      const incomingDeviceId =
+        typeof request.headers["x-device-id"] === "string" && request.headers["x-device-id"]
+          ? request.headers["x-device-id"]
+          : null;
+      const { randomUUID } = await import("node:crypto");
+      const effectiveDeviceId = incomingDeviceId ?? randomUUID();
+
       const accessToken = await issueAccessToken(fastify, {
         userId: caller.userId,
         tenantId: caller.tenantId,
@@ -275,11 +282,13 @@ export const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
       }, undefined, {
         ipAddress: request.ip,
         userAgent: request.headers["user-agent"] ?? undefined,
+        deviceId: effectiveDeviceId,
       });
       return reply.send({
         scratchCodes,
         accessToken,
         refreshToken,
+        deviceId: effectiveDeviceId,
         user: {
           id: caller.userId,
           email: caller.email,
@@ -364,6 +373,17 @@ export const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
       [decoded.userId],
     );
 
+    // P2-3: device fingerprint. MFA verify is the session-minting path
+    // for admins in mfa-required tenants, so it mirrors /login's cookie
+    // handling. Reuse the incoming X-Device-Id if present, otherwise
+    // mint a new UUID and return it for the web layer to cookie.
+    const incomingDeviceId =
+      typeof request.headers["x-device-id"] === "string" && request.headers["x-device-id"]
+        ? request.headers["x-device-id"]
+        : null;
+    const { randomUUID } = await import("node:crypto");
+    const effectiveDeviceId = incomingDeviceId ?? randomUUID();
+
     // Session rotation on re-login (P2-5): nuke old refresh tokens.
     await fastify.db.query(
       `UPDATE refresh_tokens SET revoked_at = NOW()
@@ -385,6 +405,7 @@ export const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
     }, undefined, {
       ipAddress: request.ip,
       userAgent: request.headers["user-agent"] ?? undefined,
+      deviceId: effectiveDeviceId,
     });
 
     await writeAuditLog(fastify.db, {
@@ -399,6 +420,7 @@ export const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
     return reply.send({
       accessToken,
       refreshToken,
+      deviceId: effectiveDeviceId,
       user: {
         id: decoded.userId,
         email: decoded.email,

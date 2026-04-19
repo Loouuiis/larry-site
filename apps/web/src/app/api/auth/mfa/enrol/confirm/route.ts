@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  DEVICE_COOKIE,
   createSessionToken,
   csrfCookieOptions,
+  deviceCookieOptions,
   sessionCookieOptions,
 } from "@/lib/auth";
 import { getSession } from "@/lib/auth";
@@ -18,7 +20,9 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => ({}));
   const session = await getSession();
+  const incomingDeviceId = req.cookies.get(DEVICE_COOKIE)?.value;
   const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (incomingDeviceId) headers["X-Device-Id"] = incomingDeviceId;
   const viaToken = Boolean(body?.mfaEnrolmentToken);
   if (session?.apiAccessToken) {
     headers.Authorization = `Bearer ${session.apiAccessToken}`;
@@ -46,6 +50,7 @@ export async function POST(req: NextRequest) {
       scratchCodes?: string[];
       accessToken?: string;
       refreshToken?: string;
+      deviceId?: string;
       user?: { id: string; email: string; tenantId: string; role: string };
       error?: string;
     };
@@ -72,6 +77,9 @@ export async function POST(req: NextRequest) {
       });
       res.cookies.set(sessionCookieOptions(token));
       res.cookies.set(csrfCookieOptions(csrfToken));
+      if (data.deviceId) {
+        res.cookies.set(deviceCookieOptions(data.deviceId));
+      }
       return res;
     }
 

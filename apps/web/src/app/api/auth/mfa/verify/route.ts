@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  DEVICE_COOKIE,
   createSessionToken,
   csrfCookieOptions,
+  deviceCookieOptions,
   sessionCookieOptions,
 } from "@/lib/auth";
 
@@ -20,11 +22,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Service is not configured." }, { status: 503 });
     }
 
+    const incomingDeviceId = req.cookies.get(DEVICE_COOKIE)?.value;
+    const upstreamHeaders: Record<string, string> = { "Content-Type": "application/json" };
+    if (incomingDeviceId) upstreamHeaders["X-Device-Id"] = incomingDeviceId;
+
     let apiResponse: Response;
     try {
       apiResponse = await fetch(`${apiBaseUrl.replace(/\/+$/, "")}/v1/auth/mfa/verify`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: upstreamHeaders,
         body: JSON.stringify(body),
         cache: "no-store",
         signal: AbortSignal.timeout(12_000),
@@ -44,6 +50,7 @@ export async function POST(req: NextRequest) {
     const data = payload as {
       accessToken?: string;
       refreshToken?: string;
+      deviceId?: string;
       user?: { id: string; email: string; tenantId: string; role: string; displayName?: string | null };
     };
     if (!data.accessToken || !data.user?.id) {
@@ -63,6 +70,9 @@ export async function POST(req: NextRequest) {
     const res = NextResponse.json({ success: true });
     res.cookies.set(sessionCookieOptions(token));
     res.cookies.set(csrfCookieOptions(csrfToken));
+    if (data.deviceId) {
+      res.cookies.set(deviceCookieOptions(data.deviceId));
+    }
     return res;
   } catch (err) {
     console.error("[mfa-verify]", err);
