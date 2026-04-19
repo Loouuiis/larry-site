@@ -1,18 +1,20 @@
 "use client";
 import { useMemo, useState } from "react";
 import { Plus } from "lucide-react";
-import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import { useQueryClient, useMutation } from "@tanstack/react-query";
 import {
   DndContext, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
 import type { WorkspaceTimelineTask, WorkspaceTimeline } from "@/app/dashboard/types";
-import type { GanttTask, ProjectCategory, ContextMenuAction, GanttNode } from "./gantt-types";
+import type { GanttTask, ContextMenuAction, GanttNode } from "./gantt-types";
 import { NEUTRAL_ROW_COLOUR } from "./gantt-types";
 import {
   buildProjectTree, buildCategoryColorMap, normalizeGanttStatus,
   validateDrop, type DropContext,
 } from "./gantt-utils";
+import { useCategoriesFromTimeline, useProjectsFromTimeline, QK_TIMELINE_ORG } from "@/hooks/useTimelineSnapshot";
+import type { TimelineCategorySummary } from "@larry/shared";
 import { GanttContainer } from "./GanttContainer";
 import { AddNodeModal } from "./AddNodeModal";
 import { CategoryColourPopover } from "./CategoryColourPopover";
@@ -35,11 +37,6 @@ type AddCtx =
   | { mode: "subcategory"; parentCategoryId: string };   // v4 Slice 4 — nested
 
 type ColourPopover = { categoryId: string; currentColour: string | null };
-
-// v4 Slice 4 — share query keys with PortfolioGanttClient so invalidations
-// travel across the two surfaces automatically.
-const QK_CATEGORIES = ["categories"] as const;
-const QK_PROJECTS = ["projects"] as const;
 
 function toGanttTask(t: WorkspaceTimelineTask): GanttTask {
   return {
@@ -68,26 +65,10 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
   // /workspace/timeline within staleTime, the first render already has the
   // real colour + category tree (fixes the Larry-purple flash reproduced
   // 2026-04-18 at t=12,367 ms → t=13,006 ms).
-  const { data: categoriesData } = useQuery({
-    queryKey: QK_CATEGORIES,
-    queryFn: async (): Promise<{ categories: ProjectCategory[] }> => {
-      const res = await fetch("/api/workspace/categories", { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    },
-    staleTime: 30_000,
-  });
-  const { data: projectsData } = useQuery({
-    queryKey: QK_PROJECTS,
-    queryFn: async (): Promise<{ items: ProjectSummary[] }> => {
-      const res = await fetch("/api/workspace/projects?status=all", { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    },
-    staleTime: 30_000,
-  });
+  const { data: categoriesData } = useCategoriesFromTimeline();
+  const { data: projectsData } = useProjectsFromTimeline();
 
-  const allCategories: ProjectCategory[] = categoriesData?.categories ?? [];
+  const allCategories: TimelineCategorySummary[] = categoriesData?.categories ?? [];
 
   // The project row's category colour — resolved synchronously from the shared
   // cache. Returns null when data isn't loaded yet; the Gantt renders neutral
@@ -96,7 +77,7 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
     if (!projectsData || !categoriesData) return null;
     const proj = projectsData.items.find((p: ProjectSummary) => p.id === projectId);
     if (!proj?.categoryId) return null;
-    const map = buildCategoryColorMap(categoriesData.categories.map((c: ProjectCategory) => ({ id: c.id, colour: c.colour })));
+    const map = buildCategoryColorMap(categoriesData.categories.map((c: TimelineCategorySummary) => ({ id: c.id, colour: c.colour })));
     return map.get(`cat:${proj.categoryId}`) ?? null;
   }, [categoriesData, projectsData, projectId]);
 
@@ -124,8 +105,7 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
   const [colourPopover, setColourPopover] = useState<ColourPopover | null>(null);
 
   const invalidateCategoryCaches = () => {
-    void qc.invalidateQueries({ queryKey: QK_CATEGORIES });
-    void qc.invalidateQueries({ queryKey: ["timeline", "org"] });
+    void qc.invalidateQueries({ queryKey: QK_TIMELINE_ORG });
   };
 
   // v4 Slice 4.5 — DnD on the project timeline. Same sensor config +
@@ -167,7 +147,6 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
     },
     onSuccess: async () => {
       invalidateCategoryCaches();
-      void qc.invalidateQueries({ queryKey: QK_PROJECTS });
     },
     onError: (err: unknown) => setMutationError(err instanceof Error ? err.message : "Couldn't move project"),
   });
@@ -240,7 +219,6 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
   const refreshAll = async () => {
     await refresh();
     invalidateCategoryCaches();
-    void qc.invalidateQueries({ queryKey: QK_PROJECTS });
   };
 
   function handleAdd(context: { selectedKey: string | null }) {

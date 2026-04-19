@@ -9,7 +9,7 @@ const EASE = [0.22, 1, 0.36, 1] as const;
 
 export function CTASection() {
   const openWaitlist = useOverlayTrigger("waitlist");
-  const openFounders = useOverlayTrigger("founders");
+  const openIntro = useOverlayTrigger("intro");
 
   return (
     <section id="pricing" className="relative overflow-hidden border-t border-[var(--text-1)] bg-[var(--text-1)] py-14 sm:py-28">
@@ -75,12 +75,12 @@ export function CTASection() {
               size="lg"
               variant="ghost"
               className="w-full border border-[var(--text-2)] text-[var(--text-disabled)] hover:border-[var(--text-muted)] hover:text-[var(--text-2)] transition-colors duration-200 sm:w-auto"
-              onClick={openFounders}
+              onClick={openIntro}
             >
-              Speak to the Founders
+              Book an intro
             </Button>
             <p className="mt-2 text-[11px] text-[var(--text-2)]">
-              Explore a structured pilot for your team
+              Tell us about your team — we'll arrange a call
             </p>
           </div>
         </motion.div>

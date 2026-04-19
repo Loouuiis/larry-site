@@ -2,103 +2,69 @@
 
 import { FadeUp } from "@/components/ui/FadeUp";
 
-// Primary roles get full cards with breathing room.
-// Supporting roles are compact — same info, less visual weight.
-// Six identical full cards with placeholder green-dot icons is uniform noise.
-const PRIMARY_ROLES = [
-  {
-    id: "pm",
-    title: "Project Managers",
-    description:
-      "Stop being the system. Let Larry own the reminders, the follow-ups, and the status updates — so you can focus on unblocking delivery.",
-  },
-  {
-    id: "pmo",
-    title: "PMO Leads",
-    description:
-      "Get consistent execution across every project in your portfolio without adding headcount or manual oversight.",
-  },
-] as const;
+const ROLES = [
+  "Project Managers",
+  "PMO Leads",
+  "Consultants and Professional Services Teams",
+  "Operations and Delivery Leaders",
+  "Engineering and Technical Leaders",
+  "CTOs & COOs",
+];
 
-const SECONDARY_ROLES = [
-  {
-    id: "ops",
-    title: "Directors of Operations",
-    description:
-      "Operational clarity at scale. Larry surfaces blockers, tracks accountability, and keeps leadership informed automatically.",
-  },
-  {
-    id: "delivery",
-    title: "Heads of Delivery",
-    description:
-      "Faster execution cycles, fewer deadline slips. Larry acts as the always-on coordination layer your clients never see but always benefit from.",
-  },
-  {
-    id: "consultants",
-    title: "Consultants",
-    description:
-      "Every billable hour spent chasing updates is margin lost. Larry recovers it — and makes your engagements run cleaner.",
-  },
-  {
-    id: "cxo",
-    title: "CTOs & COOs",
-    description:
-      "Real-time visibility into what's moving, what's stalled, and what needs your attention — without building a reporting process.",
-  },
-] as const;
+const INDUSTRIES = [
+  "Consulting",
+  "IT Services",
+  "Engineering",
+  "Construction and Infrastructure",
+  "Energy and Renewables",
+  "SaaS",
+];
 
 export function WhoItsForSection() {
   return (
-    <section id="audience" className="border-t border-[var(--border)] py-12 sm:py-24">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6">
-        <FadeUp className="mb-10 max-w-2xl sm:mb-14">
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-[var(--text-disabled)] sm:mb-3 sm:text-xs">
-            Who this is for
+    <section id="audience" className="py-12 sm:py-24 border-t border-[var(--border)] bg-white">
+      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+        <FadeUp>
+          <p className="text-[11px] font-semibold tracking-[0.14em] text-[var(--text-disabled)] uppercase text-center">
+            Who This Is For
           </p>
-          <h2 className="mb-3 text-2xl font-bold tracking-tight text-[var(--text-1)] sm:mb-4 sm:text-4xl lg:text-5xl">
-            Built for the people who own execution.
+          <h2
+            className="mt-4 text-center text-[var(--text-1)] font-bold mx-auto max-w-3xl"
+            style={{ fontSize: "clamp(1.5rem, 3.5vw, 2.5rem)", letterSpacing: "-0.02em", lineHeight: 1.15 }}
+          >
+            Built for the people who own project management and execution.
           </h2>
-          <p className="text-sm leading-relaxed text-[var(--text-muted)] sm:text-base">
-            Especially in organisations with 50–500+ employees where
-            coordination intensity is high — multiple stakeholders,
-            dependencies, and delivery pressure.
-          </p>
         </FadeUp>
 
-        {/* Primary roles — full cards, generous padding */}
-        <FadeUp className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {PRIMARY_ROLES.map(({ id, title, description }) => (
+        <div className="mt-12 grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+          {ROLES.map((role) => (
             <div
-              key={id}
-              className="rounded-2xl border border-[var(--border)] bg-white p-5 sm:p-8"
-              style={{ boxShadow: "var(--shadow-card)" }}
+              key={role}
+              className="rounded-xl border border-[var(--border)] bg-white px-4 py-5 text-center transition-shadow duration-200 hover:shadow-[0_4px_16px_rgba(17,23,44,0.05)]"
             >
-              <h3 className="mb-3 text-base font-semibold text-[var(--text-1)]">
-                {title}
-              </h3>
-              <p className="text-sm leading-relaxed text-[var(--text-muted)]">
-                {description}
-              </p>
+              <span className="text-[15px] font-medium text-[var(--text-1)]">{role}</span>
             </div>
           ))}
-        </FadeUp>
+        </div>
 
-        {/* Supporting roles — compact, no visual competition with primaries */}
-        <FadeUp className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {SECONDARY_ROLES.map(({ id, title, description }) => (
-            <div
-              key={id}
-              className="rounded-xl border border-[var(--border)] bg-white p-5"
-              style={{ boxShadow: "0 1px 4px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.03)" }}
-            >
-              <h3 className="mb-1.5 text-sm font-semibold text-[var(--text-1)]">
-                {title}
-              </h3>
-              <p className="text-xs leading-relaxed text-[var(--text-muted)]">
-                {description}
-              </p>
+        <div className="mt-16 border-t border-[var(--border)]" />
+
+        <FadeUp delay={0.05}>
+          <div className="mt-10 flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6">
+            <span className="text-[11px] font-semibold tracking-[0.14em] text-[var(--text-disabled)] uppercase shrink-0">
+              Built for teams in
+            </span>
+            <div className="flex flex-wrap gap-2">
+              {INDUSTRIES.map((industry) => (
+                <span
+                  key={industry}
+                  className="rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-4 py-1.5 text-[13px] font-medium text-[var(--text-2)]"
+                >
+                  {industry}
+                </span>
+              ))}
             </div>
-          ))}
+          </div>
         </FadeUp>
       </div>
     </section>

@@ -45,7 +45,7 @@ import type {
 } from "@larry/shared";
 import { writeAuditLog } from "../../lib/audit.js";
 import { buildPendingClause } from "../../lib/intelligence-hints.js";
-import { reserveTokens } from "../../lib/llm-budget.js";
+import { reserveTokens, LLMQuotaError } from "../../lib/llm-budget.js";
 
 // Conservative pre-call estimates. runIntelligence empirically lands around
 // 9k tokens on our test tenant; streamLarryChat turns are typically 2-3k.
@@ -724,7 +724,9 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           };
         }
       } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error);
+        const reason = error instanceof LLMQuotaError
+          ? "Larry has reached its daily AI limit for this workspace. Suggestions will resume tomorrow."
+          : (error instanceof Error ? error.message : String(error));
         fastify.log.warn(
           { err: error, tenantId: input.tenantId, projectId: project.id, userId: input.actorUserId },
           "global chat intelligence failed for project"

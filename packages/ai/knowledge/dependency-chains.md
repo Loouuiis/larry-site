@@ -2,6 +2,13 @@
 
 How to identify and manage task dependencies and critical paths.
 
+## Creating Sequential Tasks
+When the user describes work that happens in sequence ("evaluation then report", "phase 1 then phase 2", "X before Y"), set `startDate` on downstream tasks to the day after the predecessor's `dueDate`. Never set all tasks to start today when the work is clearly sequential.
+
+Example: "Evaluation due May 1, then write the report" →
+- Evaluation: dueDate = 2026-05-01, startDate = today
+- Report: startDate = 2026-05-02, dueDate = inferred from scope
+
 ## Identifying Dependencies
 When analyzing a project, ask:
 - Which tasks MUST complete before others can start?

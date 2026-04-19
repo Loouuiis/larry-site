@@ -75,7 +75,7 @@ const CHAT_QUESTIONS = [
   "What is the working name of this project?",
   "What outcome are you trying to deliver?",
   "What deadline, launch date, or milestone are you aiming for?",
-  "What are the first 3-5 deliverables or workstreams Larry should set up?",
+  "What are the first deliverables or workstreams Larry should set up?",
   "What risks, constraints, or dependencies should Larry keep in view?",
 ] as const;
 
@@ -739,7 +739,8 @@ export function WorkspaceProjectIntake() {
                     onChange={(event) => setChatInput(event.target.value)}
                     rows={4}
                     placeholder="Type your answer here..."
-                    className="w-full rounded-[22px] border px-4 py-3 text-[14px] outline-none"
+                    maxLength={10000}
+className="w-full rounded-[22px] border px-4 py-3 text-[14px] outline-none"
                     style={{ borderColor: "var(--border)", background: "var(--surface-2)", color: "var(--text-1)" }}
                   />
                   <div className="flex justify-end">

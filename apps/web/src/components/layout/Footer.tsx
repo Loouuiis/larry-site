@@ -5,10 +5,9 @@ import Link from "next/link";
 // tank perceived quality. When new pages (blog, docs, legal) ship, add them
 // back here one at a time alongside the corresponding route.
 const PRODUCT_LINKS: { label: string; href: string }[] = [
-  { label: "How It Works", href: "#solution" },
-  { label: "Why Larry", href: "#differentiator" },
-  { label: "Who It's For", href: "#audience" },
-  { label: "Pricing", href: "#pricing" },
+  { label: "Mission", href: "/#mission" },
+  { label: "Pricing", href: "/pricing" },
+  { label: "Careers", href: "/careers" },
 ];
 
 export function Footer() {

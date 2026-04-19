@@ -9,8 +9,13 @@ export default defineConfig({
   },
   test: {
     include: ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/*.spec.ts", "src/**/*.spec.tsx"],
+    environment: "node",
     passWithNoTests: true,
-    environment: "jsdom",
+    poolOptions: {
+      forks: {
+        singleFork: true,
+      },
+    },
     setupFiles: ["src/test-setup.ts"],
   },
 });
