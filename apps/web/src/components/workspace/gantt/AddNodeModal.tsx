@@ -36,6 +36,8 @@ export function AddNodeModal({
   const [dueDate, setDueDate] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [description, setDescription] = useState("");
+  const [descOpen, setDescOpen] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { titleRef.current?.focus(); }, []);
@@ -72,6 +74,7 @@ export function AddNodeModal({
         };
         if (startDate) body.startDate = startDate;
         if (dueDate) body.dueDate = dueDate;
+        if (description.trim()) body.description = description.trim();
         if (mode === "subtask") body.parentTaskId = parentTaskId;
         const res = await fetch("/api/workspace/tasks", {
           method: "POST", headers: { "Content-Type": "application/json" },
@@ -149,6 +152,35 @@ export function AddNodeModal({
                     style={inputStyle}
                   />
                 </div>
+              </div>
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setDescOpen((v) => !v)}
+                  style={{
+                    background: "transparent",
+                    border: 0,
+                    padding: 0,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: 1,
+                    color: "var(--text-muted)",
+                    cursor: "pointer",
+                  }}
+                >
+                  {descOpen ? "− Description" : "+ Add description"}
+                </button>
+                {descOpen && (
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="What does this task cover? (optional)"
+                    rows={3}
+                    maxLength={4000}
+                    style={{ ...inputStyle, resize: "vertical", marginTop: 6 }}
+                  />
+                )}
               </div>
               {requireDates && datesMissing && (
                 <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0 }}>
