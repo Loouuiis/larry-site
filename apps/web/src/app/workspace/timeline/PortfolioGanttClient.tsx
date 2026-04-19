@@ -681,15 +681,16 @@ function ErrorBanner({
   return (
     <div
       role="alert"
+      aria-live="polite"
       style={{
         display: "flex",
         alignItems: "center",
         gap: 12,
         padding: "10px 14px",
         borderRadius: 8,
-        background: "#fdecef",
-        border: "1px solid #f5c1cb",
-        color: "#8a1f33",
+        background: "var(--pm-red-light)",
+        border: "1px solid var(--pm-red)",
+        color: "var(--pm-red)",
         fontSize: 13,
       }}
     >
@@ -700,8 +701,8 @@ function ErrorBanner({
           onClick={onRetry}
           style={{
             background: "transparent",
-            border: "1px solid #d97a8b",
-            color: "#8a1f33",
+            border: "1px solid var(--pm-red)",
+            color: "var(--pm-red)",
             padding: "4px 10px",
             borderRadius: 6,
             fontSize: 12,
@@ -719,7 +720,7 @@ function ErrorBanner({
         style={{
           background: "transparent",
           border: 0,
-          color: "#8a1f33",
+          color: "var(--pm-red)",
           cursor: "pointer",
           display: "inline-flex",
           padding: 2,
