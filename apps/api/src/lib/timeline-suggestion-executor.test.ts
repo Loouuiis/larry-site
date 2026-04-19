@@ -119,7 +119,7 @@ describe("executeTimelineSuggestion — createCategories", () => {
       const tx = vi.fn(async (fn: (c: { query: typeof q }) => Promise<unknown>) =>
         fn({ query: q }),
       );
-      return { db: { tx, queryTenant: vi.fn() }, q };
+      return { db: { tx, queryTenant: vi.fn() } };
     })();
     const result = await executeTimelineSuggestion(
       fakeFastify(db), TENANT, EVENT,
