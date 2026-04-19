@@ -44,7 +44,10 @@ function getUserInitials(displayName?: string | null, email?: string | null): st
   if (displayName && displayName.trim()) {
     return displayName.trim().split(/\s+/).filter(Boolean).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
   }
-  return (email?.split("@")[0] ?? "?").slice(0, 2).toUpperCase();
+  const username = email?.split("@")[0] ?? "?";
+  const parts = username.split(".").filter(Boolean);
+  if (parts.length >= 2) return ((parts[0][0] ?? "") + (parts[1][0] ?? "")).toUpperCase();
+  return username.slice(0, 2).toUpperCase();
 }
 
 interface WorkspaceSidebarInnerProps {
@@ -259,7 +262,7 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, avatar
             value={search}
             onChange={handleSearchChange}
             placeholder="Search…"
-            className="h-9 w-full pl-8 pr-3 text-[13px] outline-none transition-all"
+            className="h-[34px] w-full pl-8 pr-3 text-[13px] outline-none transition-all"
             style={{
               borderRadius: "var(--radius-input)",
               border: "1px solid var(--border)",
@@ -267,21 +270,6 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, avatar
               color: "var(--text-2)",
             }}
           />
-          {!isSearching && (
-            <kbd
-              className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 select-none"
-              style={{
-                fontSize: 10,
-                color: "#bdb7d0",
-                background: "#f2f3ff",
-                padding: "1px 5px",
-                borderRadius: 4,
-                fontWeight: 500,
-              }}
-            >
-              /
-            </kbd>
-          )}
           {isSearching && (
             <button
               onClick={dismiss}

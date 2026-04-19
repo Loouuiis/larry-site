@@ -3,7 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, Search } from "lucide-react";
+import { Bell, Menu } from "lucide-react";
 import { WorkspaceSwitcher } from "@/components/workspace/WorkspaceSwitcher";
 
 type WorkspaceTopBarProps = {
@@ -83,10 +83,6 @@ function Breadcrumb({ workspaceName }: { workspaceName: string }) {
 }
 
 export function WorkspaceTopBar({ userEmail: _userEmail, workspaceName = "Larry Workspace", onMobileMenuOpen }: WorkspaceTopBarProps) {
-  function openSearch() {
-    window.dispatchEvent(new Event("larry:search-open"));
-  }
-
   return (
     <header className="flex h-12 shrink-0 items-center px-6 gap-4" style={{ height: 48 }}>
       {/* Mobile: hamburger */}
@@ -103,27 +99,14 @@ export function WorkspaceTopBar({ userEmail: _userEmail, workspaceName = "Larry 
 
       <WorkspaceSwitcher />
 
-      {/* Cmd+K hint — hidden on mobile */}
-      <button
-        type="button"
-        onClick={openSearch}
-        aria-label="Open search"
-        className="hidden sm:flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12px] transition-opacity hover:opacity-80"
-        style={{
-          background: "var(--surface-2)",
-          border: "1px solid var(--border)",
-          color: "var(--text-muted)",
-        }}
+      <Link
+        href="/workspace/notifications"
+        aria-label="Notifications"
+        className="hidden sm:flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-[var(--surface-2)]"
+        style={{ color: "var(--text-muted)" }}
       >
-        <Search size={12} />
-        <span>Search</span>
-        <kbd
-          className="flex items-center rounded px-1 py-0.5 text-[10px] ml-1"
-          style={{ background: "var(--surface)", border: "1px solid var(--border)", color: "var(--text-disabled)", fontFamily: "inherit" }}
-        >
-          ⌘K
-        </kbd>
-      </button>
+        <Bell size={17} />
+      </Link>
     </header>
   );
 }

@@ -2019,6 +2019,25 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
         {/* ── Tab: Extra ────────────────────────────────── */}
         {activeTab === "extra" && (
           <div className="space-y-6">
+            {/* Global search */}
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new Event("larry:search-open"))}
+              className="flex items-center gap-2 rounded-lg px-4 py-3 text-[13px] transition-colors"
+              style={{ border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text-2)", width: "100%" }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-2)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface)")}
+            >
+              <Search size={14} style={{ color: "var(--text-disabled)" }} />
+              <span className="flex-1 text-left">Search across workspace…</span>
+              <kbd
+                className="flex items-center rounded px-1.5 py-0.5 text-[11px]"
+                style={{ background: "var(--surface-2)", border: "1px solid var(--border)", color: "var(--text-disabled)", fontFamily: "inherit" }}
+              >
+                ⌘K
+              </kbd>
+            </button>
+
             {/* Project description (moved from Overview) */}
             <ProjectDescriptionCard description={project.description} />
 
