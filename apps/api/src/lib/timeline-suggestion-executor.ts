@@ -50,6 +50,37 @@ export async function executeTimelineSuggestion(
     const applied = { categories: 0, moves: 0, recolours: 0 };
     const skipped: ExecuteResult["skipped"] = [];
 
+    const tempIdToRealId = new Map<string, string>();
+
+    for (const cat of payload.createCategories ?? []) {
+      try {
+        const ins = await client.query<{ id: string }>(
+          `INSERT INTO project_categories (tenant_id, name, colour)
+           VALUES ($1, $2, $3)
+           RETURNING id`,
+          [tenantId, cat.name, cat.colour],
+        );
+        tempIdToRealId.set(cat.tempId, ins.rows[0].id);
+        applied.categories += 1;
+      } catch (e) {
+        const code = (e as { code?: string } | null)?.code;
+        if (code !== "23505") throw e;
+        const existing = await client.query<{ id: string }>(
+          `SELECT id FROM project_categories
+            WHERE tenant_id = $1 AND name = $2
+              AND parent_category_id IS NULL AND project_id IS NULL`,
+          [tenantId, cat.name],
+        );
+        if (existing.rows.length > 0) {
+          const id = existing.rows[0].id;
+          tempIdToRealId.set(cat.tempId, id);
+          skipped.push({ reason: "category_name_already_exists", categoryId: id });
+        } else {
+          throw e;
+        }
+      }
+    }
+
     // Mark the event accepted.
     await client.query(
       `UPDATE larry_events

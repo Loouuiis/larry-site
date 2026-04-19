@@ -68,3 +68,68 @@ describe("executeTimelineSuggestion — concurrency guard", () => {
     expect(clientQuery).toHaveBeenCalledTimes(3);
   });
 });
+
+describe("executeTimelineSuggestion — createCategories", () => {
+  it("inserts new categories and returns applied count", async () => {
+    // scripted:
+    // 1. set_config
+    // 2. SELECT FOR UPDATE → suggested
+    // 3. INSERT cat A → { id: 'uuid-a' }
+    // 4. INSERT cat B → { id: 'uuid-b' }
+    // 5. UPDATE accepted
+    const { db, clientQuery } = makeFakeDb([
+      { rows: [] },
+      { rows: [{ id: EVENT, eventType: "suggested" }] },
+      { rows: [{ id: "uuid-a" }] },
+      { rows: [{ id: "uuid-b" }] },
+      { rows: [] },
+    ]);
+    const result = await executeTimelineSuggestion(
+      fakeFastify(db), TENANT, EVENT,
+      {
+        displayText: "x", reasoning: "x",
+        createCategories: [
+          { tempId: "cat_a1", name: "Customer Onboarding", colour: "#5fb4d3" },
+          { tempId: "cat_b2", name: "Internal Tooling",    colour: "#f5b143" },
+        ],
+      },
+      USER,
+    );
+    expect(result.applied.categories).toBe(2);
+    expect(clientQuery).toHaveBeenCalledTimes(5);
+    // Second INSERT call — third arg (values) should carry the second category.
+    const insertA = clientQuery.mock.calls[2];
+    expect(insertA[0]).toMatch(/INSERT INTO project_categories/);
+    expect(insertA[1]).toEqual([TENANT, "Customer Onboarding", "#5fb4d3"]);
+  });
+
+  it("reuses an existing category on unique-name collision", async () => {
+    // Reject the INSERT with a pg unique-violation error, then the SELECT
+    // to look up the existing id returns one row.
+    const { db } = (() => {
+      const q = vi.fn();
+      q.mockResolvedValueOnce({ rows: [] });                                     // set_config
+      q.mockResolvedValueOnce({ rows: [{ id: EVENT, eventType: "suggested" }] }); // lock
+      const uniqueErr = Object.assign(new Error("dup"), { code: "23505" });
+      q.mockRejectedValueOnce(uniqueErr);                                        // INSERT dup
+      q.mockResolvedValueOnce({ rows: [{ id: "existing-id" }] });                // SELECT
+      q.mockResolvedValueOnce({ rows: [] });                                     // UPDATE accepted
+      const tx = vi.fn(async (fn: (c: { query: typeof q }) => Promise<unknown>) =>
+        fn({ query: q }),
+      );
+      return { db: { tx, queryTenant: vi.fn() }, q };
+    })();
+    const result = await executeTimelineSuggestion(
+      fakeFastify(db), TENANT, EVENT,
+      {
+        displayText: "x", reasoning: "x",
+        createCategories: [{ tempId: "cat_x", name: "Existing", colour: "#111" }],
+      },
+      USER,
+    );
+    expect(result.applied.categories).toBe(0);
+    expect(result.skipped).toContainEqual(
+      expect.objectContaining({ reason: "category_name_already_exists", categoryId: "existing-id" }),
+    );
+  });
+});
