@@ -14,6 +14,7 @@ import { emailSchema, passwordSchema } from "../../lib/validation.js";
 import { sendMemberInviteEmail } from "../../lib/email.js";
 import { writeAuditLog } from "../../lib/audit.js";
 import { hashPassword, issueAccessToken, issueRefreshToken } from "../../lib/auth.js";
+import { assertPasswordNotBreached } from "../../lib/password-breach.js";
 import { assertSeatAvailable, SeatCapReachedError } from "../../lib/seat-cap.js";
 import { assertMfaIfRequired, MfaEnrollmentRequiredError } from "../../lib/mfa-gate.js";
 import { getProjectMembershipAccess, upsertProjectMembership } from "../../lib/project-memberships.js";
@@ -310,6 +311,7 @@ export const invitationsRoutes: FastifyPluginAsync = async (fastify) => {
             "Password is required to create an account for this invitation.",
           );
         }
+        await assertPasswordNotBreached(body.password);
         const passwordHash = await hashPassword(body.password);
         const displayName = body.displayName?.trim() || inv.email.split("@")[0];
         const ins = await client.query<{ id: string }>(

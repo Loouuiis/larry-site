@@ -4,6 +4,7 @@ import { generateSecureToken, hashPassword, hashToken } from "../../lib/auth.js"
 import { writeAuditLog } from "../../lib/audit.js";
 import { sendPasswordResetEmail } from "../../lib/email.js";
 import { emailSchema, passwordSchema } from "../../lib/validation.js";
+import { assertPasswordNotBreached } from "../../lib/password-breach.js";
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 
@@ -147,6 +148,8 @@ export const authPasswordResetRoutes: FastifyPluginAsync = async (fastify) => {
     if (new Date(tokenRow.expires_at) < new Date()) {
       return reply.badRequest("This reset link has expired. Please request a new one.");
     }
+
+    await assertPasswordNotBreached(body.newPassword);
 
     // Hash the new password
     const passwordHash = await hashPassword(body.newPassword);

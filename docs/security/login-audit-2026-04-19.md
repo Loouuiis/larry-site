@@ -68,33 +68,18 @@ enrolment UI.
 
 ### P2 — backlog
 
-**✅ Shipped in `fix/auth-p2-polish`:**
+**✅ Shipped in `fix/auth-p2-polish` (PR #129):**
 - Email trim+normalise ordering: `emailSchema` now `.transform(trim+lower).pipe(.email())` so pasted addresses with stray whitespace validate correctly instead of silently failing.
 - Refresh-token reuse detection: `/v1/auth/refresh` now, when a revoked token is replayed, revokes every active refresh token for `(user_id, tenant_id)`, writes an `auth.refresh_reuse_detected` audit log, and emails the user. Stolen-token replay can no longer keep a quiet parallel branch alive.
 - Session rotation on re-login: `/v1/auth/login` now revokes every prior active refresh token for `(user_id, tenant_id)` before issuing the new one. Stale sessions on forgotten devices no longer linger.
+
+**✅ Shipped in `fix/password-breach-check`:**
+- Password breach check (HIBP k-anonymous): new `apps/api/src/lib/password-breach.ts` with `assertPasswordNotBreached` wired into signup, password reset, change-password, invitation accept, and invite-link redeem. SHA-1 the password locally, send the first 5 hex chars to HIBP's Range API, reject anything in the returned list. Fails open on HIBP downtime (signup shouldn't break because an external service is flaky). 1h in-memory prefix cache. New `PasswordBreachedError` mapped to a 400 "Password Compromised" response by the global error handler.
 
 **Device fingerprint.** `auth.ts:321-322` does exact `(ip, user_agent)` match
 for known-device detection. Mobile clients rotate UA on each OS update and
 change IP on every Wi-Fi handoff, producing constant "new device" emails.
 Replace with a persistent `device_id` cookie + loose fingerprint.
-
-**Password breach check.** NIST SP 800-63B recommends comparing new passwords
-against HaveIBeenPwned's k-anonymous breach API. Currently any policy-passing
-password is accepted even if it's in the top-10k breached list.
-
-**Email trim pre-validation.** `emailSchema` runs `.email()` before
-`.transform()` so leading/trailing whitespace in pasted addresses fails
-validation. Reorder with a pre-transform pass (`.string().transform(trim).pipe(z.string().email())`).
-
-**Refresh token reuse detection.** If an already-revoked refresh token is
-presented, we return 401 but don't revoke the whole session family. An
-attacker who steals a refresh token and races the legitimate owner can keep
-one branch alive. Industry standard: revoke all sibling tokens when a
-revoked one is reused.
-
-**Session rotation on login.** Existing active sessions aren't invalidated
-when the user logs in again. Low impact since refresh rotation covers this
-on every /refresh cycle, but best practice is to kill the prior family.
 
 ### P3 — nice to have
 

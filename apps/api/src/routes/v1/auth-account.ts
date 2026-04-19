@@ -12,6 +12,7 @@ import {
   sendEmailChangeNotification,
 } from "../../lib/email.js";
 import { passwordSchema } from "../../lib/validation.js";
+import { assertPasswordNotBreached } from "../../lib/password-breach.js";
 
 const EMAIL_CHANGE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
@@ -118,6 +119,8 @@ export const authAccountRoutes: FastifyPluginAsync = async (fastify) => {
         }
       }
       // If OAuth-only (null password_hash), skip currentPassword check
+
+      await assertPasswordNotBreached(body.newPassword);
 
       // Hash and update
       const newHash = await hashPassword(body.newPassword);

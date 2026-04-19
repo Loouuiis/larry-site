@@ -14,6 +14,7 @@ import { getProjectMembershipAccess } from "../../lib/project-memberships.js";
 import { emailSchema, passwordSchema } from "../../lib/validation.js";
 import { writeAuditLog } from "../../lib/audit.js";
 import { hashPassword, issueAccessToken, issueRefreshToken, verifyPassword } from "../../lib/auth.js";
+import { assertPasswordNotBreached } from "../../lib/password-breach.js";
 import { assertSeatAvailable, SeatCapReachedError } from "../../lib/seat-cap.js";
 
 const ProjectRoleEnum = z.enum(["owner", "editor", "viewer"]);
@@ -227,6 +228,7 @@ export const inviteLinksRoutes: FastifyPluginAsync = async (fastify) => {
         }
         userId = existing.rows[0].id;
       } else {
+        await assertPasswordNotBreached(body.password);
         const passwordHash = await hashPassword(body.password);
         const displayName = body.displayName?.trim() || body.email.split("@")[0];
         const ins = await client.query<{ id: string }>(
