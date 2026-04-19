@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import type { WorkspaceLarryEvent } from "@/app/dashboard/types";
+import { TimelineSuggestionPreview } from "./TimelineSuggestionPreview";
 
 /**
  * Collapsible action detail preview.
@@ -13,6 +14,10 @@ import type { WorkspaceLarryEvent } from "@/app/dashboard/types";
  * - For project_note_send: Note content
  */
 export function ActionDetailPreview({ event }: { event: WorkspaceLarryEvent }) {
+  if (typeof event.actionType === "string" && event.actionType.startsWith("timeline_")) {
+    return <TimelineSuggestionPreview event={event} />;
+  }
+
   const [expanded, setExpanded] = useState(false);
   const payload = event.payload ?? {};
   const description = typeof payload.description === "string" ? payload.description.trim() : null;
