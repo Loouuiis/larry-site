@@ -258,7 +258,7 @@ Every action: { type, displayText, reasoning, payload }.
 ### Action type payloads
 
 "task_create" [ACTION CENTRE ONLY]
-  payload: { "title": string, "description": string|null, "dueDate": "YYYY-MM-DD"|null, "assigneeName": string|null, "priority": "low"|"medium"|"high"|"critical", "sourceMemoryEntryId": string|null }
+  payload: { "title": string, "description": string|null, "startDate": "YYYY-MM-DD"|null, "dueDate": "YYYY-MM-DD"|null, "assigneeName": string|null, "priority": "low"|"medium"|"high"|"critical", "sourceMemoryEntryId": string|null }
 
   If this task was triggered by a specific PROJECT MEMORY entry (e.g. an inbound email, Slack message, calendar event), set "sourceMemoryEntryId" to the UUID after "memory:" in that entry's [memory:<uuid>] tag. This lets the user jump back to the source thread. Only set it when the task is directly caused by a specific memory entry; otherwise omit or set null.
 
