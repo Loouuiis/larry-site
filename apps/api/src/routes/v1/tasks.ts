@@ -13,7 +13,7 @@ import {
   appendProjectStatusFilter,
 } from "../../lib/project-status.js";
 
-const CreateTaskSchema = z.object({
+export const CreateTaskSchema = z.object({
   projectId: z.string().uuid(),
   title: z.string().min(1).max(300),
   description: z.string().max(4_000).optional(),
