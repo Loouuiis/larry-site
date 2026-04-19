@@ -37,6 +37,12 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
+// Strip CR/LF to defend against email header injection via the subject line.
+// Resend sanitizes headers, but this is a cheap belt-and-braces guard.
+function stripNewlines(s: string): string {
+  return s.replace(/[\r\n]+/g, " ");
+}
+
 const RECIPIENT = "anna.wigrena@gmail.com";
 
 export async function POST(req: NextRequest) {
@@ -109,7 +115,7 @@ export async function POST(req: NextRequest) {
     from: process.env.RESEND_FROM_LARRY ?? "Larry <larry@larry-pm.com>",
     to: [RECIPIENT],
     replyTo: data.email,
-    subject: `Larry intro request — ${data.firstName} ${data.lastName} (${data.company})`,
+    subject: `Larry intro request — ${stripNewlines(data.firstName)} ${stripNewlines(data.lastName)} (${stripNewlines(data.company)})`,
     html,
   });
 
