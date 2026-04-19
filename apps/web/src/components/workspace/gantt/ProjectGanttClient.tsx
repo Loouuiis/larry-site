@@ -17,6 +17,7 @@ import { useCategoriesFromTimeline, useProjectsFromTimeline, QK_TIMELINE_ORG } f
 import type { TimelineCategorySummary } from "@larry/shared";
 import { GanttContainer } from "./GanttContainer";
 import { AddNodeModal } from "./AddNodeModal";
+import { AddItemPicker } from "./AddItemPicker";
 import { CategoryColourPopover } from "./CategoryColourPopover";
 import type { CategoryOption } from "./GanttContextMenu";
 
@@ -100,6 +101,7 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
   }, [allCategories, projectId]);
 
   const [addCtx, setAddCtx] = useState<AddCtx | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [colourPopover, setColourPopover] = useState<ColourPopover | null>(null);
@@ -417,7 +419,7 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
           outlineHeaderActions={
             <button
               type="button"
-              onClick={() => handleAdd({ selectedKey })}
+              onClick={() => setPickerOpen(true)}
               style={{
                 display: "inline-flex", alignItems: "center", gap: 5,
                 height: 26, padding: "0 10px", fontSize: 12, fontWeight: 600,
@@ -431,6 +433,23 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
           }
         />
       </DndContext>
+      {pickerOpen && (
+        <AddItemPicker
+          onClose={() => setPickerOpen(false)}
+          onChoose={(kind) => {
+            setPickerOpen(false);
+            if (kind === "group") {
+              setAddCtx({ mode: "category" });
+            } else {
+              setAddCtx(
+                selectedKey?.startsWith("task:")
+                  ? { mode: "subtask", parentTaskId: selectedKey.slice(5) }
+                  : { mode: "task" }
+              );
+            }
+          }}
+        />
+      )}
       {addCtx && (
         <AddNodeModal
           // subcategory mode reuses the category modal with parentCategoryId set.

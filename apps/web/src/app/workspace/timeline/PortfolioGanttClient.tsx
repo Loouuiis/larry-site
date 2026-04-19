@@ -13,6 +13,7 @@ import {
 } from "@/components/workspace/gantt/gantt-utils";
 import { GanttContainer } from "@/components/workspace/gantt/GanttContainer";
 import { AddNodeModal } from "@/components/workspace/gantt/AddNodeModal";
+import { AddItemPicker } from "@/components/workspace/gantt/AddItemPicker";
 import { CategoryManagerPanel } from "@/components/workspace/gantt/CategoryManagerPanel";
 import { GanttEmptyState } from "@/components/workspace/gantt/GanttEmptyState";
 import { CategoryColourPopover } from "@/components/workspace/gantt/CategoryColourPopover";
@@ -32,6 +33,7 @@ type ColourPopover = { categoryId: string; currentColour: string | null; x: numb
 export function PortfolioGanttClient() {
   const qc = useQueryClient();
   const [addCtx, setAddCtx] = useState<AddCtx | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [managerOpen, setManagerOpen] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [colourPopover, setColourPopover] = useState<ColourPopover | null>(null);
@@ -615,7 +617,7 @@ export function PortfolioGanttClient() {
           outlineHeaderActions={
             <button
               type="button"
-              onClick={() => handleAdd({ selectedKey })}
+              onClick={() => setPickerOpen(true)}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -646,6 +648,22 @@ export function PortfolioGanttClient() {
         />
       )}
 
+      {pickerOpen && (
+        <AddItemPicker
+          taskLabel="Project"
+          onClose={() => setPickerOpen(false)}
+          onChoose={(kind) => {
+            setPickerOpen(false);
+            if (kind === "group") {
+              setAddCtx({ mode: "category" });
+            } else {
+              // "Task" in portfolio view = a project. Use selected category as parent if available.
+              const catId = selectedKey?.startsWith("cat:") ? selectedKey.slice(4) : undefined;
+              setAddCtx({ mode: "project", parentCategoryId: catId === "uncat" ? undefined : catId });
+            }
+          }}
+        />
+      )}
       {addCtx && (
         <AddNodeModal
           // subcategory + projectCategory both render as the "category" modal;
