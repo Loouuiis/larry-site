@@ -3583,6 +3583,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
     change_deadline:    "deadline_change",
     change_task_owner:  "owner_change",
     draft_email:        "email_draft",
+    draft_slack:        "slack_message_draft",
   };
 
   fastify.post(
