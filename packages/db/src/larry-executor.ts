@@ -100,7 +100,8 @@ interface DeadlineChangePayload {
 interface OwnerChangePayload {
   taskId: string;
   taskTitle: string;
-  newOwnerName: string;
+  // null / empty string → unassign the task entirely (B-009).
+  newOwnerName: string | null;
 }
 
 interface ScopeChangePayload {
@@ -909,9 +910,19 @@ export async function executeOwnerChange(
   tenantId: string,
   payload: OwnerChangePayload
 ): Promise<Record<string, unknown>> {
-  const newOwnerId = await resolveUserByName(db, tenantId, payload.newOwnerName);
-  if (!newOwnerId) {
-    throw new Error(`executeOwnerChange: user "${payload.newOwnerName}" not found in tenant ${tenantId}`);
+  // B-009: null / empty newOwnerName is the unassign path. Only resolve when
+  // the caller actually named someone.
+  const wantsUnassign =
+    payload.newOwnerName === null ||
+    payload.newOwnerName === undefined ||
+    payload.newOwnerName.trim() === "";
+
+  let newOwnerId: string | null = null;
+  if (!wantsUnassign) {
+    newOwnerId = await resolveUserByName(db, tenantId, payload.newOwnerName as string);
+    if (!newOwnerId) {
+      throw new Error(`executeOwnerChange: user "${payload.newOwnerName}" not found in tenant ${tenantId}`);
+    }
   }
 
   const rows = await db.queryTenant<Record<string, unknown>>(
@@ -928,7 +939,7 @@ export async function executeOwnerChange(
   const task = rows[0];
   await logActivity(db, tenantId, task.project_id as string, payload.taskId, {
     action: "owner_change",
-    newOwnerName: payload.newOwnerName,
+    newOwnerName: wantsUnassign ? null : payload.newOwnerName,
     newOwnerId,
     triggeredBy: "larry",
   });

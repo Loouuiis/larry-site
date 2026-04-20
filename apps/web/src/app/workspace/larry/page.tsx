@@ -37,6 +37,7 @@ import { PageState } from "@/components/PageState";
 interface WorkspaceProject {
   id: string;
   name: string;
+  updatedAt?: string | null;
 }
 
 /* ─── Helpers ────────────────────────────────────────────────────── */
@@ -298,6 +299,32 @@ export default function AskLarryPage() {
     () => new Map(projects.map((project) => [project.id, project.name])),
     [projects]
   );
+
+  // B-011: if two projects share a display name (common after test imports
+  // or merges), the user can't tell them apart in the selector. Append a
+  // disambiguation suffix — updatedAt date preferred, short ID fallback —
+  // only to the duplicates, so unique-name projects stay clean.
+  const projectSelectLabels = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const p of projects) {
+      const key = (p.name ?? "").trim().toLowerCase();
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    const labels = new Map<string, string>();
+    for (const p of projects) {
+      const key = (p.name ?? "").trim().toLowerCase();
+      if ((counts.get(key) ?? 0) <= 1) {
+        labels.set(p.id, p.name);
+      } else {
+        const suffix =
+          typeof p.updatedAt === "string" && p.updatedAt
+            ? p.updatedAt.slice(0, 10)
+            : p.id.slice(0, 6);
+        labels.set(p.id, `${p.name} · ${suffix}`);
+      }
+    }
+    return labels;
+  }, [projects]);
 
   const activeConversation = useMemo(
     () => conversations.find((c) => c.id === selectedConversationId) ?? null,
@@ -770,7 +797,7 @@ export default function AskLarryPage() {
                       >
                         <option value="">Global workspace</option>
                         {projects.map((project) => (
-                          <option key={project.id} value={project.id}>{project.name}</option>
+                          <option key={project.id} value={project.id}>{projectSelectLabels.get(project.id) ?? project.name}</option>
                         ))}
                         <option value="__new__">＋ New project</option>
                       </select>
