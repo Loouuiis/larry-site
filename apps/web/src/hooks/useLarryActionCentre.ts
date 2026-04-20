@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { WorkspaceProjectActionCentre } from "@/app/dashboard/types";
 import { getActionTypeTag } from "@/lib/action-types";
 
@@ -10,7 +11,9 @@ const EMPTY_ACTION_CENTRE: WorkspaceProjectActionCentre = {
   conversations: [],
 };
 const DEFAULT_ACTION_CENTRE_REFRESH_MS = 30_000;
-const ENV_ACTION_CENTRE_REFRESH_MS = Number(process.env.NEXT_PUBLIC_LARRY_ACTION_CENTRE_REFRESH_MS ?? "");
+const ENV_ACTION_CENTRE_REFRESH_MS = Number(
+  process.env.NEXT_PUBLIC_LARRY_ACTION_CENTRE_REFRESH_MS ?? "",
+);
 const ACTION_CENTRE_REFRESH_MS =
   Number.isFinite(ENV_ACTION_CENTRE_REFRESH_MS) && ENV_ACTION_CENTRE_REFRESH_MS > 0
     ? Math.floor(ENV_ACTION_CENTRE_REFRESH_MS)
@@ -33,6 +36,27 @@ export interface ActionError {
   message: string;
 }
 
+export function actionCentreQueryKey(projectId: string | undefined) {
+  return ["actionCentre", projectId ?? "larry"] as const;
+}
+
+async function fetchActionCentre(
+  projectId: string | undefined,
+): Promise<WorkspaceProjectActionCentre> {
+  const path = projectId
+    ? `/api/workspace/projects/${encodeURIComponent(projectId)}/action-centre`
+    : "/api/workspace/larry/action-centre";
+  const response = await fetch(path, { cache: "no-store" });
+  const payload = await readJson<WorkspaceProjectActionCentre>(response);
+  if (!response.ok) throw new Error(payload.error ?? "Failed to load action centre.");
+  return {
+    suggested: Array.isArray(payload.suggested) ? payload.suggested : [],
+    activity: Array.isArray(payload.activity) ? payload.activity : [],
+    conversations: Array.isArray(payload.conversations) ? payload.conversations : [],
+    error: payload.error,
+  };
+}
+
 export function useLarryActionCentre({
   projectId,
   onMutate = noopMutate,
@@ -40,109 +64,55 @@ export function useLarryActionCentre({
 }: {
   projectId?: string;
   onMutate?: () => Promise<void>;
-  onAccepted?: (toast: { actionType: string; actionLabel: string; actionColor: string; displayText: string; projectName: string | null; projectId: string }) => void;
+  onAccepted?: (toast: {
+    actionType: string;
+    actionLabel: string;
+    actionColor: string;
+    displayText: string;
+    projectName: string | null;
+    projectId: string;
+  }) => void;
 } = {}) {
-  const [data, setData] = useState<WorkspaceProjectActionCentre>(EMPTY_ACTION_CENTRE);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const qc = useQueryClient();
+  const key = actionCentreQueryKey(projectId);
+
+  const query = useQuery({
+    queryKey: key,
+    queryFn: () => fetchActionCentre(projectId),
+    refetchInterval: ACTION_CENTRE_REFRESH_MS,
+    refetchOnWindowFocus: true,
+  });
+
+  // Legacy bridge — other hooks still dispatch this event.
+  useEffect(() => {
+    function onRefresh() {
+      void qc.invalidateQueries({ queryKey: key });
+    }
+    window.addEventListener("larry:refresh-snapshot", onRefresh);
+    return () => window.removeEventListener("larry:refresh-snapshot", onRefresh);
+  }, [qc, key]);
+
+  const data = query.data ?? EMPTY_ACTION_CENTRE;
+
+  // --- mutation state and callbacks temporarily retained from the pre-migration
+  // implementation; Slice 5 replaces these with withOptimistic-driven mutations.
   const [accepting, setAccepting] = useState<string | null>(null);
   const [dismissing, setDismissing] = useState<string | null>(null);
-  const [modifying, setModifying] = useState<string | null>(null);
+  const [modifying, _setModifying] = useState<string | null>(null);
   const [modifyingEventId, setModifyingEventId] = useState<string | null>(null);
   const [executing, setExecuting] = useState<string | null>(null);
   const [actionError, setActionError] = useState<ActionError | null>(null);
-  const loadInFlightRef = useRef<Promise<void> | null>(null);
 
   const clearActionError = useCallback(() => setActionError(null), []);
 
-  const load = useCallback(
-    async ({ silent = false }: { silent?: boolean } = {}) => {
-      if (loadInFlightRef.current) {
-        return loadInFlightRef.current;
-      }
-
-      const run = (async () => {
-        if (!silent) {
-          setLoading(true);
-        }
-        try {
-          const path = projectId
-            ? `/api/workspace/projects/${encodeURIComponent(projectId)}/action-centre`
-            : "/api/workspace/larry/action-centre";
-          const response = await fetch(path, { cache: "no-store" });
-          const payload = await readJson<WorkspaceProjectActionCentre>(response);
-          if (!response.ok) {
-            throw new Error(payload.error ?? "Failed to load action centre.");
-          }
-          setData({
-            suggested: Array.isArray(payload.suggested) ? payload.suggested : [],
-            activity: Array.isArray(payload.activity) ? payload.activity : [],
-            conversations: Array.isArray(payload.conversations) ? payload.conversations : [],
-            error: payload.error,
-          });
-          setError(payload.error ?? null);
-        } catch (loadError) {
-          setData(EMPTY_ACTION_CENTRE);
-          setError(loadError instanceof Error ? loadError.message : "Failed to load action centre.");
-        } finally {
-          if (!silent) {
-            setLoading(false);
-          }
-          loadInFlightRef.current = null;
-        }
-      })();
-
-      loadInFlightRef.current = run;
-      return run;
+  const removeSuggestedLocally = useCallback(
+    (eventId: string) => {
+      qc.setQueryData<WorkspaceProjectActionCentre>(key, (prev) =>
+        prev ? { ...prev, suggested: prev.suggested.filter((e) => e.id !== eventId) } : prev,
+      );
     },
-    [projectId]
+    [qc, key],
   );
-
-  useEffect(() => {
-    void load();
-
-    function onRefresh() {
-      void load({ silent: true });
-    }
-
-    function onFocus() {
-      void load({ silent: true });
-    }
-
-    function onVisibilityChange() {
-      if (document.visibilityState === "visible") {
-        void load({ silent: true });
-      }
-    }
-
-    const interval = window.setInterval(() => {
-      void load({ silent: true });
-    }, ACTION_CENTRE_REFRESH_MS);
-
-    window.addEventListener("larry:refresh-snapshot", onRefresh);
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => {
-      window.clearInterval(interval);
-      window.removeEventListener("larry:refresh-snapshot", onRefresh);
-      window.removeEventListener("focus", onFocus);
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-    };
-  }, [load]);
-
-  // QA-2026-04-12 §3a: Accept double-click 409 race. Pre-fix the
-  // suggestion stayed in `data.suggested` until the post-accept reload
-  // returned, leaving the button visible for a few hundred ms after the
-  // POST succeeded. A second click against the same event then hit the
-  // server, by which time event_type was already "accepted" — 409. Clear
-  // the suggestion from local state the moment the API returns 200 so
-  // the row disappears immediately.
-  const removeSuggestedLocally = useCallback((eventId: string) => {
-    setData((current) => ({
-      ...current,
-      suggested: current.suggested.filter((event) => event.id !== eventId),
-    }));
-  }, []);
 
   const accept = useCallback(
     async (id: string) => {
@@ -153,11 +123,16 @@ export function useLarryActionCentre({
         if (response.ok) {
           const body = await readJson<{
             accepted: boolean;
-            event?: { actionType: string; displayText: string; projectName: string | null; projectId: string };
+            event?: {
+              actionType: string;
+              displayText: string;
+              projectName: string | null;
+              projectId: string;
+            };
           }>(response);
           removeSuggestedLocally(id);
           window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
-          await Promise.all([load(), onMutate()]);
+          await Promise.all([qc.invalidateQueries({ queryKey: key }), onMutate()]);
           if (body.event && onAccepted) {
             const tag = getActionTypeTag(body.event.actionType);
             onAccepted({
@@ -180,7 +155,7 @@ export function useLarryActionCentre({
         setAccepting(null);
       }
     },
-    [load, onMutate, onAccepted, removeSuggestedLocally]
+    [qc, key, onMutate, onAccepted, removeSuggestedLocally],
   );
 
   const dismiss = useCallback(
@@ -194,11 +169,9 @@ export function useLarryActionCentre({
           body: JSON.stringify({}),
         });
         if (response.ok) {
-          // Same optimistic-clear treatment as accept (QA §3a) so a fast
-          // dismiss → click loop can't re-fire on the same row.
           removeSuggestedLocally(id);
           window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
-          await Promise.all([load(), onMutate()]);
+          await Promise.all([qc.invalidateQueries({ queryKey: key }), onMutate()]);
         } else {
           const body = await readJson<{ message?: string; error?: string }>(response);
           setActionError({
@@ -210,13 +183,9 @@ export function useLarryActionCentre({
         setDismissing(null);
       }
     },
-    [load, onMutate, removeSuggestedLocally]
+    [qc, key, onMutate, removeSuggestedLocally],
   );
 
-  // Opens the inline Modify panel for an event. The panel itself (ModifyPanel +
-  // useModifyPanel) fetches the editable snapshot from /api/workspace/larry/events/
-  // [id]/modify, so this callback just toggles the UI.
-  // Spec: 2026-04-15-modify-action-design.md.
   const modify = useCallback((id: string): void => {
     setActionError(null);
     setModifyingEventId(id);
@@ -231,10 +200,12 @@ export function useLarryActionCentre({
       setExecuting(id);
       setActionError(null);
       try {
-        const response = await fetch(`/api/workspace/larry/events/${id}/let-larry-execute`, { method: "POST" });
+        const response = await fetch(`/api/workspace/larry/events/${id}/let-larry-execute`, {
+          method: "POST",
+        });
         if (response.ok) {
           window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
-          await Promise.all([load(), onMutate()]);
+          await Promise.all([qc.invalidateQueries({ queryKey: key }), onMutate()]);
           return true;
         }
         const body = await readJson<{ message?: string; error?: string }>(response);
@@ -249,15 +220,21 @@ export function useLarryActionCentre({
         setExecuting(null);
       }
     },
-    [load, onMutate],
+    [qc, key, onMutate],
   );
 
   return {
     suggested: data.suggested,
     activity: data.activity,
     conversations: data.conversations,
-    loading,
-    error,
+    loading: query.isLoading,
+    error:
+      data.error ??
+      (query.isError
+        ? query.error instanceof Error
+          ? query.error.message
+          : "Failed to load action centre."
+        : null),
     accepting,
     dismissing,
     modifying,
@@ -270,6 +247,8 @@ export function useLarryActionCentre({
     closeModify,
     letLarryExecute,
     clearActionError,
-    refresh: load,
+    refresh: async () => {
+      await query.refetch();
+    },
   };
 }
