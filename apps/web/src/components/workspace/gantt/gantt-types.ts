@@ -2,11 +2,15 @@ import type { GanttTask, GanttTaskStatus, ProjectCategory, PortfolioTimelineResp
 
 export type { GanttTask, GanttTaskStatus, ProjectCategory, PortfolioTimelineResponse };
 
+// Timeline Slice 2 — subtasks now carry `children` so the tree supports
+// arbitrary depth (task → subtask → subtask → …). The DB schema already
+// allows it via `tasks.parent_task_id` chaining; the cap was a frontend
+// artifact that made the feature look missing.
 export type GanttNode =
   | { kind: "category"; id: string | null; name: string; colour: string | null; children: GanttNode[] }
   | { kind: "project";  id: string; name: string; status: string; children: GanttNode[] }
   | { kind: "task";     id: string; task: GanttTask; children: GanttNode[] }
-  | { kind: "subtask";  id: string; task: GanttTask };
+  | { kind: "subtask";  id: string; task: GanttTask; children: GanttNode[] };
 
 export type ZoomLevel = "week" | "month" | "quarter";
 export const ROW_HEIGHT = 32;            // category + project (v3)

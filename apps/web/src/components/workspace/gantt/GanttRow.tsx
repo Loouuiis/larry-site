@@ -18,9 +18,11 @@ interface Props {
 
 function gatherDescendantTasks(node: GanttNode): GanttTask[] {
   const out: GanttTask[] = [];
+  // Timeline Slice 2 — subtask now carries `children`; walk them too so a
+  // parent task's rolled-up bar includes deeply-nested subtask spans.
   function walk(n: GanttNode) {
     if (n.kind === "task" || n.kind === "subtask") out.push(n.task);
-    if (n.kind !== "subtask") for (const c of n.children) walk(c);
+    for (const c of n.children) walk(c);
   }
   walk(node);
   return out;

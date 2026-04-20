@@ -202,9 +202,11 @@ function nodeLabel(n: GanttNode): string {
 
 function collectTasks(root: GanttNode): GanttTask[] {
   const out: GanttTask[] = [];
+  // Timeline Slice 2 — subtask now carries `children`; walk them too so
+  // deeply-nested subtask bars still contribute to range/date calcs.
   function walk(n: GanttNode) {
     if (n.kind === "task" || n.kind === "subtask") out.push(n.task);
-    if (n.kind !== "subtask") for (const c of n.children) walk(c);
+    for (const c of n.children) walk(c);
   }
   walk(root);
   return out;
@@ -220,7 +222,7 @@ function collectAllKeys(root: GanttNode): Set<string> {
   }
   function walk(n: GanttNode, isRoot: boolean) {
     if (!isRoot) out.add(keyOf(n));
-    if (n.kind !== "subtask") for (const c of n.children) walk(c, false);
+    for (const c of n.children) walk(c, false);
   }
   walk(root, true);
   return out;
