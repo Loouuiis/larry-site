@@ -12,14 +12,12 @@ import { CTASection } from "@/components/sections/CTASection";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { WelcomeSplash } from "@/components/ui/WelcomeSplash";
-import { LiquidBackground } from "@/components/ui/LiquidBackground";
 import { LandingRoot } from "@/components/layout/LandingRoot";
 
 export default function Home() {
   return (
     <LandingRoot>
       <WelcomeSplash />
-      <LiquidBackground />
       <Navbar />
       <main>
         <HeroSection />
