@@ -166,11 +166,22 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
       if (!res.ok) throw new Error(await extractApiError(res, "Couldn't move task"));
       return res.json();
     },
-    onSuccess: async () => {
-      await refresh();                // refetch the project-scoped task list
-      invalidateCategoryCaches();
-    },
+    onSuccess: async () => { await refreshAll(); },
     onError: (err: unknown) => setMutationError(err instanceof Error ? err.message : "Couldn't move task"),
+  });
+
+  const moveTaskToCategoryMutation = useMutation({
+    mutationFn: async (vars: { id: string; categoryId: string | null }) => {
+      const res = await fetch(`/api/workspace/tasks/${vars.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ categoryId: vars.categoryId }),
+      });
+      if (!res.ok) throw new Error(await extractApiError(res, "Couldn't move task to group"));
+      return res.json();
+    },
+    onSuccess: async () => { await refreshAll(); },
+    onError: (err: unknown) => setMutationError(err instanceof Error ? err.message : "Couldn't move task to group"),
   });
 
   function handleDragEnd(e: DragEndEvent) {
@@ -212,6 +223,12 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
           id: validation.effect.sourceId,
           projectId: validation.effect.newProjectId,
           parentTaskId: validation.effect.newParentTaskId,
+        });
+        return;
+      case "moveTaskToCategory":
+        moveTaskToCategoryMutation.mutate({
+          id: validation.effect.sourceId,
+          categoryId: validation.effect.newCategoryId,
         });
         return;
     }
@@ -284,21 +301,20 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
       return;
     }
     if (action === "moveToCategory" && (rowKind === "task" || rowKind === "subtask")) {
-      // Cross-category move for a task on the project timeline rewrites the
-      // project's categoryId (same path as PortfolioGanttClient).
+      const taskId = rowKey.startsWith("task:") ? rowKey.slice(5) : rowKey.slice(4);
       try {
-        const res = await fetch(`/api/workspace/projects/${projectId}`, {
+        const res = await fetch(`/api/workspace/tasks/${taskId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ categoryId: categoryId ?? null }),
         });
         if (!res.ok) {
-          setMutationError(await extractApiError(res, "Couldn't move this project"));
+          setMutationError(await extractApiError(res, "Couldn't move task to group"));
           return;
         }
         await refreshAll();
       } catch (e) {
-        setMutationError(e instanceof Error ? e.message : "Failed to move project");
+        setMutationError(e instanceof Error ? e.message : "Failed to move task to group");
       }
       return;
     }

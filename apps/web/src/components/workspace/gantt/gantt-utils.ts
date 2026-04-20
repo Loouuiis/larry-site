@@ -692,9 +692,10 @@ export function parseDndKey(key: string): ParsedDndKey | null {
 }
 
 export type DropEffect =
-  | { kind: "moveCategory"; sourceId: string; newParentCategoryId: string | null; newProjectId: string | null }
-  | { kind: "moveProject";  sourceId: string; newCategoryId: string | null }
-  | { kind: "moveTask";     sourceId: string; newProjectId: string | null; newParentTaskId: string | null };
+  | { kind: "moveCategory";         sourceId: string; newParentCategoryId: string | null; newProjectId: string | null }
+  | { kind: "moveProject";          sourceId: string; newCategoryId: string | null }
+  | { kind: "moveTask";             sourceId: string; newProjectId: string | null; newParentTaskId: string | null }
+  | { kind: "moveTaskToCategory";   sourceId: string; newCategoryId: string | null };
 
 export type DropValidation =
   | { ok: true;  effect: DropEffect }
@@ -807,6 +808,14 @@ export function validateDrop(
     return {
       ok: true,
       effect: { kind: "moveTask", sourceId: src.id, newProjectId: tgtTask.projectId, newParentTaskId },
+    };
+  }
+
+  // task/subtask → category  (move task into a project-scoped group)
+  if ((src.kind === "task" || src.kind === "sub") && tgt.kind === "cat") {
+    return {
+      ok: true,
+      effect: { kind: "moveTaskToCategory", sourceId: src.id, newCategoryId: tgt.id },
     };
   }
 

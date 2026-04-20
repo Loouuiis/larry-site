@@ -411,6 +411,7 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
         startDate: z.string().date().optional().nullable(),
         assigneeUserId: z.string().uuid().optional().nullable(),
         parentTaskId: z.string().uuid().nullable().optional(),
+        categoryId: z.string().uuid().nullable().optional(),
       }).parse(request.body);
       const tenantId = request.user.tenantId;
 
@@ -465,12 +466,18 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
       if (body.startDate !== undefined) { setClauses.push(`start_date = $${idx++}`); values.push(body.startDate); }
       if (body.assigneeUserId !== undefined) { setClauses.push(`assignee_user_id = $${idx++}`); values.push(body.assigneeUserId); }
 
-      // parentTaskId uses CASE-WHEN flag pattern so null (un-parent) is distinguishable
-      // from "not provided" (leave unchanged).
+      // parentTaskId / categoryId use CASE-WHEN flag pattern so null (clear)
+      // is distinguishable from "not provided" (leave unchanged).
       const parentTaskIdFlag = body.parentTaskId !== undefined;
       const parentTaskIdValue = body.parentTaskId ?? null;
       setClauses.push(`parent_task_id = CASE WHEN $${idx}::boolean THEN $${idx + 1} ELSE parent_task_id END`);
       values.push(parentTaskIdFlag, parentTaskIdValue);
+      idx += 2;
+
+      const categoryIdFlag = body.categoryId !== undefined;
+      const categoryIdValue = body.categoryId ?? null;
+      setClauses.push(`category_id = CASE WHEN $${idx}::boolean THEN $${idx + 1} ELSE category_id END`);
+      values.push(categoryIdFlag, categoryIdValue);
       idx += 2;
 
       if (setClauses.length === 1) return { success: true };
