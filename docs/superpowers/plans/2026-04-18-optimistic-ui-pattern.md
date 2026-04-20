@@ -1856,3 +1856,24 @@ EOF
 - **`scope` behaviour in v5.59**: same-string scopes serialise. If two mutations with `scope: { id: "x" }` are triggered, the second runs only after the first fully settles. Slice 5 uses `"actionCentre-event"` as a single scope literal across accept/dismiss/execute, which serialises the lot — intentional, because the three endpoints target the same event-state machine server-side. Slice 6's third test exercises this; if it fails, the fallback is per-event scope (`"actionCentre-event:"+id`) which only serialises double-clicks on the same event — less strict but closer to user intent.
 - **`larry:refresh-snapshot` event** stays wired in this hook because other hooks still dispatch it. Removing the event bus entirely is future work (one PR per migrated hook).
 - **Offline edge case** is intentionally minimal — no persistent queue, documented as a known gap in the spec §14.
+
+---
+
+## Completion (2026-04-20)
+
+| Slice | Commit | Tests | Notes |
+|---|---|---|---|
+| 0 — Test infra | `694a71c` | 72/72 green | RTL + happy-dom added; no existing tests broke |
+| 1 — Temp-id registry | `40d3012` | 12 new (84 total) | Pure module, unused |
+| 2 — `withOptimistic` core | `22c385c` | 8 new (92 total) | **Plan deviation:** `WithOptimisticHandlers` is now an explicit interface instead of `Pick<UseMutationOptions>` — the `Pick` approach broke test-site typechecking because v5.59's handler signatures take an extra `mutation` arg. TS contravariance on function args still lets callers spread the handlers into `useMutation`. |
+| 3 — Stale-op guards + temp-id rewrite | `5b84f3e` | 4 new (96 total) | **Plan test bug fixed:** the "failSwap unblocks awaiters" test called `resolveId` *after* the rollback, but `failSwap` deletes the registry entry. Fixed to register the awaiter before the rollback. |
+| 4 — Read layer to TanStack Query | `e844e24` | 96 (unchanged) | Hook shrank ~20%; public surface preserved; `loading` now only true on initial load (UX improvement, no flicker on poll) |
+| 5 — Mutations on `withOptimistic` | `4c61d7e` | 96 (unchanged) | `WorkspaceLarryEvent.executing?: boolean` added as a client-only optimistic flag. Mutations use `scope: { id: "actionCentre-event" }` to serialise rapid clicks. |
+| 6 — Hook integration tests | `e4e66d2` | 4 new (100 total) | **Test-infra fix:** `staleTime: Infinity` on test QueryClient so pre-seeded cache is honoured; test 2 uses a gated fetch to observe optimistic state before settlement; test 3 filters `/accept` calls from `/action-centre` refetches for a clean count. |
+| 7 — Playwright latency smoke | *skipped* | — | Existing Playwright specs cover state transitions, not latency. Hook integration tests prove the synchronous optimistic contract more reliably than a real-browser timing assertion would. Deferred to follow-up. |
+
+**Final state:**
+- Branch: `feat/optimistic-ui-pattern`
+- 100/100 web tests passing
+- Worktree used: `C:\Dev\larry\larry-optimistic` (parallel-session isolation)
+- Preview URL auto-deploys per commit
