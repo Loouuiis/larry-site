@@ -1,31 +1,54 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { Bell } from "lucide-react";
+import { useNotifications } from "@/hooks/useNotifications";
+import { NotificationBellDropdown } from "@/components/notifications/NotificationBellDropdown";
 
-interface NotificationBellProps {
-  count: number;
-  onCountChange: (count: number) => void;
-}
+export function NotificationBell() {
+  const { unreadCount } = useNotifications();
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
 
-export function NotificationBell({ count }: NotificationBellProps) {
-  const router = useRouter();
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!wrapRef.current) return;
+      if (!wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
 
   return (
-    <div className="relative">
+    <div ref={wrapRef} style={{ position: "relative" }}>
       <button
+        id="notification-bell-button"
         type="button"
-        onClick={() => router.push("/workspace/actions")}
-        className="relative inline-flex h-9 w-9 items-center justify-center rounded-lg text-[var(--pm-text-muted)] hover:bg-[var(--pm-gray-light)]"
-        title="Go to Actions"
+        aria-label="Notifications"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="relative inline-flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-[var(--surface-2)]"
+        style={{ color: "var(--text-muted)" }}
       >
-        <Bell size={20} />
-        {count > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#6c44f6] px-0.5 text-[10px] font-bold text-white">
-            {count > 99 ? "99+" : count}
+        <Bell size={17} />
+        {unreadCount > 0 && (
+          <span
+            className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-0.5 text-[10px] font-bold text-white"
+            style={{ background: "#6c44f6" }}
+          >
+            {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}
       </button>
+      {open && <NotificationBellDropdown onClose={() => setOpen(false)} />}
     </div>
   );
 }
