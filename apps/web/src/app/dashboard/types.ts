@@ -317,6 +317,9 @@ export interface WorkspaceLarryEvent {
   conversationTitle?: string | null;
   requestMessagePreview?: string | null;
   responseMessagePreview?: string | null;
+  // Client-only optimistic flag: set while a Let-Larry-Execute mutation is
+  // in flight against this suggestion. Server payloads never contain this.
+  executing?: boolean;
 }
 
 export interface WorkspaceConversationPreview {
