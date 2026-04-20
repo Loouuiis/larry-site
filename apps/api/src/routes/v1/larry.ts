@@ -3809,7 +3809,13 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
 
       // ── Intelligence config ───────────────────────────────────────────────
       const config = buildIntelligenceConfig(fastify.config);
-      const projectContext = snapshot.larryContext ?? null;
+      const taskLines = snapshot.tasks
+        .map(t => `  id:"${t.id}" title:"${t.title}" status:${t.status} risk:${t.riskLevel}${t.dueDate ? ` due:${t.dueDate}` : ""}${t.assigneeName ? ` assignee:${t.assigneeName}` : ""}`)
+        .join("\n");
+      const projectContext = [
+        snapshot.larryContext ?? null,
+        snapshot.tasks.length > 0 ? `TASKS (${snapshot.tasks.length} total):\n${taskLines}` : null,
+      ].filter(Boolean).join("\n\n") || null;
 
       // ── Accumulated state for post-stream writes ──────────────────────────
       let fullContent = "";
