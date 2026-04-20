@@ -40,6 +40,46 @@ interface ProactiveItem {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/**
+ * Pick the most recent conversation that matches the current chat scope.
+ *
+ * The API endpoint `/v1/larry/conversations` returns a mix of global and
+ * project-scoped conversations for the same user (see
+ * `listLarryConversationPreviews` in apps/api/src/lib/larry-ledger.ts). When
+ * the FAB mounts in global scope we previously picked `convos[0]` — i.e. the
+ * most recent conversation regardless of scope — which often turned out to be
+ * a project conversation. Sending that project conversationId to the global
+ * `/chat` endpoint causes the API to 409 with
+ * "Global chat cannot reuse a project conversation.", and the FAB would loop
+ * forever (bug B-001, 2026-04-20 E2E audit).
+ *
+ * Callers pass `projectId` = undefined for global scope and the concrete id
+ * for project scope. We return the first conversation whose scope matches.
+ */
+export function pickLatestConversationForScope<T extends { projectId: string | null }>(
+  conversations: T[],
+  projectId?: string
+): T | null {
+  const wantProjectId = projectId ?? null;
+  return (
+    conversations.find((c) =>
+      wantProjectId === null ? c.projectId === null : c.projectId === wantProjectId
+    ) ?? null
+  );
+}
+
+/**
+ * Detect the scope-mismatch 409 so the client can clear its stale
+ * conversationId and retry with null. Covers both direction wording emitted
+ * by the API ("Global chat cannot reuse a project conversation." and
+ * "Project chat cannot reuse a global conversation.").
+ */
+export function isScopeMismatchConflict(status: number, errorText?: string | null): boolean {
+  if (status !== 409) return false;
+  if (!errorText) return false;
+  return /cannot reuse a (project|global) conversation/i.test(errorText);
+}
+
 function normalizeMessage(
   message: PersistedLarryMessage,
   meta?: Pick<LarryMessage, "actionsExecuted" | "suggestionCount" | "clarifications">
@@ -166,7 +206,7 @@ export function useLarryChat(projectId?: string) {
         const convos = await listLarryConversations(projectId);
         setConversations(convos);
 
-        const existing = convos[0];
+        const existing = pickLatestConversationForScope(convos, projectId);
         if (!existing) {
           setConversationId(null);
           setMessages([]);
@@ -202,6 +242,11 @@ export function useLarryChat(projectId?: string) {
     setConversationId(null);
     setMessages([]);
     setInput("");
+    // Defensive: bug B-002 (2026-04-20) left the FAB input permanently
+    // disabled because an earlier send threw before reaching the `setBusy(false)`
+    // cleanup. Resetting here guarantees the input is typable again whenever
+    // the user clicks "New chat".
+    setBusy(false);
   }, []);
 
   const refreshConversations = useCallback(async () => {
@@ -254,168 +299,192 @@ export function useLarryChat(projectId?: string) {
       // Track pending tool chips mid-stream
       const pendingChips = new Map<string, WorkspaceLarryEvent & { _streaming?: boolean }>();
 
-      let didStream = false;
       let finalConversationId: string | null = null;
       let hadActions = false;
 
-      // ── Attempt streaming path first for both project and global chat ─────
       try {
-        const response = await streamLarryChat({
-          projectId,
-          message: messageText,
-          conversationId: conversationId ?? undefined,
-        });
+        // Attempt number: 0 = first try with whatever conversationId is in
+        // state; 1 = retry with null conversationId after a scope-mismatch
+        // 409 (bug B-001). Never loops beyond 1.
+        for (let attempt = 0; attempt <= 1; attempt++) {
+          const attemptConversationId =
+            attempt === 0 ? (conversationId ?? undefined) : undefined;
+          let didStream = false;
+          let scopeMismatch = false;
 
-        if (response.ok && response.body) {
-          didStream = true;
+          // ── Streaming path ───────────────────────────────────────────────
+          try {
+            const response = await streamLarryChat({
+              projectId,
+              message: messageText,
+              conversationId: attemptConversationId,
+            });
 
-          for await (const event of parseLarrySseStream(response.body)) {
-            switch (event.type) {
-              case "token":
-                updateStreamingMessage((prev) => ({ content: prev.content + event.delta }));
-                break;
+            if (response.ok && response.body) {
+              didStream = true;
 
-              case "tool_start": {
-                const chip = toolEventToChip(
-                  event.id,
-                  event.name,
-                  event.displayText,
-                  "suggested",
-                  true
-                );
-                pendingChips.set(event.id, chip);
-                updateStreamingMessage((prev) => ({
-                  linkedActions: [...prev.linkedActions, chip],
-                }));
-                break;
+              for await (const event of parseLarrySseStream(response.body)) {
+                switch (event.type) {
+                  case "token":
+                    updateStreamingMessage((prev) => ({ content: prev.content + event.delta }));
+                    break;
+
+                  case "tool_start": {
+                    const chip = toolEventToChip(
+                      event.id,
+                      event.name,
+                      event.displayText,
+                      "suggested",
+                      true
+                    );
+                    pendingChips.set(event.id, chip);
+                    updateStreamingMessage((prev) => ({
+                      linkedActions: [...prev.linkedActions, chip],
+                    }));
+                    break;
+                  }
+
+                  case "tool_done": {
+                    const updatedChip = toolEventToChip(
+                      event.id,
+                      event.name,
+                      event.displayText,
+                      event.success
+                        ? event.eventType === "auto_executed"
+                          ? "auto_executed"
+                          : "suggested"
+                        : "suggested",
+                      false
+                    );
+                    pendingChips.set(event.id, updatedChip);
+                    updateStreamingMessage((prev) => ({
+                      linkedActions: prev.linkedActions.map((a) =>
+                        a.id === event.id ? updatedChip : a
+                      ),
+                    }));
+                    if (event.success) hadActions = true;
+                    break;
+                  }
+
+                  case "done":
+                    finalConversationId = event.conversationId;
+                    setConversationId(event.conversationId);
+                    updateStreamingMessage((prev) => ({
+                      id: event.messageId,
+                      streaming: false,
+                      actionsExecuted: event.actionsExecuted,
+                      suggestionCount: event.suggestionCount,
+                      linkedActions:
+                        (event.linkedActions?.length ?? 0) > 0
+                          ? event.linkedActions
+                          : prev.linkedActions,
+                    }));
+                    if ((event.actionsExecuted ?? 0) > 0 || (event.suggestionCount ?? 0) > 0) {
+                      hadActions = true;
+                    }
+                    break;
+
+                  case "error":
+                    updateStreamingMessage((prev) => ({
+                      content: prev.content || event.message,
+                      streaming: false,
+                    }));
+                    break;
+                }
               }
-
-              case "tool_done": {
-                const updatedChip = toolEventToChip(
-                  event.id,
-                  event.name,
-                  event.displayText,
-                  event.success
-                    ? event.eventType === "auto_executed"
-                      ? "auto_executed"
-                      : "suggested"
-                    : "suggested",
-                  false
-                );
-                pendingChips.set(event.id, updatedChip);
-                updateStreamingMessage((prev) => ({
-                  linkedActions: prev.linkedActions.map((a) =>
-                    a.id === event.id ? updatedChip : a
-                  ),
-                }));
-                if (event.success) hadActions = true;
-                break;
+            } else if (attempt === 0 && response.status === 409) {
+              const errorText = await response.text().catch(() => "");
+              if (isScopeMismatchConflict(response.status, errorText)) {
+                scopeMismatch = true;
+                setConversationId(null);
               }
+            }
+          } catch {
+            didStream = false;
+          }
 
-              case "done":
-                finalConversationId = event.conversationId;
-                setConversationId(event.conversationId);
-                updateStreamingMessage((prev) => ({
-                  id: event.messageId,
-                  streaming: false,
-                  actionsExecuted: event.actionsExecuted,
-                  suggestionCount: event.suggestionCount,
-                  linkedActions:
-                    (event.linkedActions?.length ?? 0) > 0
-                      ? event.linkedActions
-                      : prev.linkedActions,
-                }));
-                // QA-2026-04-12 M-2: keep the optimistic user message in
-                // place. Pre-fix this filter dropped the user's bubble on
-                // `done`. Because this hook does not refetch messages on
-                // conversationId change, dropping the optimistic record
-                // left only Larry's reply visible — the FAB and inline
-                // project chat panels lost the user's typed text the
-                // moment Larry finished streaming. The synthetic id is
-                // safe to keep: any later loadConversation() replaces the
-                // entire messages array with the canonical server list.
-                if ((event.actionsExecuted ?? 0) > 0 || (event.suggestionCount ?? 0) > 0) {
+          // ── Fallback: non-streaming path ─────────────────────────────────
+          if (!didStream && !scopeMismatch) {
+            try {
+              const { response, data } = await sendLarryChat({
+                projectId,
+                message: messageText,
+                conversationId: attemptConversationId,
+              });
+
+              if (!response.ok) {
+                if (
+                  attempt === 0 &&
+                  isScopeMismatchConflict(response.status, data.error)
+                ) {
+                  scopeMismatch = true;
+                  setConversationId(null);
+                } else {
+                  updateStreamingMessage(() => ({
+                    content: data.error ?? "Something went wrong.",
+                    streaming: false,
+                  }));
+                  return;
+                }
+              } else {
+                finalConversationId = data.conversationId;
+                setConversationId(data.conversationId);
+
+                const nextUserMessage = normalizeMessage(data.userMessage);
+                const nextAssistantMessage = normalizeMessage(
+                  {
+                    ...data.assistantMessage,
+                    linkedActions:
+                      data.assistantMessage.linkedActions?.length > 0
+                        ? data.assistantMessage.linkedActions
+                        : data.linkedActions,
+                  },
+                  {
+                    actionsExecuted: data.actionsExecuted,
+                    suggestionCount: data.suggestionCount,
+                    clarifications: data.clarifications,
+                  }
+                );
+
+                setMessages((previous) =>
+                  previous
+                    .filter((m) => m.id !== optimisticUserId && m.id !== streamingLarryId)
+                    .concat(nextUserMessage, nextAssistantMessage)
+                );
+
+                if ((data.actionsExecuted ?? 0) > 0 || (data.suggestionCount ?? 0) > 0) {
                   hadActions = true;
                 }
-                break;
-
-              case "error":
-                updateStreamingMessage((prev) => ({
-                  content: prev.content || event.message,
-                  streaming: false,
-                }));
-                break;
+              }
+            } catch {
+              updateStreamingMessage(() => ({
+                content: "Network error. Please try again.",
+                streaming: false,
+              }));
+              return;
             }
           }
-        } else {
-          didStream = false;
+
+          // Scope-mismatch retry loops once with conversationId=null;
+          // anything else exits.
+          if (!scopeMismatch) break;
         }
-      } catch {
-        didStream = false;
-      }
 
-      // ── Fallback: non-streaming path (global chat or stream failure) ──────
-      if (!didStream) {
-        try {
-          const { response, data } = await sendLarryChat({
-            projectId,
-            message: messageText,
-            conversationId: conversationId ?? undefined,
-          });
-
-          if (!response.ok) {
-            updateStreamingMessage(() => ({
-              content: data.error ?? "Something went wrong.",
-              streaming: false,
-            }));
-            return;
-          }
-
-          finalConversationId = data.conversationId;
-          setConversationId(data.conversationId);
-
-          const nextUserMessage = normalizeMessage(data.userMessage);
-          const nextAssistantMessage = normalizeMessage(
-            {
-              ...data.assistantMessage,
-              linkedActions:
-                data.assistantMessage.linkedActions?.length > 0
-                  ? data.assistantMessage.linkedActions
-                  : data.linkedActions,
-            },
-            {
-              actionsExecuted: data.actionsExecuted,
-              suggestionCount: data.suggestionCount,
-              clarifications: data.clarifications,
-            }
-          );
-
-          setMessages((previous) =>
-            previous
-              .filter((m) => m.id !== optimisticUserId && m.id !== streamingLarryId)
-              .concat(nextUserMessage, nextAssistantMessage)
-          );
-
-          if ((data.actionsExecuted ?? 0) > 0 || (data.suggestionCount ?? 0) > 0) {
-            hadActions = true;
-          }
-        } catch {
-          updateStreamingMessage(() => ({
-            content: "Network error. Please try again.",
-            streaming: false,
-          }));
+        if (finalConversationId) {
+          await refreshConversations();
         }
-      }
 
-      // ── Cleanup ───────────────────────────────────────────────────────────
-      setBusy(false);
-
-      if (finalConversationId) {
-        await refreshConversations();
-      }
-
-      if (hadActions) {
-        window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
+        if (hadActions) {
+          window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
+        }
+      } finally {
+        // Bug B-002 (2026-04-20): setBusy(false) used to live at the bottom
+        // of the function. An early `return` on !response.ok (e.g. after
+        // clicking "New chat" → the stale conversationId 409'd) skipped it
+        // and the FAB input + send/attach/voice buttons stayed disabled
+        // until a full page reload. The finally block guarantees the input
+        // is usable again regardless of path taken.
+        setBusy(false);
       }
     },
     [conversationId, projectId, refreshConversations]
