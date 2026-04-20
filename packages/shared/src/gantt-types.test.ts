@@ -13,7 +13,7 @@ describe("gantt types", () => {
 
   it("GanttTask allows parentTaskId null or string", () => {
     const t: GanttTask = {
-      id: "t1", projectId: "p1", parentTaskId: null, title: "Task",
+      id: "t1", projectId: "p1", parentTaskId: null, categoryId: null, title: "Task",
       status: "not_started", priority: "medium",
       assigneeUserId: null, assigneeName: null,
       startDate: null, endDate: null, dueDate: null, progressPercent: 0,
