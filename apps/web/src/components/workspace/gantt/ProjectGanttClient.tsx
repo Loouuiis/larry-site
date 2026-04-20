@@ -104,6 +104,9 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
   const [addCtx, setAddCtx] = useState<AddCtx | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  // Timeline Slice 1 — parallel hover tracking to PortfolioGanttClient so
+  // "Add item" targets the hovered row.
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [colourPopover, setColourPopover] = useState<ColourPopover | null>(null);
 
@@ -430,13 +433,25 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
           root={root}
           defaultZoom="month"
           onSelectionChange={setSelectedKey}
+          onHoverChange={setHoveredKey}
           rootCategoryColor={categoryColour ?? NEUTRAL_ROW_COLOUR}
           onContextMenuAction={handleContextMenuAction}
           categoriesForSubmenu={categoriesForSubmenu}
           outlineHeaderActions={
             <button
               type="button"
-              onClick={() => setPickerOpen(true)}
+              // Timeline Slice 1 — hover-aware. Hovering a task skips the
+              // picker and opens the Add-subtask modal directly (since a
+              // task's only addable child is a subtask). Hovering a
+              // category / nothing still opens the picker.
+              onClick={() => {
+                const k = hoveredKey ?? selectedKey;
+                if (k?.startsWith("task:")) {
+                  setAddCtx({ mode: "subtask", parentTaskId: k.slice(5) });
+                  return;
+                }
+                setPickerOpen(true);
+              }}
               style={{
                 display: "inline-flex", alignItems: "center", gap: 5,
                 height: 26, padding: "0 10px", fontSize: 12, fontWeight: 600,
@@ -455,18 +470,20 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
           onClose={() => setPickerOpen(false)}
           onChoose={(kind) => {
             setPickerOpen(false);
+            // Timeline Slice 1 — resolve parent from hover first, selection second.
+            const k = hoveredKey ?? selectedKey;
             if (kind === "group") {
               setAddCtx(
-                selectedKey?.startsWith("cat:") && selectedKey !== "cat:uncat"
-                  ? { mode: "subcategory", parentCategoryId: selectedKey.slice(4) }
+                k?.startsWith("cat:") && k !== "cat:uncat"
+                  ? { mode: "subcategory", parentCategoryId: k.slice(4) }
                   : { mode: "category" }
               );
             } else {
-              if (selectedKey?.startsWith("task:")) {
-                setAddCtx({ mode: "subtask", parentTaskId: selectedKey.slice(5) });
+              if (k?.startsWith("task:")) {
+                setAddCtx({ mode: "subtask", parentTaskId: k.slice(5) });
               } else {
-                const catId = selectedKey?.startsWith("cat:") && selectedKey !== "cat:uncat"
-                  ? selectedKey.slice(4) : undefined;
+                const catId = k?.startsWith("cat:") && k !== "cat:uncat"
+                  ? k.slice(4) : undefined;
                 setAddCtx({ mode: "task", categoryId: catId });
               }
             }

@@ -36,6 +36,11 @@ export function PortfolioGanttClient() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [managerOpen, setManagerOpen] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  // Timeline Slice 1 — mirrors GanttContainer's hover state so the "Add item"
+  // button (rendered via outlineHeaderActions, outside GanttContainer) can
+  // target the hovered row. Without this, Add item was always scoped to the
+  // last-clicked row or defaulted to the root when nothing was selected.
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const [colourPopover, setColourPopover] = useState<ColourPopover | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
 
@@ -225,6 +230,34 @@ export function PortfolioGanttClient() {
     },
   });
 
+  // Timeline Slice 1 — mirrors ProjectGanttClient.moveTaskToCategoryMutation.
+  // Previously validateDrop emitted `moveTaskToCategory` but the org-timeline
+  // handleDragEnd switch had no case for it, so task→category drops on the
+  // portfolio timeline silently dropped on the floor.
+  const moveTaskToCategoryMutation = useMutation({
+    mutationFn: async (vars: { id: string; categoryId: string | null }) => {
+      const res = await fetch(`/api/workspace/tasks/${vars.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ categoryId: vars.categoryId }),
+      });
+      if (!res.ok) {
+        const respBody = await res.json().catch(() => ({}));
+        const msg = (respBody as { message?: string; error?: string }).message
+          ?? (respBody as { message?: string; error?: string }).error
+          ?? `HTTP ${res.status}`;
+        throw new Error(msg);
+      }
+      return res.json();
+    },
+    onError: (err) => {
+      setMutationError(err instanceof Error ? err.message : "Couldn't move task to group");
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: QK_TIMELINE_ORG });
+    },
+  });
+
   function handleDragEnd(e: DragEndEvent) {
     if (!e.over || !data) return;
     const sourceKey = String(e.active.id);
@@ -275,6 +308,12 @@ export function PortfolioGanttClient() {
           parentTaskId: validation.effect.newParentTaskId,
         });
         return;
+      case "moveTaskToCategory":
+        moveTaskToCategoryMutation.mutate({
+          id: validation.effect.sourceId,
+          categoryId: validation.effect.newCategoryId,
+        });
+        return;
     }
   }
 
@@ -291,6 +330,40 @@ export function PortfolioGanttClient() {
     return [...real, { id: null, name: "Uncategorised", colour: "#bdb7d0" }];
   }, [data]);
 
+  // Timeline Slice 1 — all of these were previously rebuilt in every render
+  // (buildPortfolioTree walks the full tenant tree, the lookup maps walk all
+  // projects/tasks). That made each keystroke on the search box, each drag
+  // preview, and each React Query refetch walk the whole tenant. Memoising
+  // on `data` cuts render cost to O(changes) and gives GanttContainer a
+  // stable `root` reference so its own useMemo/useEffect chain stops
+  // re-firing gratuitously.
+  const normalized = useMemo(
+    () => data ? normalizePortfolioStatuses(data) : null,
+    [data],
+  );
+  const root: GanttNode | null = useMemo(
+    () => normalized ? buildPortfolioTree(normalized) : null,
+    [normalized],
+  );
+  const taskProjectLookup = useMemo(() => {
+    const m = new Map<string, string>();
+    if (!data) return m;
+    for (const cat of data.categories) {
+      for (const p of cat.projects) {
+        for (const t of p.tasks) m.set(t.id, p.id);
+      }
+    }
+    return m;
+  }, [data]);
+  const projectStatusById = useMemo(() => {
+    const m = new Map<string, string>();
+    if (!data) return m;
+    for (const cat of data.categories) {
+      for (const p of cat.projects) m.set(p.id, p.status);
+    }
+    return m;
+  }, [data]);
+
   if (!data && error) {
     return (
       <div style={{ padding: 24 }}>
@@ -298,22 +371,11 @@ export function PortfolioGanttClient() {
       </div>
     );
   }
-  if (!data) return <div style={{ padding: 24 }}>Loading…</div>;
-
-  const normalized = normalizePortfolioStatuses(data);
-  const root = buildPortfolioTree(normalized);
+  if (!data || !root) return <div style={{ padding: 24 }}>Loading…</div>;
 
   const hasRealCategories = data.categories.some((c) => c.id !== null);
   const hasUncategorised = data.categories.some((c) => c.id === null && c.projects.length > 0);
   const isTrulyEmpty = !hasRealCategories && !hasUncategorised;
-
-  // task.id → project.id lookup for context-menu actions
-  const taskProjectLookup = new Map<string, string>();
-  for (const cat of data.categories) {
-    for (const p of cat.projects) {
-      for (const t of p.tasks) taskProjectLookup.set(t.id, p.id);
-    }
-  }
 
   function selectionContextAddLabel(): string {
     // Label text only — the GanttToolbar renders a <Plus /> icon alongside
@@ -367,11 +429,7 @@ export function PortfolioGanttClient() {
     setAddCtx({ mode: "category" });
   }
 
-  // Lookup a project's archived status by id, for preflight on write actions.
-  const projectStatusById = new Map<string, string>();
-  for (const cat of data.categories) {
-    for (const p of cat.projects) projectStatusById.set(p.id, p.status);
-  }
+  // Archived-project preflight — projectStatusById is now memoised above.
   const isArchived = (projectId: string | null | undefined): boolean =>
     !!projectId && projectStatusById.get(projectId) === "archived";
 
@@ -609,6 +667,7 @@ export function PortfolioGanttClient() {
           root={root}
           defaultZoom="month"
           onSelectionChange={setSelectedKey}
+          onHoverChange={setHoveredKey}
           categoryColorMap={categoryColorMap}
           onCategoriesClick={() => setManagerOpen((v) => !v)}
           categoriesOpen={managerOpen}
@@ -617,7 +676,27 @@ export function PortfolioGanttClient() {
           outlineHeaderActions={
             <button
               type="button"
-              onClick={() => setPickerOpen(true)}
+              // Timeline Slice 1 — "Add item" is now hover-aware. Hovering a
+              // project or task has a single natural action, so we skip the
+              // picker and open the AddNodeModal in the right mode directly.
+              // Hovering a category or nothing still opens the picker so the
+              // user can pick between "subcategory" and "project in category".
+              onClick={() => {
+                const k = hoveredKey ?? selectedKey;
+                if (k?.startsWith("proj:")) {
+                  setAddCtx({ mode: "task", parentProjectId: k.slice(5) });
+                  return;
+                }
+                if (k?.startsWith("task:")) {
+                  const taskId = k.slice(5);
+                  const projectId = taskProjectLookup.get(taskId);
+                  if (projectId) {
+                    setAddCtx({ mode: "subtask", parentProjectId: projectId, parentTaskId: taskId });
+                    return;
+                  }
+                }
+                setPickerOpen(true);
+              }}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -654,11 +733,21 @@ export function PortfolioGanttClient() {
           onClose={() => setPickerOpen(false)}
           onChoose={(kind) => {
             setPickerOpen(false);
+            // Timeline Slice 1 — resolve parent from hover first, selection
+            // second. Lets a user hover a category row and click Add item →
+            // picker → "Group" to create a *subcategory* of the hovered
+            // category (instead of a new top-level one).
+            const k = hoveredKey ?? selectedKey;
             if (kind === "group") {
-              setAddCtx({ mode: "category" });
+              if (k?.startsWith("cat:") && k !== "cat:uncat") {
+                setAddCtx({ mode: "subcategory", parentCategoryId: k.slice(4) });
+              } else {
+                setAddCtx({ mode: "category" });
+              }
             } else {
-              // "Task" in portfolio view = a project. Use selected category as parent if available.
-              const catId = selectedKey?.startsWith("cat:") ? selectedKey.slice(4) : undefined;
+              // "Task" in portfolio view = a project. Use hovered/selected
+              // category as parent if available.
+              const catId = k?.startsWith("cat:") ? k.slice(4) : undefined;
               setAddCtx({ mode: "project", parentCategoryId: catId === "uncat" ? undefined : catId });
             }
           }}

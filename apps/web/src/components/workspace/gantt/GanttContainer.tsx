@@ -11,7 +11,7 @@ interface Props {
   root: GanttNode;
   defaultZoom?: ZoomLevel;
   onOpenDetail?: (key: string) => void;
-  onAdd?: (context: { selectedKey: string | null }) => void;
+  onAdd?: (context: { selectedKey: string | null; hoveredKey: string | null }) => void;
   addLabel?: string;
   categoryColorMap?: CategoryColorMap;
   rootCategoryColor?: string;
@@ -25,6 +25,10 @@ interface Props {
   onContextMenuAction?: (action: ContextMenuAction, args: { rowKey: string; rowKind: GanttNode["kind"]; categoryId?: string | null }) => void;
   categoriesForSubmenu?: CategoryOption[];
   onSelectionChange?: (selectedKey: string | null) => void;
+  // Timeline Slice 1 — expose hover so the parent's "Add item" can target
+  // the hovered row (project → Add task, task → Add subtask). Fires on
+  // every change; pass a stable setter.
+  onHoverChange?: (hoveredKey: string | null) => void;
 }
 
 export function GanttContainer({
@@ -33,7 +37,7 @@ export function GanttContainer({
   outlineHeader, outlineHeaderActions, outlineFooter, outlineOverlay,
   onCategoriesClick, categoriesOpen,
   onContextMenuAction, categoriesForSubmenu = [],
-  onSelectionChange,
+  onSelectionChange, onHoverChange,
 }: Props) {
   const [zoom, setZoom] = useState<ZoomLevel>(defaultZoom);
   const [search, setSearch] = useState("");
@@ -73,11 +77,22 @@ export function GanttContainer({
     gridRef.current.scrollTo({ left: Math.max(0, (pct / 100) * sw - vw / 2), behavior: "smooth" });
   }, [range]);
 
+  // Timeline Slice 1 — track the previous tree's keys so we can tell which
+  // rows are brand-new on a data refetch. Previously any key not in `prev`
+  // was dropped, which meant a freshly-created subcategory/subtask landed
+  // collapsed and looked missing. Now new keys auto-expand; user-collapsed
+  // keys stay collapsed as long as they survive.
+  const prevKeysRef = useRef<Set<string> | null>(null);
   useEffect(() => {
+    const keys = collectAllKeys(root);
+    const prevKeys = prevKeysRef.current;
+    prevKeysRef.current = keys;
+    // First mount — useState already seeded `expanded` with all keys.
+    if (prevKeys === null) return;
     setExpanded((prev) => {
-      const keys = collectAllKeys(root);
       const next = new Set<string>();
       for (const k of prev) if (keys.has(k)) next.add(k);
+      for (const k of keys) if (!prevKeys.has(k)) next.add(k);
       return next.size === 0 ? keys : next;
     });
   }, [root]);
@@ -87,6 +102,8 @@ export function GanttContainer({
     onSelectionChange?.(k);
     if (k) onOpenDetail?.(k);
   }, [onOpenDetail, onSelectionChange]);
+
+  useEffect(() => { onHoverChange?.(hoveredKey); }, [hoveredKey, onHoverChange]);
 
   const handleContextMenu = useCallback(
     (rowKey: string, rowKind: GanttNode["kind"], e: React.MouseEvent) => {
@@ -131,7 +148,7 @@ export function GanttContainer({
         zoom={zoom} search={search}
         onZoom={setZoom} onJumpToToday={jumpToToday}
         onSearch={setSearch}
-        onAdd={() => onAdd?.({ selectedKey })}
+        onAdd={() => onAdd?.({ selectedKey, hoveredKey })}
         canAdd={Boolean(onAdd)}
         addLabel={addLabel}
         onCategoriesClick={onCategoriesClick}

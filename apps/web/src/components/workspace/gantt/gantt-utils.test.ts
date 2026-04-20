@@ -15,7 +15,7 @@ import type { PortfolioTimelineResponse, GanttTask, GanttNode } from "./gantt-ty
 import { ROW_HEIGHT, ROW_HEIGHT_TASK } from "./gantt-types";
 
 const baseTask = (over: Partial<GanttTask> = {}): GanttTask => ({
-  id: "t", projectId: "p", parentTaskId: null, title: "T",
+  id: "t", projectId: "p", parentTaskId: null, categoryId: null, title: "T",
   status: "not_started", priority: "medium",
   assigneeUserId: null, assigneeName: null,
   startDate: null, endDate: null, dueDate: null, progressPercent: 0,
@@ -609,6 +609,27 @@ describe("validateDrop", () => {
     expect(r).toEqual({
       ok: true,
       effect: { kind: "moveTask", sourceId: "t3", newProjectId: "p2", newParentTaskId: null },
+    });
+  });
+
+  // Timeline Slice 1 — regression guard. `moveTaskToCategory` is a
+  // validateDrop output the portfolio handleDragEnd switch forgot to handle,
+  // causing task→category drops to silently fail on the org timeline. The
+  // switch now has a case for it; this test pins the effect shape so the
+  // case can't drift out of sync with the validator again.
+  it("task → category emits moveTaskToCategory", () => {
+    const r = validateDrop("dnd-task:t1", "dnd-cat:c1", mkCtx());
+    expect(r).toEqual({
+      ok: true,
+      effect: { kind: "moveTaskToCategory", sourceId: "t1", newCategoryId: "c1" },
+    });
+  });
+
+  it("subtask → category emits moveTaskToCategory", () => {
+    const r = validateDrop("dnd-sub:t3", "dnd-cat:c1", mkCtx());
+    expect(r).toEqual({
+      ok: true,
+      effect: { kind: "moveTaskToCategory", sourceId: "t3", newCategoryId: "c1" },
     });
   });
 
