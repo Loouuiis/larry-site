@@ -4,6 +4,7 @@ import { runIntelligence, ProviderError, loadOrgTimelineContext, runOrgIntellige
 import { db } from "./context.js";
 import { buildWorkerIntelligenceConfig, buildWorkerFallbackIntelligenceConfig } from "./intelligence-config.js";
 import { reserveTokens, LLMQuotaError } from "./llm-budget.js";
+import { notifySafe } from "./notifications.js";
 
 // Per-project estimated token cost for runIntelligence. Empirically ~9k
 // post-N-9. We over-estimate slightly so the budget debits a number close
@@ -60,6 +61,10 @@ export async function runLarryScan(): Promise<void> {
   const startedAt = new Date(startTime);
   const config = buildWorkerIntelligenceConfig();
   const fallbackConfig = buildWorkerFallbackIntelligenceConfig();
+  // Per-tenant change counts so we can emit a single scan.completed
+  // notification per tenant (not per project) at the end of the run.
+  const tenantChanges = new Map<string, number>();
+  const scanBatchId = randomUUID();
 
   // Load all active projects across all tenants using system bypass identity.
   // This mirrors the pattern established by escalation.ts.
@@ -130,6 +135,13 @@ export async function runLarryScan(): Promise<void> {
         processed++;
         totalExecuted += autoResult.executedCount;
         totalSuggested += suggestResult.suggestedCount + autoResult.suggestedCount;
+        const delta =
+          autoResult.executedCount +
+          suggestResult.suggestedCount +
+          autoResult.suggestedCount;
+        if (delta > 0) {
+          tenantChanges.set(tenantId, (tenantChanges.get(tenantId) ?? 0) + delta);
+        }
       } catch (err) {
         if (err instanceof ProviderError && err.code === "quota_exhausted_daily") {
           // All providers exhausted — skip without counting as failure; next cron tick retries.
@@ -223,4 +235,38 @@ export async function runLarryScan(): Promise<void> {
     failed,
     error: aggregatedError,
   });
+
+  // Emit one scan.completed per tenant that had any changes. We deliberately
+  // skip tenants with zero changes to avoid banner noise on quiet cycles.
+  // If the entire scan failed (scanFailed set) OR a tenant's projects all
+  // errored (no changes recorded but had active projects), we emit
+  // scan.failed — tenant-broadcast (userId: null) so every admin sees it.
+  const tenantsWithChanges = new Set(tenantChanges.keys());
+  const allTenants = new Set(projectRows.map((r) => r.tenant_id));
+  // All-projects-failed heuristic: every active project errored out, so every
+  // tenant with an active project sees scan.failed instead of a stale
+  // completed toast.
+  const scanBroke = processed === 0 && failed > 0;
+  const tenantsToNotify = scanBroke
+    ? Array.from(allTenants)
+    : Array.from(tenantsWithChanges);
+  for (const tenantId of tenantsToNotify) {
+    if (scanBroke) {
+      await notifySafe({
+        tenantId,
+        userId: null,
+        type: "scan.failed",
+        payload: { reason: aggregatedError ?? "unknown" },
+        batchId: scanBatchId,
+      });
+    } else {
+      await notifySafe({
+        tenantId,
+        userId: null,
+        type: "scan.completed",
+        payload: { changeCount: tenantChanges.get(tenantId) ?? 0 },
+        batchId: scanBatchId,
+      });
+    }
+  }
 }

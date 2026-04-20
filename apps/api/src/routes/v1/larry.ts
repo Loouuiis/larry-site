@@ -44,6 +44,7 @@ import type {
   LarryMessageRecord,
 } from "@larry/shared";
 import { writeAuditLog } from "../../lib/audit.js";
+import { notifySafe } from "../../lib/notifications/safe.js";
 import { buildPendingClause } from "../../lib/intelligence-hints.js";
 import { reserveTokens, LLMQuotaError } from "../../lib/llm-budget.js";
 
@@ -1958,6 +1959,15 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
             })
           : Promise.resolve(),
       ]);
+
+      await notifySafe({
+        db: fastify.db,
+        tenantId,
+        userId: actorUserId,
+        type: "action.executed",
+        payload: { actionId: id, label: event.actionType ?? "action" },
+        logger: fastify.log,
+      });
 
       return reply.code(200).send({ accepted: true, entity, event: updatedEvent ?? null });
     }
