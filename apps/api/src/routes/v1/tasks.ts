@@ -12,6 +12,7 @@ import {
   ProjectStatusFilterSchema,
   appendProjectStatusFilter,
 } from "../../lib/project-status.js";
+import { notifySafe } from "../../lib/notifications/safe.js";
 
 export const CreateTaskSchema = z.object({
   projectId: z.string().uuid(),
@@ -182,6 +183,15 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
         objectType: "task",
         objectId: taskId,
         details: { projectId: body.projectId, title: body.title },
+      });
+
+      await notifySafe({
+        db: fastify.db,
+        tenantId,
+        userId: body.assigneeUserId ?? null,
+        type: "task.created",
+        payload: { taskId, projectId: body.projectId, title: body.title },
+        logger: fastify.log,
       });
 
       return reply.code(201).send({ id: taskId, riskScore, riskLevel });
@@ -653,6 +663,13 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
         assertProjectWritableOrThrow(taskProjectState.projectStatus);
       }
 
+      const titleRows = await fastify.db.queryTenant<{ title: string; project_id: string }>(
+        tenantId,
+        `SELECT title, project_id FROM tasks WHERE tenant_id = $1 AND id = $2`,
+        [tenantId, params.id]
+      );
+      const titleRow = titleRows[0];
+
       await fastify.db.queryTenant(
         tenantId,
         `DELETE FROM tasks WHERE tenant_id = $1 AND id = $2`,
@@ -667,6 +684,17 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
         objectId: params.id,
         details: {},
       });
+
+      if (titleRow) {
+        await notifySafe({
+          db: fastify.db,
+          tenantId,
+          userId: null,
+          type: "task.deleted",
+          payload: { title: titleRow.title, projectId: titleRow.project_id },
+          logger: fastify.log,
+        });
+      }
 
       return reply.code(204).send();
     }

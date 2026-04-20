@@ -7,7 +7,7 @@ import {
 
 interface RecordArgs {
   db: {
-    queryTenant: <T = unknown>(
+    queryTenant: <T extends Record<string, unknown> = Record<string, unknown>>(
       tid: string,
       sql: string,
       params: unknown[]
