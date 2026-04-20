@@ -62,26 +62,34 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
   const source = (timeline?.gantt && timeline.gantt.length > 0) ? timeline.gantt : tasks;
   const ganttTasks = useMemo(() => (source as WorkspaceTimelineTask[]).map(toGanttTask), [source]);
 
-  // v4 Slice 4 — categories + projects come from the same React Query cache that
-  // the portfolio timeline populates. If the user navigated here from
-  // /workspace/timeline within staleTime, the first render already has the
-  // real colour + category tree (fixes the Larry-purple flash reproduced
-  // 2026-04-18 at t=12,367 ms → t=13,006 ms).
+  // Timeline Slice 2 (Bug 8) — the project timeline response is now
+  // self-sufficient. It carries its own `categories` slice and a
+  // `project.categoryId` so the Gantt no longer has to wait for the org
+  // timeline cache to resolve colours. The org hooks stay as a fallback
+  // during the API roll-forward window (if `timeline.categories` is
+  // undefined, we degrade to the old path — no grey flash worse than
+  // before, but no regression either).
   const { data: categoriesData } = useCategoriesFromTimeline();
   const { data: projectsData } = useProjectsFromTimeline();
 
-  const allCategories: TimelineCategorySummary[] = categoriesData?.categories ?? [];
+  const allCategories: TimelineCategorySummary[] = useMemo(() => {
+    if (timeline?.categories) return timeline.categories;
+    return categoriesData?.categories ?? [];
+  }, [timeline?.categories, categoriesData]);
 
-  // The project row's category colour — resolved synchronously from the shared
-  // cache. Returns null when data isn't loaded yet; the Gantt renders neutral
-  // grey (NEUTRAL_ROW_COLOUR) in that case, never Larry purple.
+  // Resolve the project's category colour. Prefer the timeline response's
+  // project.categoryId (authoritative for this project); fall back to the
+  // org-cache projects list if the API hasn't deployed the new shape yet.
   const categoryColour: string | null = useMemo(() => {
-    if (!projectsData || !categoriesData) return null;
-    const proj = projectsData.items.find((p: ProjectSummary) => p.id === projectId);
-    if (!proj?.categoryId) return null;
-    const map = buildCategoryColorMap(categoriesData.categories.map((c: TimelineCategorySummary) => ({ id: c.id, colour: c.colour })));
-    return map.get(`cat:${proj.categoryId}`) ?? null;
-  }, [categoriesData, projectsData, projectId]);
+    const categoryId =
+      timeline?.project?.categoryId
+      ?? projectsData?.items.find((p: ProjectSummary) => p.id === projectId)?.categoryId
+      ?? null;
+    if (!categoryId) return null;
+    if (allCategories.length === 0) return null;
+    const map = buildCategoryColorMap(allCategories.map((c) => ({ id: c.id, colour: c.colour })));
+    return map.get(`cat:${categoryId}`) ?? null;
+  }, [timeline?.project, projectsData, projectId, allCategories]);
 
   const root = useMemo(
     () => buildProjectTree(
@@ -104,6 +112,9 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
   const [addCtx, setAddCtx] = useState<AddCtx | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  // Timeline Slice 1 — parallel hover tracking to PortfolioGanttClient so
+  // "Add item" targets the hovered row.
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [colourPopover, setColourPopover] = useState<ColourPopover | null>(null);
 
@@ -429,14 +440,27 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
         <GanttContainer
           root={root}
           defaultZoom="month"
+          persistKey={`proj:${projectId}`}
           onSelectionChange={setSelectedKey}
+          onHoverChange={setHoveredKey}
           rootCategoryColor={categoryColour ?? NEUTRAL_ROW_COLOUR}
           onContextMenuAction={handleContextMenuAction}
           categoriesForSubmenu={categoriesForSubmenu}
           outlineHeaderActions={
             <button
               type="button"
-              onClick={() => setPickerOpen(true)}
+              // Timeline Slice 1 — hover-aware. Hovering a task skips the
+              // picker and opens the Add-subtask modal directly (since a
+              // task's only addable child is a subtask). Hovering a
+              // category / nothing still opens the picker.
+              onClick={() => {
+                const k = hoveredKey ?? selectedKey;
+                if (k?.startsWith("task:")) {
+                  setAddCtx({ mode: "subtask", parentTaskId: k.slice(5) });
+                  return;
+                }
+                setPickerOpen(true);
+              }}
               style={{
                 display: "inline-flex", alignItems: "center", gap: 5,
                 height: 26, padding: "0 10px", fontSize: 12, fontWeight: 600,
@@ -455,18 +479,20 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
           onClose={() => setPickerOpen(false)}
           onChoose={(kind) => {
             setPickerOpen(false);
+            // Timeline Slice 1 — resolve parent from hover first, selection second.
+            const k = hoveredKey ?? selectedKey;
             if (kind === "group") {
               setAddCtx(
-                selectedKey?.startsWith("cat:") && selectedKey !== "cat:uncat"
-                  ? { mode: "subcategory", parentCategoryId: selectedKey.slice(4) }
+                k?.startsWith("cat:") && k !== "cat:uncat"
+                  ? { mode: "subcategory", parentCategoryId: k.slice(4) }
                   : { mode: "category" }
               );
             } else {
-              if (selectedKey?.startsWith("task:")) {
-                setAddCtx({ mode: "subtask", parentTaskId: selectedKey.slice(5) });
+              if (k?.startsWith("task:")) {
+                setAddCtx({ mode: "subtask", parentTaskId: k.slice(5) });
               } else {
-                const catId = selectedKey?.startsWith("cat:") && selectedKey !== "cat:uncat"
-                  ? selectedKey.slice(4) : undefined;
+                const catId = k?.startsWith("cat:") && k !== "cat:uncat"
+                  ? k.slice(4) : undefined;
                 setAddCtx({ mode: "task", categoryId: catId });
               }
             }

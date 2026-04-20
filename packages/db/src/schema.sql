@@ -1776,3 +1776,20 @@ CREATE TABLE IF NOT EXISTS larry_org_scan_runs (
   tenant_id    UUID PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
   last_run_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- ── 031_task_category_id.sql ──────────────────────────────────────────────────
+-- Timeline Slice 3 (PR #141 follow-up). Commit c71754c shipped the server
+-- PATCH handler that writes tasks.category_id but the DDL only lived in the
+-- standalone migrations/031_task_category_id.sql file and was never appended
+-- here. schema.sql is the file the migrate runner actually executes, so the
+-- column was never created in any deployed tenant. A `PATCH /v1/tasks/:id`
+-- with {categoryId: ...} returned 500 ("column category_id does not exist")
+-- and the opaque Fastify handler hid the message. Add the column now with
+-- the correct FK (project_categories, not the non-existent categories table
+-- the original migration file pointed at).
+ALTER TABLE tasks
+  ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES project_categories(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_tasks_category
+  ON tasks (tenant_id, category_id)
+  WHERE category_id IS NOT NULL;
