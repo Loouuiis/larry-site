@@ -432,6 +432,7 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
         <GanttContainer
           root={root}
           defaultZoom="month"
+          persistKey={`proj:${projectId}`}
           onSelectionChange={setSelectedKey}
           onHoverChange={setHoveredKey}
           rootCategoryColor={categoryColour ?? NEUTRAL_ROW_COLOUR}

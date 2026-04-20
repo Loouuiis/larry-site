@@ -666,6 +666,7 @@ export function PortfolioGanttClient() {
         <GanttContainer
           root={root}
           defaultZoom="month"
+          persistKey="portfolio"
           onSelectionChange={setSelectedKey}
           onHoverChange={setHoveredKey}
           categoryColorMap={categoryColorMap}

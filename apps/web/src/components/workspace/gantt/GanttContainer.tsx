@@ -29,6 +29,11 @@ interface Props {
   // the hovered row (project → Add task, task → Add subtask). Fires on
   // every change; pass a stable setter.
   onHoverChange?: (hoveredKey: string | null) => void;
+  // Timeline Slice 2 — if set, view state (collapsed rows, zoom, outline
+  // width) persists to localStorage under `larry:gantt:<persistKey>:*`.
+  // Callers use "portfolio" for the org timeline and `proj:<id>` for per-
+  // project timelines. Omit to keep state ephemeral (tests, previews).
+  persistKey?: string;
 }
 
 export function GanttContainer({
@@ -37,19 +42,46 @@ export function GanttContainer({
   outlineHeader, outlineHeaderActions, outlineFooter, outlineOverlay,
   onCategoriesClick, categoriesOpen,
   onContextMenuAction, categoriesForSubmenu = [],
-  onSelectionChange, onHoverChange,
+  onSelectionChange, onHoverChange, persistKey,
 }: Props) {
-  const [zoom, setZoom] = useState<ZoomLevel>(defaultZoom);
+  // Timeline Slice 2 — persistence keys. `null` short-circuits every
+  // read/write so callers that don't pass persistKey behave as before.
+  const collapsedKey = persistKey ? `larry:gantt:${persistKey}:collapsed` : null;
+  const zoomKey      = persistKey ? `larry:gantt:${persistKey}:zoom` : null;
+  const outlineKey   = persistKey ? `larry:gantt:${persistKey}:outline` : null;
+
+  const [zoom, setZoom] = useState<ZoomLevel>(() =>
+    readPersistedZoom(zoomKey) ?? defaultZoom,
+  );
   const [search, setSearch] = useState("");
-  const [outlineWidth, setOutlineWidth] = useState(260);
+  const [outlineWidth, setOutlineWidth] = useState<number>(() =>
+    readPersistedOutlineWidth(outlineKey) ?? 260,
+  );
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<Set<string>>(() => collectAllKeys(root));
+  // Timeline Slice 2 — flip the semantic. We used to track "expanded keys"
+  // and mutate that set on every tree refetch to keep new rows expanded.
+  // Now we track "collapsed keys" instead: absent == expanded, so new rows
+  // auto-expand for free and storage only carries the user's collapse
+  // decisions. Makes the refetch merge disappear.
+  const [collapsed, setCollapsed] = useState<Set<string>>(() =>
+    readPersistedCollapsed(collapsedKey) ?? new Set(),
+  );
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
 
   const allTasks = useMemo(() => collectTasks(root), [root]);
   const range = useMemo(() => computeRange(allTasks, zoom), [allTasks, zoom]);
+
+  // Derived: keys the user wants visible, i.e. NOT in `collapsed`. Filtered
+  // to currently-valid keys so flattenVisible treats stale collapsed ids
+  // as no-ops (and eventually GC via `collapsed` cleanup below).
+  const expanded = useMemo(() => {
+    const keys = collectAllKeys(root);
+    const out = new Set<string>();
+    for (const k of keys) if (!collapsed.has(k)) out.add(k);
+    return out;
+  }, [root, collapsed]);
 
   const rows = useMemo(() => {
     const base = flattenVisible(root, expanded, { categoryColorMap, rootCategoryColor });
@@ -62,7 +94,7 @@ export function GanttContainer({
   }, [root, expanded, search, categoryColorMap, rootCategoryColor]);
 
   const toggle = useCallback((key: string) => {
-    setExpanded((prev) => {
+    setCollapsed((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key); else next.add(key);
       return next;
@@ -77,25 +109,29 @@ export function GanttContainer({
     gridRef.current.scrollTo({ left: Math.max(0, (pct / 100) * sw - vw / 2), behavior: "smooth" });
   }, [range]);
 
-  // Timeline Slice 1 — track the previous tree's keys so we can tell which
-  // rows are brand-new on a data refetch. Previously any key not in `prev`
-  // was dropped, which meant a freshly-created subcategory/subtask landed
-  // collapsed and looked missing. Now new keys auto-expand; user-collapsed
-  // keys stay collapsed as long as they survive.
-  const prevKeysRef = useRef<Set<string> | null>(null);
+  // Timeline Slice 2 — GC stale collapsed keys when the tree changes. If
+  // a user collapsed X and X then gets deleted, X lingers in localStorage
+  // forever otherwise. Runs once per tree-change.
   useEffect(() => {
     const keys = collectAllKeys(root);
-    const prevKeys = prevKeysRef.current;
-    prevKeysRef.current = keys;
-    // First mount — useState already seeded `expanded` with all keys.
-    if (prevKeys === null) return;
-    setExpanded((prev) => {
+    setCollapsed((prev) => {
+      let changed = false;
       const next = new Set<string>();
-      for (const k of prev) if (keys.has(k)) next.add(k);
-      for (const k of keys) if (!prevKeys.has(k)) next.add(k);
-      return next.size === 0 ? keys : next;
+      for (const k of prev) {
+        if (keys.has(k)) next.add(k);
+        else changed = true;
+      }
+      return changed ? next : prev;
     });
   }, [root]);
+
+  // Timeline Slice 2 — persist view state. Writes are fire-and-forget;
+  // localStorage.setItem quota errors get swallowed (view still works,
+  // just won't survive refresh). Writes happen only when the relevant
+  // state actually changes, so no chatty activity on scroll/hover.
+  useEffect(() => { writePersisted(collapsedKey, JSON.stringify([...collapsed])); }, [collapsedKey, collapsed]);
+  useEffect(() => { writePersisted(zoomKey, zoom); }, [zoomKey, zoom]);
+  useEffect(() => { writePersisted(outlineKey, String(outlineWidth)); }, [outlineKey, outlineWidth]);
 
   const handleSelect = useCallback((k: string | null) => {
     setSelectedKey(k);
@@ -198,6 +234,49 @@ export function GanttContainer({
 function nodeLabel(n: GanttNode): string {
   if (n.kind === "category" || n.kind === "project") return n.name;
   return n.task.title;
+}
+
+// Timeline Slice 2 — localStorage helpers. Every call is wrapped in
+// try/catch because storage can be disabled (private mode, quota,
+// unavailable during SSR). A null `key` short-circuits for the non-
+// persisted case. Return null on miss so the caller can fall back to
+// its default cleanly.
+function writePersisted(key: string | null, value: string): void {
+  if (!key || typeof window === "undefined") return;
+  try { window.localStorage.setItem(key, value); } catch { /* quota / disabled */ }
+}
+
+function readPersistedRaw(key: string | null): string | null {
+  if (!key || typeof window === "undefined") return null;
+  try { return window.localStorage.getItem(key); } catch { return null; }
+}
+
+function readPersistedCollapsed(key: string | null): Set<string> | null {
+  const raw = readPersistedRaw(key);
+  if (raw === null) return null;
+  try {
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return null;
+    const out = new Set<string>();
+    for (const v of arr) if (typeof v === "string") out.add(v);
+    return out;
+  } catch { return null; }
+}
+
+function readPersistedZoom(key: string | null): ZoomLevel | null {
+  const raw = readPersistedRaw(key);
+  if (raw === "week" || raw === "month" || raw === "quarter") return raw;
+  return null;
+}
+
+function readPersistedOutlineWidth(key: string | null): number | null {
+  const raw = readPersistedRaw(key);
+  if (raw === null) return null;
+  const n = Number(raw);
+  // Clamp: outline width under 120 or over 600 is clearly junk/stale
+  // (e.g. from an old resize bug). Fall back to default in that case.
+  if (!Number.isFinite(n) || n < 120 || n > 600) return null;
+  return n;
 }
 
 function collectTasks(root: GanttNode): GanttTask[] {
