@@ -267,11 +267,14 @@ CREATE TABLE IF NOT EXISTS tasks (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   assigned_to_larry BOOLEAN NOT NULL DEFAULT FALSE,
   completed_by_larry BOOLEAN NOT NULL DEFAULT FALSE,
-  larry_document_id UUID REFERENCES larry_documents(id) ON DELETE SET NULL
+  larry_document_id UUID REFERENCES larry_documents(id) ON DELETE SET NULL,
+  labels TEXT[] NOT NULL DEFAULT '{}'
 );
 
 CREATE INDEX IF NOT EXISTS idx_tasks_tenant_project ON tasks (tenant_id, project_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks (tenant_id, assignee_user_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_labels ON tasks USING GIN (labels)
+  WHERE cardinality(labels) > 0;
 
 CREATE TABLE IF NOT EXISTS task_dependencies (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

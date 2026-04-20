@@ -241,6 +241,9 @@ export interface LarryEventSummary {
   conversationTitle?: string | null;
   requestMessagePreview?: string | null;
   responseMessagePreview?: string | null;
+  modifiedAt?: string | null;
+  modifiedByUserId?: string | null;
+  modifiedByName?: string | null;
 }
 
 export interface LarryMessageRecord {

@@ -77,6 +77,7 @@ export interface WorkspaceTask {
   assigneeName?: string | null;
   progressPercent?: number;
   riskLevel?: string;
+  labels?: string[];
   updatedAt?: string | null;
 }
 
@@ -318,6 +319,9 @@ export interface WorkspaceLarryEvent {
   conversationTitle?: string | null;
   requestMessagePreview?: string | null;
   responseMessagePreview?: string | null;
+  modifiedAt?: string | null;
+  modifiedByUserId?: string | null;
+  modifiedByName?: string | null;
 }
 
 export interface WorkspaceConversationPreview {

@@ -79,6 +79,7 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
                         tasks.start_date::text as "startDate",
                         tasks.due_date::text as "dueDate",
                         tasks.category_id as "categoryId",
+                        tasks.labels as "labels",
                         tasks.created_at as "createdAt",
                         tasks.updated_at as "updatedAt"
                  FROM tasks
