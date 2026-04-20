@@ -20,10 +20,10 @@ export function LandingRoot({ children }: { children: React.ReactNode }) {
           priority
           sizes="100vw"
           quality={80}
-          className="object-cover opacity-50"
+          className="object-cover opacity-75"
           style={{ objectPosition: "center" }}
         />
-        <div className="absolute inset-0 bg-white/60" />
+        <div className="absolute inset-0 bg-white/35" />
       </div>
       {children}
     </>
