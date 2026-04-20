@@ -94,17 +94,19 @@ export async function GET(
     );
   }
 
-  const error = tasksResult.status >= 500
-    ? extractError(tasksResult.body) ?? "Failed to load project tasks."
-    : undefined;
-
+  // Sub-request failures (tasks, timeline, health, outcomes, meetings) degrade
+  // silently so the project page still renders. Previously a 500 from tasks
+  // (or any endpoint that raised an unhandled error) would set a blocking
+  // `error` field, crashing the whole workspace — including Task Center on
+  // projects where tasks themselves were fine. Fatal errors (project not
+  // found / unauthorized) are handled above and still short-circuit.
   return NextResponse.json({
     project,
-    tasks: extractItems<WorkspaceTask>(tasksResult.body),
+    tasks: tasksResult.status < 400 ? extractItems<WorkspaceTask>(tasksResult.body) : [],
     timeline: timelineResult.status < 400 ? extractObject<WorkspaceTimeline>(timelineResult.body) : null,
     health: healthResult.status < 400 ? extractObject<WorkspaceHealth>(healthResult.body) : null,
     outcomes: outcomesResult.status < 400 ? extractObject<WorkspaceOutcomes>(outcomesResult.body) : null,
-    meetings: extractItems<WorkspaceMeeting>(meetingsResult.body),
-    error,
+    meetings: meetingsResult.status < 400 ? extractItems<WorkspaceMeeting>(meetingsResult.body) : [],
+    error: undefined,
   });
 }
