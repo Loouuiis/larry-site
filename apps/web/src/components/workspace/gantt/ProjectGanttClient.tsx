@@ -62,26 +62,34 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
   const source = (timeline?.gantt && timeline.gantt.length > 0) ? timeline.gantt : tasks;
   const ganttTasks = useMemo(() => (source as WorkspaceTimelineTask[]).map(toGanttTask), [source]);
 
-  // v4 Slice 4 — categories + projects come from the same React Query cache that
-  // the portfolio timeline populates. If the user navigated here from
-  // /workspace/timeline within staleTime, the first render already has the
-  // real colour + category tree (fixes the Larry-purple flash reproduced
-  // 2026-04-18 at t=12,367 ms → t=13,006 ms).
+  // Timeline Slice 2 (Bug 8) — the project timeline response is now
+  // self-sufficient. It carries its own `categories` slice and a
+  // `project.categoryId` so the Gantt no longer has to wait for the org
+  // timeline cache to resolve colours. The org hooks stay as a fallback
+  // during the API roll-forward window (if `timeline.categories` is
+  // undefined, we degrade to the old path — no grey flash worse than
+  // before, but no regression either).
   const { data: categoriesData } = useCategoriesFromTimeline();
   const { data: projectsData } = useProjectsFromTimeline();
 
-  const allCategories: TimelineCategorySummary[] = categoriesData?.categories ?? [];
+  const allCategories: TimelineCategorySummary[] = useMemo(() => {
+    if (timeline?.categories) return timeline.categories;
+    return categoriesData?.categories ?? [];
+  }, [timeline?.categories, categoriesData]);
 
-  // The project row's category colour — resolved synchronously from the shared
-  // cache. Returns null when data isn't loaded yet; the Gantt renders neutral
-  // grey (NEUTRAL_ROW_COLOUR) in that case, never Larry purple.
+  // Resolve the project's category colour. Prefer the timeline response's
+  // project.categoryId (authoritative for this project); fall back to the
+  // org-cache projects list if the API hasn't deployed the new shape yet.
   const categoryColour: string | null = useMemo(() => {
-    if (!projectsData || !categoriesData) return null;
-    const proj = projectsData.items.find((p: ProjectSummary) => p.id === projectId);
-    if (!proj?.categoryId) return null;
-    const map = buildCategoryColorMap(categoriesData.categories.map((c: TimelineCategorySummary) => ({ id: c.id, colour: c.colour })));
-    return map.get(`cat:${proj.categoryId}`) ?? null;
-  }, [categoriesData, projectsData, projectId]);
+    const categoryId =
+      timeline?.project?.categoryId
+      ?? projectsData?.items.find((p: ProjectSummary) => p.id === projectId)?.categoryId
+      ?? null;
+    if (!categoryId) return null;
+    if (allCategories.length === 0) return null;
+    const map = buildCategoryColorMap(allCategories.map((c) => ({ id: c.id, colour: c.colour })));
+    return map.get(`cat:${categoryId}`) ?? null;
+  }, [timeline?.project, projectsData, projectId, allCategories]);
 
   const root = useMemo(
     () => buildProjectTree(
