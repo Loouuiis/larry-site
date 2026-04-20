@@ -146,7 +146,7 @@ Only reference tasks, people, and dates from the project context. Never invent I
 - flag_task_risk — flag a task's risk level
 - create_task — create a new task
 - change_deadline — change a task's due date
-- change_task_owner — reassign a task
+- change_task_owner — reassign or unassign a task (pass newOwnerName: null to clear the owner)
 - draft_email — draft an email to a team member
 
 **Read-only:**
@@ -411,11 +411,11 @@ export async function* streamLarryChat(input: {
     }),
 
     change_task_owner: tool({
-      description: "Reassign a task to a different owner. Will be queued in the Action Centre for approval.",
+      description: "Reassign or unassign a task. Will be queued in the Action Centre for approval. Pass null for newOwnerName to unassign the task entirely.",
       inputSchema: z.object({
         taskId: z.string().describe("Task UUID from project context"),
         taskTitle: z.string().describe("Task title"),
-        newOwnerName: z.string().describe("New owner's display name"),
+        newOwnerName: z.string().nullable().describe("New owner's display name (must be on the project team), or null to unassign the task"),
         reasoning: z.string().describe("One sentence: why reassign this task"),
         displayText: z.string().describe("Short imperative shown in the UI"),
       }),
