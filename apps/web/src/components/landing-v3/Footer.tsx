@@ -1,5 +1,4 @@
 import Image from "next/image";
-import Link from "next/link";
 
 export function LandingFooter() {
   const year = new Date().getFullYear();
@@ -10,8 +9,6 @@ export function LandingFooter() {
         <span>© {year} Larry. Making projects run themselves.</span>
       </div>
       <nav className="lv3-footer__nav">
-        <Link href="/privacy">Privacy</Link>
-        <Link href="/terms">Terms</Link>
         <a href="mailto:hello@larry-pm.com">hello@larry-pm.com</a>
       </nav>
     </footer>
