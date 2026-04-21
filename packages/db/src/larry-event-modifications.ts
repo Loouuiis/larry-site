@@ -22,7 +22,7 @@ export type ModifiableActionType =
   | "slack_message_draft";
 
 const FIELDS_BY_ACTION_TYPE: Record<string, readonly string[]> = {
-  task_create:              ["title", "description", "startDate", "dueDate", "assigneeName", "priority"],
+  task_create:              ["title", "description", "startDate", "dueDate", "assigneeName", "priority", "labels"],
   status_update:            ["newStatus", "newRiskLevel"],
   risk_flag:                ["riskLevel"],
   deadline_change:          ["newDeadline"],

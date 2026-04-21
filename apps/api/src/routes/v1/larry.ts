@@ -445,6 +445,83 @@ function isCalendarActionType(
   return actionType === "calendar_event_create" || actionType === "calendar_event_update";
 }
 
+/**
+ * Regenerate the short imperative that renders as the action card header when
+ * a user modifies a pending suggestion (B-005). The shape mirrors the
+ * `displayText` strings Larry emits at suggestion time in
+ * `packages/ai/src/chat.ts` so completed cards read consistently regardless
+ * of whether the user accepted as-is or modified first.
+ *
+ * Falls back to the prior displayText for action types we don't synthesise
+ * here — losing accuracy on those is less harmful than a blank header.
+ */
+function rebuildDisplayText(
+  actionType: string,
+  payload: Record<string, unknown>,
+  fallback: string,
+): string {
+  const str = (key: string): string | null => {
+    const v = payload[key];
+    return typeof v === "string" && v.trim() !== "" ? v.trim() : null;
+  };
+  switch (actionType) {
+    case "task_create": {
+      const title = str("title");
+      return title ? `Create task: ${title}` : fallback;
+    }
+    case "email_draft": {
+      const subject = str("subject");
+      const to = str("to");
+      if (subject && to) return `Email ${to}: ${subject}`;
+      if (subject) return `Email: ${subject}`;
+      if (to) return `Email ${to}`;
+      return fallback;
+    }
+    case "slack_message_draft": {
+      const channel = str("channelName");
+      return channel ? `Slack ${channel}` : fallback;
+    }
+    case "deadline_change": {
+      const task = str("taskTitle");
+      const when = str("newDeadline");
+      if (task && when) return `Move "${task}" deadline to ${when}`;
+      return fallback;
+    }
+    case "owner_change": {
+      const task = str("taskTitle");
+      const owner = str("newOwnerName");
+      if (task && owner) return `Reassign "${task}" to ${owner}`;
+      if (task) return `Unassign "${task}"`;
+      return fallback;
+    }
+    case "status_update": {
+      const task = str("taskTitle");
+      const status = str("newStatus");
+      if (task && status) return `Set "${task}" to ${status}`;
+      return fallback;
+    }
+    case "risk_flag": {
+      const task = str("taskTitle");
+      const level = str("riskLevel");
+      if (task && level) return `Flag "${task}" risk as ${level}`;
+      return fallback;
+    }
+    case "scope_change": {
+      const task = str("taskTitle");
+      return task ? `Update scope of "${task}"` : fallback;
+    }
+    case "project_create": {
+      const name = str("name");
+      return name ? `Create project: ${name}` : fallback;
+    }
+    case "project_note_send": {
+      return "Send project note";
+    }
+    default:
+      return fallback;
+  }
+}
+
 export const larryRoutes: FastifyPluginAsync = async (fastify) => {
   async function assertProjectAccessOrThrow(input: {
     tenantId: string;
@@ -2092,6 +2169,16 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         payloadPatch
       );
 
+      // B-005: regenerate displayText from the modified payload so completed
+      // cards reflect what was actually executed, not Larry's pre-modify
+      // "Create task: <old title>" line. Falls back to the original displayText
+      // when the payload doesn't drive a synthesisable header.
+      const nextDisplayText = rebuildDisplayText(
+        event.actionType,
+        nextPayload,
+        event.displayText,
+      );
+
       // Persist the edit first. If the user is only saving (not executing), we're done.
       // If they're also executing, we run the executor; on executor failure we intentionally
       // leave the edited payload in place so the user can retry Accept without re-editing.
@@ -2100,13 +2187,14 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
         `UPDATE larry_events
             SET previous_payload    = COALESCE(previous_payload, payload),
                 payload             = $3::jsonb,
+                display_text        = $5,
                 modified_by_user_id = $4,
                 modified_at         = NOW()
           WHERE tenant_id = $1
             AND id        = $2
             AND event_type = 'suggested'
         RETURNING id`,
-        [tenantId, id, JSON.stringify(nextPayload), actorUserId]
+        [tenantId, id, JSON.stringify(nextPayload), actorUserId, nextDisplayText]
       );
       if (updatedRows.length === 0) {
         // Lost the race — another tab resolved the event between our fetch and UPDATE.
@@ -2135,7 +2223,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       // Execute the edited action. Retry-with-resolution mirrors the /accept handler
       // for the common hallucinated/stale taskId case; calendar and slack actions
       // are not modifiable per the spec, so this simpler path is sufficient.
-      const executePayload = { ...nextPayload, displayText: event.displayText };
+      const executePayload = { ...nextPayload, displayText: nextDisplayText };
       let entity: unknown;
       try {
         entity = await executeAction(

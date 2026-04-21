@@ -406,6 +406,7 @@ export async function* streamLarryChat(input: {
         dueDate: z.string().nullable().optional().describe("Due date in YYYY-MM-DD format or null"),
         assigneeName: z.string().nullable().optional().describe("Assignee display name or null"),
         priority: z.enum(["low", "medium", "high", "critical"]).describe("Task priority"),
+        labels: z.array(z.string()).nullable().optional().describe("Short free-form tags the user mentioned (e.g. 'qa', 'launch'). Pass [] when none were requested — never invent labels."),
         reasoning: z.string().describe("One sentence: why create this task now"),
         displayText: z.string().describe("Short imperative for the UI, e.g. 'Create task: Design login'"),
       }),

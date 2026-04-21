@@ -780,6 +780,7 @@ export default function WorkspaceActionsPage() {
               ) : (
                 filteredActivity.map((event) => {
                   const completedByLarry = event.executedByKind === "larry" && event.payload?._selfExecutable === true;
+                  const wasModified = Boolean(event.modifiedAt);
                   return (
                   <div
                     key={event.id}
@@ -810,6 +811,15 @@ export default function WorkspaceActionsPage() {
                               Completed by Larry
                             </span>
                           )}
+                          {wasModified && (
+                            <span
+                              className="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold"
+                              style={{ background: "#fef3c7", color: "#92400e", borderColor: "#fde68a" }}
+                              title={event.modifiedByName ? `Modified by ${event.modifiedByName}` : "Modified before execution"}
+                            >
+                              Modified
+                            </span>
+                          )}
                         </div>
                         <p className="mt-3 text-[14px] font-semibold" style={{ color: "var(--text-1)" }}>
                           {event.displayText}
@@ -818,7 +828,10 @@ export default function WorkspaceActionsPage() {
                         <p className="mt-1 text-[12px]" style={{ color: "var(--text-muted)" }}>
                           {getEventMeta(event)} | {formatRelativeTime(event.executedAt ?? event.createdAt)}
                         </p>
-                        {event.responseMessagePreview && (
+                        {/* Hide Larry's pre-modify chat summary on modified events
+                            — B-005: the summary was generated against the original
+                            payload and misrepresents what was actually executed. */}
+                        {event.responseMessagePreview && !wasModified && (
                           <p className="mt-2 line-clamp-2 text-[12px] leading-5" style={{ color: "var(--text-2)" }}>
                             {event.responseMessagePreview}
                           </p>

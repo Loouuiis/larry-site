@@ -70,6 +70,9 @@ const EVENT_SUMMARY_SELECT = `
          e.execution_mode AS "executionMode",
          e.source_kind AS "sourceKind",
          e.source_record_id AS "sourceRecordId",
+         e.modified_at AS "modifiedAt",
+         e.modified_by_user_id AS "modifiedByUserId",
+         COALESCE(NULLIF(modified.display_name, ''), SPLIT_PART(modified.email, '@', 1)) AS "modifiedByName",
          c.title AS "conversationTitle",
          LEFT(request_message.content, 160) AS "requestMessagePreview",
          LEFT(response_message.content, 160) AS "responseMessagePreview"
@@ -93,7 +96,9 @@ const EVENT_SUMMARY_SELECT = `
     LEFT JOIN users dismissed
       ON dismissed.id = e.dismissed_by_user_id
     LEFT JOIN users executor
-      ON executor.id = e.executed_by_user_id`;
+      ON executor.id = e.executed_by_user_id
+    LEFT JOIN users modified
+      ON modified.id = e.modified_by_user_id`;
 
 export async function listLarryConversationPreviews(
   db: Db,
