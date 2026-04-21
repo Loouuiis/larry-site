@@ -590,6 +590,7 @@ export function contextMenuItemsFor(args: {
     { id: "openDetail",         label: "Open task" },
     { id: "moveToProject",      label: "Move to project…", hasSubmenu: true },
     { id: "moveToCategory",     label: "Change project's group…", hasSubmenu: true },
+    { id: "addSubtask",         label: "Add subtask" },
     { id: "removeFromTimeline", label: "Remove from timeline" },
     { id: "delete",             label: "Delete", destructive: true },
   ];

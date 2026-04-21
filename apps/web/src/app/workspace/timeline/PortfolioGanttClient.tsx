@@ -391,6 +391,19 @@ export function PortfolioGanttClient() {
     }
     return m;
   }, [data]);
+  // taskId → parentTaskId (null for root-level tasks). Used so right-clicking
+  // a subtask row and choosing "Add subtask" creates a sibling under the same
+  // parent task rather than nesting under the clicked subtask.
+  const taskParentLookup = useMemo(() => {
+    const m = new Map<string, string | null>();
+    if (!data) return m;
+    for (const cat of data.categories) {
+      for (const p of cat.projects) {
+        for (const t of p.tasks) m.set(t.id, t.parentTaskId ?? null);
+      }
+    }
+    return m;
+  }, [data]);
   const projectStatusById = useMemo(() => {
     const m = new Map<string, string>();
     if (!data) return m;
@@ -599,6 +612,23 @@ export function PortfolioGanttClient() {
 
     if (action === "addChild" && rowKind === "project") {
       setAddCtx({ mode: "task", parentProjectId: rowKey.slice(5) });
+      return;
+    }
+
+    if (action === "addSubtask" && (rowKind === "task" || rowKind === "subtask")) {
+      const clickedTaskId = rowKey.startsWith("task:") ? rowKey.slice(5) : rowKey.slice(4);
+      const projectId = taskProjectLookup.get(clickedTaskId);
+      if (!projectId) return;
+      if (isArchived(projectId)) {
+        setMutationError("That task's project is archived — unarchive it first to add subtasks.");
+        return;
+      }
+      // Task row → child under the clicked task.
+      // Subtask row → sibling under the clicked subtask's parent task.
+      const parentTaskId = rowKind === "task"
+        ? clickedTaskId
+        : (taskParentLookup.get(clickedTaskId) ?? clickedTaskId);
+      setAddCtx({ mode: "subtask", parentProjectId: projectId, parentTaskId });
       return;
     }
 

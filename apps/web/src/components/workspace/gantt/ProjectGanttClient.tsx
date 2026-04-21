@@ -364,6 +364,18 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
       setAddCtx({ mode: "task" });
       return;
     }
+    if (action === "addSubtask" && (rowKind === "task" || rowKind === "subtask")) {
+      const clickedTaskId = rowKey.startsWith("task:") ? rowKey.slice(5) : rowKey.slice(4);
+      // Task row → child under the clicked task.
+      // Subtask row → sibling under the clicked subtask's parent task.
+      let parentTaskId = clickedTaskId;
+      if (rowKind === "subtask") {
+        const clicked = ganttTasks.find((t) => t.id === clickedTaskId);
+        parentTaskId = clicked?.parentTaskId ?? clickedTaskId;
+      }
+      setAddCtx({ mode: "subtask", parentTaskId });
+      return;
+    }
     if (action === "moveToCategory" && (rowKind === "task" || rowKind === "subtask")) {
       const taskId = rowKey.startsWith("task:") ? rowKey.slice(5) : rowKey.slice(4);
       try {

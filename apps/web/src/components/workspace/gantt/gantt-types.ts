@@ -43,6 +43,7 @@ export type ContextMenuAction =
   | "moveToProject"    // submenu → project id payload (tasks only)
   | "removeFromTimeline"
   | "addChild"
+  | "addSubtask"       // v4 — only on task/subtask rows; creates a subtask under the parent task
   | "addSubcategory"   // v4 — only on category rows; creates category with parentCategoryId
   | "addCategory"      // v4 Slice 4.5 — only on project rows; creates a project-scoped category
   | "rename"
