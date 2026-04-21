@@ -3756,6 +3756,18 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       });
       const larryMessageId = larryMessageInsert.id;
 
+      // Reserve LLM budget BEFORE writing SSE headers. If reserveTokens throws
+      // LLMQuotaError after headers are flushed, the global 429 JSON error
+      // handler collides with the already-set text/event-stream response and
+      // Fastify raises FST_ERR_REP_INVALID_PAYLOAD_TYPE → headers-already-sent
+      // → uncaught exception, crashing the Api process.
+      const streamConfig = buildIntelligenceConfig(fastify.config);
+      await reserveTokens({
+        tenantId,
+        provider: streamConfig.provider,
+        estimatedTokens: STREAM_CHAT_ESTIMATED_TOKENS,
+      });
+
       // ── SSE headers — must be set before any body writes ─────────────────
       reply.raw.writeHead(200, {
         "Content-Type": "text/event-stream",
@@ -3897,7 +3909,8 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       ];
 
       // ── Intelligence config ───────────────────────────────────────────────
-      const config = buildIntelligenceConfig(fastify.config);
+      // Reuse the config already built before the SSE headers were written.
+      const config = streamConfig;
       const taskLines = snapshot.tasks
         .map(t => `  id:"${t.id}" title:"${t.title}" status:${t.status} risk:${t.riskLevel}${t.dueDate ? ` due:${t.dueDate}` : ""}${t.assigneeName ? ` assignee:${t.assigneeName}` : ""}`)
         .join("\n");
@@ -4032,13 +4045,7 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       };
 
       // ── Stream ────────────────────────────────────────────────────────────
-      // Reserve budget before opening the stream. If quota is exhausted the
-      // global error handler will return 429 before any SSE frames are sent.
-      await reserveTokens({
-        tenantId,
-        provider: config.provider,
-        estimatedTokens: STREAM_CHAT_ESTIMATED_TOKENS,
-      });
+      // reserveTokens was already called above, before SSE headers were written.
       // Track whether the SDK emitted an error event mid-stream. When it does
       // the client sets the bubble to event.message, and a subsequent recap
       // token would get concatenated onto the error text with no separator
