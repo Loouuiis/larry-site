@@ -323,9 +323,12 @@ export function SituationRoom() {
         sig.classList.add("is-in");
         repositionSignals();
       });
-      while (TRACK.children.length > 6) {
-        const old = TRACK.lastElementChild as HTMLElement | null;
-        if (!old) break;
+      const trackOverflow = TRACK.children.length - 6;
+      for (let i = 0; i < trackOverflow; i++) {
+        const idx = TRACK.children.length - 1 - i;
+        const old = TRACK.children[idx] as HTMLElement | undefined;
+        if (!old || old.dataset.leaving === "1") continue;
+        old.dataset.leaving = "1";
         old.classList.add("is-absorb");
         schedule(() => old.remove(), 900);
       }
@@ -348,9 +351,12 @@ export function SituationRoom() {
         STACK.prepend(a);
         requestAnimationFrame(() => a.classList.add("is-in"));
         sig.remove();
-        while (STACK.children.length > 4) {
-          const o = STACK.lastElementChild as HTMLElement | null;
-          if (!o) break;
+        const stackOverflow = STACK.children.length - 4;
+        for (let i = 0; i < stackOverflow; i++) {
+          const idx = STACK.children.length - 1 - i;
+          const o = STACK.children[idx] as HTMLElement | undefined;
+          if (!o || o.dataset.leaving === "1") continue;
+          o.dataset.leaving = "1";
           o.style.transition = "opacity .6s, transform .6s";
           o.style.opacity = "0";
           o.style.transform = "translateY(20px) scale(0.96)";
