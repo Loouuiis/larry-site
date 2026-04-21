@@ -1,5 +1,36 @@
-import { describe, it, expect } from "vitest";
-import { DraftSlackInputSchema, fallbackDisplayText } from "./chat.js";
+import { describe, expect, it } from "vitest";
+import {
+  buildChatSystemPrompt,
+  DraftSlackInputSchema,
+  fallbackDisplayText,
+} from "./chat.js";
+
+describe("buildChatSystemPrompt — transcript sectioning (B-010)", () => {
+  it("instructs Larry to structure transcript replies as Tasks / Decisions / Risks", () => {
+    const prompt = buildChatSystemPrompt(null);
+    expect(prompt).toMatch(/PASTED MEETING TRANSCRIPTS/);
+    expect(prompt).toMatch(/\*\*Tasks\*\*/);
+    expect(prompt).toMatch(/\*\*Decisions\*\*/);
+    expect(prompt).toMatch(/\*\*Risks\*\*/);
+  });
+
+  it("requires an explicit '(none)' under empty sections — no silent drops", () => {
+    const prompt = buildChatSystemPrompt(null);
+    expect(prompt).toMatch(/\(none\)/);
+    expect(prompt).toMatch(/[Nn]ever silently omit a section/);
+  });
+
+  it("tells Larry a transcript paste is a summarisation request, not an action trigger", () => {
+    const prompt = buildChatSystemPrompt(null);
+    expect(prompt).toMatch(/summaris|extract first/i);
+  });
+
+  it("still embeds project context when provided", () => {
+    const prompt = buildChatSystemPrompt("Project Phoenix: migrating auth to Auth0 by May.");
+    expect(prompt).toContain("Project Phoenix");
+    expect(prompt).toMatch(/PASTED MEETING TRANSCRIPTS/);
+  });
+});
 
 describe("DraftSlackInputSchema (B-008)", () => {
   it("accepts a minimal valid Slack draft payload", () => {
