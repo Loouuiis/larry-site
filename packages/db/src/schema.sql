@@ -271,6 +271,13 @@ CREATE TABLE IF NOT EXISTS tasks (
   labels TEXT[] NOT NULL DEFAULT '{}'
 );
 
+-- B-004 hotfix: CREATE TABLE IF NOT EXISTS is a no-op when tasks already
+-- exists in prod, so the labels column from #146 never got added. Use an
+-- explicit ALTER so the column is backfilled on existing deployments before
+-- the GIN index below tries to reference it.
+ALTER TABLE tasks
+  ADD COLUMN IF NOT EXISTS labels TEXT[] NOT NULL DEFAULT '{}';
+
 CREATE INDEX IF NOT EXISTS idx_tasks_tenant_project ON tasks (tenant_id, project_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks (tenant_id, assignee_user_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_labels ON tasks USING GIN (labels)
