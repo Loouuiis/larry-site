@@ -1,3 +1,5 @@
+import type { TimelineCategorySummary } from "@larry/shared";
+
 export type TaskStatus =
   | "not_started"
   | "on_track"
@@ -77,6 +79,7 @@ export interface WorkspaceTask {
   assigneeName?: string | null;
   progressPercent?: number;
   riskLevel?: string;
+  labels?: string[];
   updatedAt?: string | null;
 }
 
@@ -106,10 +109,23 @@ export interface WorkspaceTimelineTask {
   categoryId?: string | null;
 }
 
+export interface WorkspaceTimelineProjectSummary {
+  id: string;
+  name: string;
+  status: string;
+  categoryId: string | null;
+}
+
 export interface WorkspaceTimeline {
   gantt?: WorkspaceTimelineTask[];
   kanban?: Record<string, Array<{ id: string }>>;
   dependencies?: Array<{ taskId: string; dependsOnTaskId: string; relation: string }>;
+  // Timeline Slice 2 (Bug 8) — project-timeline now carries its own
+  // category slice so ProjectGanttClient no longer depends on the org
+  // timeline cache for colour / nesting. Nullable for backwards compat
+  // with the old response shape during the deploy roll-forward.
+  project?: WorkspaceTimelineProjectSummary | null;
+  categories?: TimelineCategorySummary[];
 }
 
 export interface WorkspaceHealth {
@@ -318,6 +334,9 @@ export interface WorkspaceLarryEvent {
   conversationTitle?: string | null;
   requestMessagePreview?: string | null;
   responseMessagePreview?: string | null;
+  modifiedAt?: string | null;
+  modifiedByUserId?: string | null;
+  modifiedByName?: string | null;
 }
 
 export interface WorkspaceConversationPreview {

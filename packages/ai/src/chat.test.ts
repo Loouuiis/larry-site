@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildChatSystemPrompt } from "./chat.js";
+import {
+  buildChatSystemPrompt,
+  DraftSlackInputSchema,
+  fallbackDisplayText,
+} from "./chat.js";
 
 describe("buildChatSystemPrompt — transcript sectioning (B-010)", () => {
   it("instructs Larry to structure transcript replies as Tasks / Decisions / Risks", () => {
@@ -12,18 +16,12 @@ describe("buildChatSystemPrompt — transcript sectioning (B-010)", () => {
 
   it("requires an explicit '(none)' under empty sections — no silent drops", () => {
     const prompt = buildChatSystemPrompt(null);
-    // The worst failure mode from the 2026-04-20 audit was Larry dropping the
-    // single risk without telling the user. Empty-section handling must be
-    // spelled out in the prompt so the model never treats "nothing here" as
-    // "don't mention it."
     expect(prompt).toMatch(/\(none\)/);
     expect(prompt).toMatch(/[Nn]ever silently omit a section/);
   });
 
   it("tells Larry a transcript paste is a summarisation request, not an action trigger", () => {
     const prompt = buildChatSystemPrompt(null);
-    // Audit also caught Larry pre-actioning things the user hadn't asked for.
-    // Transcript parsing must extract first and wait for the user to pick.
     expect(prompt).toMatch(/summaris|extract first/i);
   });
 
@@ -31,5 +29,62 @@ describe("buildChatSystemPrompt — transcript sectioning (B-010)", () => {
     const prompt = buildChatSystemPrompt("Project Phoenix: migrating auth to Auth0 by May.");
     expect(prompt).toContain("Project Phoenix");
     expect(prompt).toMatch(/PASTED MEETING TRANSCRIPTS/);
+  });
+});
+
+describe("DraftSlackInputSchema (B-008)", () => {
+  it("accepts a minimal valid Slack draft payload", () => {
+    const parsed = DraftSlackInputSchema.parse({
+      channelName: "#launch",
+      message: "Kickoff tomorrow at 10am. Blockers to call out?",
+      reasoning: "User asked for a launch-channel ping ahead of kickoff",
+      displayText: "Draft Slack to #launch",
+    });
+    expect(parsed.channelName).toBe("#launch");
+    expect(parsed.message).toContain("Kickoff");
+    expect(parsed.threadTs).toBeUndefined();
+  });
+
+  it("accepts an optional threadTs for reply-in-thread", () => {
+    const parsed = DraftSlackInputSchema.parse({
+      channelName: "#launch",
+      message: "Thanks — following up.",
+      threadTs: "1713456789.001200",
+      reasoning: "Replying in thread to Priya's update",
+      displayText: "Reply in #launch thread",
+    });
+    expect(parsed.threadTs).toBe("1713456789.001200");
+  });
+
+  it("rejects a payload missing channelName", () => {
+    const r = DraftSlackInputSchema.safeParse({
+      message: "hi",
+      reasoning: "x",
+      displayText: "Draft Slack",
+    });
+    expect(r.success).toBe(false);
+  });
+
+  it("rejects a payload missing message", () => {
+    const r = DraftSlackInputSchema.safeParse({
+      channelName: "#launch",
+      reasoning: "x",
+      displayText: "Draft Slack",
+    });
+    expect(r.success).toBe(false);
+  });
+});
+
+describe("fallbackDisplayText (B-008)", () => {
+  it("renders a draft_slack fallback with the channel name", () => {
+    expect(
+      fallbackDisplayText("draft_slack", { channelName: "#launch" })
+    ).toBe("Draft Slack message to #launch");
+  });
+
+  it("renders a safe default when channelName is absent", () => {
+    expect(fallbackDisplayText("draft_slack", {})).toBe(
+      "Draft Slack message to channel"
+    );
   });
 });

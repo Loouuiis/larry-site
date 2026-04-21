@@ -146,8 +146,9 @@ Only reference tasks, people, and dates from the project context. Never invent I
 - flag_task_risk — flag a task's risk level
 - create_task — create a new task
 - change_deadline — change a task's due date
-- change_task_owner — reassign a task
+- change_task_owner — reassign or unassign a task (pass newOwnerName: null to clear the owner)
 - draft_email — draft an email to a team member
+- draft_slack — draft a Slack message to a channel
 
 **Read-only:**
 - get_task_list — look up task details when you need more info than you have
@@ -183,6 +184,23 @@ emails to customers, vendors, and external stakeholders who have no account.
 
 Only refuse a draft_email if the "to" value is neither a recognisable team
 name NOR contains "@".
+
+### SLACK CHANNELS — draft_slack
+
+The draft_slack tool takes a channel name (e.g. "#launch", "#general", or a
+DM target like "@priya") and a message body. Channel names are free-form
+strings — do NOT try to validate them against the team list. If the user
+names a channel, pass it through verbatim with a leading "#" if they omitted
+it. Do NOT refuse to draft a Slack message on the grounds that you can't
+verify the channel — Slack drafts are queued for user approval before they
+send, so the user will see and fix any wrong channel.
+
+  - "Draft a Slack in #launch saying we're live" → channelName: "#launch"
+  - "Message the eng channel about the freeze"  → channelName: "#eng"
+  - "Slack Priya about the review"              → channelName: "@priya"
+
+Use draft_slack when the user asks for a Slack message, channel post, or DM.
+Never claim you can only draft emails.
 
 ## WHEN TO WRITE vs WHEN TO ANSWER
 
@@ -232,9 +250,44 @@ Refuse — in your own words, as a plain reply — when the user asks you to del
 Do NOT call any tool for a destructive sweep — zero tool calls is the correct outcome. Do NOT pivot to giving generic project advice — that looks like you ignored the user's actual message. You MUST write a real refusal reply: silence or the empty-fallback string ("I don't have anything to add here…") or an unrelated risk summary all look like the prompt was injected successfully.${context}`;
 }
 
+// ── Tool input schemas (exported for unit testing) ────────────────────────────
+
+// B-008: draft_slack input schema. `channelName` + `message` match the
+// slack_message_draft executor payload (packages/db/src/larry-executor.ts) so
+// the chat→action→executor path is 1:1 with no field remapping.
+export const DraftSlackInputSchema = z.object({
+  channelName: z
+    .string()
+    .min(1)
+    .describe(
+      "Slack channel name (e.g. '#launch'), or DM target (e.g. '@priya'). Pass the user's value through verbatim — do not validate against the team list."
+    ),
+  message: z
+    .string()
+    .min(1)
+    .describe("Full Slack message body, properly formatted"),
+  threadTs: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("Optional Slack thread timestamp to reply in-thread, or null"),
+  taskId: z
+    .string()
+    .nullable()
+    .optional()
+    .describe("Related task UUID or null"),
+  reasoning: z
+    .string()
+    .describe("One sentence: purpose of this Slack message"),
+  displayText: z
+    .string()
+    .describe("Short imperative shown in the UI"),
+});
+
 // ── Tool display text fallback ────────────────────────────────────────────────
 
-function fallbackDisplayText(toolName: string, input: Record<string, unknown>): string {
+// Exported for unit testing (B-008 fallback coverage).
+export function fallbackDisplayText(toolName: string, input: Record<string, unknown>): string {
   switch (toolName) {
     case "create_task":        return `Create task: ${String(input.title ?? "new task")}`;
     case "update_task_status": return `Update status of ${String(input.taskTitle ?? "task")}`;
@@ -243,6 +296,7 @@ function fallbackDisplayText(toolName: string, input: Record<string, unknown>): 
     case "change_deadline":    return `Change deadline for ${String(input.taskTitle ?? "task")}`;
     case "change_task_owner":  return `Reassign ${String(input.taskTitle ?? "task")} to ${String(input.newOwnerName ?? "new owner")}`;
     case "draft_email":        return `Draft email to ${String(input.to ?? "recipient")}`;
+    case "draft_slack":        return `Draft Slack message to ${String(input.channelName ?? "channel")}`;
     case "get_task_list":      return "Look up task list";
     default:                   return String(input.displayText ?? toolName);
   }
@@ -366,6 +420,7 @@ export async function* streamLarryChat(input: {
         dueDate: z.string().nullable().optional().describe("Due date in YYYY-MM-DD format or null"),
         assigneeName: z.string().nullable().optional().describe("Assignee display name or null"),
         priority: z.enum(["low", "medium", "high", "critical"]).describe("Task priority"),
+        labels: z.array(z.string()).nullable().optional().describe("Short free-form tags the user mentioned (e.g. 'qa', 'launch'). Pass [] when none were requested — never invent labels."),
         reasoning: z.string().describe("One sentence: why create this task now"),
         displayText: z.string().describe("Short imperative for the UI, e.g. 'Create task: Design login'"),
       }),
@@ -425,11 +480,11 @@ export async function* streamLarryChat(input: {
     }),
 
     change_task_owner: tool({
-      description: "Reassign a task to a different owner. Will be queued in the Action Centre for approval.",
+      description: "Reassign or unassign a task. Will be queued in the Action Centre for approval. Pass null for newOwnerName to unassign the task entirely.",
       inputSchema: z.object({
         taskId: z.string().describe("Task UUID from project context"),
         taskTitle: z.string().describe("Task title"),
-        newOwnerName: z.string().describe("New owner's display name"),
+        newOwnerName: z.string().nullable().describe("New owner's display name (must be on the project team), or null to unassign the task"),
         reasoning: z.string().describe("One sentence: why reassign this task"),
         displayText: z.string().describe("Short imperative shown in the UI"),
       }),
@@ -447,6 +502,13 @@ export async function* streamLarryChat(input: {
         displayText: z.string().describe("Short imperative shown in the UI"),
       }),
       execute: async (params) => onTool("draft_email", params as Record<string, unknown>),
+    }),
+
+    draft_slack: tool({
+      description:
+        "Draft a Slack message to a channel or DM. Will be queued for approval before sending. Use this whenever the user asks for a Slack post, channel message, or DM — never claim you can only draft emails.",
+      inputSchema: DraftSlackInputSchema,
+      execute: async (params) => onTool("draft_slack", params as Record<string, unknown>),
     }),
 
     get_task_list: tool({

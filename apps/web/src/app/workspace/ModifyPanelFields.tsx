@@ -21,6 +21,74 @@ function str(v: unknown): string {
   return typeof v === "string" ? v : "";
 }
 
+function toLabels(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return v.filter((x): x is string => typeof x === "string" && x.trim() !== "");
+}
+
+function LabelsInput({
+  value,
+  onChange,
+}: {
+  value: string[];
+  onChange: (labels: string[]) => void;
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="flex flex-wrap gap-1.5">
+        {value.length === 0 ? (
+          <span className="text-xs text-neutral-400">No labels yet</span>
+        ) : (
+          value.map((label, i) => (
+            <span
+              key={`${label}-${i}`}
+              className="inline-flex items-center gap-1 rounded-full border border-neutral-300 bg-neutral-50 px-2 py-0.5 text-xs text-neutral-700"
+            >
+              {label}
+              <button
+                type="button"
+                aria-label={`Remove label ${label}`}
+                onClick={() => onChange(value.filter((_, idx) => idx !== i))}
+                className="text-neutral-400 hover:text-neutral-600"
+              >
+                ×
+              </button>
+            </span>
+          ))
+        )}
+      </div>
+      <input
+        type="text"
+        placeholder="Add a label and press Enter"
+        className={INPUT_CLASS}
+        onKeyDown={(e) => {
+          if (e.key !== "Enter" && e.key !== ",") return;
+          e.preventDefault();
+          const input = e.currentTarget;
+          const next = input.value.trim();
+          if (!next) return;
+          if (value.some((x) => x.toLowerCase() === next.toLowerCase())) {
+            input.value = "";
+            return;
+          }
+          onChange([...value, next]);
+          input.value = "";
+        }}
+        onBlur={(e) => {
+          const next = e.currentTarget.value.trim();
+          if (!next) return;
+          if (value.some((x) => x.toLowerCase() === next.toLowerCase())) {
+            e.currentTarget.value = "";
+            return;
+          }
+          onChange([...value, next]);
+          e.currentTarget.value = "";
+        }}
+      />
+    </div>
+  );
+}
+
 function TeamSelect({
   value,
   onChange,
@@ -112,6 +180,13 @@ function CreateTaskFields({ snapshot, payload, onPatch }: FieldsProps) {
             placeholder="(unassigned)"
           />
         </label>
+      </div>
+      <div className={LABEL_CLASS}>
+        <span className={SPAN_CLASS}>Labels</span>
+        <LabelsInput
+          value={toLabels(payload.labels)}
+          onChange={(labels) => onPatch({ labels })}
+        />
       </div>
     </div>
   );

@@ -63,12 +63,32 @@ interface TaskCreatePayload {
   assigneeName: string | null;
   priority: "low" | "medium" | "high" | "critical";
   /**
+   * Free-form string tags applied to the task. Deduped + trimmed by the
+   * executor; never null-coerces into a literal "null" entry. See B-004.
+   */
+  labels?: string[] | null;
+  /**
    * Optional UUID of the project_memory_entries row that triggered this task.
    * When set and valid, the executor copies that entry's source_kind +
    * source_record_id onto the new task so the UI can link back to the
    * originating email/Slack thread (#92).
    */
   sourceMemoryEntryId?: string | null;
+}
+
+function normalizeLabels(input: unknown): string[] {
+  if (!Array.isArray(input)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of input) {
+    if (typeof raw !== "string") continue;
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    if (seen.has(trimmed.toLowerCase())) continue;
+    seen.add(trimmed.toLowerCase());
+    out.push(trimmed);
+  }
+  return out;
 }
 
 interface StatusUpdatePayload {
@@ -100,7 +120,8 @@ interface DeadlineChangePayload {
 interface OwnerChangePayload {
   taskId: string;
   taskTitle: string;
-  newOwnerName: string;
+  // null / empty string → unassign the task entirely (B-009).
+  newOwnerName: string | null;
 }
 
 interface ScopeChangePayload {
@@ -775,14 +796,16 @@ export async function executeTaskCreate(
     }
   }
 
+  const labels = normalizeLabels(payload.labels);
+
   const rows = await db.queryTenant<Record<string, unknown>>(
     tenantId,
     `INSERT INTO tasks
-       (tenant_id, project_id, title, description, status, priority, assignee_user_id, start_date, due_date, source_kind, source_record_id)
-     VALUES ($1, $2, $3, $4, 'not_started', $5, $6, $7, $8, $9, $10)
+       (tenant_id, project_id, title, description, status, priority, assignee_user_id, start_date, due_date, source_kind, source_record_id, labels)
+     VALUES ($1, $2, $3, $4, 'not_started', $5, $6, $7, $8, $9, $10, $11)
      RETURNING id, tenant_id, project_id, title, description, status, priority,
                assignee_user_id, progress_percent, risk_score, risk_level, start_date, due_date,
-               source_kind, source_record_id, created_at`,
+               source_kind, source_record_id, labels, created_at`,
     [
       tenantId,
       projectId,
@@ -794,6 +817,7 @@ export async function executeTaskCreate(
       payload.dueDate ?? null,
       sourceKind,
       sourceRecordId,
+      labels,
     ]
   );
   const task = rows[0];
@@ -909,9 +933,19 @@ export async function executeOwnerChange(
   tenantId: string,
   payload: OwnerChangePayload
 ): Promise<Record<string, unknown>> {
-  const newOwnerId = await resolveUserByName(db, tenantId, payload.newOwnerName);
-  if (!newOwnerId) {
-    throw new Error(`executeOwnerChange: user "${payload.newOwnerName}" not found in tenant ${tenantId}`);
+  // B-009: null / empty newOwnerName is the unassign path. Only resolve when
+  // the caller actually named someone.
+  const wantsUnassign =
+    payload.newOwnerName === null ||
+    payload.newOwnerName === undefined ||
+    payload.newOwnerName.trim() === "";
+
+  let newOwnerId: string | null = null;
+  if (!wantsUnassign) {
+    newOwnerId = await resolveUserByName(db, tenantId, payload.newOwnerName as string);
+    if (!newOwnerId) {
+      throw new Error(`executeOwnerChange: user "${payload.newOwnerName}" not found in tenant ${tenantId}`);
+    }
   }
 
   const rows = await db.queryTenant<Record<string, unknown>>(
@@ -928,7 +962,7 @@ export async function executeOwnerChange(
   const task = rows[0];
   await logActivity(db, tenantId, task.project_id as string, payload.taskId, {
     action: "owner_change",
-    newOwnerName: payload.newOwnerName,
+    newOwnerName: wantsUnassign ? null : payload.newOwnerName,
     newOwnerId,
     triggeredBy: "larry",
   });
