@@ -5,6 +5,27 @@ import {
   fallbackDisplayText,
 } from "./chat.js";
 
+describe("buildChatSystemPrompt — action confirmations (B-007)", () => {
+  it("forces Larry to enumerate every captured create_task field in the confirmation reply", () => {
+    const prompt = buildChatSystemPrompt(null);
+    expect(prompt).toMatch(/CONFIRMING ACTIONS/);
+    for (const field of ["title", "priority", "startDate", "dueDate", "assigneeName", "labels"]) {
+      expect(prompt).toContain(field);
+    }
+  });
+
+  it("requires Larry to flag any field the user asked for that couldn't be captured", () => {
+    const prompt = buildChatSystemPrompt(null);
+    expect(prompt).toMatch(/silently dropping/i);
+    expect(prompt).toMatch(/couldn't (include|capture)/i);
+  });
+
+  it("provides a concrete example confirmation with every field", () => {
+    const prompt = buildChatSystemPrompt(null);
+    expect(prompt).toMatch(/Queued .* priority.* starts .* due .* assigned to .* labels/s);
+  });
+});
+
 describe("buildChatSystemPrompt — transcript sectioning (B-010)", () => {
   it("instructs Larry to structure transcript replies as Tasks / Decisions / Risks", () => {
     const prompt = buildChatSystemPrompt(null);
