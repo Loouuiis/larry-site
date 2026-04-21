@@ -28,26 +28,6 @@
 }
 
 /* ─── Hero head ─── */
-.hero-eyebrow-dot {
-  position: relative;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--pm-green);
-}
-.hero-eyebrow-dot::after {
-  content: "";
-  position: absolute;
-  inset: -4px;
-  border-radius: 50%;
-  border: 1px solid var(--pm-green);
-  animation: lv3-ping 1.8s ease-out infinite;
-}
-@keyframes lv3-ping {
-  0%   { opacity: 1; transform: scale(0.6); }
-  100% { opacity: 0; transform: scale(1.8); }
-}
-
 .hero-italic {
   font-style: italic;
   font-weight: 300;
@@ -463,23 +443,24 @@
   z-index: 1;
 }
 
-/* ─── Drop panel (light) ─── */
+/* ─── Drop panel (integrated footer of the Situation Room card) ─── */
 .lv3-drop {
   position: relative;
   display: flex;
-  gap: 14px;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  padding: 18px 22px;
-  border-radius: 18px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  box-shadow: 0 1px 3px rgba(17,23,44,0.04);
-  flex-wrap: wrap;
+  gap: 12px;
+  padding: 20px 22px 22px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+  text-align: center;
+}
+.lv3-drop__intro {
+  max-width: 520px;
 }
 .lv3-drop__intro h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 500;
   letter-spacing: -0.01em;
   color: var(--text-1);
@@ -493,6 +474,7 @@
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  justify-content: center;
 }
 .lv3-chip {
   display: inline-flex;
@@ -794,7 +776,6 @@
   .lv3-does__grid { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .hero-eyebrow-dot::after,
   .hero-italic::after,
   .lv3-pulse--fire,
   .lv3-seal.is-thinking,

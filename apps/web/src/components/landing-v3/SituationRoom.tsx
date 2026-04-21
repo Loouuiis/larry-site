@@ -536,11 +536,13 @@ export function SituationRoom() {
 
         <svg className="lv3-bolts" ref={boltsRef} xmlns="http://www.w3.org/2000/svg" />
       </div>
+
+      <DropPanel />
     </section>
   );
 }
 
-export function DropPanel() {
+function DropPanel() {
   const dispatch = (which: "slack" | "email" | "meeting" | "calendar") => {
     window.dispatchEvent(new CustomEvent("lv3:drop", { detail: which }));
   };

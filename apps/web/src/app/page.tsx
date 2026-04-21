@@ -1,7 +1,7 @@
 import "@/styles/landing-v3.css";
 import { LandingNavbar } from "@/components/landing-v3/Navbar";
 import { HeroHead } from "@/components/landing-v3/HeroHead";
-import { SituationRoom, DropPanel } from "@/components/landing-v3/SituationRoom";
+import { SituationRoom } from "@/components/landing-v3/SituationRoom";
 import { WhatLarryDoes } from "@/components/landing-v3/WhatLarryDoes";
 import { BeforeAfter } from "@/components/landing-v3/BeforeAfter";
 import { CTA } from "@/components/landing-v3/CTA";
@@ -26,13 +26,12 @@ export default function Home() {
         style={{
           maxWidth: 1240,
           minHeight: "calc(100vh - 68px)",
-          padding: "56px 28px 40px",
-          gridTemplateRows: "auto 1fr auto",
+          padding: "28px 28px 40px",
+          gridTemplateRows: "auto 1fr",
         }}
       >
         <HeroHead />
         <SituationRoom />
-        <DropPanel />
       </main>
       <WhatLarryDoes />
       <BeforeAfter />
