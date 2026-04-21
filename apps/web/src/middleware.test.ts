@@ -110,6 +110,22 @@ describe("middleware — P2-6 auth page security headers", () => {
     expect(res.headers.get("Referrer-Policy")).toBe("no-referrer");
   });
 
+  it("injects Cross-Origin-Resource-Policy: same-origin + restrictive Permissions-Policy on /login", async () => {
+    const middleware = await loadMiddleware();
+    const res = await middleware(pageReq("/login"));
+    expect(res.headers.get("Cross-Origin-Resource-Policy")).toBe("same-origin");
+    const pp = res.headers.get("Permissions-Policy") ?? "";
+    // Credential-sensitive features must be locked down.
+    expect(pp).toMatch(/camera=\(\)/);
+    expect(pp).toMatch(/microphone=\(\)/);
+    expect(pp).toMatch(/geolocation=\(\)/);
+    expect(pp).toMatch(/payment=\(\)/);
+    expect(pp).toMatch(/usb=\(\)/);
+    // WebAuthn kept as (self) so a future passkey enrolment page works.
+    expect(pp).toMatch(/publickey-credentials-create=\(self\)/);
+    expect(pp).toMatch(/publickey-credentials-get=\(self\)/);
+  });
+
   it("injects headers on /signup, /forgot-password, /reset-password, /verify-email, /confirm-email-change", async () => {
     const middleware = await loadMiddleware();
     for (const path of [

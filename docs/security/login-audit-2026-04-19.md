@@ -120,3 +120,37 @@ more email churn on OS updates or Wi-Fi handoffs.
 added to lock in the tightened password policy so a future relaxation requires
 an explicit decision. Recommend extending `tests/auth-tenants-switch.test.ts`
 with a login-path test for case-insensitive email lookup when #PR merges.
+
+## 2026-04-21 verification pass
+
+Independent re-verification on prod (`www.larry-pm.com`). Working notes:
+`C:\Users\oreil\handoffs\_working\login-header-audit-2026-04-21.md`,
+`resend-new-device-email-check-2026-04-21.md`.
+
+- ✅ Verified 2026-04-21 — **Password policy (#126)** — `curl -X POST /api/auth/signup` with `password=Password1234!` returns `400 {"error":"This password has appeared in a known data breach..."}`. Same response set also rejects pre-HIBP breached strings, confirming the policy runs server-side on prod.
+- ✅ Verified 2026-04-21 — **CSRF double-submit (#128)** — live end-to-end: logged in as `launch-test-2026@larry-pm.com`, then `POST /api/workspace/tasks` without `X-CSRF-Token` returned `403 {"error":"Invalid CSRF token."}`; same request with the token from the `larry_csrf` cookie returned `400` (payload validation, CSRF middleware passed). Evidence logged in working notes.
+- ✅ Verified 2026-04-21 — **CSRF signup bootstrap / refresh-token reuse / session rotation / email trim (#129)** — `auth-refresh-reuse.test.ts` green (1/1); `middleware.test.ts` green (11/11 including the three CSRF 403/200 cases); `auth.ts:548` confirms `actionType: "auth.refresh_reuse_detected"` audit row is emitted on reuse.
+- ✅ Verified 2026-04-21 — **HIBP k-anonymous breach check (#130)** — prod probe above returned the dedicated 400 Password Compromised error shape, confirming the route calls `assertPasswordNotBreached` before writing to DB.
+- ✅ Verified 2026-04-21 — **MFA enforcement on `/login` (feat/mfa-login-enforcement)** — `POST /api/auth/mfa/verify` responds `400 {"error":"All fields are required."}` on empty payload (endpoint live). Migration `027_mfa_secrets.sql` present in `packages/db/src/migrations/`. Scope claim gate `mfa_verify` / `mfa_enrol` present in `auth-mfa.ts`.
+- ✅ Verified 2026-04-21 — **Device fingerprint cookie (feat/device-fingerprint-cookie)** — `auth-device-fingerprint.test.ts` green (6/6). Migration `028_refresh_token_device_id.sql` present. Cookie is minted on every session-mint site in `apps/web/src/lib/auth.ts`.
+- ✅ Verified 2026-04-21 — **Auth-page security headers (P3)** — prod curl confirms `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`, `Strict-Transport-Security: max-age=31536000; includeSubDomains`, `Content-Security-Policy` (see working notes), `Permissions-Policy` (now broadened on auth pages in this pass, see below).
+
+### Hardening added this pass
+
+`chore(security): broaden auth-page headers (CORP + Permissions-Policy)` on branch `chore/auth-header-hardening-2026-04-21`:
+
+- `Cross-Origin-Resource-Policy: same-origin` on all auth credential pages (login / signup / forgot-password / reset-password / verify-email(+required) / confirm-email-change / mfa/enrol) via `applyAuthPageSecurityHeaders`. Prevents cross-origin resource-level loads of the auth HTML.
+- `Permissions-Policy` broadened on the same set to the OWASP baseline (~27 features), with `publickey-credentials-{create,get}=(self)` kept open for a future passkey enrolment page and `fullscreen=(self)` kept for modal UX. All other sensor/device/payment APIs locked down with `()`.
+- `Cross-Origin-Opener-Policy` intentionally **not** set. The signup wizard (`SignupWizard.tsx:243`) and connectors page (`ConnectorsPage.tsx:119,185`) use `window.open` / `window.opener.postMessage` for Google Calendar OAuth; a COOP sweep needs isolated verification. Tracked as a follow-up.
+
+### Monitored, no action required
+
+- **Legacy-user new-device-email spike (feat/device-fingerprint-cookie rollout):** no support-ticket chatter in repo or memory notes at T+2 days post-deploy. Heads-up email template drafted in `resend-new-device-email-check-2026-04-21.md` as a hedge; not sent.
+
+### Remaining deferred items
+
+- **HSTS `preload` directive** — requires explicit product call (irreversible browser-preload-list submission). Tracked as GitHub backlog.
+- **CSP nonce-based `script-src`** — own sprint, requires Next.js hydration-script nonce plumbing.
+- **COOP: same-origin-allow-popups on auth pages** — blocked on OAuth-popup verification.
+- **Clear-Site-Data on `/api/auth/logout` response** — separate hardening change.
+- **MFA admin toggle UI** — scope-trimmed from `feat/mfa-login-enforcement`; tracked as GitHub `backlog` issue.
