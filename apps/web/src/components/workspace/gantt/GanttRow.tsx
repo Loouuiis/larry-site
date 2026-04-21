@@ -42,33 +42,68 @@ export function GanttRow({ row, range, hoveredKey, selectedKey, onHoverKey, onSe
   let content: React.ReactNode = null;
   if (n.kind === "task" || n.kind === "subtask") {
     const t = n.task;
-    const todayIso = new Date().toISOString().slice(0, 10);
-    const end = t.endDate ?? t.dueDate;
-    const endNorm = end ? String(end).slice(0, 10) : null;
-    const startNorm = t.startDate
-      ? String(t.startDate).slice(0, 10)
-      : (endNorm && endNorm > todayIso ? todayIso : endNorm);
-    if (startNorm && endNorm) {
-      content = (
-        <GanttBar
-          variant={n.kind}
-          start={startNorm}
-          end={endNorm}
-          progressPercent={t.progressPercent}
-          range={range}
-          categoryColor={row.categoryColor}
-          status={t.status}
-          label={t.title}
-          task={t}
-          highlighted={highlighted}
-          selected={selected}
-          dimmed={row.dimmed ?? false}
-          onClick={() => onSelectKey(row.key)}
-          onContextMenu={handleContextMenu}
-          onMouseEnter={() => onHoverKey(row.key)}
-          onMouseLeave={() => onHoverKey(null)}
-        />
-      );
+
+    if (n.children.length > 0) {
+      // Parent task: bar spans all descendant date ranges (feature 6).
+      const descendants: GanttTask[] = [];
+      const walkDesc = (node: GanttNode) => {
+        if (node.kind === "task" || node.kind === "subtask") descendants.push(node.task);
+        for (const c of node.children) walkDesc(c);
+      };
+      for (const c of n.children) walkDesc(c);
+      const r = rollUpBar(descendants);
+      if (r) {
+        content = (
+          <GanttBar
+            variant={n.kind}
+            start={r.start}
+            end={r.end}
+            progressPercent={r.progressPercent}
+            range={range}
+            categoryColor={row.categoryColor}
+            status={t.status}
+            label={t.title}
+            task={t}
+            highlighted={highlighted}
+            selected={selected}
+            dimmed={row.dimmed ?? false}
+            onClick={() => onSelectKey(row.key)}
+            onContextMenu={handleContextMenu}
+            onMouseEnter={() => onHoverKey(row.key)}
+            onMouseLeave={() => onHoverKey(null)}
+          />
+        );
+      }
+    } else {
+      // Leaf task: render its own date range.
+      const todayIso = new Date().toISOString().slice(0, 10);
+      const end = t.endDate ?? t.dueDate;
+      const endNorm = end ? String(end).slice(0, 10) : null;
+      const startNorm = t.startDate
+        ? String(t.startDate).slice(0, 10)
+        : (endNorm && endNorm > todayIso ? todayIso : endNorm);
+      if (startNorm && endNorm) {
+        content = (
+          <GanttBar
+            variant={n.kind}
+            start={startNorm}
+            end={endNorm}
+            progressPercent={t.progressPercent}
+            range={range}
+            categoryColor={row.categoryColor}
+            status={t.status}
+            label={t.title}
+            task={t}
+            highlighted={highlighted}
+            selected={selected}
+            dimmed={row.dimmed ?? false}
+            onClick={() => onSelectKey(row.key)}
+            onContextMenu={handleContextMenu}
+            onMouseEnter={() => onHoverKey(row.key)}
+            onMouseLeave={() => onHoverKey(null)}
+          />
+        );
+      }
     }
   } else if (n.kind === "category" || n.kind === "project") {
     const r = rollUpBar(gatherDescendantTasks(n));

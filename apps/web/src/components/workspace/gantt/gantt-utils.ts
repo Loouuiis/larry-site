@@ -239,6 +239,8 @@ export type FlatRow = {
   // scheduled content. Set only on project / category rows whose subtree
   // collapsed to zero Gantt-visible descendants.
   emptyNote?: string;
+  // Sequential 1-based number assigned top-to-bottom across all task/subtask rows.
+  taskNumber?: number;
 };
 
 export interface FlattenOptions {
@@ -254,6 +256,7 @@ export function flattenVisible(
   const rows: FlatRow[] = [];
   const map = options.categoryColorMap;
   const rootColour = options.rootCategoryColor ?? DEFAULT_CATEGORY_COLOUR;
+  let taskCounter = 0;
 
   function keyOf(node: GanttNode): string {
     if (node.kind === "category") return `cat:${node.id ?? "uncat"}`;
@@ -297,7 +300,8 @@ export function flattenVisible(
 
     if (!isSyntheticRoot) {
       const height = (node.kind === "task" || node.kind === "subtask") ? ROW_HEIGHT_TASK : ROW_HEIGHT;
-      rows.push({ kind: "node", key, depth, node, hasChildren, categoryColor, height, emptyNote });
+      const taskNumber = (node.kind === "task" || node.kind === "subtask") ? ++taskCounter : undefined;
+      rows.push({ kind: "node", key, depth, node, hasChildren, categoryColor, height, emptyNote, taskNumber });
     }
 
     if (!isSyntheticRoot && !expanded.has(key)) return;
@@ -853,6 +857,62 @@ export function validateDrop(
 
   // Everything else: not yet supported by this slice.
   return { ok: false, reason: "That move isn't supported — use the right-click menu." };
+}
+
+/* ─── Dependency cascade ───────────────────────────────────────────── */
+
+function isoAddDays(iso: string, days: number): string {
+  const d = new Date(iso);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+export type ClientDependency = {
+  dependsOnId: string;
+  type: "FS" | "FF" | "SS" | "SF";
+  offsetDays: number;
+};
+
+// Apply client-side dependency constraints to a flat task list. Iterates
+// until stable (handles chained FS A→B→C in one pass). Cycle-safe via
+// max-iterations guard.
+export function applyDependencyCascades(
+  tasks: GanttTask[],
+  deps: Map<string, ClientDependency>,
+): GanttTask[] {
+  if (deps.size === 0) return tasks;
+  const taskMap = new Map(tasks.map((t) => [t.id, { ...t }]));
+
+  let changed = true;
+  let guard = 0;
+  while (changed && guard < tasks.length + 1) {
+    changed = false;
+    guard++;
+    for (const [taskId, dep] of deps) {
+      const task = taskMap.get(taskId);
+      const pred = taskMap.get(dep.dependsOnId);
+      if (!task || !pred) continue;
+
+      const predEnd = pred.endDate ?? pred.dueDate;
+      const predStart = pred.startDate;
+      let newStart = task.startDate;
+      let newEnd = task.endDate;
+
+      switch (dep.type) {
+        case "FS": if (predEnd) newStart = isoAddDays(predEnd, dep.offsetDays); break;
+        case "FF": if (predEnd) newEnd   = isoAddDays(predEnd, dep.offsetDays); break;
+        case "SS": if (predStart) newStart = isoAddDays(predStart, dep.offsetDays); break;
+        case "SF": if (predStart) newEnd   = isoAddDays(predStart, dep.offsetDays); break;
+      }
+
+      if (newStart !== task.startDate || newEnd !== task.endDate) {
+        taskMap.set(taskId, { ...task, startDate: newStart, endDate: newEnd });
+        changed = true;
+      }
+    }
+  }
+
+  return tasks.map((t) => taskMap.get(t.id) ?? t);
 }
 
 // Darken a hex colour by a percentage (0-100) of each RGB channel.

@@ -31,14 +31,14 @@ const HEIGHT_BY_VARIANT: Record<GanttBarVariant, number> = {
   category: 8,
   project:  10,
   task:     14,
-  subtask:  10,
+  subtask:  14,
 };
 
 const RADIUS_BY_VARIANT: Record<GanttBarVariant, number> = {
   category: 2,
   project:  2,
   task:     3,
-  subtask:  2,
+  subtask:  3,
 };
 
 function rgbaFromHex(hex: string, alpha: number): string {

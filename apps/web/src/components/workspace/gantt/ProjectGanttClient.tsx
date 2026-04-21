@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import {
@@ -7,11 +7,11 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core";
 import type { WorkspaceTimelineTask, WorkspaceTimeline } from "@/app/dashboard/types";
-import type { GanttTask, ContextMenuAction, GanttNode } from "./gantt-types";
-import { NEUTRAL_ROW_COLOUR } from "./gantt-types";
+import type { GanttTask, ContextMenuAction, GanttNode, AvailableTask, TaskDependency } from "./gantt-types";
+import { NEUTRAL_ROW_COLOUR, RELATION_TO_DEP_TYPE, DEP_TYPE_TO_RELATION } from "./gantt-types";
 import {
   buildProjectTree, buildCategoryColorMap, normalizeGanttStatus,
-  validateDrop, type DropContext,
+  validateDrop, applyDependencyCascades, type DropContext, type ClientDependency,
 } from "./gantt-utils";
 import { useCategoriesFromTimeline, useProjectsFromTimeline, QK_TIMELINE_ORG } from "@/hooks/useTimelineSnapshot";
 import type { TimelineCategorySummary } from "@larry/shared";
@@ -59,8 +59,20 @@ function toGanttTask(t: WorkspaceTimelineTask): GanttTask {
 
 export function ProjectGanttClient({ projectId, projectName, tasks, timeline, refresh }: Props) {
   const qc = useQueryClient();
+
+  // Declared first so the cascade memo below can reference it.
+  const [clientDeps, setClientDeps] = useState<Map<string, ClientDependency>>(new Map());
+
   const source = (timeline?.gantt && timeline.gantt.length > 0) ? timeline.gantt : tasks;
-  const ganttTasks = useMemo(() => (source as WorkspaceTimelineTask[]).map(toGanttTask), [source]);
+  const ganttTasksRaw = useMemo(() => (source as WorkspaceTimelineTask[]).map(toGanttTask), [source]);
+
+  // Apply client-side dependency cascades so bar positions update immediately
+  // when a predecessor's dates change (either through dependency creation or
+  // after refresh from the server).
+  const ganttTasks = useMemo(
+    () => applyDependencyCascades(ganttTasksRaw, clientDeps),
+    [ganttTasksRaw, clientDeps],
+  );
 
   // Timeline Slice 2 (Bug 8) — the project timeline response is now
   // self-sufficient. It carries its own `categories` slice and a
@@ -99,6 +111,47 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
     ),
     [projectId, projectName, ganttTasks, allCategories],
   );
+
+  // Numbered task list for the AddNodeModal parent/dependency pickers.
+  // Traversed in tree-display order (top-to-bottom) so task #1 is the first
+  // visible row, matching the numbers shown in the outline.
+  const numberedTasks = useMemo<AvailableTask[]>(() => {
+    const out: AvailableTask[] = [];
+    let n = 0;
+    function walk(node: GanttNode) {
+      if (node.kind === "task" || node.kind === "subtask") {
+        const t = node.task;
+        out.push({
+          id: t.id,
+          title: t.title,
+          number: ++n,
+          startDate: t.startDate,
+          endDate: t.endDate ?? t.dueDate,
+          parentTaskId: t.parentTaskId,
+        });
+      }
+      for (const child of node.children) walk(child);
+    }
+    for (const child of root.children) walk(child);
+    return out;
+  }, [root]);
+
+  // Sync persisted dependencies from the server timeline into clientDeps so
+  // they survive page refresh. We merge rather than replace so any optimistic
+  // deps added by onDependencyCreated (before the refresh completes) are kept.
+  useEffect(() => {
+    const serverDeps = timeline?.dependencies;
+    if (!serverDeps?.length) return;
+    setClientDeps((prev) => {
+      const next = new Map(prev);
+      for (const dep of serverDeps) {
+        const type = RELATION_TO_DEP_TYPE[dep.relation] ?? "FS";
+        next.set(dep.taskId, { dependsOnId: dep.dependsOnTaskId, type, offsetDays: 0 });
+      }
+      return next;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeline?.dependencies]);
 
   // Same shape as PortfolioGanttClient's submenu options — lets "Move to
   // category…" on a task inside the project offer every real category.
@@ -501,7 +554,6 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
       )}
       {addCtx && (
         <AddNodeModal
-          // subcategory mode reuses the category modal with parentCategoryId set.
           mode={
             addCtx.mode === "subtask"     ? "subtask"
             : addCtx.mode === "task"      ? "task"
@@ -511,13 +563,28 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
           parentTaskId={addCtx.mode === "subtask" ? addCtx.parentTaskId : undefined}
           parentCategoryId={addCtx.mode === "subcategory" ? addCtx.parentCategoryId : undefined}
           taskCategoryId={addCtx.mode === "task" ? addCtx.categoryId : undefined}
-          // Only the top-level "+ Category" in the toolbar targets this project;
-          // a nested subcategory must NOT also send projectId (API CHECK enforces
-          // exactly one parent).
           scopedProjectId={addCtx.mode === "category" ? projectId : undefined}
           requireDates={addCtx.mode === "task" || addCtx.mode === "subtask"}
+          availableTasks={addCtx.mode === "task" || addCtx.mode === "subtask" ? numberedTasks : undefined}
           onClose={() => setAddCtx(null)}
-          onCreated={async () => { await refreshAll(); }}
+          onCreated={async (newTaskId?: string) => {
+            // Dependency already registered via onDependencyCreated before this fires.
+            void newTaskId;
+            await refreshAll();
+          }}
+          onDependencyCreated={(taskId: string, dep: TaskDependency) => {
+            // Optimistic update: show cascade immediately in the Gantt.
+            setClientDeps((prev) => new Map(prev).set(taskId, dep));
+            // Persist to the DB so the dependency survives refresh.
+            void fetch(`/api/workspace/tasks/${taskId}/dependencies`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                dependsOnTaskId: dep.dependsOnId,
+                relation: DEP_TYPE_TO_RELATION[dep.type] ?? dep.type,
+              }),
+            }).catch(() => { /* non-fatal — dep already shows in clientDeps */ });
+          }}
         />
       )}
       {colourPopover && (

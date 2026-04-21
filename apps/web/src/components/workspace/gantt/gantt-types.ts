@@ -56,6 +56,40 @@ export interface ContextMenuItem {
   disabled?: boolean;
 }
 
+// ─── Dependency / task-picker types ────────────────────────────────────
+export type DependencyType = "FS" | "FF" | "SS" | "SF";
+
+// Maps API relation strings (and their short forms) to DependencyType.
+export const RELATION_TO_DEP_TYPE: Record<string, DependencyType> = {
+  finish_to_start: "FS", FS: "FS",
+  finish_to_finish: "FF", FF: "FF",
+  start_to_start: "SS", SS: "SS",
+  start_to_finish: "SF", SF: "SF",
+};
+
+export const DEP_TYPE_TO_RELATION: Record<DependencyType, string> = {
+  FS: "finish_to_start",
+  FF: "finish_to_finish",
+  SS: "start_to_start",
+  SF: "start_to_finish",
+};
+
+export interface TaskDependency {
+  dependsOnId: string;
+  type: DependencyType;
+  offsetDays: number;
+}
+
+// Flat task record passed to AddNodeModal so users can pick parent/predecessor.
+export interface AvailableTask {
+  id: string;
+  title: string;
+  number: number;
+  startDate: string | null;
+  endDate: string | null;
+  parentTaskId: string | null;
+}
+
 export interface ContextMenuState {
   rowKey: string;
   rowKind: "category" | "project" | "task" | "subtask";

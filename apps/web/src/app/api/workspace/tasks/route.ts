@@ -24,8 +24,11 @@ const CreateTaskSchema = z.object({
   title: z.string().min(1).max(300),
   description: z.string().max(4000).optional(),
   priority: z.enum(["low", "medium", "high", "critical"]).default("medium"),
+  startDate: z.string().date().optional(),
   dueDate: z.string().date().optional(),
   assigneeUserId: z.string().uuid().optional(),
+  parentTaskId: z.string().uuid().nullable().optional(),
+  categoryId: z.string().uuid().nullable().optional(),
 });
 
 function shouldAutoAiTriage(): boolean {

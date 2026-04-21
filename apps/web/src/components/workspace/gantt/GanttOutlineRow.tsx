@@ -199,6 +199,24 @@ export function GanttOutlineRow({
         outline={(n.kind === "task" || n.kind === "subtask") && n.task.status === "not_started" ? "#c8c8c8" : undefined}
       />
 
+      {row.taskNumber != null && (
+        <span
+          aria-label={`Task ${row.taskNumber}`}
+          style={{
+            fontSize: 10,
+            fontWeight: 500,
+            color: "var(--text-disabled)",
+            minWidth: 18,
+            flexShrink: 0,
+            textAlign: "right",
+            fontVariantNumeric: "tabular-nums",
+            letterSpacing: 0,
+          }}
+        >
+          {row.taskNumber}
+        </span>
+      )}
+
       <span
         title={row.emptyNote ? `${label} — ${row.emptyNote}` : label}
         style={{
