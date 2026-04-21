@@ -47,6 +47,7 @@ import { ProjectGanttClient } from "@/components/workspace/gantt/ProjectGanttCli
 import { getActionTypeTag, getAllActionTypes } from "@/lib/action-types";
 import { useToast } from "@/components/toast/ToastContext";
 import { ActionDetailPreview } from "@/components/workspace/ActionDetailPreview";
+import { shouldShowResponseNarrative } from "@/app/workspace/acceptedNarrative";
 import { ModifyPanel } from "@/app/workspace/ModifyPanel";
 import { ActionBellDropdown } from "./overview/ActionBellDropdown";
 import { ProjectOverviewTab } from "./overview/ProjectOverviewTab";
@@ -1482,7 +1483,10 @@ function ProjectActionCentreTab({
                       <p className="mt-1 text-[12px]" style={{ color: "var(--text-muted)" }}>
                         {getEventMeta(event)} | {formatRelativeTime(event.executedAt ?? event.createdAt)}
                       </p>
-                      {event.responseMessagePreview && (
+                      {/* B-005 follow-up: drop the LLM narrative on resolved cards — see
+                          `shouldShowResponseNarrative`. The structured `ActionDetailPreview`
+                          above renders from the live payload and is the audit trail. */}
+                      {shouldShowResponseNarrative(event) && event.responseMessagePreview && (
                         <p className="mt-2 line-clamp-2 text-[12px] leading-5" style={{ color: "var(--text-2)" }}>
                           {event.responseMessagePreview}
                         </p>

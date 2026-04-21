@@ -11,6 +11,7 @@ import { useEmailDrafts } from "@/hooks/useEmailDrafts";
 import { getActionTypeTag, getAllActionTypes } from "@/lib/action-types";
 import { useToast } from "@/components/toast/ToastContext";
 import { ActionDetailPreview } from "@/components/workspace/ActionDetailPreview";
+import { shouldShowResponseNarrative } from "@/app/workspace/acceptedNarrative";
 import { ModifyPanel } from "@/app/workspace/ModifyPanel";
 import { PageState } from "@/components/PageState";
 
@@ -828,10 +829,12 @@ export default function WorkspaceActionsPage() {
                         <p className="mt-1 text-[12px]" style={{ color: "var(--text-muted)" }}>
                           {getEventMeta(event)} | {formatRelativeTime(event.executedAt ?? event.createdAt)}
                         </p>
-                        {/* Hide Larry's pre-modify chat summary on modified events
-                            — B-005: the summary was generated against the original
-                            payload and misrepresents what was actually executed. */}
-                        {event.responseMessagePreview && !wasModified && (
+                        {/* B-005 follow-up: drop the LLM narrative on resolved cards entirely.
+                            The structured `ActionDetailPreview` above renders from the live
+                            payload, so it remains correct after Modify + Accept. The narrative
+                            is a snapshot of the pre-modify LLM reply and may surface a stale
+                            priority / assignee / dueDate word. See `shouldShowResponseNarrative`. */}
+                        {shouldShowResponseNarrative(event) && event.responseMessagePreview && (
                           <p className="mt-2 line-clamp-2 text-[12px] leading-5" style={{ color: "var(--text-2)" }}>
                             {event.responseMessagePreview}
                           </p>
