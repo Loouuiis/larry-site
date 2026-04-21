@@ -183,6 +183,7 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
         status: "backlog" | "not_started" | "in_progress" | "waiting" | "completed" | "blocked";
         priority: "low" | "medium" | "high" | "critical";
         parentTaskId: string | null;
+        categoryId: string | null;
         assigneeUserId: string | null;
         assigneeName: string | null;
         progressPercent: number;
@@ -193,6 +194,7 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
         tenantId,
         `SELECT tasks.id, tasks.title, tasks.status, tasks.priority,
                 tasks.parent_task_id as "parentTaskId",
+                tasks.category_id as "categoryId",
                 tasks.assignee_user_id as "assigneeUserId",
                 COALESCE(NULLIF(u.display_name, ''), split_part(u.email, '@', 1)) as "assigneeName",
                 tasks.progress_percent as "progressPercent",
@@ -219,6 +221,46 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
         [tenantId, params.id]
       );
 
+      // Timeline Slice 2 (Bug 8) — project timeline is now self-sufficient.
+      // Previously the project Gantt relied on the /v1/timeline cache to
+      // resolve category colours + project-scoped subcategories, which
+      // produced a grey-flash on direct project URL visits and meant a
+      // stale org cache could misrender the project. Returning this
+      // project's own category slice here removes the cross-endpoint
+      // coupling. Projects and categories are small (a tenant rarely
+      // exceeds a few dozen), so no pagination needed.
+      const projectRows = await fastify.db.queryTenant<{
+        id: string;
+        name: string;
+        status: string;
+        categoryId: string | null;
+      }>(
+        tenantId,
+        `SELECT id, name, status, category_id as "categoryId"
+         FROM projects
+         WHERE tenant_id = $1 AND id = $2
+         LIMIT 1`,
+        [tenantId, params.id]
+      );
+
+      const categoryRows = await fastify.db.queryTenant<{
+        id: string;
+        name: string;
+        colour: string | null;
+        sortOrder: number;
+        parentCategoryId: string | null;
+        projectId: string | null;
+      }>(
+        tenantId,
+        `SELECT id, name, colour, sort_order as "sortOrder",
+                parent_category_id as "parentCategoryId",
+                project_id as "projectId"
+         FROM project_categories
+         WHERE tenant_id = $1
+         ORDER BY sort_order`,
+        [tenantId]
+      );
+
       const byColumn = {
         backlog: taskRows.filter((task) => task.status === "backlog"),
         not_started: taskRows.filter((task) => task.status === "not_started"),
@@ -236,9 +278,11 @@ export const projectRoutes: FastifyPluginAsync = async (fastify) => {
       return {
         projectId: params.id,
         generatedAt: new Date().toISOString(),
+        project: projectRows[0] ?? null,
         gantt: ganttTasks,
         dependencies: dependencyRows,
         kanban: byColumn,
+        categories: categoryRows,
       };
     }
   );

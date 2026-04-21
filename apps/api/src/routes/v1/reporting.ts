@@ -104,7 +104,11 @@ export const reportingRoutes: FastifyPluginAsync = async (fastify) => {
         generatedAt: new Date().toISOString(),
       };
 
-      await insertProjectRiskSnapshotOncePerDay(fastify, tenantId, params.id, avgRiskScore, riskLevel);
+      try {
+        await insertProjectRiskSnapshotOncePerDay(fastify, tenantId, params.id, avgRiskScore, riskLevel);
+      } catch (err) {
+        fastify.log.warn({ err, projectId: params.id }, "failed to write risk snapshot");
+      }
 
       return response;
     }
@@ -194,14 +198,18 @@ export const reportingRoutes: FastifyPluginAsync = async (fastify) => {
         })(),
       };
 
-      await insertReportSnapshotOncePerDay(
-        fastify,
-        tenantId,
-        params.id,
-        "outcomes",
-        outcome as Record<string, unknown>,
-        request.user.userId
-      );
+      try {
+        await insertReportSnapshotOncePerDay(
+          fastify,
+          tenantId,
+          params.id,
+          "outcomes",
+          outcome as Record<string, unknown>,
+          request.user.userId
+        );
+      } catch (err) {
+        fastify.log.warn({ err, projectId: params.id }, "failed to write outcomes snapshot");
+      }
 
       return outcome;
     }
@@ -259,14 +267,18 @@ export const reportingRoutes: FastifyPluginAsync = async (fastify) => {
         narrative: `Updated ${updatedThisWeek.length} tasks this week. ${highRisk.length} tasks are currently high risk and need intervention.`,
       };
 
-      await insertReportSnapshotOncePerDay(
-        fastify,
-        tenantId,
-        params.id,
-        "weekly_summary",
-        summary as Record<string, unknown>,
-        request.user.userId
-      );
+      try {
+        await insertReportSnapshotOncePerDay(
+          fastify,
+          tenantId,
+          params.id,
+          "weekly_summary",
+          summary as Record<string, unknown>,
+          request.user.userId
+        );
+      } catch (err) {
+        fastify.log.warn({ err, projectId: params.id }, "failed to write weekly summary snapshot");
+      }
 
       return summary;
     }

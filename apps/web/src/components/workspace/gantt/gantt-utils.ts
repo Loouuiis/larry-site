@@ -195,6 +195,9 @@ function buildProjectScopedCategoryForest(
   return (childrenByParent.get(null) ?? []).map(buildNode);
 }
 
+// Timeline Slice 2 — recursive so task trees can be arbitrarily deep
+// (task → subtask → subtask → …). Cycle-guard via `visited` so a corrupt
+// parentTaskId loop in the DB can't hang the render.
 function buildTaskForest(tasks: GanttTask[]): GanttNode[] {
   const byParent = new Map<string | null, GanttTask[]>();
   for (const t of tasks) {
@@ -202,15 +205,22 @@ function buildTaskForest(tasks: GanttTask[]): GanttNode[] {
     list.push(t);
     byParent.set(t.parentTaskId, list);
   }
+  function build(t: GanttTask, isSub: boolean, visited: Set<string>): GanttNode {
+    if (visited.has(t.id)) {
+      // Defensive — skip descendants to break the cycle. The row still
+      // renders so the user can see and fix the bad data.
+      return isSub
+        ? { kind: "subtask", id: t.id, task: t, children: [] }
+        : { kind: "task", id: t.id, task: t, children: [] };
+    }
+    const nextVisited = new Set(visited).add(t.id);
+    const children = (byParent.get(t.id) ?? []).map((c) => build(c, true, nextVisited));
+    return isSub
+      ? { kind: "subtask", id: t.id, task: t, children }
+      : { kind: "task", id: t.id, task: t, children };
+  }
   const top = byParent.get(null) ?? [];
-  return top.map<GanttNode>((t) => ({
-    kind: "task",
-    id: t.id,
-    task: t,
-    children: (byParent.get(t.id) ?? []).map<GanttNode>((sub) => ({
-      kind: "subtask", id: sub.id, task: sub,
-    })),
-  }));
+  return top.map((t) => build(t, false, new Set()));
 }
 
 /* ─── Flatten for rendering ────────────────────────────────────────── */
@@ -262,7 +272,8 @@ export function flattenVisible(
   }
 
   function walk(node: GanttNode, depth: number, isSyntheticRoot: boolean, inherited: string) {
-    const children: GanttNode[] = (node.kind === "subtask") ? [] : node.children;
+    // Timeline Slice 2 — subtask now carries `children`; no special-case.
+    const children: GanttNode[] = node.children;
     const hasChildren = children.length > 0;
     const key = keyOf(node);
     const categoryColor = colourFor(node, inherited);
@@ -334,7 +345,7 @@ export function resolveCategoryColor(
 
   function find(node: GanttNode, ancestors: GanttNode[]): GanttNode[] | null {
     if (keyOf(node) === nodeKey) return [...ancestors, node];
-    if (node.kind === "subtask") return null;
+    // Timeline Slice 2 — subtask now has `children`; walk them too.
     for (const c of node.children) {
       const hit = find(c, [...ancestors, node]);
       if (hit) return hit;
@@ -634,7 +645,7 @@ export function searchUnDimmedKeys(root: GanttNode, rawQuery: string): Set<strin
   function addSubtree(node: GanttNode): void {
     const isSyntheticRoot = node.kind === "category" && node.id === "__root__";
     if (!isSyntheticRoot) out.add(keyOf(node));
-    if (node.kind === "subtask") return;
+    // Timeline Slice 2 — subtask now has `children`; walk them too.
     for (const child of node.children) addSubtree(child);
   }
 
@@ -646,11 +657,9 @@ export function searchUnDimmedKeys(root: GanttNode, rawQuery: string): Set<strin
     const k = keyOf(node);
     const selfMatch = !isSyntheticRoot && labelOf(node).toLowerCase().includes(query);
     let descendantMatch = false;
-    if (node.kind !== "subtask") {
-      const nextAncestors = isSyntheticRoot ? ancestors : [...ancestors, k];
-      for (const child of node.children) {
-        if (walk(child, nextAncestors)) descendantMatch = true;
-      }
+    const nextAncestors = isSyntheticRoot ? ancestors : [...ancestors, k];
+    for (const child of node.children) {
+      if (walk(child, nextAncestors)) descendantMatch = true;
     }
     if (selfMatch) {
       // Propagate up + keep the whole subtree in context.
@@ -721,6 +730,24 @@ function isAncestorCategory(
     seen.add(cursor);
     const row = ctx.categoriesById.get(cursor);
     cursor = row?.parentCategoryId ?? null;
+  }
+  return false;
+}
+
+// Timeline Slice 2 — task equivalent. Used to reject a task drop that would
+// create a cycle (drop-target is a descendant of the source).
+function isAncestorTask(
+  ctx: DropContext,
+  ancestorId: string,
+  possibleDescendantId: string,
+): boolean {
+  let cursor: string | null = possibleDescendantId;
+  const seen = new Set<string>();
+  while (cursor && !seen.has(cursor)) {
+    if (cursor === ancestorId) return true;
+    seen.add(cursor);
+    const row = ctx.tasksById.get(cursor);
+    cursor = row?.parentTaskId ?? null;
   }
   return false;
 }
@@ -796,18 +823,23 @@ export function validateDrop(
   }
 
   // task/subtask → task/subtask  (reparent + potential cross-project)
+  //
+  // Timeline Slice 2 — the depth cap is gone. Dropping any task onto any
+  // task/subtask makes the source a child of the target. Cycle detection
+  // mirrors the category rule: can't drop a task under one of its own
+  // descendants.
   if ((src.kind === "task" || src.kind === "sub") && (tgt.kind === "task" || tgt.kind === "sub")) {
     const tgtTask = ctx.tasksById.get(tgt.id);
     if (!tgtTask) return { ok: false, reason: "Target task not found." };
-    // Task depth cap = 1: a subtask cannot parent another subtask, so if the
-    // target is itself a subtask the source becomes a sibling (same parent).
-    const newParentTaskId = tgt.kind === "task" ? tgt.id : tgtTask.parentTaskId;
-    if (newParentTaskId === src.id) {
+    if (tgt.id === src.id) {
       return { ok: false, reason: "Task cannot be its own parent." };
+    }
+    if (isAncestorTask(ctx, src.id, tgt.id)) {
+      return { ok: false, reason: "Can't move a task under its own descendant." };
     }
     return {
       ok: true,
-      effect: { kind: "moveTask", sourceId: src.id, newProjectId: tgtTask.projectId, newParentTaskId },
+      effect: { kind: "moveTask", sourceId: src.id, newProjectId: tgtTask.projectId, newParentTaskId: tgt.id },
     };
   }
 

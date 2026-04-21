@@ -15,7 +15,7 @@ import type { PortfolioTimelineResponse, GanttTask, GanttNode } from "./gantt-ty
 import { ROW_HEIGHT, ROW_HEIGHT_TASK } from "./gantt-types";
 
 const baseTask = (over: Partial<GanttTask> = {}): GanttTask => ({
-  id: "t", projectId: "p", parentTaskId: null, title: "T",
+  id: "t", projectId: "p", parentTaskId: null, categoryId: null, title: "T",
   status: "not_started", priority: "medium",
   assigneeUserId: null, assigneeName: null,
   startDate: null, endDate: null, dueDate: null, progressPercent: 0,
@@ -90,6 +90,61 @@ describe("buildPortfolioTree", () => {
     const topLevel = (tree as Extract<GanttNode, { kind: "category" }>).children as Array<Extract<GanttNode, { kind: "category" }>>;
     expect(topLevel.map((n) => n.id)).toEqual(["c-org"]);
   });
+
+  // Timeline Slice 2 — subtask depth used to be capped at 1. Now it's
+  // unlimited: task → subtask → subtask → … renders as a chain as long as
+  // the parentTaskId links stay valid.
+  it("builds arbitrarily-deep subtask chains", () => {
+    const resp: PortfolioTimelineResponse = {
+      categories: [{
+        id: "c1", name: "C", colour: null, sortOrder: 0,
+        projects: [{
+          id: "p1", name: "P", status: "active", startDate: null, targetDate: null,
+          tasks: [
+            baseTask({ id: "t1", projectId: "p1" }),                         // root task
+            baseTask({ id: "t2", projectId: "p1", parentTaskId: "t1" }),     // subtask
+            baseTask({ id: "t3", projectId: "p1", parentTaskId: "t2" }),     // sub-subtask
+            baseTask({ id: "t4", projectId: "p1", parentTaskId: "t3" }),     // depth 3
+          ],
+        }],
+      }],
+      dependencies: [],
+    };
+    const tree = buildPortfolioTree(resp);
+    const cats = (tree as Extract<GanttNode, { kind: "category" }>).children;
+    const c1 = cats[0] as Extract<GanttNode, { kind: "category" }>;
+    const p1 = c1.children[0] as Extract<GanttNode, { kind: "project" }>;
+    const t1 = p1.children[0] as Extract<GanttNode, { kind: "task" }>;
+    expect(t1.children.map((c) => c.id)).toEqual(["t2"]);
+    const t2 = t1.children[0] as Extract<GanttNode, { kind: "subtask" }>;
+    expect(t2.children.map((c) => c.id)).toEqual(["t3"]);
+    const t3 = t2.children[0] as Extract<GanttNode, { kind: "subtask" }>;
+    expect(t3.children.map((c) => c.id)).toEqual(["t4"]);
+  });
+
+  // Defensive — a corrupt DB loop (a.parent = b, b.parent = a) must not
+  // hang the render. buildTaskForest guards via a `visited` set; the
+  // second time a task id is seen on a descent, its children are empty.
+  it("breaks out of a parentTaskId cycle", () => {
+    const resp: PortfolioTimelineResponse = {
+      categories: [{
+        id: "c1", name: "C", colour: null, sortOrder: 0,
+        projects: [{
+          id: "p1", name: "P", status: "active", startDate: null, targetDate: null,
+          tasks: [
+            // t1 has no parent → becomes a root. t1 and t2 point at each
+            // other; since t1 is in `top` via parentTaskId=null we start
+            // there, and when we re-encounter t1 under t2 the visited
+            // guard stops recursion.
+            baseTask({ id: "t1", projectId: "p1" }),
+            baseTask({ id: "t2", projectId: "p1", parentTaskId: "t1" }),
+          ],
+        }],
+      }],
+      dependencies: [],
+    };
+    expect(() => buildPortfolioTree(resp)).not.toThrow();
+  });
 });
 
 describe("buildProjectTree", () => {
@@ -160,7 +215,7 @@ describe("buildProjectTree", () => {
 describe("flattenVisible", () => {
   it("respects expandedSet", () => {
     const task1 = { kind: "task" as const, id: "t1", task: baseTask({ id: "t1" }),
-      children: [{ kind: "subtask" as const, id: "t2", task: baseTask({ id: "t2", parentTaskId: "t1" }) }] };
+      children: [{ kind: "subtask" as const, id: "t2", task: baseTask({ id: "t2", parentTaskId: "t1" }), children: [] }] };
     const project: GanttNode = { kind: "project", id: "p1", name: "P", status: "active", children: [task1] };
     const cat: GanttNode = { kind: "category", id: "c1", name: "C", colour: null, children: [project] };
     // Use synthetic __root__ wrapper (mirrors portfolio usage; root is always skipped)
@@ -252,7 +307,7 @@ describe("resolveCategoryColor", () => {
 });
 
 describe("flattenVisible populates categoryColor", () => {
-  const sub: GanttNode = { kind: "subtask", id: "t2", task: baseTask({ id: "t2", parentTaskId: "t1" }) };
+  const sub: GanttNode = { kind: "subtask", id: "t2", task: baseTask({ id: "t2", parentTaskId: "t1" }), children: [] };
   const task1: GanttNode = { kind: "task", id: "t1", task: baseTask({ id: "t1" }), children: [sub] };
   const project: GanttNode = { kind: "project", id: "p1", name: "P", status: "active", children: [task1] };
   const category: GanttNode = { kind: "category", id: "c1", name: "C", colour: "#123456", children: [project] };
@@ -377,7 +432,7 @@ describe("contextMenuItemsFor", () => {
 
 describe("flattenVisible assigns per-level heights", () => {
   it("category/project rows use ROW_HEIGHT=32 and task/subtask use 28", () => {
-    const sub: GanttNode = { kind: "subtask", id: "t2", task: baseTask({ id: "t2", parentTaskId: "t1" }) };
+    const sub: GanttNode = { kind: "subtask", id: "t2", task: baseTask({ id: "t2", parentTaskId: "t1" }), children: [] };
     const task1: GanttNode = { kind: "task", id: "t1", task: baseTask({ id: "t1" }), children: [sub] };
     const project: GanttNode = { kind: "project", id: "p1", name: "P", status: "active", children: [task1] };
     const category: GanttNode = { kind: "category", id: "c1", name: "C", colour: null, children: [project] };
@@ -569,7 +624,10 @@ describe("validateDrop", () => {
     });
   });
 
-  it("task → subtask makes source a sibling (same parent)", () => {
+  // Timeline Slice 2 — depth cap removed. Dropping a task onto a subtask
+  // now nests it under the subtask (previously it became a sibling because
+  // the old rule said "subtasks can't parent subtasks").
+  it("task → subtask becomes a child of the target subtask", () => {
     const r = validateDrop("dnd-task:t1", "dnd-sub:t3", mkCtx({
       tasksById: new Map([
         ["t1", { projectId: "p1", parentTaskId: null }],
@@ -579,8 +637,21 @@ describe("validateDrop", () => {
     }));
     expect(r).toEqual({
       ok: true,
-      effect: { kind: "moveTask", sourceId: "t1", newProjectId: "p1", newParentTaskId: "t2" },
+      effect: { kind: "moveTask", sourceId: "t1", newProjectId: "p1", newParentTaskId: "t3" },
     });
+  });
+
+  it("rejects task cycle — drop a task onto one of its own descendants", () => {
+    // t2 is a descendant of t1 (t2.parent = t1). Dragging t1 onto t2 must
+    // be rejected so we don't create an a → b → a cycle.
+    const r = validateDrop("dnd-task:t1", "dnd-task:t2", mkCtx({
+      tasksById: new Map([
+        ["t1", { projectId: "p1", parentTaskId: null }],
+        ["t2", { projectId: "p1", parentTaskId: "t1" }],
+      ]),
+    }));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toMatch(/descendant/i);
   });
 
   it("task → task cross-project is allowed", () => {
@@ -609,6 +680,27 @@ describe("validateDrop", () => {
     expect(r).toEqual({
       ok: true,
       effect: { kind: "moveTask", sourceId: "t3", newProjectId: "p2", newParentTaskId: null },
+    });
+  });
+
+  // Timeline Slice 1 — regression guard. `moveTaskToCategory` is a
+  // validateDrop output the portfolio handleDragEnd switch forgot to handle,
+  // causing task→category drops to silently fail on the org timeline. The
+  // switch now has a case for it; this test pins the effect shape so the
+  // case can't drift out of sync with the validator again.
+  it("task → category emits moveTaskToCategory", () => {
+    const r = validateDrop("dnd-task:t1", "dnd-cat:c1", mkCtx());
+    expect(r).toEqual({
+      ok: true,
+      effect: { kind: "moveTaskToCategory", sourceId: "t1", newCategoryId: "c1" },
+    });
+  });
+
+  it("subtask → category emits moveTaskToCategory", () => {
+    const r = validateDrop("dnd-sub:t3", "dnd-cat:c1", mkCtx());
+    expect(r).toEqual({
+      ok: true,
+      effect: { kind: "moveTaskToCategory", sourceId: "t3", newCategoryId: "c1" },
     });
   });
 
