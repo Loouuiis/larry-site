@@ -13,11 +13,13 @@ import {
 } from "@/components/workspace/gantt/gantt-utils";
 import { GanttContainer } from "@/components/workspace/gantt/GanttContainer";
 import { AddNodeModal } from "@/components/workspace/gantt/AddNodeModal";
+import { EditTaskModal } from "@/components/workspace/gantt/EditTaskModal";
+import { EditProjectModal } from "@/components/workspace/gantt/EditProjectModal";
 import { AddItemPicker } from "@/components/workspace/gantt/AddItemPicker";
 import { CategoryManagerPanel } from "@/components/workspace/gantt/CategoryManagerPanel";
 import { GanttEmptyState } from "@/components/workspace/gantt/GanttEmptyState";
 import { CategoryColourPopover } from "@/components/workspace/gantt/CategoryColourPopover";
-import type { CategoryOption } from "@/components/workspace/gantt/GanttContextMenu";
+import type { CategoryOption, ProjectOption } from "@/components/workspace/gantt/GanttContextMenu";
 import { useTimelineSnapshot, QK_TIMELINE_ORG } from "@/hooks/useTimelineSnapshot";
 
 type AddCtx =
@@ -29,6 +31,15 @@ type AddCtx =
   | { mode: "subtask"; parentProjectId: string; parentTaskId: string };
 
 type ColourPopover = { categoryId: string; currentColour: string | null; x: number; y: number };
+type EditProjectCtx = { projectId: string; name: string; status: string; startDate: string | null; targetDate: string | null };
+type Milestone = { id: string; name: string; date: string; color?: string };
+
+const MILESTONES_STORAGE_KEY = "larry:milestones";
+
+function loadMilestones(): Milestone[] {
+  if (typeof window === "undefined") return [];
+  try { return JSON.parse(localStorage.getItem(MILESTONES_STORAGE_KEY) ?? "[]") as Milestone[]; } catch { return []; }
+}
 
 export function PortfolioGanttClient() {
   const qc = useQueryClient();
@@ -43,6 +54,20 @@ export function PortfolioGanttClient() {
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const [colourPopover, setColourPopover] = useState<ColourPopover | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
+  const [editTaskId, setEditTaskId] = useState<{ taskId: string; projectId: string } | null>(null);
+  const [editProjectCtx, setEditProjectCtx] = useState<EditProjectCtx | null>(null);
+  const [milestones, setMilestones] = useState<Milestone[]>(loadMilestones);
+
+  function handleAddMilestone(date: string) {
+    const milestoneColors = ["#f67a79", "#fbe187", "#8db2ff", "#6c44f6", "#bce8a4"];
+    const name = window.prompt("Milestone name (leave empty to cancel):", "");
+    if (!name?.trim()) return;
+    const color = milestoneColors[milestones.length % milestoneColors.length];
+    const m: Milestone = { id: crypto.randomUUID(), name: name.trim(), date, color };
+    const next = [...milestones, m];
+    setMilestones(next);
+    try { localStorage.setItem(MILESTONES_STORAGE_KEY, JSON.stringify(next)); } catch { /* quota */ }
+  }
 
   // v4 Slice 3A — the timeline read is now React Query. Mutations invalidate
   // QK_TIMELINE_ORG to trigger a refetch; the cached payload stays mounted
@@ -330,6 +355,17 @@ export function PortfolioGanttClient() {
     return [...real, { id: null, name: "Uncategorised", colour: "#bdb7d0" }];
   }, [data]);
 
+  const projectsForSubmenu: ProjectOption[] = useMemo(() => {
+    if (!data) return [];
+    const out: ProjectOption[] = [];
+    for (const cat of data.categories) {
+      for (const p of cat.projects) {
+        out.push({ id: p.id, name: p.name });
+      }
+    }
+    return out;
+  }, [data]);
+
   // Timeline Slice 1 — all of these were previously rebuilt in every render
   // (buildPortfolioTree walks the full tenant tree, the lookup maps walk all
   // projects/tasks). That made each keystroke on the search box, each drag
@@ -363,6 +399,22 @@ export function PortfolioGanttClient() {
     }
     return m;
   }, [data]);
+
+  function handleProjectBarClick(projectId: string) {
+    for (const cat of data?.categories ?? []) {
+      const p = cat.projects.find((pp) => pp.id === projectId);
+      if (p) {
+        setEditProjectCtx({
+          projectId: p.id,
+          name: p.name,
+          status: p.status,
+          startDate: p.startDate,
+          targetDate: p.targetDate,
+        });
+        return;
+      }
+    }
+  }
 
   if (!data && error) {
     return (
@@ -449,9 +501,29 @@ export function PortfolioGanttClient() {
 
   async function handleContextMenuAction(
     action: ContextMenuAction,
-    args: { rowKey: string; rowKind: GanttNode["kind"]; categoryId?: string | null },
+    args: { rowKey: string; rowKind: GanttNode["kind"]; categoryId?: string | null; projectId?: string },
   ) {
-    const { rowKey, rowKind, categoryId } = args;
+    const { rowKey, rowKind, categoryId, projectId: targetProjectId } = args;
+
+    if (action === "moveToProject" && (rowKind === "task" || rowKind === "subtask")) {
+      const taskId = rowKey.startsWith("task:") ? rowKey.slice(5) : rowKey.slice(4);
+      if (!targetProjectId) return;
+      try {
+        const res = await fetch(`/api/workspace/tasks/${taskId}/move`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectId: targetProjectId, parentTaskId: null }),
+        });
+        if (!res.ok) {
+          setMutationError(await extractApiError(res, "Couldn't move task to project"));
+          return;
+        }
+        await fetchTimeline();
+      } catch (e) {
+        setMutationError(e instanceof Error ? e.message : "Failed to move task to project");
+      }
+      return;
+    }
 
     if (action === "moveToCategory" && (rowKind === "task" || rowKind === "subtask")) {
       const taskId = rowKey.startsWith("task:") ? rowKey.slice(5) : rowKey.slice(4);
@@ -674,6 +746,12 @@ export function PortfolioGanttClient() {
           categoriesOpen={managerOpen}
           onContextMenuAction={handleContextMenuAction}
           categoriesForSubmenu={categoriesForSubmenu}
+          projectsForSubmenu={projectsForSubmenu}
+          dependencies={data?.dependencies ?? []}
+          onTaskBarClick={(taskId, projectId) => setEditTaskId({ taskId, projectId })}
+          onProjectBarClick={handleProjectBarClick}
+          milestones={milestones}
+          onAddMilestone={handleAddMilestone}
           outlineHeaderActions={
             <button
               type="button"
@@ -782,6 +860,29 @@ export function PortfolioGanttClient() {
           currentColour={colourPopover.currentColour}
           onApply={applyCategoryColour}
           onClose={() => setColourPopover(null)}
+        />
+      )}
+
+      {editTaskId && (
+        <EditTaskModal
+          taskId={editTaskId.taskId}
+          projectId={editTaskId.projectId}
+          onClose={() => setEditTaskId(null)}
+          onSaved={async () => { await fetchTimeline(); setEditTaskId(null); }}
+          onDeleted={async () => { await fetchTimeline(); setEditTaskId(null); }}
+        />
+      )}
+
+      {editProjectCtx && (
+        <EditProjectModal
+          projectId={editProjectCtx.projectId}
+          initialName={editProjectCtx.name}
+          initialStatus={editProjectCtx.status}
+          initialStartDate={editProjectCtx.startDate}
+          initialTargetDate={editProjectCtx.targetDate}
+          onClose={() => setEditProjectCtx(null)}
+          onSaved={async () => { await fetchTimeline(); setEditProjectCtx(null); }}
+          onDeleted={async () => { await fetchTimeline(); setEditProjectCtx(null); }}
         />
       )}
     </div>

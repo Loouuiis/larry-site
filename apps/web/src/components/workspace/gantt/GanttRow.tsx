@@ -14,6 +14,7 @@ interface Props {
   onHoverKey: (k: string | null) => void;
   onSelectKey: (k: string | null) => void;
   onContextMenu?: (rowKey: string, rowKind: GanttNode["kind"], e: React.MouseEvent) => void;
+  onTaskBarClick?: (taskId: string, projectId: string) => void;
 }
 
 function gatherDescendantTasks(node: GanttNode): GanttTask[] {
@@ -28,7 +29,7 @@ function gatherDescendantTasks(node: GanttNode): GanttTask[] {
   return out;
 }
 
-export function GanttRow({ row, range, hoveredKey, selectedKey, onHoverKey, onSelectKey, onContextMenu }: Props) {
+export function GanttRow({ row, range, hoveredKey, selectedKey, onHoverKey, onSelectKey, onContextMenu, onTaskBarClick }: Props) {
   const n = row.node;
   const highlighted = hoveredKey === row.key;
   const selected = selectedKey === row.key;
@@ -67,7 +68,7 @@ export function GanttRow({ row, range, hoveredKey, selectedKey, onHoverKey, onSe
             highlighted={highlighted}
             selected={selected}
             dimmed={row.dimmed ?? false}
-            onClick={() => onSelectKey(row.key)}
+            onClick={() => onTaskBarClick ? onTaskBarClick(t.id, t.projectId) : onSelectKey(row.key)}
             onContextMenu={handleContextMenu}
             onMouseEnter={() => onHoverKey(row.key)}
             onMouseLeave={() => onHoverKey(null)}
@@ -97,7 +98,7 @@ export function GanttRow({ row, range, hoveredKey, selectedKey, onHoverKey, onSe
             highlighted={highlighted}
             selected={selected}
             dimmed={row.dimmed ?? false}
-            onClick={() => onSelectKey(row.key)}
+            onClick={() => onTaskBarClick ? onTaskBarClick(t.id, t.projectId) : onSelectKey(row.key)}
             onContextMenu={handleContextMenu}
             onMouseEnter={() => onHoverKey(row.key)}
             onMouseLeave={() => onHoverKey(null)}

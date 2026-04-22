@@ -5,7 +5,7 @@ import { computeRange, flattenVisible, dateToPct, contextMenuItemsFor, searchUnD
 import { GanttOutline } from "./GanttOutline";
 import { GanttGrid } from "./GanttGrid";
 import { GanttToolbar } from "./GanttToolbar";
-import { GanttContextMenu, type CategoryOption } from "./GanttContextMenu";
+import { GanttContextMenu, type CategoryOption, type ProjectOption } from "./GanttContextMenu";
 
 interface Props {
   root: GanttNode;
@@ -22,9 +22,11 @@ interface Props {
   // v3
   onCategoriesClick?: () => void;
   categoriesOpen?: boolean;
-  onContextMenuAction?: (action: ContextMenuAction, args: { rowKey: string; rowKind: GanttNode["kind"]; categoryId?: string | null }) => void;
+  onContextMenuAction?: (action: ContextMenuAction, args: { rowKey: string; rowKind: GanttNode["kind"]; categoryId?: string | null; projectId?: string }) => void;
   categoriesForSubmenu?: CategoryOption[];
+  projectsForSubmenu?: ProjectOption[];
   onSelectionChange?: (selectedKey: string | null) => void;
+  onProjectBarClick?: (projectId: string) => void;
   // Timeline Slice 1 — expose hover so the parent's "Add item" can target
   // the hovered row (project → Add task, task → Add subtask). Fires on
   // every change; pass a stable setter.
@@ -34,6 +36,10 @@ interface Props {
   // Callers use "portfolio" for the org timeline and `proj:<id>` for per-
   // project timelines. Omit to keep state ephemeral (tests, previews).
   persistKey?: string;
+  dependencies?: Array<{ taskId: string; dependsOnTaskId: string }>;
+  onTaskBarClick?: (taskId: string, projectId: string) => void;
+  milestones?: Array<{ id: string; name: string; date: string; color?: string }>;
+  onAddMilestone?: (date: string) => void;
 }
 
 export function GanttContainer({
@@ -41,8 +47,11 @@ export function GanttContainer({
   categoryColorMap, rootCategoryColor,
   outlineHeader, outlineHeaderActions, outlineFooter, outlineOverlay,
   onCategoriesClick, categoriesOpen,
-  onContextMenuAction, categoriesForSubmenu = [],
+  onContextMenuAction, categoriesForSubmenu = [], projectsForSubmenu = [],
   onSelectionChange, onHoverChange, persistKey,
+  onProjectBarClick,
+  dependencies, onTaskBarClick,
+  milestones, onAddMilestone,
 }: Props) {
   // Timeline Slice 2 — persistence keys. `null` short-circuits every
   // read/write so callers that don't pass persistKey behave as before.
@@ -136,8 +145,12 @@ export function GanttContainer({
   const handleSelect = useCallback((k: string | null) => {
     setSelectedKey(k);
     onSelectionChange?.(k);
+    if (k?.startsWith("proj:")) {
+      onProjectBarClick?.(k.slice(5));
+      return;
+    }
     if (k) onOpenDetail?.(k);
-  }, [onOpenDetail, onSelectionChange]);
+  }, [onOpenDetail, onSelectionChange, onProjectBarClick]);
 
   useEffect(() => { onHoverChange?.(hoveredKey); }, [hoveredKey, onHoverChange]);
 
@@ -162,12 +175,13 @@ export function GanttContainer({
   );
 
   const handleMenuSelect = useCallback(
-    (action: ContextMenuAction, payload?: { categoryId: string | null }) => {
+    (action: ContextMenuAction, payload?: { categoryId?: string | null; projectId?: string }) => {
       if (!contextMenu) return;
       onContextMenuAction?.(action, {
         rowKey: contextMenu.rowKey,
         rowKind: contextMenu.rowKind,
         categoryId: payload?.categoryId,
+        projectId: payload?.projectId,
       });
       setContextMenu(null);
     },
@@ -214,6 +228,10 @@ export function GanttContainer({
           onHoverKey={setHoveredKey}
           onSelectKey={handleSelect}
           onContextMenu={handleContextMenu}
+          dependencies={dependencies}
+          onTaskBarClick={onTaskBarClick}
+          milestones={milestones}
+          onAddMilestone={onAddMilestone}
         />
       </div>
 
@@ -223,6 +241,7 @@ export function GanttContainer({
           y={contextMenu.y}
           items={menuItems}
           categories={categoriesForSubmenu}
+          projects={projectsForSubmenu}
           onSelect={handleMenuSelect}
           onClose={() => setContextMenu(null)}
         />

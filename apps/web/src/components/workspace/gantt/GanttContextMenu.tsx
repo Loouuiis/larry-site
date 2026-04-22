@@ -8,16 +8,23 @@ export interface CategoryOption {
   colour: string;
 }
 
+export interface ProjectOption {
+  id: string;
+  name: string;
+  colour?: string;
+}
+
 interface Props {
   x: number;
   y: number;
   items: ContextMenuItem[];
   categories: CategoryOption[];
-  onSelect: (action: ContextMenuAction, payload?: { categoryId: string | null }) => void;
+  projects?: ProjectOption[];
+  onSelect: (action: ContextMenuAction, payload?: { categoryId?: string | null; projectId?: string }) => void;
   onClose: () => void;
 }
 
-export function GanttContextMenu({ x, y, items, categories, onSelect, onClose }: Props) {
+export function GanttContextMenu({ x, y, items, categories, projects = [], onSelect, onClose }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [submenuOpenId, setSubmenuOpenId] = useState<string | null>(null);
 
@@ -91,65 +98,110 @@ export function GanttContextMenu({ x, y, items, categories, onSelect, onClose }:
             {isSubmenu && <span style={{ fontSize: 10, color: "var(--text-muted)" }}>▸</span>}
 
             {submenuThisOpen && item.id === "moveToCategory" && (
-              <div
-                role="menu"
-                style={{
-                  position: "absolute",
-                  left: "100%",
-                  top: 0,
-                  minWidth: 180,
-                  maxHeight: 320,
-                  overflowY: "auto",
-                  background: "var(--surface)",
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
-                  padding: 4,
-                  marginLeft: 4,
-                }}
-                onClick={(e) => e.stopPropagation()}
-              >
+              <Submenu onClick={(e) => e.stopPropagation()}>
                 {categories.length === 0 && (
-                  <div style={{ padding: "8px 10px", fontSize: 12, color: "var(--text-muted)", fontStyle: "italic" }}>
-                    No categories available
-                  </div>
+                  <EmptySubmenu>No categories available</EmptySubmenu>
                 )}
                 {categories.map((cat) => (
-                  <div
+                  <SubmenuItem
                     key={cat.id ?? "uncat"}
-                    role="menuitem"
                     onClick={() => onSelect("moveToCategory", { categoryId: cat.id })}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      height: 30,
-                      padding: "0 10px",
-                      borderRadius: 4,
-                      cursor: "pointer",
-                      fontSize: 13,
-                      color: "var(--text-1)",
-                    }}
-                    onMouseOver={(e) => { e.currentTarget.style.background = "var(--surface-2)"; }}
-                    onMouseOut={(e) => { e.currentTarget.style.background = "transparent"; }}
                   >
-                    <span
-                      style={{
-                        width: 8, height: 8, borderRadius: "50%",
-                        background: cat.id === null ? "var(--text-muted)" : cat.colour,
-                        flexShrink: 0,
-                      }}
-                    />
+                    <span style={{
+                      width: 8, height: 8, borderRadius: "50%",
+                      background: cat.id === null ? "var(--text-muted)" : cat.colour,
+                      flexShrink: 0,
+                      display: "inline-block",
+                    }} />
                     <span style={{ fontStyle: cat.id === null ? "italic" : "normal" }}>
                       {cat.name}
                     </span>
-                  </div>
+                  </SubmenuItem>
                 ))}
-              </div>
+              </Submenu>
+            )}
+
+            {submenuThisOpen && item.id === "moveToProject" && (
+              <Submenu onClick={(e) => e.stopPropagation()}>
+                {projects.length === 0 && (
+                  <EmptySubmenu>No projects available</EmptySubmenu>
+                )}
+                {projects.map((proj) => (
+                  <SubmenuItem
+                    key={proj.id}
+                    onClick={() => onSelect("moveToProject", { projectId: proj.id })}
+                  >
+                    <span style={{
+                      width: 8, height: 8, borderRadius: 2,
+                      background: proj.colour ?? "var(--text-muted)",
+                      flexShrink: 0,
+                      display: "inline-block",
+                    }} />
+                    <span>{proj.name}</span>
+                  </SubmenuItem>
+                ))}
+              </Submenu>
             )}
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function Submenu({ children, onClick }: { children: React.ReactNode; onClick: (e: React.MouseEvent) => void }) {
+  return (
+    <div
+      role="menu"
+      style={{
+        position: "absolute",
+        left: "100%",
+        top: 0,
+        minWidth: 180,
+        maxHeight: 320,
+        overflowY: "auto",
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: 8,
+        boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
+        padding: 4,
+        marginLeft: 4,
+      }}
+      onClick={onClick}
+    >
+      {children}
+    </div>
+  );
+}
+
+function EmptySubmenu({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ padding: "8px 10px", fontSize: 12, color: "var(--text-muted)", fontStyle: "italic" }}>
+      {children}
+    </div>
+  );
+}
+
+function SubmenuItem({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
+  return (
+    <div
+      role="menuitem"
+      onClick={onClick}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        height: 30,
+        padding: "0 10px",
+        borderRadius: 4,
+        cursor: "pointer",
+        fontSize: 13,
+        color: "var(--text-1)",
+      }}
+      onMouseOver={(e) => { e.currentTarget.style.background = "var(--surface-2)"; }}
+      onMouseOut={(e) => { e.currentTarget.style.background = "transparent"; }}
+    >
+      {children}
     </div>
   );
 }

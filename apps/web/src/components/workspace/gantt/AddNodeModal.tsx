@@ -105,6 +105,8 @@ export function AddNodeModal({
   const [saving, setSaving]         = useState(false);
   const [err, setErr]               = useState<string | null>(null);
   const [dateErr, setDateErr]       = useState<string | null>(null);
+  const [assigneeUserId, setAssigneeUserId] = useState("");
+  const [members, setMembers]       = useState<Array<{ id: string; name: string }>>([]);
 
   const [selectedParentTaskId, setSelectedParentTaskId] = useState<string>(presetParentTaskId ?? "");
 
@@ -118,6 +120,18 @@ export function AddNodeModal({
   useEffect(() => { titleRef.current?.focus(); }, []);
 
   const isTaskMode = mode === "task" || mode === "subtask";
+
+  useEffect(() => {
+    if (!isTaskMode) return;
+    let cancelled = false;
+    fetch("/api/workspace/members")
+      .then((r) => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then((d: { members: Array<{ id: string; name: string }> }) => {
+        if (!cancelled) setMembers(d.members ?? []);
+      })
+      .catch(() => { /* silently skip assignee list on error */ });
+    return () => { cancelled = true; };
+  }, [isTaskMode]);
   const datesMissing = requireDates && isTaskMode && (!startDate || !dueDate);
   const canSubmit = title.trim().length > 0 && !saving && !datesMissing && !dateErr;
 
@@ -187,6 +201,7 @@ export function AddNodeModal({
         const effectiveParentId = selectedParentTaskId || presetParentTaskId;
         if (effectiveParentId) body.parentTaskId = effectiveParentId;
         if (mode === "task" && taskCategoryId) body.categoryId = taskCategoryId;
+        if (assigneeUserId) body.assigneeUserId = assigneeUserId;
 
         const res = await fetch("/api/workspace/tasks", {
           method: "POST", headers: { "Content-Type": "application/json" },
@@ -298,6 +313,15 @@ export function AddNodeModal({
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* Assignee */}
+              <div>
+                <p style={fieldLabelStyle}>Assignee <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(optional)</span></p>
+                <select value={assigneeUserId} onChange={(e) => setAssigneeUserId(e.target.value)} style={selectStyle}>
+                  <option value="">Unassigned</option>
+                  {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
               </div>
 
               {/* Parent task picker */}

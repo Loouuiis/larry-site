@@ -585,15 +585,13 @@ export function contextMenuItemsFor(args: {
       { id: "delete",         label: "Delete", destructive: true },
     ];
   }
-  // task or subtask — tasks inherit their category from the parent project,
-  // so "moveToCategory" here rewrites the project's categoryId rather than
-  // the task's. Until tasks.category_id exists as a real column, be honest
-  // in the label about the scope of the action.
+  // task or subtask
   return [
-    { id: "openDetail",          label: "Open task" },
-    { id: "moveToCategory",      label: "Change project's category…", hasSubmenu: true },
-    { id: "removeFromTimeline",  label: "Remove from timeline" },
-    { id: "delete",              label: "Delete", destructive: true },
+    { id: "openDetail",         label: "Open task" },
+    { id: "moveToProject",      label: "Move to project…", hasSubmenu: true },
+    { id: "moveToCategory",     label: "Change project's group…", hasSubmenu: true },
+    { id: "removeFromTimeline", label: "Remove from timeline" },
+    { id: "delete",             label: "Delete", destructive: true },
   ];
 }
 

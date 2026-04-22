@@ -245,6 +245,37 @@ function LoginForm() {
         </p>
 
       </form>
+
+      {process.env.NODE_ENV !== "production" && (
+        <button
+          type="button"
+          onClick={async () => {
+            setError("");
+            setLoading(true);
+            try {
+              const res = await fetch("/api/auth/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email: "dev@larry.local", password: "DevPass123!" }),
+              });
+              const data = await res.json();
+              if (!res.ok) {
+                setError(data.error ?? "Dev login failed.");
+                return;
+              }
+              router.push("/workspace");
+            } catch {
+              setError("Network error.");
+            } finally {
+              setLoading(false);
+            }
+          }}
+          disabled={loading}
+          className="mt-3 inline-flex h-[2.75rem] w-full items-center justify-center rounded-lg border border-dashed border-[var(--border)] bg-transparent px-7 text-[0.9375rem] font-medium text-[var(--text-muted)] transition-colors hover:border-[var(--border-2)] hover:text-[var(--text-2)] disabled:pointer-events-none disabled:opacity-50"
+        >
+          Dev Login
+        </button>
+      )}
     </>
   );
 }

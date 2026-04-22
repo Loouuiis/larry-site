@@ -40,6 +40,7 @@ export interface StatusChipData {
 export type ContextMenuAction =
   | "openDetail"
   | "moveToCategory"   // submenu → category id payload
+  | "moveToProject"    // submenu → project id payload (tasks only)
   | "removeFromTimeline"
   | "addChild"
   | "addSubcategory"   // v4 — only on category rows; creates category with parentCategoryId

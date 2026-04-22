@@ -3,9 +3,17 @@ import type { ZoomLevel } from "./gantt-types";
 import type { TimelineRange } from "./gantt-utils";
 import { generateDateAxis, dateToPct } from "./gantt-utils";
 
+interface Milestone {
+  id: string;
+  name: string;
+  date: string;
+  color?: string;
+}
+
 interface Props {
   range: TimelineRange;
   zoom: ZoomLevel;
+  milestones?: Milestone[];
 }
 
 // 16px space above for the "Today" label + 48px axis band = 64px total
@@ -13,19 +21,13 @@ export const GANTT_HEADER_HEIGHT = 64;
 const AXIS_BAND_HEIGHT = 48;
 const TODAY_LABEL_BAND = 16;
 
-// Horizontal scale: px-per-day per zoom. Drives the grid minWidth so day-
-// number labels and month labels never overlap. Tuned so adjacent ticks are
-// spaced comfortably wider than their labels:
-//   - week:    daily ticks × 48px (room for "Mon 16" / "Tue 17" weekday+num)
-//   - month:   weekly ticks × 14px per day = 98px between labels
-//   - quarter: biweekly ticks × 8px per day = 112px between labels
 export const PX_PER_DAY_BY_ZOOM: Record<ZoomLevel, number> = {
   week:    48,
   month:   14,
   quarter:  8,
 };
 
-export function GanttDateHeader({ range, zoom }: Props) {
+export function GanttDateHeader({ range, zoom, milestones = [] }: Props) {
   const axis = generateDateAxis(range, zoom);
   const todayPct = dateToPct(new Date(), range);
   const todayInRange = todayPct >= 0 && todayPct <= 100;
@@ -40,9 +42,7 @@ export function GanttDateHeader({ range, zoom }: Props) {
         zIndex: 3,
       }}
     >
-      {/* Today pill (top 16px). v4 Slice 5 — upgraded from a bare 10px text
-          to a proper pill that reads as a persistent now-marker; easier to
-          spot when scrolled and matches the industry norm (Asana/Monday). */}
+      {/* Today pill + milestone diamonds (top 16px) */}
       <div style={{ position: "relative", height: TODAY_LABEL_BAND }}>
         {todayInRange && (
           <span
@@ -67,9 +67,50 @@ export function GanttDateHeader({ range, zoom }: Props) {
             Today {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
           </span>
         )}
+
+        {/* Milestone diamonds */}
+        {milestones.map((m) => {
+          const pct = dateToPct(new Date(m.date), range);
+          if (pct < 0 || pct > 100) return null;
+          const color = m.color ?? "#f67a79";
+          return (
+            <span
+              key={m.id}
+              title={`${m.name} — ${m.date}`}
+              style={{
+                position: "absolute",
+                left: `${pct}%`,
+                top: 0,
+                transform: "translateX(-50%)",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 3,
+                whiteSpace: "nowrap",
+                pointerEvents: "none",
+                zIndex: 10,
+              }}
+            >
+              {/* Diamond */}
+              <svg width="10" height="10" viewBox="0 0 10 10" style={{ flexShrink: 0 }}>
+                <polygon points="5,0 10,5 5,10 0,5" fill={color} />
+              </svg>
+              <span style={{
+                fontSize: 9,
+                fontWeight: 700,
+                color,
+                letterSpacing: "0.02em",
+                maxWidth: 60,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}>
+                {m.name}
+              </span>
+            </span>
+          );
+        })}
       </div>
 
-      {/* Axis band (48px) — month row (24px) + day row (24px) */}
+      {/* Axis band (48px) — month row + day row */}
       <div
         style={{
           height: AXIS_BAND_HEIGHT,
@@ -107,7 +148,7 @@ export function GanttDateHeader({ range, zoom }: Props) {
           ))}
         </div>
 
-        {/* Day row — ticks + tabular numbers */}
+        {/* Day row */}
         <div style={{ position: "relative", height: 24 }}>
           {axis.days.map((d, i) => (
             <div
@@ -140,9 +181,6 @@ export function GanttDateHeader({ range, zoom }: Props) {
                   whiteSpace: "nowrap",
                 }}
               >
-                {/* v4 Slice 5 — keep the weekday prefix at week zoom so
-                    "Mon 16" stays visible. Month / quarter zoom already emit
-                    number-only labels so no strip needed. */}
                 {d.label}
               </span>
             </div>

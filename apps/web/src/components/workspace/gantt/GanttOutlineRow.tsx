@@ -53,6 +53,13 @@ const STATUS_DOT_COLOR: Record<string, string> = {
   completed:   "#bce8a4",
 };
 
+const PRIORITY_DOT_COLOR: Record<string, string> = {
+  low:      "#8db2ff",
+  medium:   "#fbe187",
+  high:     "#f67a79",
+  critical: "#e84c6f",
+};
+
 function tierOf(kind: NodeRow["node"]["kind"]): Tier { return kind; }
 
 function labelFor(n: NodeRow["node"]): string {
@@ -191,12 +198,14 @@ export function GanttOutlineRow({
         color={
           isUncategorised
             ? "var(--text-muted)"
-            : (n.kind === "task" || n.kind === "subtask")
-              ? (STATUS_DOT_COLOR[n.task.status] ?? row.categoryColor)
-              : row.categoryColor
+            : n.kind === "subtask"
+              ? (PRIORITY_DOT_COLOR[n.task.priority] ?? row.categoryColor)
+              : (n.kind === "task")
+                ? (STATUS_DOT_COLOR[n.task.status] ?? row.categoryColor)
+                : row.categoryColor
         }
         tier={tier}
-        outline={(n.kind === "task" || n.kind === "subtask") && n.task.status === "not_started" ? "#c8c8c8" : undefined}
+        outline={n.kind === "task" && n.task.status === "not_started" ? "#c8c8c8" : undefined}
       />
 
       {row.taskNumber != null && (
