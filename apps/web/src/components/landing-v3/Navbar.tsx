@@ -36,8 +36,20 @@ export function LandingNavbar() {
             href="#what"
             className="hidden px-3.5 py-2 text-[13px] text-[var(--text-2)] transition-colors hover:text-[var(--text-1)] sm:inline-flex"
           >
-            What Larry does
+            Mission
           </a>
+          <Link
+            href="/pricing"
+            className="hidden px-3.5 py-2 text-[13px] text-[var(--text-2)] transition-colors hover:text-[var(--text-1)] sm:inline-flex"
+          >
+            Pricing
+          </Link>
+          <Link
+            href="/careers"
+            className="hidden px-3.5 py-2 text-[13px] text-[var(--text-2)] transition-colors hover:text-[var(--text-1)] sm:inline-flex"
+          >
+            Careers
+          </Link>
           <Link
             href="/login"
             className="hidden rounded-full border border-[var(--brand)] px-4.5 py-2 text-[13px] font-medium text-[var(--brand)] transition-all duration-200 hover:bg-[var(--brand)] hover:text-white sm:inline-flex"
