@@ -6,6 +6,7 @@ import { useOverlayTrigger } from "@/components/ui/LiquidOverlay";
 
 export function LandingNavbar() {
   const onWaitlist = useOverlayTrigger("waitlist");
+  const onIntro = useOverlayTrigger("intro");
 
   return (
     <nav
@@ -39,17 +40,18 @@ export function LandingNavbar() {
           </a>
           <Link
             href="/login"
-            className="hidden px-3.5 py-2 text-[13px] text-[var(--text-2)] transition-colors hover:text-[var(--text-1)] sm:inline-flex"
+            className="hidden rounded-full border border-[var(--brand)] px-4.5 py-2 text-[13px] font-medium text-[var(--brand)] transition-all duration-200 hover:bg-[var(--brand)] hover:text-white sm:inline-flex"
+            style={{ letterSpacing: "-0.005em", padding: "9px 18px" }}
           >
             Sign in
           </Link>
           <button
             type="button"
-            onClick={onWaitlist}
-            className="inline-flex items-center gap-1.5 rounded-full border border-[var(--text-1)] bg-[var(--text-1)] px-4.5 py-2 text-[13px] font-medium text-white transition-all duration-200 hover:border-[var(--brand)] hover:bg-[var(--brand)]"
+            onClick={onIntro}
+            className="inline-flex items-center gap-1.5 rounded-full border border-[var(--brand)] bg-[var(--brand)] px-4.5 py-2 text-[13px] font-medium text-white transition-all duration-200 hover:bg-[var(--brand-hover,#5b38d4)] hover:border-[var(--brand-hover,#5b38d4)]"
             style={{ letterSpacing: "-0.005em", padding: "9px 18px" }}
           >
-            Get early access
+            Book an intro
           </button>
         </div>
       </div>

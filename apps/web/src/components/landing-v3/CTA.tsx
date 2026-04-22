@@ -31,7 +31,7 @@ export function CTA() {
             onClick={onIntro}
             className="lv3-cta__btn lv3-cta__btn--ghost"
           >
-            Book a 20-min intro
+            Book an intro
           </button>
         </div>
         <div className="lv3-cta__fine">
