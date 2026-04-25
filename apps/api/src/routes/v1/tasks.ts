@@ -104,7 +104,7 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
 
       sql += `
         WHERE ${filters.join(" AND ")}
-        ORDER BY tasks.created_at DESC`;
+        ORDER BY tasks.created_at ASC`;
 
       const rows = await fastify.db.queryTenant(tenantId, sql, values);
       return { items: rows };

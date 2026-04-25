@@ -63,8 +63,16 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
   // Declared first so the cascade memo below can reference it.
   const [clientDeps, setClientDeps] = useState<Map<string, ClientDependency>>(new Map());
 
-  const source = (timeline?.gantt && timeline.gantt.length > 0) ? timeline.gantt : tasks;
-  const ganttTasksRaw = useMemo(() => (source as WorkspaceTimelineTask[]).map(toGanttTask), [source]);
+  // Always include every task from the `tasks` prop in the outline so undated
+  // tasks remain visible. For tasks that also appear in `timeline.gantt` (the
+  // dated subset), prefer the gantt version which carries accurate start/end
+  // dates. This avoids the bug where adding the first dated task (e.g. when
+  // creating a dependency with requireDates=true) switches source from `tasks`
+  // to `timeline.gantt`, silently dropping every undated task from the tree.
+  const ganttTasksRaw = useMemo(() => {
+    const ganttById = new Map((timeline?.gantt ?? []).map((t) => [t.id, t]));
+    return (tasks as WorkspaceTimelineTask[]).map((t) => toGanttTask(ganttById.get(t.id) ?? t));
+  }, [timeline?.gantt, tasks]);
 
   // Apply client-side dependency cascades so bar positions update immediately
   // when a predecessor's dates change (either through dependency creation or
