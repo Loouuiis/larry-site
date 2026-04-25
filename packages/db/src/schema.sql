@@ -1803,3 +1803,55 @@ ALTER TABLE tasks
 CREATE INDEX IF NOT EXISTS idx_tasks_category
   ON tasks (tenant_id, category_id)
   WHERE category_id IS NOT NULL;
+
+-- ── 033_notifications_ui_fields.sql ───────────────────────────────────────────
+-- Unified notifications framework (PR #150). The runner only executes
+-- schema.sql, so the standalone migration file under
+-- packages/db/src/migrations/ is documentation; the live ALTERs must be
+-- inlined here or the new /v1/notifications/feed code path will SELECT
+-- columns that do not exist on prod and 500 on every poll.
+--
+-- Additive only — existing rows get NULL for the new fields, the email
+-- channel is unaffected (channel='email' rows are excluded from the UI feed
+-- by predicate).
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS type         TEXT;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS severity     TEXT;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS deep_link    TEXT;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS batch_id     UUID;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS dismissed_at TIMESTAMPTZ;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'chk_notifications_severity'
+  ) THEN
+    ALTER TABLE notifications
+      ADD CONSTRAINT chk_notifications_severity
+      CHECK (severity IS NULL OR severity IN ('info','success','warning','error'))
+      NOT VALID;
+  END IF;
+END $$;
+
+-- Validate only while still NOT VALID. After the first successful run
+-- pg_constraint.convalidated flips to true, so subsequent boot-time
+-- replays skip the table scan and the SHARE UPDATE EXCLUSIVE lock.
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'chk_notifications_severity'
+      AND NOT convalidated
+  ) THEN
+    ALTER TABLE notifications VALIDATE CONSTRAINT chk_notifications_severity;
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_notifications_feed
+  ON notifications (tenant_id, user_id, created_at DESC)
+  WHERE dismissed_at IS NULL AND channel = 'ui';
+
+CREATE INDEX IF NOT EXISTS idx_notifications_unread_ui
+  ON notifications (tenant_id, user_id)
+  WHERE read_at IS NULL AND dismissed_at IS NULL AND channel = 'ui';
+
+CREATE INDEX IF NOT EXISTS idx_notifications_batch
+  ON notifications (tenant_id, batch_id)
+  WHERE batch_id IS NOT NULL AND channel = 'ui';
