@@ -33,7 +33,12 @@ async function buildApp(queryImpl: (call: QueryCall) => unknown[]) {
     if (error instanceof ZodError) {
       return reply.status(400).send({ error: "Validation Error" });
     }
-    return reply.status(error.statusCode ?? 500).send({ error: error.message });
+    const status =
+      typeof (error as { statusCode?: number }).statusCode === "number"
+        ? (error as { statusCode: number }).statusCode
+        : 500;
+    const message = error instanceof Error ? error.message : String(error);
+    return reply.status(status).send({ error: message });
   });
   await app.register(sensible);
   await app.register(notificationRoutes, { prefix: "/v1" });
