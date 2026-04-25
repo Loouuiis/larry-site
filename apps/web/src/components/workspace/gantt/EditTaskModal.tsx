@@ -93,13 +93,17 @@ export function EditTaskModal({ taskId, onClose, onSaved, onDeleted }: Props) {
           fetch("/api/workspace/members"),
         ]);
         if (!taskRes.ok) throw new Error(`HTTP ${taskRes.status}`);
-        const task = await taskRes.json() as TaskDetail;
+        const payload = await taskRes.json() as { task?: TaskDetail } | TaskDetail;
+        const task = (payload as { task?: TaskDetail }).task ?? (payload as TaskDetail);
+        if (!task || typeof task.title !== "string") {
+          throw new Error("Task response missing required fields");
+        }
 
         if (!cancelled) {
           orig.current = task;
           setTitle(task.title);
-          setPriority(task.priority);
-          setStatus(task.status);
+          setPriority(task.priority ?? "medium");
+          setStatus(task.status ?? "not_started");
           setStartDate(task.startDate ?? "");
           setDueDate(task.dueDate ?? "");
           setAssigneeUserId(task.assigneeUserId ?? "");
