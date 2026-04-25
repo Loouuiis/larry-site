@@ -6,6 +6,13 @@ import { GanttOutline } from "./GanttOutline";
 import { GanttGrid } from "./GanttGrid";
 import { GanttToolbar } from "./GanttToolbar";
 import { GanttContextMenu, type CategoryOption, type ProjectOption } from "./GanttContextMenu";
+import {
+  sliceVisibleRows,
+  DEFAULT_OVERSCAN,
+  isVirtualizeEnabled,
+  isVirtualizeFlagEnabled,
+  type RowSlice,
+} from "./gantt-virtualize";
 
 interface Props {
   root: GanttNode;
@@ -28,13 +35,11 @@ interface Props {
   onSelectionChange?: (selectedKey: string | null) => void;
   onProjectBarClick?: (projectId: string) => void;
   // Timeline Slice 1 — expose hover so the parent's "Add item" can target
-  // the hovered row (project → Add task, task → Add subtask). Fires on
+  // the hovered row (project -> Add task, task -> Add subtask). Fires on
   // every change; pass a stable setter.
   onHoverChange?: (hoveredKey: string | null) => void;
   // Timeline Slice 2 — if set, view state (collapsed rows, zoom, outline
   // width) persists to localStorage under `larry:gantt:<persistKey>:*`.
-  // Callers use "portfolio" for the org timeline and `proj:<id>` for per-
-  // project timelines. Omit to keep state ephemeral (tests, previews).
   persistKey?: string;
   dependencies?: Array<{ taskId: string; dependsOnTaskId: string }>;
   onTaskBarClick?: (taskId: string, projectId: string) => void;
@@ -53,8 +58,6 @@ export function GanttContainer({
   dependencies, onTaskBarClick,
   milestones, onAddMilestone,
 }: Props) {
-  // Timeline Slice 2 — persistence keys. `null` short-circuits every
-  // read/write so callers that don't pass persistKey behave as before.
   const collapsedKey = persistKey ? `larry:gantt:${persistKey}:collapsed` : null;
   const zoomKey      = persistKey ? `larry:gantt:${persistKey}:zoom` : null;
   const outlineKey   = persistKey ? `larry:gantt:${persistKey}:outline` : null;
@@ -68,11 +71,6 @@ export function GanttContainer({
   );
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  // Timeline Slice 2 — flip the semantic. We used to track "expanded keys"
-  // and mutate that set on every tree refetch to keep new rows expanded.
-  // Now we track "collapsed keys" instead: absent == expanded, so new rows
-  // auto-expand for free and storage only carries the user's collapse
-  // decisions. Makes the refetch merge disappear.
   const [collapsed, setCollapsed] = useState<Set<string>>(() =>
     readPersistedCollapsed(collapsedKey) ?? new Set(),
   );
@@ -82,9 +80,6 @@ export function GanttContainer({
   const allTasks = useMemo(() => collectTasks(root), [root]);
   const range = useMemo(() => computeRange(allTasks, zoom), [allTasks, zoom]);
 
-  // Derived: keys the user wants visible, i.e. NOT in `collapsed`. Filtered
-  // to currently-valid keys so flattenVisible treats stale collapsed ids
-  // as no-ops (and eventually GC via `collapsed` cleanup below).
   const expanded = useMemo(() => {
     const keys = collectAllKeys(root);
     const out = new Set<string>();
@@ -95,9 +90,6 @@ export function GanttContainer({
   const rows = useMemo(() => {
     const base = flattenVisible(root, expanded, { categoryColorMap, rootCategoryColor });
     if (!search.trim()) return base;
-    // v4 Slice 5 — ancestor-aware dimming: a row stays un-dimmed if itself,
-    // any ancestor, or any descendant matches. Keeps the match's context
-    // chain legible instead of fading it out.
     const unDimmed = searchUnDimmedKeys(root, search);
     return base.map((r) => ({ ...r, dimmed: !unDimmed.has(r.key) }));
   }, [root, expanded, search, categoryColorMap, rootCategoryColor]);
@@ -118,9 +110,6 @@ export function GanttContainer({
     gridRef.current.scrollTo({ left: Math.max(0, (pct / 100) * sw - vw / 2), behavior: "smooth" });
   }, [range]);
 
-  // Timeline Slice 2 — GC stale collapsed keys when the tree changes. If
-  // a user collapsed X and X then gets deleted, X lingers in localStorage
-  // forever otherwise. Runs once per tree-change.
   useEffect(() => {
     const keys = collectAllKeys(root);
     setCollapsed((prev) => {
@@ -134,10 +123,6 @@ export function GanttContainer({
     });
   }, [root]);
 
-  // Timeline Slice 2 — persist view state. Writes are fire-and-forget;
-  // localStorage.setItem quota errors get swallowed (view still works,
-  // just won't survive refresh). Writes happen only when the relevant
-  // state actually changes, so no chatty activity on scroll/hover.
   useEffect(() => { writePersisted(collapsedKey, JSON.stringify([...collapsed])); }, [collapsedKey, collapsed]);
   useEffect(() => { writePersisted(zoomKey, zoom); }, [zoomKey, zoom]);
   useEffect(() => { writePersisted(outlineKey, String(outlineWidth)); }, [outlineKey, outlineWidth]);
@@ -156,10 +141,6 @@ export function GanttContainer({
 
   const handleContextMenu = useCallback(
     (rowKey: string, rowKind: GanttNode["kind"], e: React.MouseEvent) => {
-      // v4 Slice 5 — no context menu on the synthetic Uncategorised bucket.
-      // Previously it opened with a single disabled-sentinel item which read
-      // like an error; the row's italic typography already tells users it's
-      // not editable.
       if (rowKey === "cat:uncat") return;
       if (rowKind === "subtask" || rowKind === "task" || rowKind === "project" || rowKind === "category") {
         setContextMenu({
@@ -192,6 +173,59 @@ export function GanttContainer({
     ? contextMenuItemsFor({ rowKind: contextMenu.rowKind, isUncategorised: contextMenu.isUncategorised })
     : [];
 
+  // Row-windowing. Gated on (a) the public env flag NEXT_PUBLIC_LARRY_GANTT_VIRTUALIZE
+  // and (b) rows.length > VIRTUALIZE_THRESHOLD. When either condition fails we
+  // disable virtualization end-to-end: the slicer short-circuits to disabled,
+  // and the outer scroll container keeps `overflow: hidden` so page-scroll
+  // ownership is preserved for the typical (small-tenant) case.
+  const virtualizationEnabled = isVirtualizeEnabled(rows.length);
+  const flagEnabled = isVirtualizeFlagEnabled();
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(0);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setViewportHeight(el.clientHeight);
+    if (typeof ResizeObserver !== "undefined") {
+      const ro = new ResizeObserver(() => setViewportHeight(el.clientHeight));
+      ro.observe(el);
+      return () => ro.disconnect();
+    }
+  }, [virtualizationEnabled]);
+
+  const slice: RowSlice = useMemo(() => {
+    const heights = rows.map((r) => r.height);
+    return sliceVisibleRows({
+      heights,
+      scrollTop,
+      viewportHeight,
+      overscan: DEFAULT_OVERSCAN,
+      flagEnabled,
+    });
+  }, [rows, scrollTop, viewportHeight, flagEnabled]);
+
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (!virtualizationEnabled) return;
+    setScrollTop(e.currentTarget.scrollTop);
+  }, [virtualizationEnabled]);
+
+  // Keyboard nav: ArrowDown/ArrowUp on the scroll container scrolls by one
+  // row-height so the next focus target mounts. Only active under
+  // virtualization — in the disabled case every row is in the DOM already.
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!virtualizationEnabled) return;
+    const el = scrollRef.current;
+    if (!el || rows.length === 0) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      const stepSize = rows[0]?.height ?? 28;
+      const delta = e.key === "ArrowDown" ? stepSize : -stepSize;
+      el.scrollTop = Math.max(0, el.scrollTop + delta);
+    }
+  }, [rows, virtualizationEnabled]);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
       <GanttToolbar
@@ -204,10 +238,25 @@ export function GanttContainer({
         onCategoriesClick={onCategoriesClick}
         categoriesOpen={categoriesOpen}
       />
-      <div style={{
-        display: "flex", flex: 1, minHeight: 0,
-        border: "1px solid var(--border)", borderRadius: 12, background: "var(--surface)", overflow: "hidden",
-      }}>
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        onKeyDown={handleKeyDown}
+        data-gantt-virtualized={virtualizationEnabled ? "true" : "false"}
+        style={{
+          display: "flex", flex: 1, minHeight: 0,
+          border: "1px solid var(--border)", borderRadius: 12, background: "var(--surface)",
+          // Scroll-ownership flip is gated on virtualizationEnabled. When OFF
+          // (the typical <200-row / flag-off tenant) we keep the original
+          // `overflow: hidden` so the document continues to own the y-scroll
+          // and page-scroll works. When ON, we own the y-scroll inside this
+          // container (so the slicer can observe scrollTop) while still hiding
+          // x-scroll (the inner Grid owns its own x-scroll).
+          ...(virtualizationEnabled
+            ? { overflowX: "hidden" as const, overflowY: "auto" as const }
+            : { overflow: "hidden" as const }),
+        }}
+      >
         <GanttOutline
           rows={rows} expanded={expanded}
           selectedKey={selectedKey} hoveredKey={hoveredKey}
@@ -220,6 +269,7 @@ export function GanttContainer({
           headerActions={outlineHeaderActions}
           footer={outlineFooter}
           overlay={outlineOverlay}
+          slice={slice}
         />
         <GanttGrid
           ref={gridRef}
@@ -232,6 +282,7 @@ export function GanttContainer({
           onTaskBarClick={onTaskBarClick}
           milestones={milestones}
           onAddMilestone={onAddMilestone}
+          slice={slice}
         />
       </div>
 
@@ -255,11 +306,6 @@ function nodeLabel(n: GanttNode): string {
   return n.task.title;
 }
 
-// Timeline Slice 2 — localStorage helpers. Every call is wrapped in
-// try/catch because storage can be disabled (private mode, quota,
-// unavailable during SSR). A null `key` short-circuits for the non-
-// persisted case. Return null on miss so the caller can fall back to
-// its default cleanly.
 function writePersisted(key: string | null, value: string): void {
   if (!key || typeof window === "undefined") return;
   try { window.localStorage.setItem(key, value); } catch { /* quota / disabled */ }
@@ -292,16 +338,12 @@ function readPersistedOutlineWidth(key: string | null): number | null {
   const raw = readPersistedRaw(key);
   if (raw === null) return null;
   const n = Number(raw);
-  // Clamp: outline width under 120 or over 600 is clearly junk/stale
-  // (e.g. from an old resize bug). Fall back to default in that case.
   if (!Number.isFinite(n) || n < 120 || n > 600) return null;
   return n;
 }
 
 function collectTasks(root: GanttNode): GanttTask[] {
   const out: GanttTask[] = [];
-  // Timeline Slice 2 — subtask now carries `children`; walk them too so
-  // deeply-nested subtask bars still contribute to range/date calcs.
   function walk(n: GanttNode) {
     if (n.kind === "task" || n.kind === "subtask") out.push(n.task);
     for (const c of n.children) walk(c);

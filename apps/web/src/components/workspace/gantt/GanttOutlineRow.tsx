@@ -12,6 +12,10 @@ interface Props {
   expanded: boolean;
   selected: boolean;
   hovered: boolean;
+  // 1-indexed row position in the full (unwindowed) row list. Required by the
+  // ARIA grid pattern when rowgroup uses aria-rowcount; lets assistive tech
+  // announce "row 47 of 500" even while only the slice is in the DOM.
+  ariaRowIndex?: number;
   onToggle?: () => void;
   onSelect?: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
@@ -84,7 +88,7 @@ function isDraggableRow(n: NodeRow["node"]): boolean {
 }
 
 export function GanttOutlineRow({
-  row, expanded, selected, hovered, onToggle, onSelect, onContextMenu, onHover,
+  row, expanded, selected, hovered, ariaRowIndex, onToggle, onSelect, onContextMenu, onHover,
 }: Props) {
   const n = row.node;
   const tier = tierOf(n.kind);
@@ -151,6 +155,7 @@ export function GanttOutlineRow({
       onContextMenu={onContextMenu}
       {...dndDomProps}
       role="row"
+      aria-rowindex={ariaRowIndex}
       style={{
         height: row.height,
         display: "flex",
@@ -227,6 +232,7 @@ export function GanttOutlineRow({
       )}
 
       <span
+        data-gantt-row-title
         title={row.emptyNote ? `${label} — ${row.emptyNote}` : label}
         style={{
           ...TYPOGRAPHY_BY_TIER[tier],

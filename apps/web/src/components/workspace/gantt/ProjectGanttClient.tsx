@@ -501,7 +501,14 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
           </button>
         </div>
       )}
-      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+      <DndContext
+        sensors={sensors}
+        onDragEnd={handleDragEnd}
+        // Cross-window auto-scroll. With virtualization on, the drop target
+        // may live outside the current slice — without this, dnd-kit silently
+        // drops at viewport edges.
+        autoScroll={{ threshold: { x: 0.1, y: 0.2 }, acceleration: 10 }}
+      >
         <GanttContainer
           root={root}
           defaultZoom="month"

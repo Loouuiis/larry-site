@@ -2,6 +2,7 @@
 import { useRef, useCallback, useEffect, type ReactNode } from "react";
 import type { FlatRow } from "./gantt-utils";
 import type { GanttNode } from "./gantt-types";
+import type { RowSlice } from "./gantt-virtualize";
 import { GanttOutlineRow } from "./GanttOutlineRow";
 import { GANTT_HEADER_HEIGHT } from "./GanttDateHeader";
 
@@ -20,6 +21,11 @@ interface Props {
   headerActions?: ReactNode;
   footer?: ReactNode;
   overlay?: ReactNode;
+  // Timeline — windowed render. When slice.disabled, the component renders
+  // every row exactly like before. When enabled, only rows[startIdx..endIdx)
+  // render, padded by an `offsetTop` spacer above and an invisible spacer
+  // below so the scrollbar still reflects totalHeight.
+  slice?: RowSlice;
 }
 
 const MIN_WIDTH = 220;
@@ -51,6 +57,7 @@ function computeIndentGuides(rows: FlatRow[]): { depth: number; top: number; hei
 export function GanttOutline({
   rows, expanded, selectedKey, hoveredKey, width, onWidthChange,
   onToggle, onSelect, onHover, onContextMenu, header, headerActions, footer, overlay,
+  slice,
 }: Props) {
   const dragging = useRef(false);
   const startX = useRef(0);
@@ -79,6 +86,18 @@ export function GanttOutline({
   }, [onWidthChange]);
 
   const guides = computeIndentGuides(rows);
+
+  // Default slice renders every row (matches pre-virtualization behaviour).
+  const effectiveSlice: RowSlice = slice ?? {
+    startIdx: 0,
+    endIdx: rows.length,
+    offsetTop: 0,
+    totalHeight: rows.reduce((a, r) => a + r.height, 0),
+    disabled: true,
+  };
+  const visibleRows = rows.slice(effectiveSlice.startIdx, effectiveSlice.endIdx);
+  const visibleHeight = visibleRows.reduce((a, r) => a + r.height, 0);
+  const bottomPad = Math.max(0, effectiveSlice.totalHeight - effectiveSlice.offsetTop - visibleHeight);
 
   return (
     <div style={{
@@ -134,15 +153,27 @@ export function GanttOutline({
           ))}
         </div>
 
-        {/* Rows */}
-        <div style={{ position: "relative", zIndex: 1 }}>
-          {rows.map((row) => (
+        {/* Rows — when virtualized, paddingTop/Bottom spacers preserve the
+            full scroll extent while only the window renders. Guides above
+            are computed from the full `rows` array and live in a sibling
+            absolutely-positioned layer, so they stay correct regardless. */}
+        <div
+          role="rowgroup"
+          aria-rowcount={rows.length}
+          style={{
+            position: "relative", zIndex: 1,
+            paddingTop: effectiveSlice.offsetTop,
+            paddingBottom: bottomPad,
+          }}
+        >
+          {visibleRows.map((row, i) => (
             <div key={row.key} style={{ height: row.height }}>
               <GanttOutlineRow
                 row={row}
                 expanded={expanded.has(row.key)}
                 selected={selectedKey === row.key}
                 hovered={hoveredKey === row.key}
+                ariaRowIndex={effectiveSlice.startIdx + i + 1}
                 onToggle={() => onToggle(row.key)}
                 onSelect={() => onSelect(row.key)}
                 onHover={(h) => onHover(h ? row.key : null)}

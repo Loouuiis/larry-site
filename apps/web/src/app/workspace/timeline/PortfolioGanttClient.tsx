@@ -764,7 +764,16 @@ export function PortfolioGanttClient() {
           onCreate={() => setAddCtx({ mode: "category" })}
         />
       ) : (
-        <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+        <DndContext
+          sensors={sensors}
+          onDragEnd={handleDragEnd}
+          // Cross-window auto-scroll. With virtualization on, the drop target
+          // may live outside the current slice — without this, dnd-kit
+          // silently drops at viewport edges. Threshold defines the inner
+          // edge band (10% horizontal / 20% vertical) where scrolling kicks
+          // in; acceleration is the px/frame ramp.
+          autoScroll={{ threshold: { x: 0.1, y: 0.2 }, acceleration: 10 }}
+        >
         <GanttContainer
           root={root}
           defaultZoom="month"
