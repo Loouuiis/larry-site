@@ -3,6 +3,7 @@ import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import type { FlatRow } from "./gantt-utils";
 import type { ZoomLevel, GanttNode } from "./gantt-types";
 import type { TimelineRange } from "./gantt-utils";
+import type { RowSlice } from "./gantt-virtualize";
 import { dateToPct, generateDateAxis } from "./gantt-utils";
 import { GanttRow } from "./GanttRow";
 import { GanttDateHeader, GANTT_HEADER_HEIGHT, PX_PER_DAY_BY_ZOOM } from "./GanttDateHeader";
@@ -27,11 +28,14 @@ interface Props {
   onTaskBarClick?: (taskId: string, projectId: string) => void;
   milestones?: Milestone[];
   onAddMilestone?: (date: string) => void;
+  // Timeline — see GanttOutline. Same slice flows into both columns so the
+  // left outline and the right grid always render the same rows.
+  slice?: RowSlice;
 }
 
 export const GanttGrid = forwardRef<HTMLDivElement, Props>(function GanttGrid(
   { rows, range, zoom, hoveredKey, selectedKey, onHoverKey, onSelectKey, onContextMenu,
-    dependencies, onTaskBarClick, milestones = [], onAddMilestone },
+    dependencies, onTaskBarClick, milestones = [], onAddMilestone, slice },
   ref,
 ) {
   const axis = useMemo(() => generateDateAxis(range, zoom), [range, zoom]);
@@ -55,7 +59,9 @@ export const GanttGrid = forwardRef<HTMLDivElement, Props>(function GanttGrid(
     return () => ro.disconnect();
   }, []);
 
-  // Build per-task { yMid, xStartPct, xEndPct } for arrow drawing.
+  // Build per-task { yMid, xStartPct, xEndPct } for arrow drawing. yMid is
+  // measured against the FULL list (not the slice), so dependency arrows
+  // remain visually anchored to their tasks even when the slice scrolls.
   const rowYMap = useMemo(() => {
     const map = new Map<string, { yMid: number; xStartPct: number; xEndPct: number }>();
     let cumulativeY = 0;
@@ -99,6 +105,21 @@ export const GanttGrid = forwardRef<HTMLDivElement, Props>(function GanttGrid(
     const clickedDate = new Date(range.start.getTime() + (pct / 100) * totalDays * 86400000);
     onAddMilestone(clickedDate.toISOString().slice(0, 10));
   }
+
+  // Default slice renders every row (matches pre-virtualization behaviour).
+  const effectiveSlice: RowSlice = slice ?? {
+    startIdx: 0,
+    endIdx: rows.length,
+    offsetTop: 0,
+    totalHeight: totalRowsHeight,
+    disabled: true,
+  };
+  const visibleRows = rows.slice(effectiveSlice.startIdx, effectiveSlice.endIdx);
+  const visibleHeight = visibleRows.reduce((a, r) => a + r.height, 0);
+  const bottomPad = Math.max(
+    0,
+    effectiveSlice.totalHeight - effectiveSlice.offsetTop - visibleHeight,
+  );
 
   return (
     <div ref={ref} style={{ position: "relative", overflowX: "auto", flex: 1, minHeight: 0 }}>
@@ -166,10 +187,24 @@ export const GanttGrid = forwardRef<HTMLDivElement, Props>(function GanttGrid(
           );
         })}
 
-        {/* Rows */}
-        <div style={{ position: "relative", zIndex: 1 }}>
-          {rows.map((r) => (
-            <div key={r.key} style={{ height: r.height }}>
+        {/* Rows — when virtualized, paddingTop/Bottom spacers preserve the
+            full scroll extent while only the window renders. */}
+        <div
+          role="rowgroup"
+          aria-rowcount={rows.length}
+          style={{
+            position: "relative", zIndex: 1,
+            paddingTop: effectiveSlice.offsetTop,
+            paddingBottom: bottomPad,
+          }}
+        >
+          {visibleRows.map((r, i) => (
+            <div
+              key={r.key}
+              role="row"
+              aria-rowindex={effectiveSlice.startIdx + i + 1}
+              style={{ height: r.height }}
+            >
               <GanttRow
                 row={r}
                 range={range}
@@ -184,7 +219,9 @@ export const GanttGrid = forwardRef<HTMLDivElement, Props>(function GanttGrid(
           ))}
         </div>
 
-        {/* Dependency arrows SVG overlay — pixel-accurate via ResizeObserver */}
+        {/* Dependency arrows SVG overlay — pixel-accurate via ResizeObserver.
+            Drawn against full-list yMid values, so they line up regardless
+            of which window the slice is currently rendering. */}
         {dependencies && dependencies.length > 0 && totalRowsHeight > 0 && (
           <svg
             width={containerWidth}
