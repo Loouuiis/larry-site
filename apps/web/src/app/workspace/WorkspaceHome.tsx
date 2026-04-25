@@ -36,7 +36,7 @@ interface AuthMePayload {
 interface ProjectCardModel {
   id: string;
   name: string;
-  description: string;
+  description: string | null;
   status: string;
   riskLevel: string;
   targetDate: string | null | undefined;
@@ -131,9 +131,7 @@ function buildProjectCard(
   return {
     id: project.id,
     name: project.name,
-    description:
-      project.description?.trim() ||
-      (projectTasks.length > 0 ? "Live workspace with active delivery signals." : "Ready for the first task and meeting signal."),
+    description: project.description?.trim() || null,
     status: project.status,
     riskLevel: project.riskLevel ?? "low",
     targetDate: project.targetDate,
@@ -228,7 +226,7 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
     if (!searchQuery.trim()) return projectCards;
     const q = searchQuery.toLowerCase();
     return projectCards.filter(
-      (p) => p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q),
+      (p) => p.name.toLowerCase().includes(q) || (p.description?.toLowerCase().includes(q) ?? false),
     );
   }, [projectCards, searchQuery]);
 
@@ -236,7 +234,7 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
     if (!searchQuery.trim()) return archivedCards;
     const q = searchQuery.toLowerCase();
     return archivedCards.filter(
-      (p) => p.name.toLowerCase().includes(q) || p.description.toLowerCase().includes(q),
+      (p) => p.name.toLowerCase().includes(q) || (p.description?.toLowerCase().includes(q) ?? false),
     );
   }, [archivedCards, searchQuery]);
 
@@ -600,8 +598,9 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
                 {/* Description — 1 line truncated */}
                 <p
                   className="text-body-sm mt-1 truncate"
+                  style={project.description ? undefined : { color: "var(--text-muted)", fontStyle: "italic" }}
                 >
-                  {project.description}
+                  {project.description ?? "No description"}
                 </p>
 
                 {/* Progress bar */}
@@ -687,7 +686,12 @@ export function WorkspaceHome({ viewerEmail: _viewerEmail }: { viewerEmail?: str
                         Archived
                       </span>
                     </div>
-                    <p className="text-body-sm mt-1 truncate">{project.description}</p>
+                    <p
+                      className="text-body-sm mt-1 truncate"
+                      style={project.description ? undefined : { color: "var(--text-muted)", fontStyle: "italic" }}
+                    >
+                      {project.description ?? "No description"}
+                    </p>
                     <div className="mt-3 flex items-center justify-between">
                       <span className="text-body-sm">
                         Updated {formatRelativeTime(project.updatedAt)}
