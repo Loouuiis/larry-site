@@ -840,6 +840,11 @@ export function validateDrop(
     if (isAncestorTask(ctx, src.id, tgt.id)) {
       return { ok: false, reason: "Can't move a task under its own descendant." };
     }
+    // API enforces depth=1 (no subtask-of-subtask). Guard here so the user
+    // gets a clear message instead of a silent "Couldn't move task" toast.
+    if (tgtTask.parentTaskId !== null) {
+      return { ok: false, reason: "Can't nest more than one level deep — drop onto the parent task instead." };
+    }
     return {
       ok: true,
       effect: { kind: "moveTask", sourceId: src.id, newProjectId: tgtTask.projectId, newParentTaskId: tgt.id },

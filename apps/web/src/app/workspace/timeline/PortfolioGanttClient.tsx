@@ -81,11 +81,13 @@ export function PortfolioGanttClient() {
 
   // Fire-and-forget invalidation — used after every mutation. Consumers of
   // these keys (Task Center, My Tasks, etc.) refetch automatically when they
-  // become active again.
+  // become active again. Also invalidates project overview caches so any open
+  // project tab picks up org-level changes without a manual refresh.
   const invalidateAll = () => {
     void qc.invalidateQueries({ queryKey: QK_TIMELINE_ORG });
     void qc.invalidateQueries({ queryKey: ["tasks"] });
     void qc.invalidateQueries({ queryKey: ["projects"] });
+    void qc.invalidateQueries({ queryKey: ["project", "overview"] });
   };
 
   // Keep the legacy callback-name for existing consumers (modal onCreated,
@@ -237,13 +239,26 @@ export function PortfolioGanttClient() {
       }
       return res.json();
     },
-    onMutate: async () => {
-      // Task optimism is more invasive because tasks live in a nested
-      // category.projects[].tasks[] array; for now we skip the optimistic
-      // update and rely on refetch. Perceived latency is still < 200 ms
-      // on Vercel because the Gantt keeps its current render until settle.
+    onMutate: async (vars) => {
       await qc.cancelQueries({ queryKey: QK_TIMELINE_ORG });
       const previous = qc.getQueryData<PortfolioTimelineResponse>(QK_TIMELINE_ORG);
+      qc.setQueryData<PortfolioTimelineResponse>(QK_TIMELINE_ORG, (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          categories: old.categories.map((c) => ({
+            ...c,
+            projects: c.projects.map((p) => ({
+              ...p,
+              tasks: p.tasks.map((t) =>
+                t.id === vars.id
+                  ? { ...t, parentTaskId: vars.parentTaskId, ...(vars.projectId ? { projectId: vars.projectId } : {}) }
+                  : t,
+              ),
+            })),
+          })),
+        };
+      });
       return { previous };
     },
     onError: (err, _vars, ctx) => {
@@ -726,23 +741,41 @@ export function PortfolioGanttClient() {
     }
   }
 
-  async function applyCategoryColour(hex: string) {
-    if (!colourPopover) return;
-    try {
-      const res = await fetch(`/api/workspace/categories/${colourPopover.categoryId}`, {
+  const applyCategoryColourMutation = useMutation({
+    mutationFn: async ({ id, colour }: { id: string; colour: string }) => {
+      const res = await fetch(`/api/workspace/categories/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ colour: hex }),
+        body: JSON.stringify({ colour }),
       });
-      if (!res.ok) {
-        setMutationError(await extractApiError(res, "Couldn't change colour"));
-        return;
-      }
+      if (!res.ok) throw new Error(await extractApiError(res, "Couldn't change colour"));
+      return res.json();
+    },
+    onMutate: async ({ id, colour }) => {
+      await qc.cancelQueries({ queryKey: QK_TIMELINE_ORG });
+      const previous = qc.getQueryData<PortfolioTimelineResponse>(QK_TIMELINE_ORG);
+      qc.setQueryData<PortfolioTimelineResponse>(QK_TIMELINE_ORG, (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          categories: old.categories.map((c) => c.id === id ? { ...c, colour } : c),
+        };
+      });
+      return { previous };
+    },
+    onError: (err, _vars, ctx) => {
+      if (ctx?.previous) qc.setQueryData(QK_TIMELINE_ORG, ctx.previous);
+      setMutationError(err instanceof Error ? err.message : "Failed to change colour");
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: QK_TIMELINE_ORG });
       setColourPopover(null);
-      await fetchTimeline();
-    } catch (e) {
-      setMutationError(e instanceof Error ? e.message : "Failed to change colour");
-    }
+    },
+  });
+
+  function applyCategoryColour(hex: string) {
+    if (!colourPopover) return;
+    applyCategoryColourMutation.mutate({ id: colourPopover.categoryId, colour: hex });
   }
 
   return (

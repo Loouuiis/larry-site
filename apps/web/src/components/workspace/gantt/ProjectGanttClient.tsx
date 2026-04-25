@@ -463,11 +463,26 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
       }
       return res.json();
     },
-    onSuccess: () => {
+    onMutate: async ({ id, colour }) => {
+      await qc.cancelQueries({ queryKey: QK_TIMELINE_ORG });
+      const previous = qc.getQueryData<import("@larry/shared").PortfolioTimelineResponse>(QK_TIMELINE_ORG);
+      qc.setQueryData<import("@larry/shared").PortfolioTimelineResponse>(QK_TIMELINE_ORG, (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          categories: old.categories.map((c) => c.id === id ? { ...c, colour } : c),
+        };
+      });
+      return { previous };
+    },
+    onError: (err: unknown, _vars, ctx) => {
+      if (ctx?.previous) qc.setQueryData(QK_TIMELINE_ORG, ctx.previous);
+      setMutationError(err instanceof Error ? err.message : "Failed to change colour");
+    },
+    onSettled: () => {
       invalidateCategoryCaches();
       setColourPopover(null);
     },
-    onError: (err: unknown) => setMutationError(err instanceof Error ? err.message : "Failed to change colour"),
   });
 
   // Label text only — GanttToolbar provides the leading <Plus /> icon.
