@@ -49,7 +49,6 @@ import { useToast } from "@/components/toast/ToastContext";
 import { ActionDetailPreview } from "@/components/workspace/ActionDetailPreview";
 import { shouldShowResponseNarrative } from "@/app/workspace/acceptedNarrative";
 import { ModifyPanel } from "@/app/workspace/ModifyPanel";
-import { ActionBellDropdown } from "./overview/ActionBellDropdown";
 import { ProjectOverviewTab } from "./overview/ProjectOverviewTab";
 import { ProjectDescriptionCard } from "./overview/ProjectDescriptionCard";
 import { PageState, SkeletonLine } from "@/components/PageState";
@@ -1819,10 +1818,6 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
               >
                 <MessageSquare size={16} style={{ color: "#6c44f6" }} />
               </Link>
-              <ActionBellDropdown
-                suggested={suggested}
-                onNavigateToAction={() => setActiveTab("actions")}
-              />
             </div>
           </div>
           {statusNotice && (

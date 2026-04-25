@@ -3,8 +3,9 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Menu } from "lucide-react";
+import { Menu } from "lucide-react";
 import { WorkspaceSwitcher } from "@/components/workspace/WorkspaceSwitcher";
+import { NotificationBell } from "./NotificationBell";
 
 type WorkspaceTopBarProps = {
   userEmail?: string | null;
@@ -99,14 +100,9 @@ export function WorkspaceTopBar({ userEmail: _userEmail, workspaceName = "Larry 
 
       <WorkspaceSwitcher />
 
-      <Link
-        href="/workspace/notifications"
-        aria-label="Notifications"
-        className="hidden sm:flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-[var(--surface-2)]"
-        style={{ color: "var(--text-muted)" }}
-      >
-        <Bell size={17} />
-      </Link>
+      <div className="hidden sm:block">
+        <NotificationBell />
+      </div>
     </header>
   );
 }

@@ -6,6 +6,7 @@ import { writeAuditLog } from "../../lib/audit.js";
 import { createSignedStateToken, verifySignedStateToken } from "../../services/connectors/slack.js";
 import { buildGmailInstallUrl, fetchGmailUserProfile, sendGmailMessage } from "../../services/connectors/gmail.js";
 import { exchangeGoogleOauthCode, refreshGoogleAccessToken } from "../../services/connectors/google-calendar.js";
+import { notifySafe } from "../../lib/notifications/safe.js";
 
 const EmailInstallStateSchema = z.object({
   kind: z.literal("email_oauth_state"),
@@ -641,6 +642,15 @@ export const emailConnectorRoutes: FastifyPluginAsync = async (fastify) => {
       });
 
       if (body.sendNow && outcome && !outcome.ok) {
+        await notifySafe({
+          db: fastify.db,
+          tenantId,
+          userId: request.user.userId,
+          type: "email.failed",
+          payload: { recipient: body.to, draftId, errorCode: outcome.code },
+          body: outcome.message,
+          logger: fastify.log,
+        });
         return reply.code(502).send({
           success: false,
           draftId,
@@ -649,6 +659,18 @@ export const emailConnectorRoutes: FastifyPluginAsync = async (fastify) => {
           error: outcome.message,
         });
       }
+
+      await notifySafe({
+        db: fastify.db,
+        tenantId,
+        userId: request.user.userId,
+        type: body.sendNow && sendSucceeded ? "email.sent" : "email.drafted",
+        payload:
+          body.sendNow && sendSucceeded
+            ? { recipient: body.to, messageId: draftId, draftId }
+            : { recipient: body.to, draftId },
+        logger: fastify.log,
+      });
 
       return {
         success: true,

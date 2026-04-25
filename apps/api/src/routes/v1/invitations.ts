@@ -18,6 +18,7 @@ import { assertPasswordNotBreached } from "../../lib/password-breach.js";
 import { assertSeatAvailable, SeatCapReachedError } from "../../lib/seat-cap.js";
 import { assertMfaIfRequired, MfaEnrollmentRequiredError } from "../../lib/mfa-gate.js";
 import { getProjectMembershipAccess, upsertProjectMembership } from "../../lib/project-memberships.js";
+import { notifySafe } from "../../lib/notifications/safe.js";
 
 const ProjectRoleEnum = z.enum(["owner", "editor", "viewer"]);
 
@@ -211,6 +212,15 @@ export const invitationsRoutes: FastifyPluginAsync = async (fastify) => {
       details: { email: body.email, role: body.role },
     });
 
+    await notifySafe({
+      db: fastify.db,
+      tenantId: user.tenantId,
+      userId: user.userId,
+      type: "invite.sent",
+      payload: { email: body.email, role: body.role, invitationId: invitation.id },
+      logger: fastify.log,
+    });
+
     const inviteUrl = `${resolveFrontendUrl()}/invite/accept?token=${encodeURIComponent(rawToken)}`;
     return reply.code(201).send({ invitation, inviteUrl });
   });
@@ -356,6 +366,15 @@ export const invitationsRoutes: FastifyPluginAsync = async (fastify) => {
       actionType: "invitation.accepted",
       objectType: "invitation",
       objectId: inv.id,
+    });
+
+    await notifySafe({
+      db: fastify.db,
+      tenantId: inv.tenantId,
+      userId: null,
+      type: "invite.accepted",
+      payload: { email: inv.email, userId: result.userId, invitationId: inv.id },
+      logger: fastify.log,
     });
 
     const accessToken = await issueAccessToken(fastify, {

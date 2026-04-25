@@ -435,3 +435,5 @@ export interface PortfolioTimelineResponse {
 }
 
 export * from "./timeline.js";
+export * from "./notifications/types.js";
+export * from "./notifications/registry.js";

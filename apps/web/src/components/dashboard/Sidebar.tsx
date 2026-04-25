@@ -15,6 +15,8 @@ import {
 import { WorkspaceProject } from "@/app/dashboard/types";
 import { StartProjectFlow } from "./StartProjectFlow";
 import { resizeImageToDataUrl } from "@/lib/image";
+import { useLarryActionCentre } from "@/hooks/useLarryActionCentre";
+import { useNotifications } from "@/hooks/useNotifications";
 
 const DRAWER_EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -66,6 +68,10 @@ interface SearchTask { id: string; title: string; status: string; projectId?: st
 function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, avatarUrl, displayName, notifCount, onToggleCollapsed }: WorkspaceSidebarInnerProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const actionCentre = useLarryActionCentre();
+  const actionsCount = actionCentre.suggested.length;
+  const { unreadCount: notifUnread } = useNotifications();
+  const notifBadge = notifUnread > 0 ? notifUnread : (notifCount ?? 0);
   const [search, setSearch] = useState("");
   const [tasks, setTasks] = useState<SearchTask[]>([]);
   const [tasksLoaded, setTasksLoaded] = useState(false);
@@ -341,7 +347,8 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, avatar
       <nav className="px-2 space-y-0.5" aria-label="Main navigation">
         {WORKSPACE_NAV.map(({ id, label, icon: Icon, href }) => {
           const isActive = activeNav === id;
-          const showBadge = id === "notifications" && (notifCount ?? 0) > 0;
+          const notifBadgeShown = id === "notifications" && notifBadge > 0;
+          const actionsBadgeShown = id === "actions" && actionsCount > 0;
           return (
             <Link
               key={id}
@@ -351,12 +358,20 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, avatar
             >
               <Icon size={18} className="shrink-0 icon-md" style={{ color: isActive ? "var(--brand)" : "var(--text-disabled)" }} />
               <span className="flex-1" style={{ color: isActive ? "var(--text-1)" : "var(--text-2)" }}>{label}</span>
-              {showBadge && (
+              {notifBadgeShown && (
                 <span
                   className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-bold text-white"
                   style={{ background: "#6c44f6" }}
                 >
-                  {(notifCount ?? 0) > 99 ? "99+" : notifCount}
+                  {notifBadge > 99 ? "99+" : notifBadge}
+                </span>
+              )}
+              {actionsBadgeShown && (
+                <span
+                  className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-semibold"
+                  style={{ background: "var(--pm-gray-light)", color: "var(--pm-text-muted)" }}
+                >
+                  {actionsCount > 99 ? "99+" : actionsCount}
                 </span>
               )}
             </Link>

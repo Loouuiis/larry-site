@@ -18,6 +18,8 @@ import { useTranscriptProcessing } from "./useTranscriptProcessing";
 import { VerificationBanner } from "@/components/auth/VerificationBanner";
 import { GlobalSearch } from "@/components/GlobalSearch";
 import { TimezoneProvider } from "@/lib/timezone-context";
+import { NotificationProvider } from "@/lib/notifications/NotificationContext";
+import { NotificationBanners } from "@/components/notifications/NotificationBanners";
 
 async function readJson<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -164,6 +166,7 @@ export function WorkspaceShell({ children, userEmail, emailVerified, avatarUrl, 
   return (
     <TimezoneProvider>
     <QueryClientProvider client={getQueryClient()}>
+    <NotificationProvider>
     <ToastProvider>
     <WorkspaceChromeProvider
       value={{
@@ -262,7 +265,9 @@ export function WorkspaceShell({ children, userEmail, emailVerified, avatarUrl, 
     </WorkspaceChromeProvider>
     <ToastContainer />
     <GlobalSearch />
+    <NotificationBanners />
     </ToastProvider>
+    </NotificationProvider>
     </QueryClientProvider>
     </TimezoneProvider>
   );
