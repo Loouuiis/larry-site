@@ -392,20 +392,22 @@ describe("tinyTint", () => {
 import { darken, statusChipFor, contextMenuItemsFor } from "./gantt-utils";
 
 describe("contextMenuItemsFor", () => {
-  it("task row gets Open, Move, Remove from timeline, Delete", () => {
+  it("task row gets Open, Move, Add subtask, Remove from timeline, Delete", () => {
     const items = contextMenuItemsFor({ rowKind: "task", isUncategorised: false });
     expect(items.map((i) => i.id)).toEqual([
-      "openDetail", "moveToCategory", "removeFromTimeline", "delete",
+      "openDetail", "moveToProject", "moveToCategory", "addSubtask", "removeFromTimeline", "delete",
     ]);
     expect(items.find((i) => i.id === "moveToCategory")?.hasSubmenu).toBe(true);
+    expect(items.find((i) => i.id === "addSubtask")?.label).toBe("Add subtask");
     expect(items.find((i) => i.id === "delete")?.destructive).toBe(true);
   });
 
-  it("subtask row gets same items as task", () => {
+  it("subtask row gets same items as task (incl. Add subtask for sibling)", () => {
     const items = contextMenuItemsFor({ rowKind: "subtask", isUncategorised: false });
     expect(items.map((i) => i.id)).toEqual([
-      "openDetail", "moveToCategory", "removeFromTimeline", "delete",
+      "openDetail", "moveToProject", "moveToCategory", "addSubtask", "removeFromTimeline", "delete",
     ]);
+    expect(items.find((i) => i.id === "addSubtask")?.label).toBe("Add subtask");
   });
 
   it("project row gets Open, Move, Add task, Add category, Delete", () => {
