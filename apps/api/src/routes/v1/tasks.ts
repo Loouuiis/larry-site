@@ -400,7 +400,7 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.patch(
     "/:id",
     { preHandler: [fastify.authenticate, fastify.requireRole(["admin", "pm", "member"])] },
-    async (request) => {
+    async (request, reply) => {
       const params = z.object({ id: z.string().uuid() }).parse(request.params);
       const body = z.object({
         title: z.string().min(1).max(300).optional(),
@@ -452,6 +452,48 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
       const taskProjectState = await loadTaskProjectWriteState(fastify.db, tenantId, params.id);
       if (taskProjectState) {
         assertProjectWritableOrThrow(taskProjectState.projectStatus);
+      }
+
+      // v4 Slice 4 follow-up — semantic validation: a task's categoryId must
+      // resolve (walking up parent_category_id) to a project_id that either
+      // equals the task's own project_id OR is null (org-scoped). Null
+      // categoryId (Uncategorised) is always valid and skips the check.
+      if (body.categoryId !== undefined && body.categoryId !== null && taskProjectState) {
+        const owningRows = await fastify.db.queryTenant<{ projectId: string | null }>(
+          tenantId,
+          `WITH RECURSIVE cat_ancestry AS (
+             SELECT id, parent_category_id, project_id
+               FROM project_categories
+              WHERE tenant_id = $1 AND id = $2
+              UNION ALL
+             SELECT pc.id, pc.parent_category_id, pc.project_id
+               FROM project_categories pc
+               JOIN cat_ancestry ca ON pc.id = ca.parent_category_id
+              WHERE pc.tenant_id = $1
+           )
+           SELECT project_id AS "projectId"
+             FROM cat_ancestry
+            WHERE parent_category_id IS NULL
+            LIMIT 1`,
+          [tenantId, body.categoryId],
+        );
+        if (owningRows.length === 0) {
+          return reply.code(400).send({
+            code: "CATEGORY_PROJECT_MISMATCH",
+            message: "Category not found for this tenant.",
+            expectedProjectId: taskProjectState.projectId,
+            gotProjectId: null,
+          });
+        }
+        const owningProjectId = owningRows[0].projectId;
+        if (owningProjectId !== null && owningProjectId !== taskProjectState.projectId) {
+          return reply.code(400).send({
+            code: "CATEGORY_PROJECT_MISMATCH",
+            message: "Category belongs to a different project than the task.",
+            expectedProjectId: taskProjectState.projectId,
+            gotProjectId: owningProjectId,
+          });
+        }
       }
 
       const setClauses: string[] = ["updated_at = NOW()"];
