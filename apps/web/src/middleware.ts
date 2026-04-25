@@ -89,6 +89,45 @@ const AUTH_CREDENTIAL_PAGES: ReadonlySet<string> = new Set([
   "/mfa/enrol",
 ]);
 
+// OWASP Secure Headers Project baseline (2026-04-21 audit, P2).
+// Scoped to auth pages only because:
+//   • CORP: same-origin would break any cross-origin resource loaders (logos in
+//     status-page previews etc.) if applied globally; auth HTML is never
+//     legitimately cross-origin-embedded, so scoping is safe.
+//   • The Permissions-Policy list is noisy; targeting auth pages keeps blast
+//     radius minimal while covering the credential-entry surface.
+// COOP intentionally NOT set: the signup wizard + connectors page use
+// window.open / window.opener.postMessage for Google Calendar OAuth; see
+// docs/security/login-audit-2026-04-19.md.
+const AUTH_PAGE_PERMISSIONS_POLICY = [
+  "accelerometer=()",
+  "autoplay=()",
+  "browsing-topics=()",
+  "camera=()",
+  "display-capture=()",
+  "encrypted-media=()",
+  "fullscreen=(self)",
+  "gamepad=()",
+  "geolocation=()",
+  "gyroscope=()",
+  "hid=()",
+  "identity-credentials-get=()",
+  "idle-detection=()",
+  "magnetometer=()",
+  "microphone=()",
+  "midi=()",
+  "otp-credentials=()",
+  "payment=()",
+  "picture-in-picture=()",
+  "publickey-credentials-create=(self)",
+  "publickey-credentials-get=(self)",
+  "screen-wake-lock=()",
+  "serial=()",
+  "usb=()",
+  "web-share=()",
+  "xr-spatial-tracking=()",
+].join(", ");
+
 function applyAuthPageSecurityHeaders(res: NextResponse, pathname: string) {
   if (!AUTH_CREDENTIAL_PAGES.has(pathname)) return;
   if (pathname.startsWith("/invite/")) return;
@@ -96,6 +135,10 @@ function applyAuthPageSecurityHeaders(res: NextResponse, pathname: string) {
   // iframe. If that changes later, relax to SAMEORIGIN, not wildcard.
   res.headers.set("X-Frame-Options", "DENY");
   res.headers.set("Referrer-Policy", "no-referrer");
+  // Auth HTML must never be loaded cross-origin as a resource.
+  res.headers.set("Cross-Origin-Resource-Policy", "same-origin");
+  // Tight feature surface for credential-entry pages.
+  res.headers.set("Permissions-Policy", AUTH_PAGE_PERMISSIONS_POLICY);
 }
 
 // ── Page-level session gate (existing behaviour) ────────────────────────────
