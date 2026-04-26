@@ -33,14 +33,6 @@ type AddCtx =
 
 type ColourPopover = { categoryId: string; currentColour: string | null; x: number; y: number };
 type EditProjectCtx = { projectId: string; name: string; status: string; startDate: string | null; targetDate: string | null };
-type Milestone = { id: string; name: string; date: string; color?: string };
-
-const MILESTONES_STORAGE_KEY = "larry:milestones";
-
-function loadMilestones(): Milestone[] {
-  if (typeof window === "undefined") return [];
-  try { return JSON.parse(localStorage.getItem(MILESTONES_STORAGE_KEY) ?? "[]") as Milestone[]; } catch { return []; }
-}
 
 export function PortfolioGanttClient() {
   const qc = useQueryClient();
@@ -57,18 +49,6 @@ export function PortfolioGanttClient() {
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [editTaskId, setEditTaskId] = useState<{ taskId: string; projectId: string } | null>(null);
   const [editProjectCtx, setEditProjectCtx] = useState<EditProjectCtx | null>(null);
-  const [milestones, setMilestones] = useState<Milestone[]>(loadMilestones);
-
-  function handleAddMilestone(date: string) {
-    const milestoneColors = ["#f67a79", "#fbe187", "#8db2ff", "#6c44f6", "#bce8a4"];
-    const name = window.prompt("Milestone name (leave empty to cancel):", "");
-    if (!name?.trim()) return;
-    const color = milestoneColors[milestones.length % milestoneColors.length];
-    const m: Milestone = { id: crypto.randomUUID(), name: name.trim(), date, color };
-    const next = [...milestones, m];
-    setMilestones(next);
-    try { localStorage.setItem(MILESTONES_STORAGE_KEY, JSON.stringify(next)); } catch { /* quota */ }
-  }
 
   // v4 Slice 3A — the timeline read is now React Query. Mutations invalidate
   // QK_TIMELINE_ORG to trigger a refetch; the cached payload stays mounted
@@ -827,8 +807,6 @@ export function PortfolioGanttClient() {
           }))}
           onTaskBarClick={(taskId, projectId) => setEditTaskId({ taskId, projectId })}
           onProjectBarClick={handleProjectBarClick}
-          milestones={milestones}
-          onAddMilestone={handleAddMilestone}
           outlineHeaderActions={
             <button
               type="button"
@@ -962,6 +940,7 @@ export function PortfolioGanttClient() {
           onDeleted={async () => { await fetchTimeline(); setEditProjectCtx(null); }}
         />
       )}
+
     </div>
   );
 }

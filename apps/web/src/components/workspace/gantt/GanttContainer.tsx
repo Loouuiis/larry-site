@@ -43,8 +43,6 @@ interface Props {
   persistKey?: string;
   dependencies?: Array<{ taskId: string; dependsOnTaskId: string; type?: "FS" | "FF" | "SS" | "SF" }>;
   onTaskBarClick?: (taskId: string, projectId: string) => void;
-  milestones?: Array<{ id: string; name: string; date: string; color?: string }>;
-  onAddMilestone?: (date: string) => void;
 }
 
 export function GanttContainer({
@@ -56,7 +54,6 @@ export function GanttContainer({
   onSelectionChange, onHoverChange, persistKey,
   onProjectBarClick,
   dependencies, onTaskBarClick,
-  milestones, onAddMilestone,
 }: Props) {
   const collapsedKey = persistKey ? `larry:gantt:${persistKey}:collapsed` : null;
   const zoomKey      = persistKey ? `larry:gantt:${persistKey}:zoom` : null;
@@ -280,8 +277,6 @@ export function GanttContainer({
           onContextMenu={handleContextMenu}
           dependencies={dependencies}
           onTaskBarClick={onTaskBarClick}
-          milestones={milestones}
-          onAddMilestone={onAddMilestone}
           slice={slice}
         />
       </div>

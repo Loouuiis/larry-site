@@ -76,6 +76,7 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
 
   const [editTaskId, setEditTaskId] = useState<{ taskId: string; projectId: string } | null>(null);
 
+
   // Always include every task from the `tasks` prop in the outline so undated
   // tasks remain visible. For tasks that also appear in `timeline.gantt` (the
   // dated subset), prefer the gantt version which carries accurate start/end

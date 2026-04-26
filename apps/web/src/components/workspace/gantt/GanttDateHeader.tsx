@@ -3,17 +3,9 @@ import type { ZoomLevel } from "./gantt-types";
 import type { TimelineRange } from "./gantt-utils";
 import { generateDateAxis, dateToPct } from "./gantt-utils";
 
-interface Milestone {
-  id: string;
-  name: string;
-  date: string;
-  color?: string;
-}
-
 interface Props {
   range: TimelineRange;
   zoom: ZoomLevel;
-  milestones?: Milestone[];
 }
 
 // 16px space above for the "Today" label + 48px axis band = 64px total
@@ -27,7 +19,7 @@ export const PX_PER_DAY_BY_ZOOM: Record<ZoomLevel, number> = {
   quarter:  8,
 };
 
-export function GanttDateHeader({ range, zoom, milestones = [] }: Props) {
+export function GanttDateHeader({ range, zoom }: Props) {
   const axis = generateDateAxis(range, zoom);
   const todayPct = dateToPct(new Date(), range);
   const todayInRange = todayPct >= 0 && todayPct <= 100;
@@ -42,7 +34,7 @@ export function GanttDateHeader({ range, zoom, milestones = [] }: Props) {
         zIndex: 3,
       }}
     >
-      {/* Today pill + milestone diamonds (top 16px) */}
+      {/* Today pill (top 16px) */}
       <div style={{ position: "relative", height: TODAY_LABEL_BAND }}>
         {todayInRange && (
           <span
@@ -67,47 +59,6 @@ export function GanttDateHeader({ range, zoom, milestones = [] }: Props) {
             Today {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
           </span>
         )}
-
-        {/* Milestone diamonds */}
-        {milestones.map((m) => {
-          const pct = dateToPct(new Date(m.date), range);
-          if (pct < 0 || pct > 100) return null;
-          const color = m.color ?? "#f67a79";
-          return (
-            <span
-              key={m.id}
-              title={`${m.name} — ${m.date}`}
-              style={{
-                position: "absolute",
-                left: `${pct}%`,
-                top: 0,
-                transform: "translateX(-50%)",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 3,
-                whiteSpace: "nowrap",
-                pointerEvents: "none",
-                zIndex: 10,
-              }}
-            >
-              {/* Diamond */}
-              <svg width="10" height="10" viewBox="0 0 10 10" style={{ flexShrink: 0 }}>
-                <polygon points="5,0 10,5 5,10 0,5" fill={color} />
-              </svg>
-              <span style={{
-                fontSize: 9,
-                fontWeight: 700,
-                color,
-                letterSpacing: "0.02em",
-                maxWidth: 60,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}>
-                {m.name}
-              </span>
-            </span>
-          );
-        })}
       </div>
 
       {/* Axis band (48px) — month row + day row */}

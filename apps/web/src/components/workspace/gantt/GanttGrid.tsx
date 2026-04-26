@@ -8,13 +8,6 @@ import { dateToPct, generateDateAxis, rollUpBar } from "./gantt-utils";
 import { GanttRow } from "./GanttRow";
 import { GanttDateHeader, GANTT_HEADER_HEIGHT, PX_PER_DAY_BY_ZOOM } from "./GanttDateHeader";
 
-interface Milestone {
-  id: string;
-  name: string;
-  date: string;
-  color?: string;
-}
-
 interface Props {
   rows: FlatRow[];
   range: TimelineRange;
@@ -26,8 +19,6 @@ interface Props {
   onContextMenu?: (rowKey: string, rowKind: GanttNode["kind"], e: React.MouseEvent) => void;
   dependencies?: Array<{ taskId: string; dependsOnTaskId: string; type?: "FS" | "FF" | "SS" | "SF" }>;
   onTaskBarClick?: (taskId: string, projectId: string) => void;
-  milestones?: Milestone[];
-  onAddMilestone?: (date: string) => void;
   // Timeline — see GanttOutline. Same slice flows into both columns so the
   // left outline and the right grid always render the same rows.
   slice?: RowSlice;
@@ -35,7 +26,7 @@ interface Props {
 
 export const GanttGrid = forwardRef<HTMLDivElement, Props>(function GanttGrid(
   { rows, range, zoom, hoveredKey, selectedKey, onHoverKey, onSelectKey, onContextMenu,
-    dependencies, onTaskBarClick, milestones = [], onAddMilestone, slice },
+    dependencies, onTaskBarClick, slice },
   ref,
 ) {
   const axis = useMemo(() => generateDateAxis(range, zoom), [range, zoom]);
@@ -169,15 +160,6 @@ export const GanttGrid = forwardRef<HTMLDivElement, Props>(function GanttGrid(
     }
   }
 
-  function handleHeaderClick(e: React.MouseEvent<HTMLDivElement>) {
-    if (!onAddMilestone) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const pct = ((e.clientX - rect.left) / rect.width) * 100;
-    const totalDays = range.totalDays;
-    const clickedDate = new Date(range.start.getTime() + (pct / 100) * totalDays * 86400000);
-    onAddMilestone(clickedDate.toISOString().slice(0, 10));
-  }
-
   // Default slice renders every row (matches pre-virtualization behaviour).
   const effectiveSlice: RowSlice = slice ?? {
     startIdx: 0,
@@ -196,10 +178,9 @@ export const GanttGrid = forwardRef<HTMLDivElement, Props>(function GanttGrid(
   return (
     <div ref={ref} style={{ position: "relative", overflowX: "auto", flex: 1, minHeight: 0 }}>
       <div ref={contentRef} style={{ minWidth: axisMinWidth, position: "relative" }}>
-        {/* Date header — clickable to add milestones */}
-        <div onClick={onAddMilestone ? handleHeaderClick : undefined}
-          style={{ cursor: onAddMilestone ? "crosshair" : undefined }}>
-          <GanttDateHeader range={range} zoom={zoom} milestones={milestones} />
+        {/* Date header */}
+        <div>
+          <GanttDateHeader range={range} zoom={zoom} />
         </div>
 
         {/* Gridlines */}
@@ -237,27 +218,6 @@ export const GanttGrid = forwardRef<HTMLDivElement, Props>(function GanttGrid(
         )}
 
         {/* Milestone vertical lines */}
-        {milestones.map((m) => {
-          const pct = dateToPct(new Date(m.date), range);
-          if (pct < 0 || pct > 100) return null;
-          return (
-            <div
-              key={m.id}
-              style={{
-                position: "absolute",
-                left: `${pct}%`,
-                top: GANTT_HEADER_HEIGHT,
-                bottom: 0,
-                width: 1.5,
-                background: m.color ?? "#f67a79",
-                pointerEvents: "none",
-                zIndex: 1,
-                opacity: 0.7,
-                borderLeft: `1.5px dashed ${m.color ?? "#f67a79"}`,
-              }}
-            />
-          );
-        })}
 
         {/* Rows — when virtualized, paddingTop/Bottom spacers preserve the
             full scroll extent while only the window renders. */}

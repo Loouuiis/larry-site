@@ -258,16 +258,6 @@ export function EditTaskModal({ taskId, onClose, onSaved, onDeleted }: Props) {
               </div>
             </div>
 
-            {/* Status */}
-            <div>
-              <p style={fieldLabelStyle}>Status</p>
-              <select value={status} onChange={(e) => setStatus(e.target.value)} style={selectStyle}>
-                {STATUS_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </div>
-
             {/* Dates */}
             <div style={{ display: "flex", gap: 10 }}>
               <div style={{ flex: 1 }}>
