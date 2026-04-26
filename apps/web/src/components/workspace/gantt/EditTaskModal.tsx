@@ -93,15 +93,21 @@ export function EditTaskModal({ taskId, onClose, onSaved, onDeleted }: Props) {
           fetch("/api/workspace/members"),
         ]);
         if (!taskRes.ok) throw new Error(`HTTP ${taskRes.status}`);
-        const task = await taskRes.json() as TaskDetail;
+        const envelope = await taskRes.json() as { task?: TaskDetail } | TaskDetail;
+        // The web proxy wraps the response: { task: TaskDetail, comments: [] }
+        const task: TaskDetail = ("task" in envelope && envelope.task) ? envelope.task : envelope as TaskDetail;
 
         if (!cancelled) {
-          orig.current = task;
+          // Normalize dates: API returns full ISO timestamps without ::text cast;
+          // input[type=date] requires exactly YYYY-MM-DD.
+          const startNorm = task.startDate ? String(task.startDate).slice(0, 10) : null;
+          const dueNorm   = task.dueDate   ? String(task.dueDate).slice(0, 10)   : null;
+          orig.current = { ...task, startDate: startNorm, dueDate: dueNorm };
           setTitle(task.title);
           setPriority(task.priority);
           setStatus(task.status);
-          setStartDate(task.startDate ?? "");
-          setDueDate(task.dueDate ?? "");
+          setStartDate(startNorm ?? "");
+          setDueDate(dueNorm ?? "");
           setAssigneeUserId(task.assigneeUserId ?? "");
           setDescription(task.description ?? "");
 
