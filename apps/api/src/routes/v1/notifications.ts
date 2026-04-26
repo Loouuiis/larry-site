@@ -112,13 +112,23 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
         tenantId,
         `SELECT id, type, severity, subject, body, deep_link, batch_id,
                 metadata, created_at, read_at, dismissed_at
-         FROM notifications
-         WHERE tenant_id = $1
-           AND channel = 'ui'
-           AND (user_id = $2 OR user_id IS NULL)
-           AND dismissed_at IS NULL
+         FROM notifications n
+         WHERE n.tenant_id = $1
+           AND n.channel = 'ui'
+           AND (
+             n.user_id = $2
+             OR (
+               n.user_id IS NULL
+               AND n.created_at >= (
+                 SELECT created_at FROM memberships
+                 WHERE tenant_id = $1 AND user_id = $2
+                 LIMIT 1
+               )
+             )
+           )
+           AND n.dismissed_at IS NULL
            ${sinceClause}
-         ORDER BY created_at DESC
+         ORDER BY n.created_at DESC
          LIMIT $${params.length}`,
         params
       );
@@ -126,12 +136,22 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
       const [{ count: unreadCount }] = await fastify.db.queryTenant<{ count: number }>(
         tenantId,
         `SELECT COUNT(*)::int AS count
-         FROM notifications
-         WHERE tenant_id = $1
-           AND channel = 'ui'
-           AND (user_id = $2 OR user_id IS NULL)
-           AND dismissed_at IS NULL
-           AND read_at IS NULL`,
+         FROM notifications n
+         WHERE n.tenant_id = $1
+           AND n.channel = 'ui'
+           AND (
+             n.user_id = $2
+             OR (
+               n.user_id IS NULL
+               AND n.created_at >= (
+                 SELECT created_at FROM memberships
+                 WHERE tenant_id = $1 AND user_id = $2
+                 LIMIT 1
+               )
+             )
+           )
+           AND n.dismissed_at IS NULL
+           AND n.read_at IS NULL`,
         [tenantId, userId]
       );
 

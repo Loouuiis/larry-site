@@ -265,7 +265,7 @@ export function WorkspaceShell({ children, userEmail, emailVerified, avatarUrl, 
     </WorkspaceChromeProvider>
     <ToastContainer />
     <GlobalSearch />
-    <NotificationBanners />
+    {process.env.NEXT_PUBLIC_NOTIFICATIONS_V2_ENABLED === "true" && <NotificationBanners />}
     </ToastProvider>
     </NotificationProvider>
     </QueryClientProvider>

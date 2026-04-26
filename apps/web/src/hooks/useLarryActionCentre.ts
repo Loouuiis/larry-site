@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { Notification } from "@larry/shared";
 import type { WorkspaceProjectActionCentre } from "@/app/dashboard/types";
 import { getActionTypeTag } from "@/lib/action-types";
+import { useNotifications } from "@/lib/notifications/NotificationContext";
 
 const EMPTY_ACTION_CENTRE: WorkspaceProjectActionCentre = {
   suggested: [],
@@ -42,6 +44,8 @@ export function useLarryActionCentre({
   onMutate?: () => Promise<void>;
   onAccepted?: (toast: { actionType: string; actionLabel: string; actionColor: string; displayText: string; projectName: string | null; projectId: string }) => void;
 } = {}) {
+  const { notify } = useNotifications();
+
   const [data, setData] = useState<WorkspaceProjectActionCentre>(EMPTY_ACTION_CENTRE);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -154,7 +158,9 @@ export function useLarryActionCentre({
           const body = await readJson<{
             accepted: boolean;
             event?: { actionType: string; displayText: string; projectName: string | null; projectId: string };
+            notification?: Notification | null;
           }>(response);
+          if (body.notification) notify(body.notification);
           removeSuggestedLocally(id);
           // If the accepted event was a timeline_* suggestion, the tree of
           // categories and project moves just changed — refresh both Gantt surfaces.
@@ -186,7 +192,7 @@ export function useLarryActionCentre({
         setAccepting(null);
       }
     },
-    [load, onMutate, onAccepted, removeSuggestedLocally]
+    [load, onMutate, onAccepted, removeSuggestedLocally, notify]
   );
 
   const dismiss = useCallback(
@@ -239,6 +245,8 @@ export function useLarryActionCentre({
       try {
         const response = await fetch(`/api/workspace/larry/events/${id}/let-larry-execute`, { method: "POST" });
         if (response.ok) {
+          const body = await readJson<{ accepted: boolean; notification?: Notification | null }>(response);
+          if (body.notification) notify(body.notification);
           window.dispatchEvent(new CustomEvent("larry:refresh-snapshot"));
           await Promise.all([load(), onMutate()]);
           return true;
@@ -255,7 +263,7 @@ export function useLarryActionCentre({
         setExecuting(null);
       }
     },
-    [load, onMutate],
+    [load, onMutate, notify],
   );
 
   return {

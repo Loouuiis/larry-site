@@ -42,9 +42,11 @@ import type {
   LarryClarification,
   LarryChatResponse,
   LarryMessageRecord,
+  Notification,
 } from "@larry/shared";
 import { writeAuditLog } from "../../lib/audit.js";
 import { notifySafe } from "../../lib/notifications/safe.js";
+import { recordNotification } from "../../lib/notifications/record.js";
 import { buildPendingClause } from "../../lib/intelligence-hints.js";
 import { reserveTokens, LLMQuotaError } from "../../lib/llm-budget.js";
 
@@ -1960,16 +1962,20 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
           : Promise.resolve(),
       ]);
 
-      await notifySafe({
-        db: fastify.db,
-        tenantId,
-        userId: actorUserId,
-        type: "action.executed",
-        payload: { actionId: id, label: event.actionType ?? "action" },
-        logger: fastify.log,
-      });
+      let notification: Notification | null = null;
+      try {
+        notification = await recordNotification({
+          db: fastify.db,
+          tenantId,
+          userId: actorUserId,
+          type: "action.executed",
+          payload: { actionId: id, label: event.actionType ?? "action" },
+        });
+      } catch (err) {
+        fastify.log.error(err, "notifySafe failed");
+      }
 
-      return reply.code(200).send({ accepted: true, entity, event: updatedEvent ?? null });
+      return reply.code(200).send({ accepted: true, entity, event: updatedEvent ?? null, notification });
     }
   );
 
@@ -2636,7 +2642,20 @@ export const larryRoutes: FastifyPluginAsync = async (fastify) => {
       // Mark the event as accepted
       await markLarryEventAccepted(fastify.db, tenantId, id, actorUserId);
 
-      return reply.code(200).send({ accepted: true, executedByLarry: true, documentId: doc.id, entity });
+      let executedNotification: Notification | null = null;
+      try {
+        executedNotification = await recordNotification({
+          db: fastify.db,
+          tenantId,
+          userId: actorUserId,
+          type: "action.executed",
+          payload: { actionId: id, label: event.actionType ?? "action" },
+        });
+      } catch (err) {
+        fastify.log.error(err, "notifySafe failed");
+      }
+
+      return reply.code(200).send({ accepted: true, executedByLarry: true, documentId: doc.id, entity, notification: executedNotification });
     }
   );
 

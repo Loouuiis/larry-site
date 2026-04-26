@@ -694,6 +694,22 @@ export const taskRoutes: FastifyPluginAsync = async (fastify) => {
           payload: { title: titleRow.title, projectId: titleRow.project_id },
           logger: fastify.log,
         });
+
+        try {
+          await fastify.db.queryTenant(
+            tenantId,
+            `UPDATE notifications
+             SET dismissed_at = NOW()
+             WHERE tenant_id = $1
+               AND channel = 'ui'
+               AND dismissed_at IS NULL
+               AND metadata->'payload'->>'taskId' = $2
+               AND type IN ('task.created', 'task.updated')`,
+            [tenantId, params.id]
+          );
+        } catch (err) {
+          fastify.log.error(err, "failed to dismiss task notifications on delete");
+        }
       }
 
       return reply.code(204).send();
