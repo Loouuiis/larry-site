@@ -755,10 +755,24 @@
 .lv3-footer__brand img { height: 20px; opacity: 0.85; }
 .lv3-footer__nav {
   display: flex;
-  gap: 22px;
+  gap: 40px;
+  align-items: flex-start;
 }
 .lv3-footer__nav a { color: inherit; text-decoration: none; }
 .lv3-footer__nav a:hover { color: var(--text-1); }
+.lv3-footer__col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lv3-footer__col-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
 
 /* ─── Responsive ─── */
 @media (max-width: 1020px) {
