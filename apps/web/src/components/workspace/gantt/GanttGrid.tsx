@@ -24,7 +24,7 @@ interface Props {
   onHoverKey: (k: string | null) => void;
   onSelectKey: (k: string | null) => void;
   onContextMenu?: (rowKey: string, rowKind: GanttNode["kind"], e: React.MouseEvent) => void;
-  dependencies?: Array<{ taskId: string; dependsOnTaskId: string }>;
+  dependencies?: Array<{ taskId: string; dependsOnTaskId: string; type?: "FS" | "FF" | "SS" | "SF" }>;
   onTaskBarClick?: (taskId: string, projectId: string) => void;
   milestones?: Milestone[];
   onAddMilestone?: (date: string) => void;
@@ -109,43 +109,64 @@ export const GanttGrid = forwardRef<HTMLDivElement, Props>(function GanttGrid(
 
   function pctToPx(pct: number) { return (pct / 100) * containerWidth; }
 
-  // Build an SVG path for a Finish-to-Start dependency arrow.
-  // Draws a rounded elbow from the right edge of the predecessor bar to the
-  // left edge of the successor bar.  When the successor starts before the
-  // elbow point we route around with a wrap-around C-shape.
-  function buildArrowPath(xEnd: number, yPred: number, xStart: number, ySucc: number): string {
-    const STEP = 14;
-    const R = 4;
-    const dy = ySucc - yPred;
-    if (Math.abs(dy) < 1) return `M${xEnd},${yPred} H${xStart}`;
+  // ── Arrow routing helpers ──────────────────────────────────────────────────
+  //
+  // FS / FF — depart RIGHT from source, arrive going right at target.
+  // When target is too close to the elbow we wrap around via a back-track.
+  function elbowRight(xFrom: number, yFrom: number, xTo: number, yTo: number): string {
+    const STEP = 14, R = 4;
+    const dy = yTo - yFrom;
+    if (Math.abs(dy) < 1) return `M${xFrom},${yFrom} H${xTo}`;
     const dir = dy > 0 ? 1 : -1;
-    const elbowX = xEnd + STEP;
-    if (xStart >= elbowX + R * 2) {
-      // Simple elbow: right → turn → vertical → turn → right
+    const ex = xFrom + STEP;
+    if (xTo >= ex + R * 2) {
       return [
-        `M${xEnd},${yPred}`,
-        `H${elbowX - R}`,
-        `Q${elbowX},${yPred} ${elbowX},${yPred + dir * R}`,
-        `V${ySucc - dir * R}`,
-        `Q${elbowX},${ySucc} ${elbowX + R},${ySucc}`,
-        `H${xStart}`,
+        `M${xFrom},${yFrom}`,
+        `H${ex - R}`, `Q${ex},${yFrom} ${ex},${yFrom + dir * R}`,
+        `V${yTo - dir * R}`, `Q${ex},${yTo} ${ex + R},${yTo}`,
+        `H${xTo}`,
       ].join(" ");
     }
-    // Wrap-around: successor starts before elbow — route around via midpoint
-    const wrapX = Math.min(xStart - STEP, xEnd - STEP);
-    const midY = yPred + dy / 2;
+    const wrapX = Math.min(xTo - STEP, xFrom - STEP);
+    const midY = yFrom + dy / 2;
     return [
-      `M${xEnd},${yPred}`,
-      `H${elbowX - R}`,
-      `Q${elbowX},${yPred} ${elbowX},${yPred + dir * R}`,
-      `V${midY - dir * R}`,
-      `Q${elbowX},${midY} ${elbowX - R},${midY}`,
-      `H${wrapX + R}`,
-      `Q${wrapX},${midY} ${wrapX},${midY + dir * R}`,
-      `V${ySucc - dir * R}`,
-      `Q${wrapX},${ySucc} ${wrapX + R},${ySucc}`,
-      `H${xStart}`,
+      `M${xFrom},${yFrom}`,
+      `H${ex - R}`, `Q${ex},${yFrom} ${ex},${yFrom + dir * R}`,
+      `V${midY - dir * R}`, `Q${ex},${midY} ${ex - R},${midY}`,
+      `H${wrapX + R}`, `Q${wrapX},${midY} ${wrapX},${midY + dir * R}`,
+      `V${yTo - dir * R}`, `Q${wrapX},${yTo} ${wrapX + R},${yTo}`,
+      `H${xTo}`,
     ].join(" ");
+  }
+
+  // SS / SF — depart LEFT from source (elbowX to the left of both anchors),
+  // arrive going right at target.
+  function elbowLeft(xFrom: number, yFrom: number, xTo: number, yTo: number): string {
+    const STEP = 14, R = 4;
+    const dy = yTo - yFrom;
+    if (Math.abs(dy) < 1) return `M${xFrom},${yFrom} H${xTo}`;
+    const dir = dy > 0 ? 1 : -1;
+    const ex = Math.min(xFrom, xTo) - STEP;
+    return [
+      `M${xFrom},${yFrom}`,
+      `H${ex + R}`, `Q${ex},${yFrom} ${ex},${yFrom + dir * R}`,
+      `V${yTo - dir * R}`, `Q${ex},${yTo} ${ex + R},${yTo}`,
+      `H${xTo}`,
+    ].join(" ");
+  }
+
+  // Returns the SVG path and whether to use the left-facing arrowhead (SF only).
+  function buildArrowPath(
+    pred: { xStart: number; xEnd: number; yMid: number },
+    succ: { xStart: number; xEnd: number; yMid: number },
+    type: "FS" | "FF" | "SS" | "SF",
+  ): { d: string; leftArrow: boolean } {
+    switch (type) {
+      case "FS": return { d: elbowRight(pred.xEnd,   pred.yMid, succ.xStart, succ.yMid), leftArrow: false };
+      case "FF": return { d: elbowRight(pred.xEnd,   pred.yMid, succ.xEnd,   succ.yMid), leftArrow: false };
+      case "SS": return { d: elbowLeft (pred.xStart, pred.yMid, succ.xStart, succ.yMid), leftArrow: false };
+      case "SF": return { d: elbowLeft (pred.xStart, pred.yMid, succ.xEnd,   succ.yMid), leftArrow: true  };
+    }
   }
 
   function handleHeaderClick(e: React.MouseEvent<HTMLDivElement>) {
@@ -287,34 +308,39 @@ export const GanttGrid = forwardRef<HTMLDivElement, Props>(function GanttGrid(
             }}
           >
             <defs>
-              <marker
-                id="gantt-dep-arrow"
-                markerWidth="7"
-                markerHeight="7"
-                refX="6"
-                refY="3.5"
-                orient="auto"
-              >
+              {/* Right-pointing arrowhead — used for FS, FF, SS */}
+              <marker id="gantt-dep-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
                 <path d="M0,0.5 L6,3.5 L0,6.5 Z" fill="#6c44f6" />
               </marker>
+              {/* Left-pointing arrowhead — used for SF (Start→Finish, opposite direction) */}
+              <marker id="gantt-dep-arrow-left" markerWidth="7" markerHeight="7" refX="1" refY="3.5" orient="auto">
+                <path d="M7,0.5 L1,3.5 L7,6.5 Z" fill="#6c44f6" />
+              </marker>
             </defs>
-            {dependencies.map(({ taskId, dependsOnTaskId }) => {
-              const pred = rowYMap.get(dependsOnTaskId);
-              const succ = rowYMap.get(taskId);
-              if (!pred || !succ) return null;
-              const xEnd   = pctToPx(pred.xEndPct);
-              const xStart = pctToPx(succ.xStartPct);
-              const yPred  = pred.yMid;
-              const ySucc  = succ.yMid;
+            {dependencies.map(({ taskId, dependsOnTaskId, type = "FS" }) => {
+              const predCoords = rowYMap.get(dependsOnTaskId);
+              const succCoords = rowYMap.get(taskId);
+              if (!predCoords || !succCoords) return null;
+              const pred = {
+                xStart: pctToPx(predCoords.xStartPct),
+                xEnd:   pctToPx(predCoords.xEndPct),
+                yMid:   predCoords.yMid,
+              };
+              const succ = {
+                xStart: pctToPx(succCoords.xStartPct),
+                xEnd:   pctToPx(succCoords.xEndPct),
+                yMid:   succCoords.yMid,
+              };
+              const { d, leftArrow } = buildArrowPath(pred, succ, type);
               return (
                 <path
                   key={`dep-${dependsOnTaskId}-${taskId}`}
-                  d={buildArrowPath(xEnd, yPred, xStart, ySucc)}
+                  d={d}
                   stroke="#6c44f6"
                   strokeWidth="1.5"
                   fill="none"
                   opacity="0.7"
-                  markerEnd="url(#gantt-dep-arrow)"
+                  markerEnd={leftArrow ? "url(#gantt-dep-arrow-left)" : "url(#gantt-dep-arrow)"}
                 />
               );
             })}

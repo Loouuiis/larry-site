@@ -54,8 +54,8 @@ export const timelineRoutes: FastifyPluginAsync = async (fastify) => {
              AND tasks.start_date IS NOT NULL
              AND tasks.due_date   IS NOT NULL
            ORDER BY tasks.project_id, tasks.created_at ASC`, [tenantId]),
-      fastify.db.queryTenant<{ taskId: string; dependsOnTaskId: string }>(tenantId,
-        `SELECT task_id AS "taskId", depends_on_task_id AS "dependsOnTaskId"
+      fastify.db.queryTenant<{ taskId: string; dependsOnTaskId: string; relation: string }>(tenantId,
+        `SELECT task_id AS "taskId", depends_on_task_id AS "dependsOnTaskId", relation
            FROM task_dependencies WHERE tenant_id = $1`, [tenantId]),
     ]);
 

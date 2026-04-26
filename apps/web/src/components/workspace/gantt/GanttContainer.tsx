@@ -41,7 +41,7 @@ interface Props {
   // Timeline Slice 2 — if set, view state (collapsed rows, zoom, outline
   // width) persists to localStorage under `larry:gantt:<persistKey>:*`.
   persistKey?: string;
-  dependencies?: Array<{ taskId: string; dependsOnTaskId: string }>;
+  dependencies?: Array<{ taskId: string; dependsOnTaskId: string; type?: "FS" | "FF" | "SS" | "SF" }>;
   onTaskBarClick?: (taskId: string, projectId: string) => void;
   milestones?: Array<{ id: string; name: string; date: string; color?: string }>;
   onAddMilestone?: (date: string) => void;

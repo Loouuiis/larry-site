@@ -7,6 +7,7 @@ import {
   type DragEndEvent,
 } from "@dnd-kit/core";
 import type { PortfolioTimelineResponse, ContextMenuAction, GanttNode } from "@/components/workspace/gantt/gantt-types";
+import { RELATION_TO_DEP_TYPE } from "@/components/workspace/gantt/gantt-types";
 import {
   buildPortfolioTree, buildCategoryColorMap, normalizePortfolioStatuses,
   validateDrop, type DropContext,
@@ -819,7 +820,11 @@ export function PortfolioGanttClient() {
           onContextMenuAction={handleContextMenuAction}
           categoriesForSubmenu={categoriesForSubmenu}
           projectsForSubmenu={projectsForSubmenu}
-          dependencies={data?.dependencies ?? []}
+          dependencies={(data?.dependencies ?? []).map((d) => ({
+            taskId: d.taskId,
+            dependsOnTaskId: d.dependsOnTaskId,
+            type: RELATION_TO_DEP_TYPE[d.relation ?? ""] ?? ("FS" as const),
+          }))}
           onTaskBarClick={(taskId, projectId) => setEditTaskId({ taskId, projectId })}
           onProjectBarClick={handleProjectBarClick}
           milestones={milestones}

@@ -405,9 +405,16 @@ export function AddNodeModal({
                 />
               </div>
 
-              {/* Dependencies */}
+              {/* Dependencies — only available when a parent task is chosen, so the
+                  predecessor is scoped to siblings and orphaned cross-parent arrows
+                  cannot be created. */}
               {availableTasks.length > 0 && (
                 <div>
+                  {!selectedParentTaskId ? (
+                    <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0 }}>
+                      Select a parent task above to add a dependency.
+                    </p>
+                  ) : (
                   <button
                     type="button"
                     onClick={() => {
@@ -418,8 +425,9 @@ export function AddNodeModal({
                   >
                     {depOpen ? "− Remove dependency" : "+ Add dependency"}
                   </button>
+                  )}
 
-                  {depOpen && (
+                  {selectedParentTaskId && depOpen && (
                     <div style={{ marginTop: 10, padding: 12, background: "var(--surface-2)", borderRadius: 8, border: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 10 }}>
                       <div>
                         <p style={{ ...fieldLabelStyle, marginBottom: 4 }}>Predecessor task</p>

@@ -18,6 +18,7 @@ import type { TimelineCategorySummary } from "@larry/shared";
 import { GanttContainer } from "./GanttContainer";
 import { AddNodeModal } from "./AddNodeModal";
 import { AddItemPicker } from "./AddItemPicker";
+import { EditTaskModal } from "./EditTaskModal";
 import { CategoryColourPopover } from "./CategoryColourPopover";
 import type { CategoryOption } from "./GanttContextMenu";
 
@@ -68,9 +69,12 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
     () => Array.from(clientDeps.entries()).map(([taskId, dep]) => ({
       taskId,
       dependsOnTaskId: dep.dependsOnId,
+      type: dep.type,
     })),
     [clientDeps],
   );
+
+  const [editTaskId, setEditTaskId] = useState<{ taskId: string; projectId: string } | null>(null);
 
   // Always include every task from the `tasks` prop in the outline so undated
   // tasks remain visible. For tasks that also appear in `timeline.gantt` (the
@@ -551,6 +555,7 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
           onContextMenuAction={handleContextMenuAction}
           categoriesForSubmenu={categoriesForSubmenu}
           dependencies={depsArray}
+          onTaskBarClick={(taskId, pid) => setEditTaskId({ taskId, projectId: pid })}
           outlineHeaderActions={
             <button
               type="button"
@@ -644,6 +649,23 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
           currentColour={colourPopover.currentColour}
           onApply={async (hex) => { await applyCategoryColour.mutateAsync({ id: colourPopover.categoryId, colour: hex }); }}
           onClose={() => setColourPopover(null)}
+        />
+      )}
+      {editTaskId && (
+        <EditTaskModal
+          taskId={editTaskId.taskId}
+          projectId={editTaskId.projectId}
+          onClose={() => setEditTaskId(null)}
+          onSaved={async () => {
+            setEditTaskId(null);
+            await refreshAll();
+            void qc.invalidateQueries({ queryKey: ["tasks"] });
+          }}
+          onDeleted={async () => {
+            setEditTaskId(null);
+            await refreshAll();
+            void qc.invalidateQueries({ queryKey: ["tasks"] });
+          }}
         />
       )}
     </>
