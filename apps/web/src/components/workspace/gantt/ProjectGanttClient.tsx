@@ -63,6 +63,15 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
   // Declared first so the cascade memo below can reference it.
   const [clientDeps, setClientDeps] = useState<Map<string, ClientDependency>>(new Map());
 
+  // Convert clientDeps map to the flat array shape that GanttContainer/GanttGrid expects.
+  const depsArray = useMemo(
+    () => Array.from(clientDeps.entries()).map(([taskId, dep]) => ({
+      taskId,
+      dependsOnTaskId: dep.dependsOnId,
+    })),
+    [clientDeps],
+  );
+
   // Always include every task from the `tasks` prop in the outline so undated
   // tasks remain visible. For tasks that also appear in `timeline.gantt` (the
   // dated subset), prefer the gantt version which carries accurate start/end
@@ -541,6 +550,7 @@ export function ProjectGanttClient({ projectId, projectName, tasks, timeline, re
           rootCategoryColor={categoryColour ?? NEUTRAL_ROW_COLOUR}
           onContextMenuAction={handleContextMenuAction}
           categoriesForSubmenu={categoriesForSubmenu}
+          dependencies={depsArray}
           outlineHeaderActions={
             <button
               type="button"

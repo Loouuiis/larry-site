@@ -1,10 +1,10 @@
 "use client";
 import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import type { FlatRow } from "./gantt-utils";
-import type { ZoomLevel, GanttNode } from "./gantt-types";
+import type { ZoomLevel, GanttNode, GanttTask } from "./gantt-types";
 import type { TimelineRange } from "./gantt-utils";
 import type { RowSlice } from "./gantt-virtualize";
-import { dateToPct, generateDateAxis } from "./gantt-utils";
+import { dateToPct, generateDateAxis, rollUpBar } from "./gantt-utils";
 import { GanttRow } from "./GanttRow";
 import { GanttDateHeader, GANTT_HEADER_HEIGHT, PX_PER_DAY_BY_ZOOM } from "./GanttDateHeader";
 
@@ -62,28 +62,41 @@ export const GanttGrid = forwardRef<HTMLDivElement, Props>(function GanttGrid(
   // Build per-task { yMid, xStartPct, xEndPct } for arrow drawing. yMid is
   // measured against the FULL list (not the slice), so dependency arrows
   // remain visually anchored to their tasks even when the slice scrolls.
+  // Parent tasks use their rollup bar bounds (min-start / max-end of all descendants).
   const rowYMap = useMemo(() => {
     const map = new Map<string, { yMid: number; xStartPct: number; xEndPct: number }>();
+    const todayIso = new Date().toISOString().slice(0, 10);
     let cumulativeY = 0;
     for (const r of rows) {
       if (r.kind === "node") {
         const n = r.node;
         if (n.kind === "task" || n.kind === "subtask") {
           const t = n.task;
+          let startNorm: string | null = null;
+          let endNorm: string | null = null;
           if (n.children.length === 0) {
-            const todayIso = new Date().toISOString().slice(0, 10);
             const end = t.endDate ?? t.dueDate;
-            const endNorm = end ? String(end).slice(0, 10) : null;
-            const startNorm = t.startDate
+            endNorm = end ? String(end).slice(0, 10) : null;
+            startNorm = t.startDate
               ? String(t.startDate).slice(0, 10)
               : (endNorm && endNorm > todayIso ? todayIso : endNorm);
-            if (startNorm && endNorm) {
-              map.set(t.id, {
-                yMid: cumulativeY + r.height / 2,
-                xStartPct: dateToPct(new Date(startNorm), range),
-                xEndPct: dateToPct(new Date(endNorm), range),
-              });
-            }
+          } else {
+            // Parent task — use rollup bounds across all descendants.
+            const descendants: GanttTask[] = [];
+            const walk = (node: GanttNode) => {
+              if (node.kind === "task" || node.kind === "subtask") descendants.push(node.task);
+              for (const c of node.children) walk(c);
+            };
+            for (const c of n.children) walk(c);
+            const rolled = rollUpBar(descendants);
+            if (rolled) { startNorm = rolled.start; endNorm = rolled.end; }
+          }
+          if (startNorm && endNorm) {
+            map.set(t.id, {
+              yMid: cumulativeY + r.height / 2,
+              xStartPct: dateToPct(new Date(startNorm), range),
+              xEndPct: dateToPct(new Date(endNorm), range),
+            });
           }
         }
       }
@@ -94,8 +107,46 @@ export const GanttGrid = forwardRef<HTMLDivElement, Props>(function GanttGrid(
 
   const totalRowsHeight = useMemo(() => rows.reduce((acc, r) => acc + r.height, 0), [rows]);
 
-  // Convert percent to actual px for SVG arrow coords.
   function pctToPx(pct: number) { return (pct / 100) * containerWidth; }
+
+  // Build an SVG path for a Finish-to-Start dependency arrow.
+  // Draws a rounded elbow from the right edge of the predecessor bar to the
+  // left edge of the successor bar.  When the successor starts before the
+  // elbow point we route around with a wrap-around C-shape.
+  function buildArrowPath(xEnd: number, yPred: number, xStart: number, ySucc: number): string {
+    const STEP = 14;
+    const R = 4;
+    const dy = ySucc - yPred;
+    if (Math.abs(dy) < 1) return `M${xEnd},${yPred} H${xStart}`;
+    const dir = dy > 0 ? 1 : -1;
+    const elbowX = xEnd + STEP;
+    if (xStart >= elbowX + R * 2) {
+      // Simple elbow: right → turn → vertical → turn → right
+      return [
+        `M${xEnd},${yPred}`,
+        `H${elbowX - R}`,
+        `Q${elbowX},${yPred} ${elbowX},${yPred + dir * R}`,
+        `V${ySucc - dir * R}`,
+        `Q${elbowX},${ySucc} ${elbowX + R},${ySucc}`,
+        `H${xStart}`,
+      ].join(" ");
+    }
+    // Wrap-around: successor starts before elbow — route around via midpoint
+    const wrapX = Math.min(xStart - STEP, xEnd - STEP);
+    const midY = yPred + dy / 2;
+    return [
+      `M${xEnd},${yPred}`,
+      `H${elbowX - R}`,
+      `Q${elbowX},${yPred} ${elbowX},${yPred + dir * R}`,
+      `V${midY - dir * R}`,
+      `Q${elbowX},${midY} ${elbowX - R},${midY}`,
+      `H${wrapX + R}`,
+      `Q${wrapX},${midY} ${wrapX},${midY + dir * R}`,
+      `V${ySucc - dir * R}`,
+      `Q${wrapX},${ySucc} ${wrapX + R},${ySucc}`,
+      `H${xStart}`,
+    ].join(" ");
+  }
 
   function handleHeaderClick(e: React.MouseEvent<HTMLDivElement>) {
     if (!onAddMilestone) return;
@@ -238,13 +289,13 @@ export const GanttGrid = forwardRef<HTMLDivElement, Props>(function GanttGrid(
             <defs>
               <marker
                 id="gantt-dep-arrow"
-                markerWidth="8"
-                markerHeight="8"
-                refX="7"
-                refY="4"
+                markerWidth="7"
+                markerHeight="7"
+                refX="6"
+                refY="3.5"
                 orient="auto"
               >
-                <path d="M0,1 L7,4 L0,7 Z" fill="#6c44f6" opacity="0.65" />
+                <path d="M0,0.5 L6,3.5 L0,6.5 Z" fill="#6c44f6" />
               </marker>
             </defs>
             {dependencies.map(({ taskId, dependsOnTaskId }) => {
@@ -255,17 +306,14 @@ export const GanttGrid = forwardRef<HTMLDivElement, Props>(function GanttGrid(
               const xStart = pctToPx(succ.xStartPct);
               const yPred  = pred.yMid;
               const ySucc  = succ.yMid;
-              const elbowX = xEnd + 10;
-              const d = `M${xEnd},${yPred} H${elbowX} V${ySucc} H${xStart}`;
               return (
                 <path
                   key={`dep-${dependsOnTaskId}-${taskId}`}
-                  d={d}
+                  d={buildArrowPath(xEnd, yPred, xStart, ySucc)}
                   stroke="#6c44f6"
                   strokeWidth="1.5"
                   fill="none"
-                  opacity="0.65"
-                  strokeDasharray="5 3"
+                  opacity="0.7"
                   markerEnd="url(#gantt-dep-arrow)"
                 />
               );
