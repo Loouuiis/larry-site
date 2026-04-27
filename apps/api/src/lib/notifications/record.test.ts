@@ -60,4 +60,22 @@ describe("recordNotification", () => {
     });
     expect(writes[0].params).toContain("batch-1");
   });
+
+  it("passes a non-null body so the legacy NOT NULL constraint passes", async () => {
+    // notifications.body is TEXT NOT NULL in the existing schema
+    // (packages/db/src/schema.sql). If body is ever null/undefined the insert
+    // throws and notifySafe swallows it -> the feed silently stays empty.
+    await recordNotification({
+      db: fakeDb as never,
+      tenantId: "t1",
+      userId: "u1",
+      type: "task.created",
+      payload: { taskId: "t", projectId: "p", title: "x" },
+    });
+    // body is the 4th positional param ($4 in the INSERT)
+    const bodyParam = writes[0].params[3];
+    expect(bodyParam).not.toBeNull();
+    expect(bodyParam).not.toBeUndefined();
+    expect(typeof bodyParam).toBe("string");
+  });
 });
