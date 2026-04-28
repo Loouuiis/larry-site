@@ -99,17 +99,24 @@ export async function proxyApiRequest(
   }
 
   const timeoutMs = options.timeoutMs ?? 12_000;
-  const perform = async (accessToken: string): Promise<Response> =>
-    fetch(`${baseUrl}${path}`, {
+  const perform = async (accessToken: string): Promise<Response> => {
+    // Build headers via Headers so case-insensitive duplicates collapse.
+    // Spreading two plain objects with `content-type` and `Content-Type`
+    // sends both to undici, which appends them as `application/json,
+    // application/json` — Fastify's parser then 415s. Use Headers.set so
+    // each name has exactly one value regardless of caller casing.
+    const headers = new Headers(init.headers as HeadersInit | undefined);
+    headers.set("Authorization", `Bearer ${accessToken}`);
+    if (init.body && !headers.has("content-type")) {
+      headers.set("Content-Type", "application/json");
+    }
+    return fetch(`${baseUrl}${path}`, {
       ...init,
       cache: "no-store",
-      headers: {
-        ...(init.headers ?? {}),
-        Authorization: `Bearer ${accessToken}`,
-        ...(init.body ? { "Content-Type": "application/json" } : {}),
-      },
+      headers,
       signal: init.signal ?? AbortSignal.timeout(timeoutMs),
     });
+  };
 
   let response: Response;
   try {
