@@ -1855,3 +1855,40 @@ CREATE INDEX IF NOT EXISTS idx_notifications_unread_ui
 CREATE INDEX IF NOT EXISTS idx_notifications_batch
   ON notifications (tenant_id, batch_id)
   WHERE batch_id IS NOT NULL AND channel = 'ui';
+
+-- ── 035_notifications_repair_deep_links.sql ──────────────────────────────────
+-- Existing UI-feed rows were written with deep links pointing at non-existent
+-- web routes (404 on click). Idempotent regex rewrites; scoped to channel='ui'
+-- so legacy email/escalation rows are untouched. Safe to re-run.
+
+UPDATE notifications
+SET deep_link = REGEXP_REPLACE(
+  deep_link,
+  '^/workspace/projects/([^/?#]+)/tasks/([^/?#]+)$',
+  '/workspace/projects/\1?tab=tasks&task=\2'
+)
+WHERE channel = 'ui'
+  AND deep_link ~ '^/workspace/projects/[^/?#]+/tasks/[^/?#]+$';
+
+UPDATE notifications
+SET deep_link = REGEXP_REPLACE(
+  deep_link,
+  '^/workspace/mail/drafts/([^/?#]+)$',
+  '/workspace/email-drafts?draft=\1'
+)
+WHERE channel = 'ui'
+  AND deep_link ~ '^/workspace/mail/drafts/[^/?#]+$';
+
+UPDATE notifications
+SET deep_link = REGEXP_REPLACE(
+  deep_link,
+  '^/workspace/mail/sent/([^/?#]+)$',
+  '/workspace/email-drafts?message=\1'
+)
+WHERE channel = 'ui'
+  AND deep_link ~ '^/workspace/mail/sent/[^/?#]+$';
+
+UPDATE notifications
+SET deep_link = '/workspace/settings/members'
+WHERE channel = 'ui'
+  AND deep_link = '/workspace/members';
