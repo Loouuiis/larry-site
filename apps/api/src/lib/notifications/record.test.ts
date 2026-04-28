@@ -33,7 +33,7 @@ describe("recordNotification", () => {
     expect(writes[0].params).toContain("task.created");
     expect(writes[0].params).toContain("success");
     expect(n.id).toBe("00000000-0000-0000-0000-000000000001");
-    expect(n.deepLink).toBe("/workspace/projects/proj-1/tasks/task-1");
+    expect(n.deepLink).toBe("/workspace/projects/proj-1?tab=tasks&task=task-1");
     expect(n.title).toBe("Task created: Deck");
   });
 
