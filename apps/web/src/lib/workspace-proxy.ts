@@ -1,7 +1,8 @@
 import type { AppSession } from "@/lib/auth";
 import {
+  apiTokensCookieOptions,
+  clearWebSessionCookies,
   createSessionToken,
-  csrfCookieOptions,
   sessionCookieOptions,
 } from "@/lib/auth";
 import { cookies } from "next/headers";
@@ -24,12 +25,6 @@ async function parseApiBody(response: Response): Promise<unknown> {
     } catch {
       return { error: "Invalid JSON response from API." };
     }
-    // Fastify error responses look like:
-    //   { statusCode, error: "Forbidden", message: "You don't have permission ..." }
-    // Historically most UI call sites read `error` verbatim and display it, so
-    // they would surface the bare HTTP reason phrase ("Forbidden", "Not Found")
-    // instead of the human sentence. Swap in the message so every existing
-    // caller renders readable text without having to update 29 call sites.
     if (!response.ok && json && typeof json === "object") {
       const j = json as { error?: unknown; message?: unknown };
       if (typeof j.message === "string" && j.message.trim().length > 0) {
@@ -38,12 +33,8 @@ async function parseApiBody(response: Response): Promise<unknown> {
     }
     return json;
   }
-  // Non-JSON response (e.g. Railway HTML error page). Return a generic message
-  // instead of leaking raw infrastructure text into the UI.
   return response.ok ? {} : { error: "Service temporarily unavailable. Please try again." };
 }
-
-// ── Session helpers ─────────────────────────────────────────────────────────
 
 export async function ensureApiSession(session: AppSession): Promise<AppSession | null> {
   if (session.apiAccessToken && session.tenantId) {
@@ -53,19 +44,11 @@ export async function ensureApiSession(session: AppSession): Promise<AppSession 
 }
 
 export async function persistSession(session: AppSession): Promise<void> {
-  // Rotate CSRF on every persist — refresh / switch-tenant / profile
-  // update paths should all mint a fresh token. createSessionToken
-  // defaults to a new randomUUID when csrfToken is undefined.
-  const { csrfToken: _oldCsrf, ...rest } = session;
-  const { token, csrfToken } = await createSessionToken(rest);
+  const { token } = await createSessionToken(session);
   const store = await cookies();
   store.set(sessionCookieOptions(token));
-  // Keep larry_csrf in sync with the rotated session csrfToken, else
-  // the client's next mutating /api/** call will 403.
-  store.set(csrfCookieOptions(csrfToken));
+  store.set(await apiTokensCookieOptions(session));
 }
-
-// ── Main proxy function ─────────────────────────────────────────────────────
 
 export async function proxyApiRequest(
   session: AppSession,
@@ -88,14 +71,11 @@ export async function proxyApiRequest(
     };
   }
 
-  // ── Proactive refresh: if the token is expired or about to expire, refresh
-  //    BEFORE making the request so we don't waste time on a guaranteed 401.
   if (isTokenExpiredOrExpiringSoon(activeSession.apiAccessToken!)) {
     const refreshed = await refreshApiSession(baseUrl, activeSession);
     if (refreshed) {
       activeSession = refreshed;
     }
-    // If refresh fails, still try the request — maybe the token isn't actually expired
   }
 
   const timeoutMs = options.timeoutMs ?? 12_000;
@@ -123,8 +103,6 @@ export async function proxyApiRequest(
     };
   }
 
-  // ── Reactive refresh: if we still got a 401 (token expired between our check
-  //    and the request, or proactive refresh failed), try one more refresh + retry.
   if (response.status === 401) {
     const refreshed = await refreshApiSession(baseUrl, activeSession);
     if (refreshed?.apiAccessToken) {
@@ -141,8 +119,8 @@ export async function proxyApiRequest(
       }
     }
 
-    // If still 401 after refresh, the session is truly dead
     if (response.status === 401) {
+      await clearWebSessionCookies();
       return {
         status: 401,
         body: { error: "Your session has expired. Please log in again." },

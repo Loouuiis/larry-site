@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   DEVICE_COOKIE,
+  apiTokensCookieOptions,
   createSessionToken,
-  csrfCookieOptions,
   deviceCookieOptions,
   sessionCookieOptions,
 } from "@/lib/auth";
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
 
     // If the API minted tokens (enrolment-token path), seal the session.
     if (viaToken && data.accessToken && data.user?.id) {
-      const { token, csrfToken } = await createSessionToken({
+      const { token } = await createSessionToken({
         userId: data.user.id,
         email: data.user.email,
         tenantId: data.user.tenantId,
@@ -76,7 +76,12 @@ export async function POST(req: NextRequest) {
         signedIn: true,
       });
       res.cookies.set(sessionCookieOptions(token));
-      res.cookies.set(csrfCookieOptions(csrfToken));
+      res.cookies.set(await apiTokensCookieOptions({
+        userId: data.user.id,
+        tenantId: data.user.tenantId,
+        apiAccessToken: data.accessToken,
+        apiRefreshToken: data.refreshToken,
+      }));
       if (data.deviceId) {
         res.cookies.set(deviceCookieOptions(data.deviceId));
       }

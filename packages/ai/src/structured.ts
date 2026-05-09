@@ -34,6 +34,7 @@ const GROQ_JSON_SCHEMA_CAPABLE_MODELS: ReadonlySet<string> = new Set([
 export interface StructuredOutputOptions {
   providerOptions?: {
     groq?: { structuredOutputs: boolean };
+    openai?: { strictJsonSchema: boolean };
   };
 }
 
@@ -47,14 +48,25 @@ export interface StructuredOutputOptions {
  * json_object` (prompt-based JSON); the SDK still parses + validates the
  * result against the Zod schema client-side.
  *
- * Other providers (OpenAI, Anthropic, Gemini) support json_schema on all
- * configured models, so no overlay is needed.
+ * For **OpenAI** with **`OPENAI_BASE_URL`** (e.g. Codex or other local
+ * OpenAI-compatible proxies), we set **`strictJsonSchema: false`** so the
+ * wire schema is less brittle; validation still runs client-side in the SDK.
+ *
+ * Other providers (Anthropic, Gemini, OpenAI without custom base URL) need no
+ * overlay for typical models.
  */
 export function getStructuredOutputOptions(
   config: IntelligenceConfig,
 ): StructuredOutputOptions {
   if (config.provider === "groq" && !GROQ_JSON_SCHEMA_CAPABLE_MODELS.has(config.model)) {
     return { providerOptions: { groq: { structuredOutputs: false } } };
+  }
+  if (
+    config.provider === "openai" &&
+    typeof process.env.OPENAI_BASE_URL === "string" &&
+    process.env.OPENAI_BASE_URL.trim().length > 0
+  ) {
+    return { providerOptions: { openai: { strictJsonSchema: false } } };
   }
   return {};
 }

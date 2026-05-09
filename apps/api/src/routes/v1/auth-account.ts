@@ -368,21 +368,27 @@ export const authAccountRoutes: FastifyPluginAsync = async (fastify) => {
     async (request) => {
       const userId = request.user.userId;
       const tenantId = request.user.tenantId;
+      const currentTokenHash =
+        typeof request.headers["x-current-token-hash"] === "string"
+          ? request.headers["x-current-token-hash"]
+          : null;
 
       const sessions = await fastify.db.query<{
         id: string;
         created_at: string;
         ip_address: string | null;
         user_agent: string | null;
+        is_current: boolean;
       }>(
-        `SELECT id, created_at, ip_address, user_agent
+        `SELECT id, created_at, ip_address, user_agent,
+                CASE WHEN $3::text IS NOT NULL AND token_hash = $3 THEN true ELSE false END AS is_current
          FROM refresh_tokens
          WHERE user_id = $1
            AND tenant_id = $2
            AND revoked_at IS NULL
            AND expires_at > NOW()
          ORDER BY created_at DESC`,
-        [userId, tenantId]
+        [userId, tenantId, currentTokenHash]
       );
 
       return {
@@ -391,7 +397,7 @@ export const authAccountRoutes: FastifyPluginAsync = async (fastify) => {
           createdAt: s.created_at,
           ipAddress: s.ip_address,
           userAgent: s.user_agent,
-          isCurrent: false,
+          isCurrent: s.is_current === true,
         })),
       };
     }

@@ -5,9 +5,11 @@ import { fileURLToPath } from "node:url";
 import { createLlmProvider } from "@larry/ai";
 import { getWorkerEnv } from "@larry/config";
 import { Db } from "@larry/db";
+import { createLogger } from "./logger.js";
 
 const currentFile = fileURLToPath(import.meta.url);
 const currentDir = path.dirname(currentFile);
+const logger = createLogger("context");
 
 // Cascading .env loader: tries apps/worker/.env first, falls back to apps/api/.env.
 // Both must point to the same DATABASE_URL. If they differ, the worker and API
@@ -42,7 +44,7 @@ const providerKeyMap: Record<string, string | undefined> = {
 };
 
 if (!providerKeyMap[env.MODEL_PROVIDER]) {
-  console.error(`[worker] FATAL: No API key set for MODEL_PROVIDER="${env.MODEL_PROVIDER}". Set the corresponding key or change MODEL_PROVIDER.`);
+  logger.error("missing model provider API key", { modelProvider: env.MODEL_PROVIDER });
   process.exit(1);
 }
 
@@ -59,4 +61,4 @@ export const llmProvider = createLlmProvider({
   groqModel: env.GROQ_MODEL,
 });
 
-console.log(`[worker] Database: ${new URL(env.DATABASE_URL).host}`);
+logger.info("database configured", { host: new URL(env.DATABASE_URL).host });

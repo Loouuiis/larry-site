@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  apiTokensCookieOptions,
   createSessionToken,
-  csrfCookieOptions,
   sessionCookieOptions,
 } from "@/lib/auth";
 
@@ -56,7 +56,7 @@ export async function POST(
 
   // Mint the iron-session cookie so the invitee lands logged in on /workspace.
   // Mirrors apps/web/src/app/api/auth/login/route.ts:104-115.
-  const { token: sessionToken, csrfToken } = await createSessionToken({
+  const { token: sessionToken } = await createSessionToken({
     userId: payload.userId,
     email: payload.email,
     tenantId: payload.tenantId,
@@ -73,6 +73,11 @@ export async function POST(
     tenantId: payload.tenantId,
   });
   res.cookies.set(sessionCookieOptions(sessionToken));
-  res.cookies.set(csrfCookieOptions(csrfToken));
+  res.cookies.set(await apiTokensCookieOptions({
+    userId: payload.userId,
+    tenantId: payload.tenantId,
+    apiAccessToken: payload.accessToken,
+    apiRefreshToken: payload.refreshToken,
+  }));
   return res;
 }

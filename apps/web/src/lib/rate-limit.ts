@@ -1,7 +1,16 @@
 import Redis from "ioredis";
+import { createServerLogger } from "@/lib/server-logger";
 
 const MAX_ATTEMPTS = 5;
 const WINDOW_SECS = 15 * 60; // 15 minutes
+const logger = createServerLogger("web.rate-limit");
+
+export interface RateLimitOptions {
+  namespace: string;
+  identifier: string;
+  max: number;
+  windowSecs: number;
+}
 
 // --- Redis client (Vercel Node.js serverless — not Edge) ---
 //
@@ -23,8 +32,8 @@ function getRedis(): Redis | null {
   if (!process.env.REDIS_URL) {
     if (!warnedNoRedis) {
       warnedNoRedis = true;
-      console.warn(
-        "[web/rate-limit] REDIS_URL is not set — web-side login throttle is disabled. The API still enforces limits.",
+      logger.warn(
+        "REDIS_URL is not set; web-side throttle is disabled. API limits still apply.",
       );
     }
     return null;
@@ -41,22 +50,42 @@ function getRedis(): Redis | null {
   return _redis;
 }
 
+function normalizeKeyPart(value: string): string {
+  return value.replace(/[^a-zA-Z0-9:_.@-]/g, "_").slice(0, 200) || "unknown";
+}
+
 // --- Public API ---
 
-export async function checkRateLimit(ip: string): Promise<{ limited: boolean }> {
+export async function checkNamedRateLimit({
+  namespace,
+  identifier,
+  max,
+  windowSecs,
+}: RateLimitOptions): Promise<{ limited: boolean }> {
   const r = getRedis();
   if (!r) return { limited: false };
   try {
-    const key = `ratelimit:login:${ip}`;
+    const key = `ratelimit:${normalizeKeyPart(namespace)}:${normalizeKeyPart(identifier)}`;
     const count = await r.incr(key);
-    if (count === 1) await r.expire(key, WINDOW_SECS);
-    return { limited: count > MAX_ATTEMPTS };
+    if (count === 1) await r.expire(key, windowSecs);
+    return { limited: count > max };
   } catch {
     // Redis unreachable — fall through to a permit. The Larry API will
-    // still reject the request via its own (Redis-backed) limiter.
+    // still reject auth abuse via its own (Redis-backed) limiter.
     return { limited: false };
   }
 }
 
+export async function checkRateLimit(ip: string): Promise<{ limited: boolean }> {
+  return checkNamedRateLimit({
+    namespace: "login",
+    identifier: ip,
+    max: MAX_ATTEMPTS,
+    windowSecs: WINDOW_SECS,
+  });
+}
+
 // no-op: attempt counting is now handled atomically inside checkRateLimit
-export async function recordLoginAttempt(_ip: string): Promise<void> {}
+export async function recordLoginAttempt(_ip: string): Promise<void> {
+  void _ip;
+}

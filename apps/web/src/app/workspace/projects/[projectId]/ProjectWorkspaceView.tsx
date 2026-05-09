@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getTimezone } from "@/lib/timezone-context";
 import {
   Activity,
@@ -44,6 +44,7 @@ import { TaskCenter } from "./TaskCenter";
 import { ProjectDashboard } from "./dashboard/ProjectDashboard";
 import { ProjectDashboardExtra } from "./dashboard/ProjectDashboardExtra";
 import { ProjectGanttClient } from "@/components/workspace/gantt/ProjectGanttClient";
+import { Timeline2ProjectTab } from "@/components/workspace/timeline2/Timeline2ProjectTab";
 import { getActionTypeTag, getAllActionTypes } from "@/lib/action-types";
 import { useToast } from "@/components/toast/ToastContext";
 import { ActionDetailPreview } from "@/components/workspace/ActionDetailPreview";
@@ -296,12 +297,14 @@ function getMemoryMeta(entry: WorkspaceProjectMemoryEntry): string {
   return pieces.join(" - ");
 }
 
-type ProjectTab = "overview" | "timeline" | "tasks" | "actions" | "calendar" | "dashboard" | "files" | "team" | "settings" | "extra";
+type ProjectTab = "overview" | "timeline" | "timeline2" | "tasks" | "tasks2" | "actions" | "calendar" | "dashboard" | "files" | "team" | "settings" | "extra";
 
 const PROJECT_TABS: { id: ProjectTab; label: string; icon: React.ElementType }[] = [
   { id: "overview",  label: "Overview",       icon: FolderKanban },
   { id: "timeline",  label: "Timeline",       icon: LayoutList },
+  { id: "timeline2", label: "Timeline 2",     icon: LayoutList },
   { id: "tasks",     label: "Task center",    icon: ListChecks },
+  { id: "tasks2",    label: "Task center 2",  icon: ListChecks },
   { id: "actions",   label: "Action center",  icon: CheckCircle2 },
   { id: "calendar",  label: "Calendar",       icon: CalendarDays },
   { id: "dashboard", label: "Dashboard",      icon: Activity },
@@ -1533,6 +1536,13 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
     const tab = searchParams.get("tab") as ProjectTab | null;
     if (tab) setActiveTab(tab);
   }, [searchParams]);
+  const setProjectTab = useCallback((tab: ProjectTab) => {
+    setActiveTab(tab);
+    const next = new URLSearchParams(searchParams.toString());
+    next.set("tab", tab);
+    next.delete("task");
+    router.replace(`/workspace/projects/${projectId}?${next.toString()}`, { scroll: false });
+  }, [projectId, router, searchParams]);
   const [memorySourceFilter, setMemorySourceFilter] = useState("all");
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [statusBusy, setStatusBusy] = useState<"archive" | "unarchive" | "delete" | null>(null);
@@ -1635,11 +1645,11 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
   // Navigate to Action Centre tab when Larry chat requests it
   useEffect(() => {
     function handleOpenActions() {
-      setActiveTab("actions");
+      setProjectTab("actions");
     }
     window.addEventListener("larry:open-actions", handleOpenActions);
     return () => window.removeEventListener("larry:open-actions", handleOpenActions);
-  }, []);
+  }, [setProjectTab]);
 
   function openLarry() {
     chrome?.openLarry();
@@ -1852,7 +1862,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
               <button
                 key={id}
                 type="button"
-                onClick={() => setActiveTab(id)}
+                onClick={() => setProjectTab(id)}
                 className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-150"
                 style={{
                   background: isActive ? "var(--surface-2)" : "transparent",
@@ -1887,6 +1897,11 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
           />
         )}
 
+        {/* ── Tab: Timeline 2 ───────────────────────────── */}
+        {activeTab === "timeline2" && (
+          <Timeline2ProjectTab projectId={projectId} projectDisplayName={project.name} mode="timeline" />
+        )}
+
         {/* ── Tab: Task center ──────────────────────────── */}
         {activeTab === "tasks" && (
           <PageState
@@ -1898,6 +1913,11 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
           >
             <TaskCenter projectId={projectId} tasks={tasks} refresh={refresh} openTaskId={openTaskId} />
           </PageState>
+        )}
+
+        {/* ── Tab: Task center 2 ────────────────────────── */}
+        {activeTab === "tasks2" && (
+          <Timeline2ProjectTab projectId={projectId} projectDisplayName={project.name} mode="tasks" />
         )}
 
         {/* ── Tab: Calendar ──────────────── */}
@@ -2011,7 +2031,7 @@ export function ProjectWorkspaceView({ projectId }: { projectId: string }) {
             activity={activity}
             members={overviewMembers}
             health={health}
-            onNavigateToTab={(tab) => setActiveTab(tab as ProjectTab)}
+            onNavigateToTab={(tab) => setProjectTab(tab as ProjectTab)}
           />
         )}
 

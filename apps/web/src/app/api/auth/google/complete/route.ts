@@ -1,8 +1,8 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import {
+  apiTokensCookieOptions,
   createSessionToken,
-  csrfCookieOptions,
   sessionCookieOptions,
 } from "@/lib/auth";
 
@@ -81,7 +81,7 @@ export async function GET(req: NextRequest) {
     const refreshToken = typeof payload.refreshToken === "string" ? payload.refreshToken : undefined;
     const isNewUser = payload.isNewUser === true;
 
-    const { token: sessionToken, csrfToken } = await createSessionToken({
+    const { token: sessionToken } = await createSessionToken({
       userId,
       email,
       tenantId,
@@ -94,7 +94,12 @@ export async function GET(req: NextRequest) {
     const destination = isNewUser ? "/signup?step=role" : "/workspace";
     const res = NextResponse.redirect(new URL(destination, req.url));
     res.cookies.set(sessionCookieOptions(sessionToken));
-    res.cookies.set(csrfCookieOptions(csrfToken));
+    res.cookies.set(await apiTokensCookieOptions({
+      userId,
+      tenantId,
+      apiAccessToken: accessToken,
+      apiRefreshToken: refreshToken,
+    }));
     return res;
   } catch (err) {
     console.error("[google/complete]", err);

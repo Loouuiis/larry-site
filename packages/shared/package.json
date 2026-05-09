@@ -9,6 +9,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./timeline2": {
+      "types": "./dist/timeline2.d.ts",
+      "default": "./dist/timeline2.js"
+    },
+    "./timeline2-rollup": {
+      "types": "./dist/timeline2-rollup.d.ts",
+      "default": "./dist/timeline2-rollup.js"
     }
   },
   "scripts": {

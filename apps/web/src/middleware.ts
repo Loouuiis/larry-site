@@ -1,79 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify, SignJWT } from "jose";
 import { getSessionSecret } from "@/lib/session-secret";
-import { CSRF_HEADER, isCsrfExempt, isMutatingMethod } from "@/lib/csrf";
+import {
+  clearApiTokensCookieOptions,
+  clearLarryCsrfCookieLegacyOptions,
+  clearSessionCookieOptions,
+  SESSION_COOKIE_NAME,
+} from "@/lib/session-cookie-flags";
 
-const SESSION_COOKIE = "larry_session";
 const SESSION_DURATION_SECS = 24 * 60 * 60; // 24 hours
 const SLIDING_REFRESH_THRESHOLD_SECS = 12 * 60 * 60; // reissue if < 12h remaining
-
-// Pages that must be reachable without a session. Still run through
-// pageMiddleware so that when a session DOES exist (e.g. right after
-// /api/auth/signup or /api/auth/google/complete minted one), we mirror
-// the session's csrfToken into the readable larry_csrf cookie before
-// the signup wizard fires its first mutating /api/** call.
-const PUBLIC_AUTH_PAGES: ReadonlySet<string> = new Set([
-  "/signup",
-  "/login",
-  "/forgot-password",
-  "/reset-password",
-  "/verify-email",
-  "/verify-email-required",
-  "/confirm-email-change",
-  "/mfa/enrol",
-]);
-
-export async function middleware(req: NextRequest) {
-  if (req.nextUrl.pathname.startsWith("/api/")) {
-    return apiMiddleware(req);
-  }
-  return pageMiddleware(req);
-}
-
-// ── /api/** CSRF enforcement ───────────────────────────────────────────────
-// Runs only for /api/** mutating methods. Exempt bootstrap routes that
-// cannot have a token yet (login/signup/invite accept etc.). Unauth'd
-// mutating requests fall through so the API route returns a normal 401.
-async function apiMiddleware(req: NextRequest) {
-  if (!isMutatingMethod(req.method)) return NextResponse.next();
-  if (isCsrfExempt(req.nextUrl.pathname)) return NextResponse.next();
-
-  const token = req.cookies.get(SESSION_COOKIE)?.value;
-  if (!token) return NextResponse.next();
-
-  let secret: Uint8Array;
-  try {
-    secret = getSessionSecret();
-  } catch {
-    return NextResponse.next();
-  }
-
-  let sessionCsrf: string | null = null;
-  try {
-    const { payload } = await jwtVerify(token, secret);
-    sessionCsrf =
-      typeof payload.csrfToken === "string" ? payload.csrfToken : null;
-  } catch {
-    return NextResponse.next();
-  }
-
-  if (!sessionCsrf) {
-    return NextResponse.json(
-      { error: "CSRF token missing from session. Please sign in again." },
-      { status: 403 },
-    );
-  }
-
-  const presented = req.headers.get(CSRF_HEADER) ?? req.headers.get("X-CSRF-Token");
-  if (!presented || presented !== sessionCsrf) {
-    return NextResponse.json(
-      { error: "Invalid CSRF token." },
-      { status: 403 },
-    );
-  }
-
-  return NextResponse.next();
-}
 
 // Paths that serve the user's credentials or account-recovery flows. We
 // harden these against clickjacking (X-Frame-Options) and referrer leaks
@@ -89,16 +25,25 @@ const AUTH_CREDENTIAL_PAGES: ReadonlySet<string> = new Set([
   "/mfa/enrol",
 ]);
 
-// OWASP Secure Headers Project baseline (2026-04-21 audit, P2).
-// Scoped to auth pages only because:
-//   • CORP: same-origin would break any cross-origin resource loaders (logos in
-//     status-page previews etc.) if applied globally; auth HTML is never
-//     legitimately cross-origin-embedded, so scoping is safe.
-//   • The Permissions-Policy list is noisy; targeting auth pages keeps blast
-//     radius minimal while covering the credential-entry surface.
-// COOP intentionally NOT set: the signup wizard + connectors page use
-// window.open / window.opener.postMessage for Google Calendar OAuth; see
-// docs/security/login-audit-2026-04-19.md.
+// Pages that must be reachable without a session.
+const PUBLIC_AUTH_PAGES: ReadonlySet<string> = new Set([
+  "/signup",
+  "/login",
+  "/forgot-password",
+  "/reset-password",
+  "/verify-email",
+  "/verify-email-required",
+  "/confirm-email-change",
+  "/mfa/enrol",
+]);
+
+export async function middleware(req: NextRequest) {
+  if (req.nextUrl.pathname.startsWith("/api/")) {
+    return NextResponse.next();
+  }
+  return pageMiddleware(req);
+}
+
 const AUTH_PAGE_PERMISSIONS_POLICY = [
   "accelerometer=()",
   "autoplay=()",
@@ -131,24 +76,17 @@ const AUTH_PAGE_PERMISSIONS_POLICY = [
 function applyAuthPageSecurityHeaders(res: NextResponse, pathname: string) {
   if (!AUTH_CREDENTIAL_PAGES.has(pathname)) return;
   if (pathname.startsWith("/invite/")) return;
-  // DENY (not SAMEORIGIN) — Larry never embeds its own auth pages in an
-  // iframe. If that changes later, relax to SAMEORIGIN, not wildcard.
   res.headers.set("X-Frame-Options", "DENY");
   res.headers.set("Referrer-Policy", "no-referrer");
-  // Auth HTML must never be loaded cross-origin as a resource.
   res.headers.set("Cross-Origin-Resource-Policy", "same-origin");
-  // Tight feature surface for credential-entry pages.
   res.headers.set("Permissions-Policy", AUTH_PAGE_PERMISSIONS_POLICY);
 }
 
-// ── Page-level session gate (existing behaviour) ────────────────────────────
 async function pageMiddleware(req: NextRequest) {
-  const token = req.cookies.get(SESSION_COOKIE)?.value;
+  const token = req.cookies.get(SESSION_COOKIE_NAME)?.value;
   const isPublicAuth = PUBLIC_AUTH_PAGES.has(req.nextUrl.pathname);
 
   if (!token) {
-    // Unauth'd visit to a public auth page (signup, login, etc.) — just
-    // render. No CSRF cookie to mirror yet.
     if (isPublicAuth) {
       const res = NextResponse.next();
       applyAuthPageSecurityHeaders(res, req.nextUrl.pathname);
@@ -161,11 +99,12 @@ async function pageMiddleware(req: NextRequest) {
   try {
     secret = getSessionSecret();
   } catch {
-    // SESSION_SECRET misconfigured in production — fail closed
     const res = isPublicAuth
       ? NextResponse.next()
       : NextResponse.redirect(new URL("/login", req.url));
-    res.cookies.set({ name: SESSION_COOKIE, value: "", maxAge: 0, path: "/" });
+    res.cookies.set(clearSessionCookieOptions());
+    res.cookies.set(clearApiTokensCookieOptions());
+    res.cookies.set(clearLarryCsrfCookieLegacyOptions());
     applyAuthPageSecurityHeaders(res, req.nextUrl.pathname);
     return res;
   }
@@ -175,22 +114,6 @@ async function pageMiddleware(req: NextRequest) {
     const res = NextResponse.next();
     applyAuthPageSecurityHeaders(res, req.nextUrl.pathname);
 
-    // CSRF double-submit cookie: mirror the session-bound CSRF token
-    // into a non-httpOnly cookie so the client can echo it back on
-    // mutating /api/** requests (enforced by apiMiddleware above).
-    if (payload.csrfToken) {
-      res.cookies.set({
-        name: "larry_csrf",
-        value: String(payload.csrfToken),
-        httpOnly: false,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        path: "/",
-      });
-    }
-
-    // Sliding refresh: reissue the session JWT if less than 12 hours remain,
-    // so active users never get logged out unexpectedly.
     const now = Math.floor(Date.now() / 1000);
     if (payload.exp && payload.exp - now < SLIDING_REFRESH_THRESHOLD_SECS) {
       const { exp: _exp, iat: _iat, ...claims } = payload;
@@ -200,7 +123,7 @@ async function pageMiddleware(req: NextRequest) {
         .setExpirationTime(`${SESSION_DURATION_SECS}s`)
         .sign(secret);
       res.cookies.set({
-        name: SESSION_COOKIE,
+        name: SESSION_COOKIE_NAME,
         value: refreshed,
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
@@ -212,13 +135,12 @@ async function pageMiddleware(req: NextRequest) {
 
     return res;
   } catch {
-    // Token expired or tampered — clear cookie. On public auth pages
-    // just render (no redirect-loop on /login itself); elsewhere send
-    // the user to /login.
     const res = isPublicAuth
       ? NextResponse.next()
       : NextResponse.redirect(new URL("/login", req.url));
-    res.cookies.set({ name: SESSION_COOKIE, value: "", maxAge: 0, path: "/" });
+    res.cookies.set(clearSessionCookieOptions());
+    res.cookies.set(clearApiTokensCookieOptions());
+    res.cookies.set(clearLarryCsrfCookieLegacyOptions());
     applyAuthPageSecurityHeaders(res, req.nextUrl.pathname);
     return res;
   }

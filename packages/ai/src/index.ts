@@ -973,6 +973,7 @@ export type { IntelligenceErrorCode } from "./intelligence.js";
 // ── Larry Org-Wide Timeline Intelligence ──────────────────────────────────────
 export * from "./org-intelligence.js";
 export { getStructuredOutputOptions } from "./structured.js";
+export { createModel } from "./provider.js";
 
 // ── Timeline tools ────────────────────────────────────────────────────────────
 export * from "./timeline-tools.js";

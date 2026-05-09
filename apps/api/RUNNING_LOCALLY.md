@@ -1,14 +1,21 @@
 # Running Larry Locally
 
+Docker Compose in this repo is infrastructure-only for local development:
+- `postgres`
+- `redis`
+- `codex-proxy`
+
+Run `web`, `api`, and `worker` directly from the monorepo in separate terminals.
+
 ## Every time you reboot
 
 ### Step 1 — Start Docker (Postgres + Redis)
 
 ```bash
-sudo docker compose up -d
+cd /Users/philip/Documents/Larry-Project/Github/larry-simple && docker compose up -d
 ```
 
-> Enter your password when prompted. You'll see `larry-postgres Running` and `larry-redis Running`.
+You'll see `larry-postgres Running` and `larry-redis Running`.
 
 ---
 
@@ -16,18 +23,18 @@ sudo docker compose up -d
 
 **Terminal 1 — API (Fastify backend on port 8080):**
 ```bash
-cd ~/Work/larry/larry-site && npm run api:dev
+cd /Users/philip/Documents/Larry-Project/Github/larry-simple && npm run api:dev
 ```
 Wait until you see: `Server listening at http://127.0.0.1:8080`
 
 **Terminal 2 — Worker (BullMQ background jobs):**
 ```bash
-cd ~/Work/larry/larry-site && npm run worker:dev
+cd /Users/philip/Documents/Larry-Project/Github/larry-simple && npm run worker:dev
 ```
 
 **Terminal 3 — Web (Next.js frontend on port 3000):**
 ```bash
-cd ~/Work/larry/larry-site && npm run web:dev
+cd /Users/philip/Documents/Larry-Project/Github/larry-simple && npm run web:dev
 ```
 
 ---
@@ -44,18 +51,25 @@ These only need to run once after a fresh clone or if you wipe the database:
 
 ```bash
 # Build the internal packages
-cd ~/Work/larry/larry-site && npm run api:build
+cd /Users/philip/Documents/Larry-Project/Github/larry-simple && npm run api:build
 
 # Run migrations and seed demo data
-cd ~/Work/larry/larry-site/packages/db && npm run migrate && npm run seed
+cd /Users/philip/Documents/Larry-Project/Github/larry-simple/packages/db && npm run migrate && npm run seed
 ```
 
 ---
 
 ## Troubleshooting
 
+**Need a sample Timeline 2 / Task Center 2 plan in local dev**
+Use the explicit dev-only seed endpoint instead of automatic placeholder seeding:
+```bash
+curl -X POST http://127.0.0.1:8080/v1/timeline2/projects/<project-id>/dev-seed-sample \
+  -H "Authorization: Bearer <access-token>"
+```
+
 **`permission denied` on docker commands**
-Run with `sudo` prefix, e.g. `sudo docker compose up -d`. To fix permanently, log out and back in after running:
+If Docker requires elevated access on your machine, fix Docker permissions rather than changing repo scripts. To fix permanently, log out and back in after running:
 ```bash
 sudo groupadd docker && sudo usermod -aG docker $USER
 ```
@@ -63,13 +77,13 @@ sudo groupadd docker && sudo usermod -aG docker $USER
 **`relation "users" does not exist`** in API logs
 The database is empty. Run migrations:
 ```bash
-cd ~/Work/larry/larry-site/packages/db && npm run migrate && npm run seed
+cd /Users/philip/Documents/Larry-Project/Github/larry-simple/packages/db && npm run migrate && npm run seed
 ```
 
 **`Cannot find module '@larry/ai/dist/index.js'`** in worker/API
 The internal packages need building:
 ```bash
-cd ~/Work/larry/larry-site && npm run api:build
+cd /Users/philip/Documents/Larry-Project/Github/larry-simple && npm run api:build
 ```
 
 **Chat says "fetch failed"**

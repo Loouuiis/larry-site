@@ -1,7 +1,7 @@
-import { randomBytes } from "node:crypto";
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { generateSecureToken, hashPassword, hashToken, issueAccessToken, issueRefreshToken, verifyPassword } from "../../lib/auth.js";
+import type { AuthUser } from "@larry/shared";
+import { generateSecureToken, hashPassword, hashToken, issueAccessToken, issueRefreshToken, resolveDeviceId, verifyPassword } from "../../lib/auth.js";
 import { assertPasswordNotBreached } from "../../lib/password-breach.js";
 import { writeAuditLog } from "../../lib/audit.js";
 import { emailSchema, passwordSchema } from "../../lib/validation.js";
@@ -27,6 +27,18 @@ const RefreshSchema = z.object({
   refreshToken: z.string().min(1),
   tenantId: z.string().uuid().optional(),
 });
+
+const LogoutSchema = z.object({
+  refreshToken: z.string().min(1).optional(),
+  tenantId: z.string().uuid().optional(),
+});
+
+class RefreshTokenRotationRaceError extends Error {
+  constructor() {
+    super("Refresh token was already rotated.");
+    this.name = "RefreshTokenRotationRaceError";
+  }
+}
 
 const SignupSchema = z.object({
   email: emailSchema,
@@ -378,18 +390,9 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     // any row in this user's refresh_tokens within the last 30 days,
     // regardless of revoked_at so that P2-5's aggressive rotation
     // doesn't make every re-login look new.
-    const incomingDeviceId =
-      typeof request.headers["x-device-id"] === "string" && request.headers["x-device-id"]
-        ? request.headers["x-device-id"]
-        : null;
-    let effectiveDeviceId: string = incomingDeviceId ?? randomBytes(16).toString("hex");
-    // Ensure effectiveDeviceId is a valid UUID shape if we minted it — the
-    // column is UUID typed. randomBytes(16).hex is 32 chars; convert to
-    // 8-4-4-4-12 UUID.
-    if (!incomingDeviceId) {
-      const hex = effectiveDeviceId;
-      effectiveDeviceId = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${((parseInt(hex[16], 16) & 0x3) | 0x8).toString(16)}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
-    }
+    const { incomingDeviceId, effectiveDeviceId } = resolveDeviceId(
+      request.headers["x-device-id"],
+    );
 
     try {
       const prior = await fastify.db.query<{ id: string }>(
@@ -562,32 +565,46 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.unauthorized("Invalid refresh token.");
     }
 
+    let refreshToken: string;
+    try {
+      refreshToken = await fastify.db.tx(async (client) => {
+        const revoked = await client.query<{ id: string }>(
+          "UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL RETURNING id",
+          [tokenRow.id],
+        );
+        if (revoked.rowCount !== 1) {
+          throw new RefreshTokenRotationRaceError();
+        }
+        return issueRefreshToken(
+          fastify,
+          {
+            userId: tokenRow.user_id,
+            tenantId: tokenRow.tenant_id,
+            role: tokenRow.role,
+            email: tokenRow.email,
+          },
+          client,
+          // P2-3: carry the device_id through rotation so the cookie stays
+          // valid across refresh cycles. ip/ua come from the current request.
+          {
+            ipAddress: request.ip,
+            userAgent: request.headers["user-agent"] ?? undefined,
+            deviceId: tokenRow.device_id ?? undefined,
+          },
+        );
+      });
+    } catch (err) {
+      if (err instanceof RefreshTokenRotationRaceError) {
+        return reply.unauthorized("Invalid refresh token.");
+      }
+      throw err;
+    }
+
     const accessToken = await issueAccessToken(fastify, {
       userId: tokenRow.user_id,
       tenantId: tokenRow.tenant_id,
       role: tokenRow.role,
       email: tokenRow.email,
-    });
-
-    const refreshToken = await fastify.db.tx(async (client) => {
-      await client.query("UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1", [tokenRow.id]);
-      return issueRefreshToken(
-        fastify,
-        {
-          userId: tokenRow.user_id,
-          tenantId: tokenRow.tenant_id,
-          role: tokenRow.role,
-          email: tokenRow.email,
-        },
-        client,
-        // P2-3: carry the device_id through rotation so the cookie stays
-        // valid across refresh cycles. ip/ua come from the current request.
-        {
-          ipAddress: request.ip,
-          userAgent: request.headers["user-agent"] ?? undefined,
-          deviceId: tokenRow.device_id ?? undefined,
-        },
-      );
     });
 
     return reply.send({ accessToken, refreshToken });
@@ -1000,22 +1017,76 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.post(
     "/logout",
-    { preHandler: [fastify.authenticate] },
     async (request) => {
       const authHeader = request.headers.authorization;
-      if (!authHeader) return { success: true };
+      const parsedBody = LogoutSchema.safeParse(request.body ?? {});
+      const logoutBody = parsedBody.success ? parsedBody.data : {};
 
-      await fastify.db.query(
-        "UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND tenant_id = $2 AND revoked_at IS NULL",
-        [request.user.userId, request.user.tenantId]
-      );
+      const currentTokenHash =
+        typeof request.headers["x-current-token-hash"] === "string"
+          ? request.headers["x-current-token-hash"]
+          : logoutBody.refreshToken
+            ? hashToken(logoutBody.refreshToken)
+          : null;
+
+      let user: AuthUser | undefined;
+      if (authHeader) {
+        try {
+          await request.jwtVerify();
+          user = request.user;
+        } catch {
+          user = undefined;
+        }
+      }
+
+      if (user && currentTokenHash) {
+        await fastify.db.query(
+          "UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND tenant_id = $2 AND token_hash = $3 AND revoked_at IS NULL",
+          [user.userId, user.tenantId, currentTokenHash]
+        );
+      } else if (user) {
+        await fastify.db.query(
+          "UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND tenant_id = $2 AND revoked_at IS NULL",
+          [user.userId, user.tenantId]
+        );
+      } else if (currentTokenHash && logoutBody.tenantId) {
+        const revoked = await fastify.db.query<{
+          id: string;
+          user_id: string;
+          tenant_id: string;
+        }>(
+          `UPDATE refresh_tokens
+              SET revoked_at = NOW()
+            WHERE tenant_id = $1
+              AND token_hash = $2
+              AND revoked_at IS NULL
+            RETURNING id, user_id, tenant_id`,
+          [logoutBody.tenantId, currentTokenHash],
+        );
+
+        const revokedToken = revoked[0];
+        if (revokedToken) {
+          await writeAuditLog(fastify.db, {
+            tenantId: revokedToken.tenant_id,
+            actorUserId: revokedToken.user_id,
+            actionType: "auth.logout",
+            objectType: "session",
+            objectId: revokedToken.id,
+            details: { scope: "current", proof: "refresh_token" },
+          });
+        }
+        return { success: true };
+      } else {
+        return { success: true };
+      }
 
       await writeAuditLog(fastify.db, {
-        tenantId: request.user.tenantId,
-        actorUserId: request.user.userId,
+        tenantId: user.tenantId,
+        actorUserId: user.userId,
         actionType: "auth.logout",
         objectType: "session",
-        objectId: request.user.userId,
+        objectId: user.userId,
+        details: { scope: currentTokenHash ? "current" : "all" },
       });
 
       return { success: true };

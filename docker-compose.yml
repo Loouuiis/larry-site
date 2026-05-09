@@ -1,8 +1,26 @@
-version: "3.9"
-
 services:
+  codex-proxy:
+    build:
+      context: .
+      dockerfile: apps/codex-proxy/Dockerfile
+    container_name: larry-codex-proxy
+    restart: unless-stopped
+    environment:
+      PORT: 3011
+      CODEX_MODEL: ${CODEX_MODEL:-gpt-5.2}
+      CODEX_REASONING_EFFORT: ${CODEX_REASONING_EFFORT:-low}
+      CODEX_TIMEOUT_MS: ${CODEX_TIMEOUT_MS:-120000}
+      CODEX_WORKDIR: /workspace
+    ports:
+      - "3011:3011"
+    volumes:
+      - ./:/workspace:ro
+      - codex_proxy_home:/root/.codex
+      - ${HOME}/.codex/auth.json:/root/.codex/auth.json:ro
+      - ${HOME}/.codex/config.toml:/root/.codex/config.toml:ro
+
   postgres:
-    image: postgres:16
+    image: postgres:18
     container_name: larry-postgres
     restart: unless-stopped
     environment:
@@ -12,7 +30,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d larry"]
       interval: 10s
@@ -35,4 +53,7 @@ services:
 
 volumes:
   postgres_data:
+    external: true
+    name: larry_postgres18_data
   redis_data:
+  codex_proxy_home:

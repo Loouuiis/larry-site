@@ -11,8 +11,13 @@ import type { IntelligenceConfig } from "@larry/shared";
  */
 export function createModel(config: IntelligenceConfig): LanguageModel {
   switch (config.provider) {
-    case "openai":
-      return createOpenAI({ apiKey: config.apiKey })(config.model);
+    case "openai": {
+      const openai = createOpenAI({
+        apiKey: config.apiKey,
+        baseURL: process.env.OPENAI_BASE_URL,
+      });
+      return process.env.OPENAI_BASE_URL ? openai.chat(config.model) : openai(config.model);
+    }
     case "anthropic":
       return createAnthropic({ apiKey: config.apiKey })(config.model);
     case "gemini":
