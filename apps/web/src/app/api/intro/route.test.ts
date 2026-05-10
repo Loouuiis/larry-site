@@ -1,9 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+const { mockSend, mockCheckNamedRateLimit } = vi.hoisted(() => ({
+  mockSend: vi.fn().mockResolvedValue({ data: { id: "test-id" }, error: null }),
+  mockCheckNamedRateLimit: vi.fn().mockResolvedValue({ limited: false }),
+}));
+
 // Mock Resend before importing the route
-const mockSend = vi.fn().mockResolvedValue({ data: { id: "test-id" }, error: null });
 vi.mock("resend", () => ({
   Resend: vi.fn(() => ({ emails: { send: mockSend } })),
+}));
+
+vi.mock("@/lib/rate-limit", () => ({
+  checkNamedRateLimit: mockCheckNamedRateLimit,
 }));
 
 import { POST } from "./route";
@@ -22,6 +30,8 @@ function makeRequest(body: unknown, ip = "1.2.3.4") {
 describe("POST /api/intro", () => {
   beforeEach(() => {
     mockSend.mockClear();
+    mockCheckNamedRateLimit.mockClear();
+    mockCheckNamedRateLimit.mockResolvedValue({ limited: false });
     process.env.RESEND_API_KEY = "test-key";
   });
 
@@ -74,7 +84,6 @@ describe("POST /api/intro", () => {
   });
 
   it("returns 429 when rate limit is exceeded", async () => {
-    // Exhaust the 3-request in-memory limit for a unique IP
     const ip = "10.0.0.42";
     const validBody = {
       firstName: "A",
@@ -85,13 +94,16 @@ describe("POST /api/intro", () => {
       marketingConsent: false,
     };
 
-    // Three successful requests (limit is 3 per window)
-    await POST(makeRequest(validBody, ip));
-    await POST(makeRequest(validBody, ip));
-    await POST(makeRequest(validBody, ip));
+    mockCheckNamedRateLimit.mockResolvedValueOnce({ limited: true });
 
-    // Fourth must be rejected
     const res = await POST(makeRequest(validBody, ip));
     expect(res.status).toBe(429);
+    expect(mockSend).not.toHaveBeenCalled();
+    expect(mockCheckNamedRateLimit).toHaveBeenCalledWith({
+      namespace: "intro",
+      identifier: ip,
+      max: 3,
+      windowSecs: 60 * 60,
+    });
   });
 });

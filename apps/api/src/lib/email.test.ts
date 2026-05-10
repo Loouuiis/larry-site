@@ -163,3 +163,33 @@ describe("email.ts suppression and quota", () => {
     });
   });
 });
+
+describe("email.ts missing provider logging", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    sendMock.mockReset();
+    delete process.env.RESEND_API_KEY;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete process.env.RESEND_API_KEY;
+  });
+
+  it("does not log raw action tokens when Resend is not configured", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const mod = await import("./email.js");
+
+    await mod.sendPasswordResetEmail(
+      "u@example.com",
+      "https://app.example.com/reset-password?token=raw-reset-token&state=raw-state",
+    );
+
+    const logOutput = warnSpy.mock.calls.flat().map(String).join(" ");
+    expect(logOutput).not.toContain("raw-reset-token");
+    expect(logOutput).not.toContain("raw-state");
+    expect(logOutput).toContain("token=redacted");
+    expect(logOutput).toContain("state=redacted");
+    expect(sendMock).not.toHaveBeenCalled();
+  });
+});

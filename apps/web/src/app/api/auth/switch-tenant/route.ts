@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import {
+  apiTokensCookieOptions,
   createSessionToken,
-  csrfCookieOptions,
   getSession,
   sessionCookieOptions,
 } from "@/lib/auth";
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
 
   // Re-mint the iron-session cookie so the next request proxies against the
   // new tenant. Mirrors /api/auth/login.
-  const { token, csrfToken } = await createSessionToken({
+  const { token } = await createSessionToken({
     userId: data.user.id,
     email: data.user.email,
     tenantId: data.user.tenantId,
@@ -68,6 +68,11 @@ export async function POST(request: NextRequest) {
     role: data.user.role,
   });
   res.cookies.set(sessionCookieOptions(token));
-  res.cookies.set(csrfCookieOptions(csrfToken));
+  res.cookies.set(await apiTokensCookieOptions({
+    userId: data.user.id,
+    tenantId: data.user.tenantId,
+    apiAccessToken: data.accessToken,
+    apiRefreshToken: data.refreshToken,
+  }));
   return res;
 }

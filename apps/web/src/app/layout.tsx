@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Geist } from "next/font/google";
 import "./globals.css";
-import CsrfFetchInstaller from "@/components/CsrfFetchInstaller";
 import { OverlayManager } from "@/components/ui/LiquidOverlay";
 
 const inter = Inter({
@@ -57,7 +56,6 @@ export default function RootLayout({
         className={`${inter.variable} ${geistSans.variable} antialiased`}
         suppressHydrationWarning
       >
-        <CsrfFetchInstaller />
         <OverlayManager />
         {children}
       </body>

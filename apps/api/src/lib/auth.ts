@@ -1,10 +1,11 @@
 import bcrypt from "bcryptjs";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { PoolClient } from "pg";
 import type { FastifyInstance } from "fastify";
 import { futureIsoDate } from "../utils/duration.js";
 
 const SALT_ROUNDS = 12;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, SALT_ROUNDS);
@@ -21,6 +22,18 @@ export function hashToken(token: string): string {
 export function generateSecureToken(): { raw: string; hash: string } {
   const raw = randomBytes(48).toString("base64url");
   return { raw, hash: hashToken(raw) };
+}
+
+export function resolveDeviceId(value: unknown): {
+  incomingDeviceId: string | null;
+  effectiveDeviceId: string;
+} {
+  const incomingDeviceId =
+    typeof value === "string" && UUID_RE.test(value) ? value.toLowerCase() : null;
+  return {
+    incomingDeviceId,
+    effectiveDeviceId: incomingDeviceId ?? randomUUID(),
+  };
 }
 
 export async function issueAccessToken(

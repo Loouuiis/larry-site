@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   DEVICE_COOKIE,
+  apiTokensCookieOptions,
   createSessionToken,
-  csrfCookieOptions,
   deviceCookieOptions,
   normalizeEmail,
   sessionCookieOptions,
@@ -141,7 +141,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: GENERIC_ERROR }, { status: 401 });
     }
 
-    const { token, csrfToken } = await createSessionToken({
+    const { token } = await createSessionToken({
       userId: payload.user.id,
       email: payload.user.email,
       tenantId: payload.user.tenantId,
@@ -153,7 +153,12 @@ export async function POST(req: NextRequest) {
     });
     const res = NextResponse.json({ success: true });
     res.cookies.set(sessionCookieOptions(token));
-    res.cookies.set(csrfCookieOptions(csrfToken));
+    res.cookies.set(await apiTokensCookieOptions({
+      userId: payload.user.id,
+      tenantId: payload.user.tenantId,
+      apiAccessToken: payload.accessToken,
+      apiRefreshToken: payload.refreshToken,
+    }));
     if (payload.deviceId) {
       res.cookies.set(deviceCookieOptions(payload.deviceId));
     }

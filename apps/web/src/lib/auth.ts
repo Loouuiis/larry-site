@@ -1,11 +1,19 @@
-import { SignJWT, jwtVerify } from "jose";
+import { EncryptJWT, SignJWT, jwtDecrypt, jwtVerify } from "jose";
 import type { JWTPayload } from "jose";
 import { cookies } from "next/headers";
-import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { getSessionSecret } from "./session-secret";
+import {
+  API_TOKENS_COOKIE_NAME,
+  SESSION_COOKIE_NAME,
+  clearApiTokensCookieOptions,
+  clearLarryCsrfCookieLegacyOptions,
+  clearSessionCookieOptions,
+} from "./session-cookie-flags";
 
-const SESSION_COOKIE = "larry_session";
 const SESSION_DURATION_SECS = 24 * 60 * 60; // 24 hours — sliding refresh handled in middleware
+export const API_TOKENS_COOKIE = API_TOKENS_COOKIE_NAME;
+const API_TOKENS_COOKIE_DURATION_SECS = 30 * 24 * 60 * 60; // 30 days, bounded by the signed session cookie
 
 export type SessionAuthMode = "api" | "legacy" | "dev";
 
@@ -21,7 +29,6 @@ export interface AppSession {
   apiAccessToken?: string;
   apiRefreshToken?: string;
   authMode?: SessionAuthMode;
-  csrfToken?: string;
 }
 
 interface SessionJwtPayload extends JWTPayload {
@@ -30,10 +37,13 @@ interface SessionJwtPayload extends JWTPayload {
   tenantId?: string;
   role?: string;
   displayName?: string | null;
-  apiAccessToken?: string;
-  apiRefreshToken?: string;
   authMode?: SessionAuthMode;
-  csrfToken?: string;
+}
+
+interface ApiTokensPayload extends JWTPayload {
+  accessToken?: string;
+  refreshToken?: string;
+  tenantId?: string;
 }
 
 const getSecret = getSessionSecret;
@@ -42,22 +52,18 @@ export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
-export const CSRF_COOKIE = "larry_csrf";
+function getApiTokenEncryptionKey(): Uint8Array {
+  return new Uint8Array(createHash("sha256").update(getSecret()).digest());
+}
 
-export async function createSessionToken(
-  session: AppSession,
-): Promise<{ token: string; csrfToken: string }> {
-  const csrfToken = session.csrfToken ?? randomUUID();
+export async function createSessionToken(session: AppSession): Promise<{ token: string }> {
   const payload: SessionJwtPayload = {
     sub: session.userId,
     email: session.email,
     tenantId: session.tenantId,
     role: session.role,
     displayName: session.displayName ?? null,
-    apiAccessToken: session.apiAccessToken,
-    apiRefreshToken: session.apiRefreshToken,
     authMode: session.authMode,
-    csrfToken,
   };
 
   const token = await new SignJWT(payload)
@@ -66,12 +72,10 @@ export async function createSessionToken(
     .setExpirationTime(`${SESSION_DURATION_SECS}s`)
     .sign(getSecret());
 
-  return { token, csrfToken };
+  return { token };
 }
 
-export async function verifySessionToken(
-  token: string
-): Promise<AppSession | null> {
+export async function verifySessionToken(token: string): Promise<AppSession | null> {
   try {
     const { payload } = await jwtVerify(token, getSecret());
     if (!payload.sub) return null;
@@ -86,13 +90,27 @@ export async function verifySessionToken(
           : payload.displayName === null
             ? null
             : undefined,
-      apiAccessToken: typeof payload.apiAccessToken === "string" ? payload.apiAccessToken : undefined,
-      apiRefreshToken: typeof payload.apiRefreshToken === "string" ? payload.apiRefreshToken : undefined,
       authMode:
         payload.authMode === "api" || payload.authMode === "legacy" || payload.authMode === "dev"
           ? payload.authMode
           : undefined,
-      csrfToken: typeof payload.csrfToken === "string" ? payload.csrfToken : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function decryptApiTokensCookie(value: string): Promise<Partial<AppSession> | null> {
+  try {
+    const { payload } = await jwtDecrypt(value, getApiTokenEncryptionKey());
+    const tokenPayload = payload as ApiTokensPayload;
+    return {
+      userId: typeof tokenPayload.sub === "string" ? tokenPayload.sub : undefined,
+      tenantId: typeof tokenPayload.tenantId === "string" ? tokenPayload.tenantId : undefined,
+      apiAccessToken:
+        typeof tokenPayload.accessToken === "string" ? tokenPayload.accessToken : undefined,
+      apiRefreshToken:
+        typeof tokenPayload.refreshToken === "string" ? tokenPayload.refreshToken : undefined,
     };
   } catch {
     return null;
@@ -101,14 +119,40 @@ export async function verifySessionToken(
 
 export async function getSession(): Promise<AppSession | null> {
   const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
+  const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
   if (!token) return null;
-  return verifySessionToken(token);
+  const session = await verifySessionToken(token);
+  if (!session) return null;
+
+  const apiTokensCookie = cookieStore.get(API_TOKENS_COOKIE_NAME)?.value;
+  if (!apiTokensCookie) return session;
+
+  const apiTokens = await decryptApiTokensCookie(apiTokensCookie);
+  if (!apiTokens) return session;
+  if (apiTokens.userId && apiTokens.userId !== session.userId) return session;
+  if (apiTokens.tenantId && session.tenantId && apiTokens.tenantId !== session.tenantId) {
+    return session;
+  }
+
+  return {
+    ...session,
+    tenantId: session.tenantId ?? apiTokens.tenantId,
+    apiAccessToken: apiTokens.apiAccessToken,
+    apiRefreshToken: apiTokens.apiRefreshToken,
+  };
+}
+
+/** Clears web session cookies when upstream API credentials are invalid (mirror of logout clearing). */
+export async function clearWebSessionCookies(): Promise<void> {
+  const store = await cookies();
+  store.set(clearSessionCookieOptions());
+  store.set(clearApiTokensCookieOptions());
+  store.set(clearLarryCsrfCookieLegacyOptions());
 }
 
 export function sessionCookieOptions(token: string) {
   return {
-    name: SESSION_COOKIE,
+    name: SESSION_COOKIE_NAME,
     value: token,
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
@@ -118,30 +162,32 @@ export function sessionCookieOptions(token: string) {
   };
 }
 
-export function clearSessionCookieOptions() {
+/** Re-export for route handlers — definitions live in session-cookie-flags (Edge-safe). */
+export {
+  clearApiTokensCookieOptions,
+  clearLarryCsrfCookieLegacyOptions,
+  clearSessionCookieOptions,
+} from "./session-cookie-flags";
+
+export async function apiTokensCookieOptions(session: AppSession) {
+  const value = await new EncryptJWT({
+    accessToken: session.apiAccessToken,
+    refreshToken: session.apiRefreshToken,
+    tenantId: session.tenantId,
+  })
+    .setProtectedHeader({ alg: "dir", enc: "A256GCM" })
+    .setSubject(session.userId)
+    .setIssuedAt()
+    .setExpirationTime(`${API_TOKENS_COOKIE_DURATION_SECS}s`)
+    .encrypt(getApiTokenEncryptionKey());
+
   return {
-    name: SESSION_COOKIE,
-    value: "",
+    name: API_TOKENS_COOKIE_NAME,
+    value,
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax" as const,
-    maxAge: 0,
-    path: "/",
-  };
-}
-
-// Readable (non-httpOnly) CSRF double-submit cookie. Paired with the
-// session cookie wherever a session is minted/rotated so the client
-// window.fetch patch can echo it back as X-CSRF-Token on mutating
-// /api/** requests (validated by middleware apiMiddleware).
-export function csrfCookieOptions(csrfToken: string) {
-  return {
-    name: CSRF_COOKIE,
-    value: csrfToken,
-    httpOnly: false,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax" as const,
-    maxAge: SESSION_DURATION_SECS,
+    maxAge: API_TOKENS_COOKIE_DURATION_SECS,
     path: "/",
   };
 }

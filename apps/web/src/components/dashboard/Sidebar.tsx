@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { WorkspaceProject } from "@/app/dashboard/types";
 import { StartProjectFlow } from "./StartProjectFlow";
+import { clearClientSessionState } from "@/lib/client-session-cleanup";
 import { resizeImageToDataUrl } from "@/lib/image";
 import { useLarryActionCentre } from "@/hooks/useLarryActionCentre";
 import { useNotifications } from "@/hooks/useNotifications";
@@ -180,6 +181,7 @@ function WorkspaceSidebarInner({ projects, activeNav, onClose, userEmail, avatar
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
+    clearClientSessionState();
     router.push("/");
   };
 

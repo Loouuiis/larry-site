@@ -2,8 +2,10 @@ import { Queue, QueueEvents, Worker } from "bullmq";
 import { EVENT_QUEUE_NAME } from "@larry/shared";
 import { db, env } from "./context.js";
 import { processQueueJob } from "./handlers.js";
+import { createLogger } from "./logger.js";
 
 const connection = { url: env.REDIS_URL };
+const logger = createLogger("worker");
 
 const worker = new Worker(EVENT_QUEUE_NAME, processQueueJob, {
   connection,
@@ -13,6 +15,7 @@ const worker = new Worker(EVENT_QUEUE_NAME, processQueueJob, {
 const queueEvents = new QueueEvents(EVENT_QUEUE_NAME, { connection });
 
 const queue = new Queue(EVENT_QUEUE_NAME, { connection });
+const allScansDisabled = process.env.DISABLE_WORKER_SCANS === "1";
 
 // Run Larry's intelligence scan across all active projects every 30 minutes.
 // Stable jobId prevents duplicate repeatable entries on restart.
@@ -22,7 +25,7 @@ const queue = new Queue(EVENT_QUEUE_NAME, { connection });
 // test traffic and every scheduled tick is cannibalising the drip-feed
 // replenishment. When paused, any already-scheduled repeatable entry
 // is removed so it doesn't keep firing from Redis.
-const scanDisabled = process.env.DISABLE_LARRY_SCAN === "1";
+const scanDisabled = allScansDisabled || process.env.DISABLE_LARRY_SCAN === "1";
 if (scanDisabled) {
   try {
     // BullMQ signature: removeRepeatable(name, repeatOpts, jobId?).
@@ -37,9 +40,9 @@ if (scanDisabled) {
         await queue.removeRepeatableByKey(entry.key);
       }
     }
-    console.log("[worker] larry.scan repeatable disabled via DISABLE_LARRY_SCAN=1");
+    logger.info("larry.scan repeatable disabled", { reason: "DISABLE_LARRY_SCAN=1" });
   } catch (err) {
-    console.warn("[worker] failed to remove larry.scan repeatable:", err);
+    logger.warn("failed to remove larry.scan repeatable", { err });
   }
 } else {
   await queue.add(
@@ -54,18 +57,33 @@ if (scanDisabled) {
   );
 }
 
-// Register the escalation scan as a BullMQ repeatable job (hourly).
-// Using a stable jobId ensures only one repeatable entry exists even on restart.
-await queue.add(
-  "escalation.scan",
-  {},
-  {
-    repeat: { every: 24 * 60 * 60 * 1000 },
-    jobId: "escalation-scan",
-    attempts: 3,
-    backoff: { type: "exponential", delay: 10_000 },
+if (allScansDisabled) {
+  try {
+    await queue.removeRepeatable("escalation.scan", { every: 24 * 60 * 60 * 1000 }, "escalation-scan");
+    const repeatables = await queue.getRepeatableJobs();
+    for (const entry of repeatables) {
+      if (entry.name === "escalation.scan") {
+        await queue.removeRepeatableByKey(entry.key);
+      }
+    }
+    logger.info("escalation.scan repeatable disabled", { reason: "DISABLE_WORKER_SCANS=1" });
+  } catch (err) {
+    logger.warn("failed to remove escalation.scan repeatable", { err });
   }
-);
+} else {
+  // Register the escalation scan as a BullMQ repeatable job (hourly).
+  // Using a stable jobId ensures only one repeatable entry exists even on restart.
+  await queue.add(
+    "escalation.scan",
+    {},
+    {
+      repeat: { every: 24 * 60 * 60 * 1000 },
+      jobId: "escalation-scan",
+      attempts: 3,
+      backoff: { type: "exponential", delay: 10_000 },
+    }
+  );
+}
 
 // Renew Google Calendar watch channels every 5 days (channels expire ~7 days).
 await queue.add(
@@ -92,15 +110,15 @@ await queue.add(
 );
 
 worker.on("completed", (job) => {
-  console.log(`[worker] completed job ${job?.id} (${job?.name})`);
+  logger.info("job completed", { jobId: job?.id, jobName: job?.name });
 });
 
 worker.on("failed", (job, error) => {
-  console.error(`[worker] failed job ${job?.id} (${job?.name})`, error);
+  logger.error("job failed", { jobId: job?.id, jobName: job?.name, error });
 });
 
 queueEvents.on("waiting", ({ jobId }) => {
-  console.log(`[worker] waiting job ${jobId}`);
+  logger.info("job waiting", { jobId });
 });
 
 async function shutdown(): Promise<void> {
@@ -120,4 +138,7 @@ process.on("SIGTERM", async () => {
   process.exit(0);
 });
 
-console.log(`[worker] started queue=${EVENT_QUEUE_NAME} concurrency=${env.WORKER_CONCURRENCY}`);
+logger.info("worker started", {
+  queue: EVENT_QUEUE_NAME,
+  concurrency: env.WORKER_CONCURRENCY,
+});

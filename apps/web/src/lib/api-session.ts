@@ -5,23 +5,20 @@
  */
 
 import type { AppSession } from "@/lib/auth";
-import {
-  createSessionToken,
-  csrfCookieOptions,
-  sessionCookieOptions,
-} from "@/lib/auth";
+import { apiTokensCookieOptions, createSessionToken, sessionCookieOptions } from "@/lib/auth";
 import { cookies } from "next/headers";
+import { createServerLogger } from "@/lib/server-logger";
 
 interface ApiRefreshResponse {
   accessToken: string;
   refreshToken?: string;
 }
 
+const logger = createServerLogger("api-session");
+
 export function getApiBaseUrl(): string {
   return (process.env.LARRY_API_BASE_URL ?? "http://localhost:8080").replace(/\/+$/, "");
 }
-
-// ── JWT decode helpers ──────────────────────────────────────────────────────
 
 const REFRESH_BUFFER_SECS = 120;
 
@@ -42,13 +39,11 @@ export function isTokenExpiredOrExpiringSoon(token: string): boolean {
   return exp - Math.floor(Date.now() / 1000) < REFRESH_BUFFER_SECS;
 }
 
-// ── Concurrency guard ───────────────────────────────────────────────────────
-
 let activeRefreshPromise: Promise<AppSession | null> | null = null;
 
 export async function refreshApiSession(
   baseUrl: string,
-  session: AppSession
+  session: AppSession,
 ): Promise<AppSession | null> {
   if (!session.apiRefreshToken || !session.tenantId) return null;
 
@@ -70,7 +65,7 @@ export async function refreshApiSession(
       });
 
       if (!response.ok) {
-        console.error("[api-session] Token refresh failed:", response.status);
+        logger.warn("token refresh failed", { status: response.status });
         return null;
       }
 
@@ -84,7 +79,7 @@ export async function refreshApiSession(
         authMode: "api",
       };
     } catch (err) {
-      console.error("[api-session] Token refresh error:", err instanceof Error ? err.message : err);
+      logger.error("token refresh error", { err });
       return null;
     }
   })();
@@ -96,11 +91,9 @@ export async function refreshApiSession(
   }
 }
 
-// ── Persist updated session cookie ──────────────────────────────────────────
-
 export async function persistRefreshedSession(session: AppSession): Promise<void> {
-  const { token, csrfToken } = await createSessionToken(session);
+  const { token } = await createSessionToken(session);
   const store = await cookies();
   store.set(sessionCookieOptions(token));
-  store.set(csrfCookieOptions(csrfToken));
+  store.set(await apiTokensCookieOptions(session));
 }

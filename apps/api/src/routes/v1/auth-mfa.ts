@@ -7,7 +7,7 @@ import {
   hashScratchCode,
   consumeScratchCode,
 } from "../../lib/mfa.js";
-import { issueAccessToken, issueRefreshToken } from "../../lib/auth.js";
+import { issueAccessToken, issueRefreshToken, resolveDeviceId } from "../../lib/auth.js";
 import { writeAuditLog } from "../../lib/audit.js";
 
 // Short-lived token a user needs to finish logging in when MFA is required
@@ -261,12 +261,7 @@ export const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
     // If the caller came in with an enrolment token, the login flow is
     // blocked waiting for us — issue real tokens so they can continue.
     if (caller.kind === "enrolment_token") {
-      const incomingDeviceId =
-        typeof request.headers["x-device-id"] === "string" && request.headers["x-device-id"]
-          ? request.headers["x-device-id"]
-          : null;
-      const { randomUUID } = await import("node:crypto");
-      const effectiveDeviceId = incomingDeviceId ?? randomUUID();
+      const { effectiveDeviceId } = resolveDeviceId(request.headers["x-device-id"]);
 
       const accessToken = await issueAccessToken(fastify, {
         userId: caller.userId,
@@ -377,12 +372,7 @@ export const authMfaRoutes: FastifyPluginAsync = async (fastify) => {
     // for admins in mfa-required tenants, so it mirrors /login's cookie
     // handling. Reuse the incoming X-Device-Id if present, otherwise
     // mint a new UUID and return it for the web layer to cookie.
-    const incomingDeviceId =
-      typeof request.headers["x-device-id"] === "string" && request.headers["x-device-id"]
-        ? request.headers["x-device-id"]
-        : null;
-    const { randomUUID } = await import("node:crypto");
-    const effectiveDeviceId = incomingDeviceId ?? randomUUID();
+    const { effectiveDeviceId } = resolveDeviceId(request.headers["x-device-id"]);
 
     // Session rotation on re-login (P2-5): nuke old refresh tokens.
     await fastify.db.query(

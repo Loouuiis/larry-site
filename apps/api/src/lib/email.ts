@@ -5,9 +5,11 @@ import {
   type EmailQuotaContext,
   type EmailKind,
 } from "./email-quota.js";
+import { createLogger } from "./logger.js";
 
 const FROM_NOREPLY = process.env.RESEND_FROM_NOREPLY ?? "Larry <noreply@larry-pm.com>";
 const FROM_LARRY   = process.env.RESEND_FROM_LARRY   ?? "Larry <larry@larry-pm.com>";
+const logger = createLogger("email");
 
 let resendInstance: Resend | null = null;
 
@@ -33,6 +35,35 @@ function getFrontendUrl(): string {
   const cors = process.env.CORS_ORIGINS;
   if (cors) return cors.split(",")[0].trim().replace(/\/+$/, "");
   return "http://localhost:3000";
+}
+
+function maskSensitiveUrl(rawUrl: string): string {
+  try {
+    const url = new URL(rawUrl);
+    for (const key of ["token", "code", "state"]) {
+      if (url.searchParams.has(key)) {
+        url.searchParams.set(key, "redacted");
+      }
+    }
+    return url.toString();
+  } catch {
+    return rawUrl.replace(
+      /([?&](?:token|code|state)=)[^&\s]+/gi,
+      "$1redacted",
+    );
+  }
+}
+
+function logEmailServiceMissing(kind: string, to: string, actionUrl?: string): void {
+  const maskedUrl = actionUrl ? ` Masked URL: ${maskSensitiveUrl(actionUrl)}` : "";
+  logger.warn(
+    "RESEND_API_KEY not configured; email skipped",
+    {
+    kind,
+    to,
+    maskedUrl,
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -98,7 +129,7 @@ export async function sendPasswordResetEmail(
   ctx?: EmailSendContext,
 ): Promise<void> {
   if (!isResendConfigured()) {
-    console.log("[email] RESEND_API_KEY not configured. Password reset URL for %s:\n  %s", to, resetUrl);
+    logEmailServiceMissing("Password reset", to, resetUrl);
     return;
   }
   if (!(await guard("password_reset", to, ctx))) return;
@@ -119,7 +150,7 @@ export async function sendPasswordResetEmail(
     `),
   });
   if (error) {
-    console.error("[email] sendPasswordResetEmail failed:", error);
+    logger.error("sendPasswordResetEmail failed", { error });
     throw new Error(`Failed to send password reset email: ${error.message}`);
   }
 }
@@ -130,7 +161,7 @@ export async function sendVerificationEmail(
   ctx?: EmailSendContext,
 ): Promise<void> {
   if (!isResendConfigured()) {
-    console.log("[email] RESEND_API_KEY not configured. Verification URL for %s:\n  %s", to, verifyUrl);
+    logEmailServiceMissing("Verification", to, verifyUrl);
     return;
   }
   if (!(await guard("verification", to, ctx))) return;
@@ -151,7 +182,7 @@ export async function sendVerificationEmail(
     `),
   });
   if (error) {
-    console.error("[email] sendVerificationEmail failed:", error);
+    logger.error("sendVerificationEmail failed", { error });
     throw new Error(`Failed to send verification email: ${error.message}`);
   }
 }
@@ -162,7 +193,7 @@ export async function sendEmailChangeConfirmation(
   ctx?: EmailSendContext,
 ): Promise<void> {
   if (!isResendConfigured()) {
-    console.log("[email] RESEND_API_KEY not configured. Email change confirm URL for %s:\n  %s", to, confirmUrl);
+    logEmailServiceMissing("Email change confirmation", to, confirmUrl);
     return;
   }
   if (!(await guard("email_change_confirm", to, ctx))) return;
@@ -183,7 +214,7 @@ export async function sendEmailChangeConfirmation(
     `),
   });
   if (error) {
-    console.error("[email] sendEmailChangeConfirmation failed:", error);
+    logger.error("sendEmailChangeConfirmation failed", { error });
     throw new Error(`Failed to send email change confirmation: ${error.message}`);
   }
 }
@@ -193,7 +224,7 @@ export async function sendEmailChangeNotification(
   ctx?: EmailSendContext,
 ): Promise<void> {
   if (!isResendConfigured()) {
-    console.log("[email] RESEND_API_KEY not configured. Skipping email change notification for %s", to);
+    logger.info("RESEND_API_KEY not configured; email change notification skipped", { to });
     return;
   }
   if (!(await guard("email_change_notify", to, ctx))) return;
@@ -215,7 +246,7 @@ export async function sendEmailChangeNotification(
     `),
   });
   if (error) {
-    console.error("[email] sendEmailChangeNotification failed:", error);
+    logger.error("sendEmailChangeNotification failed", { error });
     throw new Error(`Failed to send email change notification: ${error.message}`);
   }
 }
@@ -233,7 +264,7 @@ export async function sendNewDeviceAlert(
   ctx?: EmailSendContext,
 ): Promise<void> {
   if (!isResendConfigured()) {
-    console.log("[email] RESEND_API_KEY not configured. Skipping new device alert for %s", to);
+    logger.info("RESEND_API_KEY not configured; new device alert skipped", { to });
     return;
   }
   if (!(await guard("new_device_alert", to, ctx))) return;
@@ -265,7 +296,7 @@ export async function sendNewDeviceAlert(
     `),
   });
   if (error) {
-    console.error("[email] sendNewDeviceAlert failed:", error);
+    logger.error("sendNewDeviceAlert failed", { error });
     throw new Error(`Failed to send new device alert: ${error.message}`);
   }
 }
@@ -285,7 +316,7 @@ export async function sendRefreshReuseAlert(
   ctx?: EmailSendContext,
 ): Promise<void> {
   if (!isResendConfigured()) {
-    console.log("[email] RESEND_API_KEY not configured. Skipping refresh-reuse alert for %s", to);
+    logger.info("RESEND_API_KEY not configured; refresh-reuse alert skipped", { to });
     return;
   }
   if (!(await guard("refresh_reuse_alert", to, ctx))) return;
@@ -315,7 +346,7 @@ export async function sendRefreshReuseAlert(
     `),
   });
   if (error) {
-    console.error("[email] sendRefreshReuseAlert failed:", error);
+    logger.error("sendRefreshReuseAlert failed", { error });
     throw new Error(`Failed to send refresh-reuse alert: ${error.message}`);
   }
 }
@@ -339,7 +370,7 @@ export async function sendMemberInviteEmail(
   opts: MemberInviteEmailOpts,
 ): Promise<void> {
   if (!isResendConfigured()) {
-    console.log("[email] RESEND_API_KEY not configured. Invite email for %s skipped.", to);
+    logger.info("RESEND_API_KEY not configured; invite email skipped", { to });
     return;
   }
   if (!(await guard("member_invite", to, opts))) return;
@@ -365,7 +396,7 @@ export async function sendMemberInviteEmail(
     `),
   });
   if (error) {
-    console.error("[email] sendMemberInviteEmail failed:", error);
+    logger.error("sendMemberInviteEmail failed", { error });
     throw new Error(`Failed to send member invite email: ${error.message}`);
   }
 }
@@ -404,7 +435,7 @@ export async function sendBriefingDigestEmail(
   opts: BriefingDigestOpts,
 ): Promise<void> {
   if (!isResendConfigured()) {
-    console.log("[email] RESEND_API_KEY not configured. Skipping briefing digest for %s", to);
+    logger.info("RESEND_API_KEY not configured; briefing digest skipped", { to });
     return;
   }
   if (!(await guard("briefing_digest", to, opts))) return;
@@ -458,7 +489,7 @@ export async function sendBriefingDigestEmail(
     `),
   });
   if (error) {
-    console.error("[email] sendBriefingDigestEmail failed:", error);
+    logger.error("sendBriefingDigestEmail failed", { error });
     throw new Error(`Failed to send briefing digest: ${error.message}`);
   }
 }

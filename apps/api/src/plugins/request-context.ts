@@ -17,7 +17,12 @@ function resolveTenantId(request: FastifyRequest): string | null {
 
 export const requestContextPlugin = fp(async (fastify: FastifyInstance) => {
   const env = getApiEnv();
-  const publicPrefixes = ["/health", "/v1/orgs/request", "/v1/admin/orgs/"];
+  const publicPrefixes = [
+    "/health",
+    "/v1/orgs/request",
+    "/v1/admin/orgs/",
+    "/v1/timeline2/ai2/health",
+  ];
 
   fastify.addHook("preHandler", async (request: FastifyRequest, reply: FastifyReply) => {
     const user = request.user as AuthUser | undefined;

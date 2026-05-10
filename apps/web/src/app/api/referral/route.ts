@@ -3,29 +3,23 @@ import { z } from "zod";
 import { Resend } from "resend";
 import { getSession } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { checkNamedRateLimit } from "@/lib/rate-limit";
 
 const Schema = z.object({
   email: z.string().email().max(320).toLowerCase().trim(),
 });
 
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-function isRateLimited(key: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(key);
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(key, { count: 1, resetAt: now + 60_000 * 10 });
-    return false;
-  }
-  if (entry.count >= 5) return true;
-  entry.count++;
-  return false;
-}
-
 export async function POST(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  if (isRateLimited(session.userId)) {
+  const { limited } = await checkNamedRateLimit({
+    namespace: "referral",
+    identifier: session.userId,
+    max: 5,
+    windowSecs: 60 * 10,
+  });
+  if (limited) {
     return NextResponse.json({ error: "Too many referrals. Please wait a bit." }, { status: 429 });
   }
 

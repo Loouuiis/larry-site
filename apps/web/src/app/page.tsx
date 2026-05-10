@@ -1,4 +1,5 @@
 import "@/styles/landing-v3.css";
+import { redirect } from "next/navigation";
 import { LandingNavbar } from "@/components/landing-v3/Navbar";
 import { HeroHead } from "@/components/landing-v3/HeroHead";
 import { SituationRoom } from "@/components/landing-v3/SituationRoom";
@@ -6,8 +7,12 @@ import { WhatLarryDoes } from "@/components/landing-v3/WhatLarryDoes";
 import { BeforeAfter } from "@/components/landing-v3/BeforeAfter";
 import { CTA } from "@/components/landing-v3/CTA";
 import { LandingFooter } from "@/components/landing-v3/Footer";
+import { getSession } from "@/lib/auth";
 
-export default function Home() {
+export default async function Home() {
+  const session = await getSession();
+  if (session) redirect("/workspace");
+
   return (
     <div
       className="min-h-screen"

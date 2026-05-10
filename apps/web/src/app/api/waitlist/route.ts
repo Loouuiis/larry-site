@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
+import { checkNamedRateLimit } from "@/lib/rate-limit";
 
 const WaitlistSchema = z.object({
   firstName: z.string().min(1).max(100).trim(),
@@ -10,23 +11,15 @@ const WaitlistSchema = z.object({
   phone:     z.string().trim().regex(/^[+\d][\d\s\-().]{6,20}$/, "Invalid phone number"),
 });
 
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
-
-function isRateLimited(ip: string): boolean {
-  const now = Date.now();
-  const entry = rateLimitMap.get(ip);
-  if (!entry || now > entry.resetAt) {
-    rateLimitMap.set(ip, { count: 1, resetAt: now + 60_000 });
-    return false;
-  }
-  if (entry.count >= 5) return true;
-  entry.count++;
-  return false;
-}
-
 export async function POST(req: NextRequest) {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
-  if (isRateLimited(ip)) {
+  const { limited } = await checkNamedRateLimit({
+    namespace: "waitlist",
+    identifier: ip,
+    max: 5,
+    windowSecs: 60,
+  });
+  if (limited) {
     return NextResponse.json({ error: "Too many requests. Please try again later." }, { status: 429 });
   }
 

@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { getSession } from "@/lib/auth";
+import { clearWebSessionCookies, getSession } from "@/lib/auth";
 import {
   getApiBaseUrl,
   isTokenExpiredOrExpiringSoon,
@@ -74,6 +74,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       upstream = await performRequest(refreshed.apiAccessToken);
     }
     if (upstream.status === 401) {
+      await clearWebSessionCookies();
       return sseError("Your session has expired. Please log in again.", 401);
     }
   }

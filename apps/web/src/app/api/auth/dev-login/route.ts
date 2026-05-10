@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import {
+  apiTokensCookieOptions,
   createSessionToken,
-  csrfCookieOptions,
   sessionCookieOptions,
   AppSession,
 } from "@/lib/auth";
@@ -70,9 +70,11 @@ export async function POST() {
     authMode: "dev",
   };
 
-  const { token, csrfToken } = await createSessionToken(session);
+  const { token } = await createSessionToken(session);
   const response = NextResponse.json({ success: true, userId: session.userId });
   response.cookies.set(sessionCookieOptions(token));
-  response.cookies.set(csrfCookieOptions(csrfToken));
+  if (session.apiAccessToken || session.apiRefreshToken) {
+    response.cookies.set(await apiTokensCookieOptions(session));
+  }
   return response;
 }

@@ -1,7 +1,9 @@
 import { Redis } from "ioredis";
 import { getApiEnv } from "@larry/config";
+import { createLogger } from "./logger.js";
 
 let client: Redis | null = null;
+const logger = createLogger("redis");
 
 export function getRedis(): Redis {
   if (client) return client;
@@ -12,9 +14,7 @@ export function getRedis(): Redis {
     lazyConnect: false,
   });
   instance.on("error", (err: Error) => {
-    // Surface to stderr so Railway logs capture it — structured logging
-    // happens at the consumer layer (Fastify logger).
-    console.error("[redis] connection error:", err.message);
+    logger.error("connection error", { err });
   });
   client = instance;
   return client;

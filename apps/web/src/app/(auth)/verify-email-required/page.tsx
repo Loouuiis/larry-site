@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { clearClientSessionState } from "@/lib/client-session-cleanup";
 
 export default function VerifyEmailRequiredPage() {
   const router = useRouter();
@@ -79,6 +80,7 @@ export default function VerifyEmailRequiredPage() {
             type="button"
             onClick={async () => {
               await fetch("/api/auth/logout", { method: "POST" });
+              clearClientSessionState();
               router.push("/login");
             }}
             className="font-medium text-[var(--brand)] underline underline-offset-2 transition-colors hover:text-[var(--brand-hover)]"

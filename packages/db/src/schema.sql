@@ -113,6 +113,9 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_tenant
   ON refresh_tokens (tenant_id, user_id, expires_at DESC);
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_refresh_tokens_token_hash
+  ON refresh_tokens (token_hash);
+
 CREATE TABLE IF NOT EXISTS password_reset_tokens (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -815,6 +818,292 @@ EXCEPTION WHEN duplicate_object THEN null; END $$;
 DO $$ BEGIN
   CREATE POLICY tenant_isolation_tenant_policy_settings
     ON tenant_policy_settings
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+-- Timeline 2 / Task Center 2: isolated planning domain.
+-- This schema intentionally does not reference tasks, task_dependencies,
+-- project_categories, larry_events, or larry_conversations. Existing projects
+-- anchor the new plan and project_memberships/users provide team lookup.
+CREATE TABLE IF NOT EXISTS timeline2_plans (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  active_revision_id UUID,
+  created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (tenant_id, project_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_timeline2_plans_tenant_project
+  ON timeline2_plans (tenant_id, project_id);
+
+CREATE TABLE IF NOT EXISTS timeline2_nodes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  plan_id UUID NOT NULL REFERENCES timeline2_plans(id) ON DELETE CASCADE,
+  parent_node_id UUID REFERENCES timeline2_nodes(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL DEFAULT 'task' CHECK (kind IN ('group', 'task', 'milestone')),
+  title TEXT NOT NULL CHECK (length(trim(title)) > 0),
+  description TEXT,
+  status TEXT NOT NULL DEFAULT 'not_started' CHECK (status IN ('not_started', 'in_progress', 'waiting', 'blocked', 'completed', 'cancelled')),
+  priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'critical')),
+  start_date DATE,
+  due_date DATE,
+  sort_order DOUBLE PRECISION NOT NULL DEFAULT 0,
+  progress SMALLINT NOT NULL DEFAULT 0 CHECK (progress >= 0 AND progress <= 100),
+  action_required BOOLEAN NOT NULL DEFAULT FALSE,
+  action_required_note TEXT,
+  created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  updated_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT timeline2_nodes_date_order_chk CHECK (
+    start_date IS NULL OR due_date IS NULL OR start_date <= due_date
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_timeline2_nodes_plan_parent_sort
+  ON timeline2_nodes (tenant_id, plan_id, parent_node_id, sort_order, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_timeline2_nodes_plan_status
+  ON timeline2_nodes (tenant_id, plan_id, status, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS timeline2_node_assignees (
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  node_id UUID NOT NULL REFERENCES timeline2_nodes(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  assigned_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (tenant_id, node_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_timeline2_node_assignees_user
+  ON timeline2_node_assignees (tenant_id, user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS timeline2_dependencies (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  plan_id UUID NOT NULL REFERENCES timeline2_plans(id) ON DELETE CASCADE,
+  from_node_id UUID NOT NULL REFERENCES timeline2_nodes(id) ON DELETE CASCADE,
+  to_node_id UUID NOT NULL REFERENCES timeline2_nodes(id) ON DELETE CASCADE,
+  relation TEXT NOT NULL DEFAULT 'finish_to_start' CHECK (relation IN ('finish_to_start', 'start_to_start', 'finish_to_finish', 'start_to_finish')),
+  lag_days INT NOT NULL DEFAULT 0,
+  created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (tenant_id, plan_id, from_node_id, to_node_id),
+  CONSTRAINT timeline2_dependencies_not_self_chk CHECK (from_node_id <> to_node_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_timeline2_dependencies_plan
+  ON timeline2_dependencies (tenant_id, plan_id, created_at);
+
+CREATE TABLE IF NOT EXISTS timeline2_user_preferences (
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  column_order JSONB NOT NULL DEFAULT '[]'::jsonb,
+  visible_columns JSONB NOT NULL DEFAULT '[]'::jsonb,
+  column_widths JSONB NOT NULL DEFAULT '{}'::jsonb,
+  outline_width INT NOT NULL DEFAULT 520,
+  day_width INT NOT NULL DEFAULT 38,
+  collapsed_node_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (tenant_id, user_id, project_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_timeline2_user_preferences_project
+  ON timeline2_user_preferences (tenant_id, project_id, user_id);
+
+CREATE TABLE IF NOT EXISTS timeline2_revisions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  plan_id UUID NOT NULL REFERENCES timeline2_plans(id) ON DELETE CASCADE,
+  revision_number INT NOT NULL,
+  reason TEXT NOT NULL,
+  snapshot_json JSONB NOT NULL,
+  created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (tenant_id, plan_id, revision_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_timeline2_revisions_plan_recent
+  ON timeline2_revisions (tenant_id, plan_id, revision_number DESC);
+
+DO $$ BEGIN
+  ALTER TABLE timeline2_plans
+    ADD CONSTRAINT timeline2_plans_active_revision_fk
+    FOREIGN KEY (active_revision_id) REFERENCES timeline2_revisions(id) ON DELETE SET NULL;
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
+
+CREATE TABLE IF NOT EXISTS timeline2_ai_conversations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  plan_id UUID NOT NULL REFERENCES timeline2_plans(id) ON DELETE CASCADE,
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  title TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_timeline2_ai_conversations_project
+  ON timeline2_ai_conversations (tenant_id, project_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS timeline2_ai_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  conversation_id UUID NOT NULL REFERENCES timeline2_ai_conversations(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+  content TEXT NOT NULL,
+  context_json JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_timeline2_ai_messages_conversation
+  ON timeline2_ai_messages (tenant_id, conversation_id, created_at ASC);
+
+CREATE TABLE IF NOT EXISTS timeline2_branches (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  plan_id UUID NOT NULL REFERENCES timeline2_plans(id) ON DELETE CASCADE,
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'accepted', 'rejected')),
+  base_revision_id UUID REFERENCES timeline2_revisions(id) ON DELETE SET NULL,
+  base_snapshot_json JSONB NOT NULL,
+  proposed_snapshot_json JSONB NOT NULL,
+  created_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  accepted_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  accepted_at TIMESTAMPTZ,
+  rejected_by_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  rejected_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_timeline2_branches_project_status
+  ON timeline2_branches (tenant_id, project_id, status, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS timeline2_branch_operations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  branch_id UUID NOT NULL REFERENCES timeline2_branches(id) ON DELETE CASCADE,
+  operation_type TEXT NOT NULL CHECK (operation_type IN ('create_node', 'update_node', 'move_node', 'delete_node', 'set_assignees', 'set_dependency', 'remove_dependency')),
+  target_node_id UUID REFERENCES timeline2_nodes(id) ON DELETE SET NULL,
+  dependency_id UUID REFERENCES timeline2_dependencies(id) ON DELETE SET NULL,
+  before_json JSONB,
+  after_json JSONB,
+  rationale TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected', 'applied')),
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_timeline2_branch_operations_branch
+  ON timeline2_branch_operations (tenant_id, branch_id, sort_order, created_at);
+
+CREATE TABLE IF NOT EXISTS timeline2_ai2_conversations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_timeline2_ai2_conversations_project
+  ON timeline2_ai2_conversations (tenant_id, project_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS timeline2_ai2_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  conversation_id UUID NOT NULL REFERENCES timeline2_ai2_conversations(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+  content TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_timeline2_ai2_messages_conversation
+  ON timeline2_ai2_messages (tenant_id, conversation_id, created_at ASC);
+
+ALTER TABLE timeline2_ai2_conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE timeline2_ai2_messages ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_timeline2_ai2_conversations
+    ON timeline2_ai2_conversations
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_timeline2_ai2_messages
+    ON timeline2_ai2_messages
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+ALTER TABLE timeline2_plans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE timeline2_nodes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE timeline2_node_assignees ENABLE ROW LEVEL SECURITY;
+ALTER TABLE timeline2_dependencies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE timeline2_user_preferences ENABLE ROW LEVEL SECURITY;
+ALTER TABLE timeline2_revisions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE timeline2_ai_conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE timeline2_ai_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE timeline2_branches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE timeline2_branch_operations ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_timeline2_plans
+    ON timeline2_plans
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_timeline2_nodes
+    ON timeline2_nodes
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_timeline2_node_assignees
+    ON timeline2_node_assignees
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_timeline2_dependencies
+    ON timeline2_dependencies
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_timeline2_user_preferences
+    ON timeline2_user_preferences
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_timeline2_revisions
+    ON timeline2_revisions
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_timeline2_ai_conversations
+    ON timeline2_ai_conversations
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_timeline2_ai_messages
+    ON timeline2_ai_messages
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_timeline2_branches
+    ON timeline2_branches
+    USING (tenant_id::text = current_setting('app.tenant_id', true));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN
+  CREATE POLICY tenant_isolation_timeline2_branch_operations
+    ON timeline2_branch_operations
     USING (tenant_id::text = current_setting('app.tenant_id', true));
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 
@@ -1856,39 +2145,24 @@ CREATE INDEX IF NOT EXISTS idx_notifications_batch
   ON notifications (tenant_id, batch_id)
   WHERE batch_id IS NOT NULL AND channel = 'ui';
 
--- ── 035_notifications_repair_deep_links.sql ──────────────────────────────────
--- Existing UI-feed rows were written with deep links pointing at non-existent
--- web routes (404 on click). Idempotent regex rewrites; scoped to channel='ui'
--- so legacy email/escalation rows are untouched. Safe to re-run.
+-- ── 038_timeline2_gantt_upgrade.sql ───────────────────────────────────────────
+-- The migrate runner executes only this file; numbered files under
+-- packages/db/src/migrations/ are not applied automatically. For databases that
+-- already had timeline2_nodes / timeline2_dependencies before progress,
+-- lag_days, and double sort_order were added to the CREATE TABLE above,
+-- `CREATE TABLE IF NOT EXISTS` does nothing — these ALTERs upgrade old tables.
+-- (Mirrors migrations/038_timeline2_gantt_upgrade.sql additive statements.)
 
-UPDATE notifications
-SET deep_link = REGEXP_REPLACE(
-  deep_link,
-  '^/workspace/projects/([^/?#]+)/tasks/([^/?#]+)$',
-  '/workspace/projects/\1?tab=tasks&task=\2'
-)
-WHERE channel = 'ui'
-  AND deep_link ~ '^/workspace/projects/[^/?#]+/tasks/[^/?#]+$';
+ALTER TABLE timeline2_nodes
+  ADD COLUMN IF NOT EXISTS progress SMALLINT NOT NULL DEFAULT 0;
 
-UPDATE notifications
-SET deep_link = REGEXP_REPLACE(
-  deep_link,
-  '^/workspace/mail/drafts/([^/?#]+)$',
-  '/workspace/email-drafts?draft=\1'
-)
-WHERE channel = 'ui'
-  AND deep_link ~ '^/workspace/mail/drafts/[^/?#]+$';
+DO $$ BEGIN
+  ALTER TABLE timeline2_nodes
+    ADD CONSTRAINT timeline2_nodes_progress_chk CHECK (progress >= 0 AND progress <= 100);
+EXCEPTION WHEN duplicate_object THEN null; END $$;
 
-UPDATE notifications
-SET deep_link = REGEXP_REPLACE(
-  deep_link,
-  '^/workspace/mail/sent/([^/?#]+)$',
-  '/workspace/email-drafts?message=\1'
-)
-WHERE channel = 'ui'
-  AND deep_link ~ '^/workspace/mail/sent/[^/?#]+$';
+ALTER TABLE timeline2_nodes
+  ALTER COLUMN sort_order TYPE DOUBLE PRECISION USING sort_order::DOUBLE PRECISION;
 
-UPDATE notifications
-SET deep_link = '/workspace/settings/members'
-WHERE channel = 'ui'
-  AND deep_link = '/workspace/members';
+ALTER TABLE timeline2_dependencies
+  ADD COLUMN IF NOT EXISTS lag_days INT NOT NULL DEFAULT 0;

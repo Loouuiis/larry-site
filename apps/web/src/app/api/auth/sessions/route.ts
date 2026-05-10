@@ -17,15 +17,23 @@ export async function GET() {
       );
     }
 
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${session.apiAccessToken}`,
+    };
+
+    if (session.apiRefreshToken) {
+      headers["x-current-token-hash"] = createHash("sha256")
+        .update(session.apiRefreshToken)
+        .digest("hex");
+    }
+
     let apiResponse: Response;
     try {
       apiResponse = await fetch(
         `${apiBaseUrl.replace(/\/+$/, "")}/v1/auth/sessions`,
         {
           method: "GET",
-          headers: {
-            Authorization: `Bearer ${session.apiAccessToken}`,
-          },
+          headers,
           cache: "no-store",
           signal: AbortSignal.timeout(12_000),
         }

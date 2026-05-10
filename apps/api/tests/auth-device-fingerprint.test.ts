@@ -175,6 +175,26 @@ describe("POST /auth/login — P2-3 device fingerprint", () => {
     expect(sendNewDeviceAlert).not.toHaveBeenCalled();
   });
 
+  it("ignores malformed device_id headers and mints a fresh UUID", async () => {
+    const { app, calls } = await buildApp({ hasPrior: false });
+    apps.push(app);
+    const res = await app.inject({
+      method: "POST",
+      url: "/auth/login",
+      headers: { "x-device-id": "not-a-uuid" },
+      payload: { email: "admin@example.com", password: "CorrectPassword1!" },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.deviceId).not.toBe("not-a-uuid");
+    expect(body.deviceId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+
+    const malformedLookups = calls.filter((c) => /device_id = \$2/i.test(c.sql));
+    expect(malformedLookups).toHaveLength(0);
+    const insertCall = calls.find((c) => /INSERT INTO refresh_tokens/i.test(c.sql));
+    expect(insertCall?.args[6]).toBe(body.deviceId);
+  });
+
   it("emails on new device when there ARE prior sessions (device cookie missing or mismatched)", async () => {
     const { app } = await buildApp({ deviceKnown: false, hasPrior: true });
     apps.push(app);
