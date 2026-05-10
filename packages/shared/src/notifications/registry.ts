@@ -10,44 +10,48 @@ export const NOTIFICATION_REGISTRY: Record<NotificationType, NotificationSpec> =
   "task.created": {
     defaultSeverity: "success",
     deepLink: (p: { taskId: string; projectId: string }) =>
-      `/workspace/projects/${p.projectId}/tasks/${p.taskId}`,
+      `/workspace/projects/${p.projectId}?tab=tasks&task=${p.taskId}`,
     renderTitle: (p: { title: string }) => `Task created: ${p.title}`,
   },
   "task.updated": {
     defaultSeverity: "info",
     deepLink: (p: { taskId: string; projectId: string }) =>
-      `/workspace/projects/${p.projectId}/tasks/${p.taskId}`,
+      `/workspace/projects/${p.projectId}?tab=tasks&task=${p.taskId}`,
     renderTitle: (p: { title: string }) => `Task updated: ${p.title}`,
   },
   "task.deleted": {
     defaultSeverity: "warning",
-    deepLink: (p: { projectId: string }) => `/workspace/projects/${p.projectId}`,
+    deepLink: (p: { projectId: string }) =>
+      `/workspace/projects/${p.projectId}?tab=tasks`,
     renderTitle: (p: { title: string }) => `Task deleted: ${p.title}`,
   },
   "email.drafted": {
     defaultSeverity: "success",
-    deepLink: (p: { draftId: string }) => `/workspace/mail/drafts/${p.draftId}`,
+    deepLink: (p: { draftId?: string }) =>
+      p.draftId ? `/workspace/email-drafts?draft=${p.draftId}` : `/workspace/email-drafts`,
     renderTitle: (p: { recipient: string }) => `Email drafted for ${p.recipient}`,
   },
   "email.sent": {
     defaultSeverity: "success",
-    deepLink: (p: { messageId: string }) => `/workspace/mail/sent/${p.messageId}`,
+    deepLink: (p: { messageId?: string }) =>
+      p.messageId ? `/workspace/email-drafts?message=${p.messageId}` : `/workspace/email-drafts`,
     renderTitle: (p: { recipient: string }) => `Email sent to ${p.recipient}`,
   },
   "email.failed": {
     defaultSeverity: "error",
-    deepLink: (p: { draftId: string }) => `/workspace/mail/drafts/${p.draftId}`,
+    deepLink: (p: { draftId?: string }) =>
+      p.draftId ? `/workspace/email-drafts?draft=${p.draftId}` : `/workspace/email-drafts`,
     renderTitle: (p: { recipient: string }) =>
       `Email failed to send to ${p.recipient}`,
   },
   "invite.sent": {
     defaultSeverity: "success",
-    deepLink: () => `/workspace/members`,
+    deepLink: () => `/workspace/settings/members`,
     renderTitle: (p: { email: string }) => `Invite sent to ${p.email}`,
   },
   "invite.accepted": {
     defaultSeverity: "success",
-    deepLink: () => `/workspace/members`,
+    deepLink: () => `/workspace/settings/members`,
     renderTitle: (p: { email: string }) => `${p.email} joined the workspace`,
   },
   "scan.completed": {

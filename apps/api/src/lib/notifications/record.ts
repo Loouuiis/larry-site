@@ -32,7 +32,9 @@ export async function recordNotification(
   const severity = args.severityOverride ?? spec.defaultSeverity;
   const title = spec.renderTitle(args.payload);
   const deepLink = spec.deepLink(args.payload);
-  const body = args.body ?? null;
+  // notifications.body is TEXT NOT NULL (legacy email/escalation rows always set
+  // it). Coerce to "" so UI-feed rows without an explicit body still insert.
+  const body = args.body ?? "";
 
   const [row] = await args.db.queryTenant<{ id: string; created_at: string }>(
     args.tenantId,

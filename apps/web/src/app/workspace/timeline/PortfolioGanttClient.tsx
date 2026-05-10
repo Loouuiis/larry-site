@@ -279,6 +279,43 @@ export function PortfolioGanttClient() {
     },
   });
 
+  // Must be declared alongside the other mutations (above the early-return
+  // guards below) — hooks called after a conditional `return` produce a
+  // hook-count mismatch on the second render once `data` resolves, which
+  // surfaces as React error #310 ("Rendered more hooks than during the
+  // previous render"). This crashed /workspace/timeline on first paint.
+  const applyCategoryColourMutation = useMutation({
+    mutationFn: async ({ id, colour }: { id: string; colour: string }) => {
+      const res = await fetch(`/api/workspace/categories/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ colour }),
+      });
+      if (!res.ok) throw new Error(await extractApiError(res, "Couldn't change colour"));
+      return res.json();
+    },
+    onMutate: async ({ id, colour }) => {
+      await qc.cancelQueries({ queryKey: QK_TIMELINE_ORG });
+      const previous = qc.getQueryData<PortfolioTimelineResponse>(QK_TIMELINE_ORG);
+      qc.setQueryData<PortfolioTimelineResponse>(QK_TIMELINE_ORG, (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          categories: old.categories.map((c) => c.id === id ? { ...c, colour } : c),
+        };
+      });
+      return { previous };
+    },
+    onError: (err, _vars, ctx) => {
+      if (ctx?.previous) qc.setQueryData(QK_TIMELINE_ORG, ctx.previous);
+      setMutationError(err instanceof Error ? err.message : "Failed to change colour");
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: QK_TIMELINE_ORG });
+      setColourPopover(null);
+    },
+  });
+
   function handleDragEnd(e: DragEndEvent) {
     if (!e.over || !data) return;
     const sourceKey = String(e.active.id);
@@ -721,38 +758,6 @@ export function PortfolioGanttClient() {
       return;
     }
   }
-
-  const applyCategoryColourMutation = useMutation({
-    mutationFn: async ({ id, colour }: { id: string; colour: string }) => {
-      const res = await fetch(`/api/workspace/categories/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ colour }),
-      });
-      if (!res.ok) throw new Error(await extractApiError(res, "Couldn't change colour"));
-      return res.json();
-    },
-    onMutate: async ({ id, colour }) => {
-      await qc.cancelQueries({ queryKey: QK_TIMELINE_ORG });
-      const previous = qc.getQueryData<PortfolioTimelineResponse>(QK_TIMELINE_ORG);
-      qc.setQueryData<PortfolioTimelineResponse>(QK_TIMELINE_ORG, (old) => {
-        if (!old) return old;
-        return {
-          ...old,
-          categories: old.categories.map((c) => c.id === id ? { ...c, colour } : c),
-        };
-      });
-      return { previous };
-    },
-    onError: (err, _vars, ctx) => {
-      if (ctx?.previous) qc.setQueryData(QK_TIMELINE_ORG, ctx.previous);
-      setMutationError(err instanceof Error ? err.message : "Failed to change colour");
-    },
-    onSettled: () => {
-      void qc.invalidateQueries({ queryKey: QK_TIMELINE_ORG });
-      setColourPopover(null);
-    },
-  });
 
   function applyCategoryColour(hex: string) {
     if (!colourPopover) return;

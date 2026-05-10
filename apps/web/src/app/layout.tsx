@@ -24,7 +24,7 @@ export const viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "Larry — Making projects run themselves",
+  title: "Larry",
   description:
     "Larry listens across your stack, decides what needs to happen, drafts it in your voice, and ships it. Stop managing work. Start delivering it.",
   openGraph: {
@@ -43,7 +43,6 @@ export const metadata: Metadata = {
       "Larry listens across your stack, decides what needs to happen, drafts it in your voice, and ships it.",
     images: ["/Larry_logo.png"],
   },
-  icons: { icon: "/Larry_logo.png" },
 };
 
 export default function RootLayout({

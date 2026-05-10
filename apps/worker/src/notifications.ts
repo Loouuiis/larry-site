@@ -35,7 +35,10 @@ export async function notifySafe(args: SafeArgs): Promise<void> {
         args.tenantId,
         args.userId,
         title,
-        args.body ?? null,
+        // notifications.body is TEXT NOT NULL — coerce to "" so callers
+        // that only provide a title (scan.completed, scan.failed, etc.)
+        // don't trip the constraint and get silently dropped.
+        args.body ?? "",
         JSON.stringify({ payload: args.payload }),
         args.type,
         severity,
