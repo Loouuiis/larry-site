@@ -12,9 +12,18 @@ export function Footer({ basePath = "" }: Props) {
           <Image
             src="/Larryfulllogo.png"
             alt="Larry"
-            width={128}
-            height={32}
-            style={{ height: 32, width: "auto", display: "block" }}
+            width={224}
+            height={56}
+            style={{
+              height: 56,
+              width: "auto",
+              display: "block",
+              // Invert the dark-on-transparent PNG to a white wordmark + add
+              // a soft purple drop-shadow so it stays readable across the
+              // footer's purple → white → purple gradient.
+              filter:
+                "brightness(0) invert(1) drop-shadow(0 2px 14px rgba(59,44,143,0.35))",
+            }}
           />
         </div>
         <div className="footer__cols">
