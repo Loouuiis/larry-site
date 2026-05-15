@@ -57,13 +57,7 @@ export function MissionSection() {
     <section id="solution" className="section mission" data-screen-label="02 Solution">
       <div className="section-inner">
         <div className="mission__topmark">
-          <Image
-            src="/Larry_logos.png"
-            alt="Larry"
-            width={260}
-            height={88}
-            style={{ height: 88, width: "auto", display: "block", margin: "0 auto" }}
-          />
+          <span className="L">Larry</span>
         </div>
         <h2>
           Making projects run themselves by aligning stakeholders,
@@ -264,11 +258,11 @@ export function HowItWorksSection() {
   return (
     <section className="section howit" data-screen-label="04 How it works">
       <div className="section-inner">
-        <div className="howit__l">
+        <div className="howit__l howit__l--img">
           <Image
-            src="/Larry_logo.png"
+            src="/Larry_logos.png"
             alt="Larry"
-            width={120}
+            width={180}
             height={120}
             style={{ height: 120, width: "auto", display: "block", margin: "0 auto" }}
           />
@@ -416,8 +410,8 @@ export function CareersSlot() {
             Reach out
           </Link>
         </div>
-        {/* Anna is sourcing the final image for this slot — the Tintoretto
-            also used on the /careers page is a placeholder for now. */}
+        {/* Anna is sourcing the final image for this slot. Until then, the
+            Tintoretto (also used on the /careers reach-out page) stands in. */}
         <TrojanRubric src="/tintoretto-miracle.webp" alt="" />
       </div>
     </section>

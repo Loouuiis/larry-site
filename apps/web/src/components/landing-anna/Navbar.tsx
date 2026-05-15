@@ -20,10 +20,10 @@ export function Navbar({ basePath = "" }: Props) {
           <Image
             src="/Larryfulllogo.png"
             alt="Larry"
-            width={84}
-            height={22}
+            width={144}
+            height={38}
             priority
-            style={{ height: 22, width: "auto", display: "block" }}
+            style={{ height: 38, width: "auto", display: "block" }}
           />
         </Link>
         <div className="nav__links">
