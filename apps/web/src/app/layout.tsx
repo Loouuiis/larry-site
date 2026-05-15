@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Geist } from "next/font/google";
+import { Inter, Geist, Manrope, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { OverlayManager } from "@/components/ui/LiquidOverlay";
 
@@ -14,6 +14,20 @@ const geistSans = Geist({
   subsets: ["latin"],
   weight: ["300"],
   variable: "--font-geist-sans",
+  display: "swap",
+});
+
+const manrope = Manrope({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-manrope",
+  display: "swap",
+});
+
+const geistMono = Geist_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  variable: "--font-geist-mono",
   display: "swap",
 });
 
@@ -53,7 +67,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${inter.variable} ${geistSans.variable} antialiased`}
+        className={`${inter.variable} ${geistSans.variable} ${manrope.variable} ${geistMono.variable} antialiased`}
         suppressHydrationWarning
       >
         <OverlayManager />

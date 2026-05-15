@@ -1,47 +1,43 @@
-import "@/styles/landing-v3.css";
+import "@/styles/landing-anna.css";
 import { redirect } from "next/navigation";
-import { LandingNavbar } from "@/components/landing-v3/Navbar";
-import { HeroHead } from "@/components/landing-v3/HeroHead";
-import { SituationRoom } from "@/components/landing-v3/SituationRoom";
-import { WhatLarryDoes } from "@/components/landing-v3/WhatLarryDoes";
-import { BeforeAfter } from "@/components/landing-v3/BeforeAfter";
-import { CTA } from "@/components/landing-v3/CTA";
-import { LandingFooter } from "@/components/landing-v3/Footer";
 import { getSession } from "@/lib/auth";
+import { Navbar } from "@/components/landing-anna/Navbar";
+import { WaitlistModal } from "@/components/landing-anna/WaitlistModal";
+import { Footer } from "@/components/landing-anna/Footer";
+import {
+  HeroSection,
+  MissionSection,
+  CompareSection,
+  HowItWorksSection,
+  AudienceSection,
+  CareersSlot,
+  PricingSlot,
+  ContactSection,
+} from "@/components/landing-anna/sections";
 
 export default async function Home() {
   const session = await getSession();
   if (session) redirect("/workspace");
 
   return (
-    <div
-      className="min-h-screen"
-      style={{
-        background: "var(--page-bg)",
-        color: "var(--text-1)",
-        backgroundImage: `
-          radial-gradient(ellipse 80% 40% at 50% -5%, rgba(139,92,246,0.09), transparent 70%),
-          radial-gradient(ellipse 60% 30% at 50% 100%, rgba(108,68,246,0.05), transparent 70%)
-        `,
-      }}
-    >
-      <LandingNavbar />
-      <main
-        className="relative mx-auto grid gap-8"
-        style={{
-          maxWidth: 1240,
-          minHeight: "calc(100vh - 68px)",
-          padding: "28px 28px 40px",
-          gridTemplateRows: "auto 1fr",
-        }}
-      >
-        <HeroHead />
-        <SituationRoom />
-      </main>
-      <WhatLarryDoes />
-      <BeforeAfter />
-      <CTA />
-      <LandingFooter />
+    <div className="landing-anna">
+      <Navbar />
+      <HeroSection />
+      <hr className="divider" />
+      <MissionSection />
+      <hr className="divider" />
+      <CompareSection />
+      <hr className="divider" />
+      <HowItWorksSection />
+      <hr className="divider" />
+      <AudienceSection />
+      <hr className="divider" />
+      <CareersSlot />
+      <hr className="divider" />
+      <PricingSlot />
+      <ContactSection />
+      <Footer />
+      <WaitlistModal />
     </div>
   );
 }
