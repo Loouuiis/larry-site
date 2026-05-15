@@ -448,15 +448,6 @@ export function ContactSection() {
   return (
     <section className="contact" data-screen-label="08 Contact">
       <div className="contact__inner">
-        <div className="contact__L">
-          <Image
-            src="/Larry_logo.png"
-            alt="Larry"
-            width={64}
-            height={64}
-            style={{ height: 64, width: "auto", display: "block", margin: "0 auto" }}
-          />
-        </div>
         <h2>Tell us what&apos;s slowing your team down.</h2>
         <TypingContactBar />
         <p className="contact__footnote">We read every message and will be in touch.</p>
