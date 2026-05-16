@@ -1053,12 +1053,20 @@
 } /* end @media (max-width: 720px) */
 
 /* Reduced-motion: applies at all widths but only affects mobile
-   classes/animations because those rules are scoped above. */
+   classes/animations because those rules are scoped above.
+
+   `animation-iteration-count: 1` is critical — without it, infinite
+   animations (hero marquee, logo strip, bar shine, nav shine, caret
+   blink) collapse to a 0.01ms loop that strobes at the device's frame
+   rate. With it, they run once for 0.01ms and then settle, which is
+   the correct reduced-motion behaviour. */
 @media (prefers-reduced-motion: reduce) {
   .landing-anna-mobile *,
   .landing-anna-mobile *::before,
   .landing-anna-mobile *::after {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
