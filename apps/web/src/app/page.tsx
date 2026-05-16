@@ -1,4 +1,5 @@
 import "@/styles/landing-anna.css";
+import "@/styles/landing-anna-mobile.css";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { Navbar } from "@/components/landing-anna/Navbar";
@@ -14,30 +15,39 @@ import {
   PricingSlot,
   ContactSection,
 } from "@/components/landing-anna/sections";
+import { MobileLanding } from "@/components/landing-anna/mobile/MobileLanding";
 
 export default async function Home() {
   const session = await getSession();
   if (session) redirect("/workspace");
 
   return (
-    <div className="landing-anna">
-      <Navbar />
-      <HeroSection />
-      <hr className="divider" />
-      <MissionSection />
-      <hr className="divider" />
-      <CompareSection />
-      <hr className="divider" />
-      <HowItWorksSection />
-      <hr className="divider" />
-      <AudienceSection />
-      <hr className="divider" />
-      <CareersSlot />
-      <hr className="divider" />
-      <PricingSlot />
-      <ContactSection />
-      <Footer />
+    <>
+      {/* Desktop tree — hidden at ≤720px via .landing-anna-desktop CSS. */}
+      <div className="landing-anna landing-anna-desktop">
+        <Navbar />
+        <HeroSection />
+        <hr className="divider" />
+        <MissionSection />
+        <hr className="divider" />
+        <CompareSection />
+        <hr className="divider" />
+        <HowItWorksSection />
+        <hr className="divider" />
+        <AudienceSection />
+        <hr className="divider" />
+        <CareersSlot />
+        <hr className="divider" />
+        <PricingSlot />
+        <ContactSection />
+        <Footer />
+      </div>
+
+      {/* Mobile tree — hidden above 720px via the same CSS file. */}
+      <MobileLanding />
+
+      {/* Shared waitlist modal — mobile.css turns it into a bottom sheet. */}
       <WaitlistModal />
-    </div>
+    </>
   );
 }

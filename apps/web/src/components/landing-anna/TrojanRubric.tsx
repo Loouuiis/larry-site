@@ -31,6 +31,10 @@ export function TrojanRubric({ src, alt = "" }: Props) {
       }
       const w = (canvas.width = wrap.clientWidth);
       const h = (canvas.height = wrap.clientHeight);
+      // The desktop landing tree is hidden via `display:none` on mobile —
+      // measuring it returns zero, and a 0×0 source canvas makes drawImage
+      // throw InvalidStateError. Bail out and let the next resize redraw.
+      if (w === 0 || h === 0) return;
       const tile = 14;
       const tmpW = Math.ceil(w / tile);
       const tmpH = Math.ceil(h / tile);
